@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { formatDateTime, orEmpty } from "../lib/strings";
 import type { ProjectForm, Rfi } from "../types/database";
 import { normalizeProject } from "../types/database";
 
@@ -124,35 +125,35 @@ export function ProjectDetailPage() {
           <label>
             Address
             <input
-              value={project.job_address}
+              value={orEmpty(project.job_address)}
               onChange={(e) => setProject({ ...project, job_address: e.target.value })}
             />
           </label>
           <label>
             Address line 2
             <input
-              value={project.job_address2}
+              value={orEmpty(project.job_address2)}
               onChange={(e) => setProject({ ...project, job_address2: e.target.value })}
             />
           </label>
           <label>
             Contractor
             <input
-              value={project.contractor}
+              value={orEmpty(project.contractor)}
               onChange={(e) => setProject({ ...project, contractor: e.target.value })}
             />
           </label>
           <label>
             Architect
             <input
-              value={project.architect}
+              value={orEmpty(project.architect)}
               onChange={(e) => setProject({ ...project, architect: e.target.value })}
             />
           </label>
           <label>
             Owner
             <input
-              value={project.owner}
+              value={orEmpty(project.owner)}
               onChange={(e) => setProject({ ...project, owner: e.target.value })}
             />
           </label>
@@ -184,9 +185,7 @@ export function ProjectDetailPage() {
                     <td>{r.rfi_number}</td>
                     <td>{r.subject}</td>
                     <td>{r.status}</td>
-                    <td className="muted">
-                      {r.updated_at ? new Date(r.updated_at).toLocaleString() : "—"}
-                    </td>
+                    <td className="muted">{formatDateTime(r.updated_at)}</td>
                     <td>
                       <Link
                         className="btn btn-small"

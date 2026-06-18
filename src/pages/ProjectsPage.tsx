@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { formatDateTime } from "../lib/strings";
 import type { Project } from "../types/database";
 
 export function ProjectsPage() {
@@ -116,9 +117,7 @@ export function ProjectsPage() {
                 <tr key={p.id}>
                   <td>{p.job_number}</td>
                   <td>{p.job_name}</td>
-                  <td className="muted">
-                    {p.updated_at ? new Date(p.updated_at).toLocaleString() : "—"}
-                  </td>
+                  <td className="muted">{formatDateTime(p.updated_at)}</td>
                   <td>
                     <Link className="btn btn-small" to={`/projects/${p.id}`}>
                       Open
