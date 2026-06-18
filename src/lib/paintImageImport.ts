@@ -95,14 +95,37 @@ export async function imageFileFromClipboard(): Promise<File | null> {
   return null;
 }
 
+const MAX_IMAGE_BYTES = 3_500_000;
+
+async function readApiJson(res: Response): Promise<{ items?: ExtractedPaintRow[]; error?: string }> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as { items?: ExtractedPaintRow[]; error?: string };
+  } catch {
+    const snippet = text.trim().slice(0, 160);
+    if (snippet.includes("FUNCTION_INVOCATION_FAILED") || snippet.startsWith("A server error")) {
+      throw new Error(
+        "AI import server is not running on Vercel yet. Add ANTHROPIC_API_KEY under Project → Settings → Environment Variables, then redeploy the latest build (not an old failed one).",
+      );
+    }
+    throw new Error(snippet || `Import failed (${res.status})`);
+  }
+}
+
 export async function extractPaintFromImage(file: File): Promise<ExtractedPaintRow[]> {
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error(
+      "Image is too large for upload. Crop the screenshot or save a smaller copy (under ~3 MB), then try again.",
+    );
+  }
+
   const { data, mediaType } = await fileToBase64(file);
   const res = await fetch("/api/extract-paint", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image_base64: data, media_type: mediaType }),
   });
-  const body = (await res.json()) as { items?: ExtractedPaintRow[]; error?: string };
+  const body = await readApiJson(res);
   if (!res.ok) {
     throw new Error(body.error ?? `Import failed (${res.status})`);
   }
