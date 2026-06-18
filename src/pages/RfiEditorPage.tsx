@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { exportRfiPdf } from "../lib/api";
+import { printRfi } from "../lib/rfiPrint";
 import {
   defaultRfiFormData,
+  type Json,
   type Project,
   type Rfi,
   type RfiFormData,
@@ -23,7 +24,7 @@ export function RfiEditorPage() {
   const [form, setForm] = useState<RfiFormData>(defaultRfiFormData());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -63,7 +64,7 @@ export function RfiEditorPage() {
       .update({
         rfi_number: rfiNumber,
         subject,
-        data: form,
+        data: form as unknown as Json,
         status: "draft",
       })
       .eq("id", rfiId);
@@ -75,17 +76,17 @@ export function RfiEditorPage() {
     setSavedAt(new Date().toLocaleTimeString());
   }
 
-  async function onExportPdf() {
-    if (!project || !rfiId) return;
+  function onPrintPdf() {
+    if (!project) return;
     if (!subject.trim()) {
-      setError("Enter a subject before exporting PDF.");
+      setError("Enter a subject before printing.");
       return;
     }
-    setExporting(true);
+    setPrinting(true);
     setError(null);
     try {
-      await exportRfiPdf(
-        {
+      printRfi({
+        project: {
           job_number: project.job_number,
           job_name: project.job_name,
           job_address: project.job_address ?? "",
@@ -94,16 +95,14 @@ export function RfiEditorPage() {
           architect: project.architect ?? "",
           owner: project.owner ?? "",
         },
-        {
-          rfi_number: rfiNumber,
-          subject,
-          data: form,
-        },
-      );
+        rfi_number: rfiNumber,
+        subject,
+        form,
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "PDF export failed");
+      setError(e instanceof Error ? e.message : "Print failed");
     } finally {
-      setExporting(false);
+      setPrinting(false);
     }
   }
 
@@ -126,16 +125,16 @@ export function RfiEditorPage() {
           <button
             type="button"
             className="btn btn-secondary"
-            disabled={exporting || saving}
-            onClick={() => void onExportPdf()}
+            disabled={printing || saving}
+            onClick={onPrintPdf}
           >
-            {exporting ? "Exporting…" : "Export PDF"}
+            {printing ? "Opening…" : "Print / Save PDF"}
           </button>
           <button
             type="submit"
             form="rfi-form"
             className="btn btn-primary"
-            disabled={saving || exporting}
+            disabled={saving || printing}
           >
             {saving ? "Saving…" : "Save RFI"}
           </button>

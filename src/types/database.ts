@@ -72,8 +72,20 @@ export const defaultRfiFormData = (): RfiFormData => {
 export type Project = Database["public"]["Tables"]["projects"]["Row"];
 export type Rfi = Database["public"]["Tables"]["rfis"]["Row"];
 
+/** Project row with empty strings instead of null for form inputs. */
+export type ProjectForm = Omit<
+  Project,
+  "job_address" | "job_address2" | "contractor" | "architect" | "owner"
+> & {
+  job_address: string;
+  job_address2: string;
+  contractor: string;
+  architect: string;
+  owner: string;
+};
+
 /** Normalize nullable DB text fields for form binding. */
-export function normalizeProject(row: Project): Project {
+export function normalizeProject(row: Project): ProjectForm {
   return {
     ...row,
     job_address: row.job_address ?? "",

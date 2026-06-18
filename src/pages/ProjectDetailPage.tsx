@@ -1,13 +1,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import type { Project, Rfi } from "../types/database";
+import type { ProjectForm, Rfi } from "../types/database";
 import { normalizeProject } from "../types/database";
 
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
+  const [project, setProject] = useState<ProjectForm | null>(null);
   const [rfis, setRfis] = useState<Rfi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,7 +184,9 @@ export function ProjectDetailPage() {
                     <td>{r.rfi_number}</td>
                     <td>{r.subject}</td>
                     <td>{r.status}</td>
-                    <td className="muted">{new Date(r.updated_at).toLocaleString()}</td>
+                    <td className="muted">
+                      {r.updated_at ? new Date(r.updated_at).toLocaleString() : "—"}
+                    </td>
                     <td>
                       <Link
                         className="btn btn-small"

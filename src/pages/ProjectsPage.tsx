@@ -116,7 +116,9 @@ export function ProjectsPage() {
                 <tr key={p.id}>
                   <td>{p.job_number}</td>
                   <td>{p.job_name}</td>
-                  <td className="muted">{new Date(p.updated_at).toLocaleString()}</td>
+                  <td className="muted">
+                    {p.updated_at ? new Date(p.updated_at).toLocaleString() : "—"}
+                  </td>
                   <td>
                     <Link className="btn btn-small" to={`/projects/${p.id}`}>
                       Open
