@@ -192,10 +192,18 @@ export function buildRfiPrintHtml({ project, rfi_number, subject, form }: RfiPri
   <div style="height:8px;"></div>
   <div class="sec-lbl">INFORMATION NEEDED:</div>
   <div class="lined-box info-box">${wlines(form.question, 10)}</div>
-  <div class="sec-lbl">RECOMMENDATION:</div>
-  <div class="lined-box rec-box">${wlines("", 6)}</div>
-  <div class="sec-lbl">RESPONSE:</div>
-  <div class="lined-box resp-box">${wlines("", 10)}</div>
+  ${
+    form.pdf_show_solution
+      ? `<div class="sec-lbl">RECOMMENDATION:</div>
+  <div class="lined-box rec-box">${wlines(form.solution_text, 6)}</div>`
+      : ""
+  }
+  ${
+    form.pdf_show_response
+      ? `<div class="sec-lbl">RESPONSE:</div>
+  <div class="lined-box resp-box">${wlines(form.impact_notes, 10)}</div>`
+      : ""
+  }
   <table class="sig-tbl">
     <tr>
       <td style="width:38%;"><div class="sig-line"></div>AUTHORIZED SIGNATURE</td>

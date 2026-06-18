@@ -15,6 +15,7 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
    |------|--------|
    | `VITE_SUPABASE_URL` | `https://hrbsekijkvhtfoogdwzp.supabase.co` |
    | `VITE_SUPABASE_ANON_KEY` | from Supabase → Settings → API → **anon public** |
+   | `ANTHROPIC_API_KEY` | for **AI paint import** (Anthropic — get at console.anthropic.com) |
 
    Optional (letterhead on PDF):
 

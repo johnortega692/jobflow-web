@@ -13,7 +13,13 @@ import {
 function parseRfiData(raw: unknown): RfiFormData {
   const base = defaultRfiFormData();
   if (!raw || typeof raw !== "object") return base;
-  return { ...base, ...(raw as Partial<RfiFormData>) };
+  const patch = raw as Partial<RfiFormData>;
+  return {
+    ...base,
+    ...patch,
+    pdf_show_solution: patch.pdf_show_solution ?? base.pdf_show_solution,
+    pdf_show_response: patch.pdf_show_response ?? base.pdf_show_response,
+  };
 }
 
 export function RfiEditorPage() {
@@ -115,7 +121,7 @@ export function RfiEditorPage() {
         <div>
           <p className="breadcrumb">
             <Link to="/projects">Projects</Link> /{" "}
-            <Link to={`/projects/${projectId}`}>{project.job_number}</Link> / RFI {rfiNumber}
+            <Link to={`/projects/${projectId}/rfis`}>{project.job_number}</Link> / RFI {rfiNumber}
           </p>
           <h1>RFI {rfiNumber}</h1>
           <p className="muted">{project.job_name}</p>
@@ -266,6 +272,137 @@ export function RfiEditorPage() {
               Approval
             </label>
           </div>
+        </section>
+
+        <section className="card stack">
+          <h2>Probable effect</h2>
+          <div className="check-grid">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.effect_increase_cost}
+                onChange={(e) => setField("effect_increase_cost", e.target.checked)}
+              />
+              Increase cost
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.effect_decrease_cost}
+                onChange={(e) => setField("effect_decrease_cost", e.target.checked)}
+              />
+              Decrease cost
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.effect_unknown_cost}
+                onChange={(e) => setField("effect_unknown_cost", e.target.checked)}
+              />
+              Unknown cost
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.effect_increase_time}
+                onChange={(e) => setField("effect_increase_time", e.target.checked)}
+              />
+              Increase time
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.effect_decrease_time}
+                onChange={(e) => setField("effect_decrease_time", e.target.checked)}
+              />
+              Decrease time
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.effect_unknown_time}
+                onChange={(e) => setField("effect_unknown_time", e.target.checked)}
+              />
+              Unknown time
+            </label>
+          </div>
+        </section>
+
+        <section className="card stack">
+          <h2>Recommendation</h2>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={form.pdf_show_solution}
+              onChange={(e) => setField("pdf_show_solution", e.target.checked)}
+            />
+            Include on PDF
+          </label>
+          <label>
+            Contractor&apos;s recommended resolution
+            <textarea
+              rows={4}
+              value={form.solution_text}
+              onChange={(e) => setField("solution_text", e.target.value)}
+            />
+          </label>
+        </section>
+
+        <section className="card stack">
+          <h2>Response / impact</h2>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={form.pdf_show_response}
+              onChange={(e) => setField("pdf_show_response", e.target.checked)}
+            />
+            Include response section on PDF
+          </label>
+          <label>
+            Impact notes
+            <textarea
+              rows={4}
+              value={form.impact_notes}
+              onChange={(e) => setField("impact_notes", e.target.value)}
+            />
+          </label>
+        </section>
+
+        <section className="card stack">
+          <h2>Attachments (listed on PDF)</h2>
+          <div className="check-grid">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.attach_photos}
+                onChange={(e) => setField("attach_photos", e.target.checked)}
+              />
+              Field photo(s)
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.attach_markup}
+                onChange={(e) => setField("attach_markup", e.target.checked)}
+              />
+              Marked-up PDF / clouded drawing
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.attach_submittal}
+                onChange={(e) => setField("attach_submittal", e.target.checked)}
+              />
+              Submittal / product data sheet
+            </label>
+          </div>
+          <label>
+            Other attachment note
+            <input
+              value={form.attach_other}
+              onChange={(e) => setField("attach_other", e.target.value)}
+            />
+          </label>
         </section>
 
         <section className="card stack">

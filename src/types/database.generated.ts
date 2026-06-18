@@ -162,6 +162,62 @@ export type Database = {
           },
         ];
       };
+      submittals: {
+        Row: {
+          id: string;
+          project_id: string;
+          line_number: string;
+          description: string;
+          spec_section: string;
+          submittal_type: string;
+          scope: string;
+          status: string;
+          result_code: string;
+          data: Json | null;
+          created_by: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          line_number?: string;
+          description?: string;
+          spec_section?: string;
+          submittal_type?: string;
+          scope?: string;
+          status?: string;
+          result_code?: string;
+          data?: Json | null;
+          created_by?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          line_number?: string;
+          description?: string;
+          spec_section?: string;
+          submittal_type?: string;
+          scope?: string;
+          status?: string;
+          result_code?: string;
+          data?: Json | null;
+          created_by?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "submittals_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

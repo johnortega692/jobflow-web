@@ -13,6 +13,10 @@ export interface RfiFormData {
   cost_change: string;
   sched_change: string;
   question: string;
+  solution_text: string;
+  impact_notes: string;
+  pdf_show_solution: boolean;
+  pdf_show_response: boolean;
   reason_insufficient: boolean;
   reason_conflict: boolean;
   reason_alternate: boolean;
@@ -50,6 +54,10 @@ export const defaultRfiFormData = (): RfiFormData => {
     cost_change: "TBD",
     sched_change: "TBD",
     question: "",
+    solution_text: "",
+    impact_notes: "",
+    pdf_show_solution: true,
+    pdf_show_response: true,
     reason_insufficient: false,
     reason_conflict: false,
     reason_alternate: false,
@@ -71,6 +79,20 @@ export const defaultRfiFormData = (): RfiFormData => {
 
 export type Project = Database["public"]["Tables"]["projects"]["Row"];
 export type Rfi = Database["public"]["Tables"]["rfis"]["Row"];
+
+export type Submittal = Database["public"]["Tables"]["submittals"]["Row"];
+
+export const SUBMITTAL_SCOPES = ["", "Paint", "Wallcovering", "FRP", "Track", "Other"] as const;
+export const SUBMITTAL_STATUSES = ["Draft", "Ready", "Submitted", "Returned"] as const;
+export const SUBMITTAL_TYPES = [
+  "",
+  "Product Data",
+  "Color Samples",
+  "Shop Drawings",
+  "Substitution",
+  "Other",
+] as const;
+export const SUBMITTAL_RESULTS = ["", "AAN", "NET", "R&R", "MCN"] as const;
 
 /** Project row with empty strings instead of null for form inputs. */
 export type ProjectForm = Omit<
