@@ -2,8 +2,10 @@
   "functions": {
     "api/extract-paint.ts": {
       "memory": 1024,
-      "maxDuration": 60,
-      "includeFiles": "api/extractPaintCore.ts"
+      "maxDuration": 60
+    },
+    "api/send-vendor-email.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

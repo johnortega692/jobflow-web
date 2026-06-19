@@ -162,6 +162,24 @@ export type Database = {
           },
         ];
       };
+      user_settings: {
+        Row: {
+          settings: Json | null;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          settings?: Json | null;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          settings?: Json | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       submittals: {
         Row: {
           id: string;

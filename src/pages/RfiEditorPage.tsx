@@ -1,7 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { DateInput } from "../components/DateInput";
 import { supabase } from "../lib/supabase";
 import { printRfi } from "../lib/rfiPrint";
+import { applyRfiProfileDefaults } from "../lib/userProfile";
+import { useLetterhead } from "../contexts/LetterheadContext";
 import {
   defaultRfiFormData,
   type Json,
@@ -23,6 +26,7 @@ function parseRfiData(raw: unknown): RfiFormData {
 }
 
 export function RfiEditorPage() {
+  const { branding, profile } = useLetterhead();
   const { projectId, rfiId } = useParams<{ projectId: string; rfiId: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [rfiNumber, setRfiNumber] = useState("001");
@@ -51,10 +55,11 @@ export function RfiEditorPage() {
       const rfi = rfiRes.data as Rfi;
       setRfiNumber(rfi.rfi_number ?? "001");
       setSubject(rfi.subject ?? "");
-      setForm(parseRfiData(rfi.data));
+      const parsed = applyRfiProfileDefaults(parseRfiData(rfi.data), profile);
+      setForm(parsed);
     }
     void load();
-  }, [projectId, rfiId]);
+  }, [projectId, rfiId, profile]);
 
   function setField<K extends keyof RfiFormData>(key: K, value: RfiFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -104,6 +109,7 @@ export function RfiEditorPage() {
         rfi_number: rfiNumber,
         subject,
         form,
+        branding,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Print failed");
@@ -159,11 +165,11 @@ export function RfiEditorPage() {
             </label>
             <label>
               Date
-              <input value={form.rfi_date} onChange={(e) => setField("rfi_date", e.target.value)} />
+              <DateInput value={form.rfi_date} onChange={(v) => setField("rfi_date", v)} />
             </label>
             <label>
               Due date
-              <input value={form.due_date} onChange={(e) => setField("due_date", e.target.value)} />
+              <DateInput value={form.due_date} onChange={(v) => setField("due_date", v)} />
             </label>
           </div>
           <label>
@@ -182,6 +188,9 @@ export function RfiEditorPage() {
             <label>
               From
               <input value={form.from_name} onChange={(e) => setField("from_name", e.target.value)} />
+              {!form.from_name.trim() && profile.name.trim() && (
+                <span className="muted small">Defaults from Settings → Your profile</span>
+              )}
             </label>
             <label>
               Spec ref

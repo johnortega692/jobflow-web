@@ -1,8 +1,12 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Link, Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useLetterhead } from "../contexts/LetterheadContext";
+import { profileDisplayLabel } from "../lib/userProfile";
 
 export function Layout() {
   const { user, signOut } = useAuth();
+  const { profile } = useLetterhead();
+  const displayUser = profileDisplayLabel(profile) || profile.name.trim() || user?.email || "";
 
   return (
     <div className="app-shell">
@@ -15,10 +19,13 @@ export function Layout() {
           </div>
         </div>
         <nav className="topnav">
-          <a href="/projects">Projects</a>
+          <Link to="/projects">Projects</Link>
+          <Link to="/settings">Settings</Link>
         </nav>
         <div className="topbar-right">
-          <span className="user-email">{user?.email}</span>
+          <span className="user-email" title={user?.email ?? undefined}>
+            {displayUser}
+          </span>
           <button type="button" className="btn btn-ghost" onClick={() => signOut()}>
             Sign out
           </button>

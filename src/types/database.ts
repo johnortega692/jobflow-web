@@ -1,5 +1,7 @@
 export type { Database, Json } from "./database.generated";
 import type { Database } from "./database.generated";
+import type { JobInfoData } from "./jobInfo";
+import { normalizeJobInfo } from "../lib/jobInfo";
 
 export interface RfiFormData {
   rfi_date: string;
@@ -104,10 +106,15 @@ export type ProjectForm = Omit<
   contractor: string;
   architect: string;
   owner: string;
+  jobInfo: JobInfoData;
 };
 
 /** Normalize nullable DB text fields for form binding. */
 export function normalizeProject(row: Project): ProjectForm {
+  const dataBlob =
+    row.data && typeof row.data === "object" && !Array.isArray(row.data)
+      ? (row.data as Record<string, unknown>)
+      : {};
   return {
     ...row,
     job_address: row.job_address ?? "",
@@ -115,5 +122,6 @@ export function normalizeProject(row: Project): ProjectForm {
     contractor: row.contractor ?? "",
     architect: row.architect ?? "",
     owner: row.owner ?? "",
+    jobInfo: normalizeJobInfo(dataBlob.job_info, row),
   };
 }

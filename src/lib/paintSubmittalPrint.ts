@@ -1,10 +1,38 @@
-import { esc, getPrintBranding, groupByFloor, logoBlock, printHtml } from "./printCore";
+import { esc, groupByFloor, logoBlock, printHtml, type PrintBranding } from "./printCore";
 import { paintColorForPrint } from "./paintImageImport";
 import type { PaintItem, PaintSubmittalData } from "../types/tradeDocuments";
 
 const SUBMITTAL_CSS = `
+@page { size: letter; margin: 0.5in 0.55in; }
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #000; padding: 30px 40px; }
+body {
+  font-family: Calibri, Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.5;
+  color: #000;
+}
+
+/* Full letter content height — flex spacer pins footer to bottom of page 1 */
+.print-doc {
+  display: flex;
+  flex-direction: column;
+}
+.print-main {
+  flex: 0 0 auto;
+}
+.print-footer-spacer {
+  flex: 1 1 auto;
+  min-height: 0.5in;
+}
+.footer-section {
+  flex: 0 0 auto;
+  font-size: 10.5pt;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.footer-section p { margin-bottom: 3px; }
+
 .company-logo { text-align: center; margin-bottom: 5px; }
 .company-logo img { max-width: 400px; height: auto; }
 .logo-text { font-weight: bold; font-size: 14pt; }
@@ -20,8 +48,20 @@ table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 table th { background: #333; color: #fff; padding: 6px 10px; text-align: left; font-size: 10pt; }
 table td { padding: 6px 10px; border: 1px solid #ddd; font-size: 10pt; vertical-align: top; }
 table tr:nth-child(even) { background: #f9f9f9; }
-.footer-section { margin-top: 40px; font-size: 10.5pt; }
-@media print { .no-print { display: none !important; } }
+table tr { page-break-inside: avoid; break-inside: avoid; }
+
+@media screen {
+  body { padding: 30px 40px; }
+}
+
+@media print {
+  body { padding: 0; min-height: 0; display: block; }
+  .no-print { display: none !important; }
+  .print-doc {
+    min-height: 100vh;
+    page-break-after: auto;
+  }
+}
 `;
 
 type ProjectInfo = {
@@ -78,8 +118,8 @@ function paintTableHead(isSub: boolean): string {
 export function buildPaintSubmittalHtml(
   project: ProjectInfo,
   data: PaintSubmittalData,
+  branding: PrintBranding,
 ): string {
-  const branding = getPrintBranding();
   const isSub = data.submittal_type === "substitution";
   const groups = groupByFloor(data.items.filter((i) => i.color.trim() || i.label.trim()));
   const bodyTables =
@@ -97,9 +137,11 @@ export function buildPaintSubmittalHtml(
   <p class="no-print" style="font-family:Arial,sans-serif;font-size:11pt;margin-bottom:12px;">
     Choose <strong>Save as PDF</strong> as the printer.
   </p>
+  <div class="print-doc">
+  <div class="print-main">
   <div class="company-logo">${logoBlock(branding)}</div>
   <div class="header-line"></div>
-  <div class="company-info">${esc(branding.companyInfo)}</div>
+  <div class="company-info">${esc(branding.companyContactLine || branding.companyInfo)}</div>
   <div class="date-section">${esc(data.date)}${data.submittal_number ? `<br>Submittal No: ${data.submittal_number}` : ""}</div>
   <div class="form-title">Submittals</div>
   <div class="project-info">
@@ -109,15 +151,22 @@ export function buildPaintSubmittalHtml(
     <p class="info-row info-row-subject">Subject: ${esc(data.subject)}</p>
   </div>
   ${bodyTables}
+  </div>
+  <div class="print-footer-spacer" aria-hidden="true"></div>
   <div class="footer-section">
     <p>Thank you,</p><p>&nbsp;</p>
     <p>${esc(branding.footerName)}</p>
     <p>${esc(branding.footerPhone)}</p>
     ${branding.footerEmail ? `<p>${esc(branding.footerEmail)}</p>` : ""}
   </div>
+  </div>
 </body></html>`;
 }
 
-export function printPaintSubmittal(project: ProjectInfo, data: PaintSubmittalData): void {
-  printHtml(buildPaintSubmittalHtml(project, data));
+export function printPaintSubmittal(
+  project: ProjectInfo,
+  data: PaintSubmittalData,
+  branding: PrintBranding,
+): void {
+  printHtml(buildPaintSubmittalHtml(project, data, branding));
 }

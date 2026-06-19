@@ -66,7 +66,7 @@ export function ProjectLayout() {
         ))}
       </nav>
 
-      <Outlet context={{ project, projectId }} />
+      <Outlet context={{ project, projectId, setProject }} />
     </div>
   );
 }

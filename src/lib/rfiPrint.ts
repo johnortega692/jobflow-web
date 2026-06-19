@@ -1,9 +1,6 @@
 import type { Project, RfiFormData } from "../types/database";
-
-const COMPANY_NAME = import.meta.env.VITE_COMPANY_NAME?.trim() || "Plan B Apps";
-const COMPANY_ADDR = import.meta.env.VITE_COMPANY_ADDRESS?.trim() || "";
-const COMPANY_PHONE = import.meta.env.VITE_COMPANY_PHONE?.trim() || "";
-const LOGO_URL = import.meta.env.VITE_LOGO_URL?.trim() || "";
+import type { PrintBranding } from "./printCore";
+import { esc } from "./printCore";
 
 const PRINT_CSS = `
 @page { size: letter; margin: 0.25in 0.25in 0.5in 0.25in; }
@@ -48,19 +45,12 @@ table.sig-tbl { width: 100%; border-collapse: collapse; margin-top: 28px; }
 table.sig-tbl td { padding: 0 10px 0 0; vertical-align: bottom; font-size: 8pt; font-weight: bold; }
 table.sig-tbl td:last-child { padding-right: 0; }
 .sig-line { border-top: 1px solid #000; margin-top: 18px; margin-bottom: 2px; }
+.sig-prefill { font-size: 9pt; font-weight: normal; margin-top: 2px; min-height: 14px; }
 @media print {
   body { padding: 0; }
   .no-print { display: none !important; }
 }
 `;
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function cb(checked: boolean): string {
   return `<span class="cb">${checked ? "✓" : ""}</span>`;
@@ -79,6 +69,10 @@ function wlines(text: string, totalWhenEmpty: number, minPad = 2): string {
   return rendered + blanks;
 }
 
+function sigPrefill(text: string): string {
+  return text ? `<div class="sig-prefill">${esc(text)}</div>` : `<div class="sig-prefill">&nbsp;</div>`;
+}
+
 export type RfiPrintInput = {
   project: Pick<
     Project,
@@ -87,12 +81,18 @@ export type RfiPrintInput = {
   rfi_number: string;
   subject: string;
   form: RfiFormData;
+  branding: PrintBranding;
 };
 
-export function buildRfiPrintHtml({ project, rfi_number, subject, form }: RfiPrintInput): string {
-  const logoBlock = LOGO_URL
-    ? `<img src="${esc(LOGO_URL)}" alt="${esc(COMPANY_NAME)}"/>`
-    : `<div class="hdr-logo-text">${esc(COMPANY_NAME)}</div>`;
+export function buildRfiPrintHtml({ project, rfi_number, subject, form, branding }: RfiPrintInput): string {
+  const logoBlock = branding.logoUrl
+    ? `<img src="${esc(branding.logoUrl)}" alt="${esc(branding.logoAlt)}"/>`
+    : `<div class="hdr-logo-text">${esc(branding.companyName)}</div>`;
+
+  const fromName = form.from_name.trim() || branding.signerName;
+  const signerLine = branding.signerTitle
+    ? `${branding.signerName}, ${branding.signerTitle}`
+    : branding.signerName;
 
   return `<!DOCTYPE html>
 <html>
@@ -112,16 +112,16 @@ export function buildRfiPrintHtml({ project, rfi_number, subject, form }: RfiPri
       <td class="hdr-meta-cell"></td>
     </tr>
     <tr>
-      <td class="hdr-center"><span class="co-name">${esc(COMPANY_NAME)}</span></td>
+      <td class="hdr-center"><span class="co-name">${esc(branding.companyName)}</span></td>
       <td class="hdr-meta-cell"><span class="meta-lbl">RFI #:</span><span class="meta-val" style="font-weight:bold;font-size:12pt;">${esc(rfi_number)}</span></td>
     </tr>
     <tr>
-      <td class="hdr-center">${COMPANY_ADDR ? `<span class="co-addr">${esc(COMPANY_ADDR)}</span>` : ""}</td>
+      <td class="hdr-center">${branding.companyContactLine ? `<span class="co-addr">${esc(branding.companyContactLine)}</span>` : branding.companyAddress ? `<span class="co-addr">${esc(branding.companyAddress)}</span>` : ""}</td>
       <td class="hdr-meta-cell"><span class="meta-lbl">Date:</span><span class="meta-val">${esc(form.rfi_date)}</span></td>
     </tr>
     <tr>
       <td class="hdr-center"></td>
-      <td class="hdr-meta-cell">${COMPANY_PHONE ? `<span class="meta-lbl">Phone:</span><span class="meta-val">${esc(COMPANY_PHONE)}</span>` : ""}</td>
+      <td class="hdr-meta-cell">${branding.companyPhone ? `<span class="meta-lbl">Phone:</span><span class="meta-val">${esc(branding.companyPhone)}</span>` : ""}</td>
     </tr>
   </table>
   <table class="form-block">
@@ -172,7 +172,7 @@ export function buildRfiPrintHtml({ project, rfi_number, subject, form }: RfiPri
     </tr>
     <tr>
       <td style="width:50%;border-top:1px solid #000;padding:4px;">
-        <span class="lf-lbl">From:</span>&nbsp;&nbsp;${esc(form.from_name)}
+        <span class="lf-lbl">From:</span>&nbsp;&nbsp;${esc(fromName)}
       </td>
       <td style="width:50%;border-top:1px solid #000;border-left:1px solid #000;padding:4px 6px;font-size:8.5pt;font-weight:bold;text-align:center;vertical-align:middle;">
         RESPONSE REQUIRED BY: &nbsp;${esc(form.due_date)}
@@ -206,9 +206,9 @@ export function buildRfiPrintHtml({ project, rfi_number, subject, form }: RfiPri
   }
   <table class="sig-tbl">
     <tr>
-      <td style="width:38%;"><div class="sig-line"></div>AUTHORIZED SIGNATURE</td>
-      <td style="width:38%;"><div class="sig-line"></div>COMPANY</td>
-      <td style="width:24%;"><div class="sig-line"></div>DATE</td>
+      <td style="width:38%;">${sigPrefill(signerLine)}<div class="sig-line"></div>AUTHORIZED SIGNATURE</td>
+      <td style="width:38%;">${sigPrefill(branding.companyName)}<div class="sig-line"></div>COMPANY</td>
+      <td style="width:24%;">${sigPrefill(form.rfi_date)}<div class="sig-line"></div>DATE</td>
     </tr>
   </table>
 </body>

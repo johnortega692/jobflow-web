@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import type { Json } from "../types/database";
 import { parseProjectTradeData, type ProjectTradeData } from "../types/tradeDocuments";
+import { parseProjectDataBlob } from "./jobInfo";
 
 export function useProjectTradeData(projectId: string) {
   const [tradeData, setTradeData] = useState<ProjectTradeData>({});
@@ -32,9 +33,20 @@ export function useProjectTradeData(projectId: string) {
     async (next: ProjectTradeData) => {
       setSaving(true);
       setError(null);
+      const { data: row, error: loadErr } = await supabase
+        .from("projects")
+        .select("data")
+        .eq("id", projectId)
+        .single();
+      if (loadErr) {
+        setSaving(false);
+        setError(loadErr.message);
+        return false;
+      }
+      const base = parseProjectDataBlob(row?.data);
       const { error: err } = await supabase
         .from("projects")
-        .update({ data: next as unknown as Json })
+        .update({ data: { ...base, ...next } as unknown as Json })
         .eq("id", projectId);
       setSaving(false);
       if (err) {

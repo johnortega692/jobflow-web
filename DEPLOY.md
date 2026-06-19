@@ -17,6 +17,13 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
    | `VITE_SUPABASE_ANON_KEY` | from Supabase → Settings → API → **anon public** |
    | `ANTHROPIC_API_KEY` | for **AI paint import** (Anthropic — get at console.anthropic.com) |
 
+   **Vendor email (send from app):**
+
+   | Name | Value |
+   |------|--------|
+   | `RESEND_API_KEY` | from [resend.com](https://resend.com) → API Keys |
+   | `EMAIL_FROM` | `Your Name <noreply@yourdomain.com>` — domain must be verified in Resend |
+
    Optional (letterhead on PDF):
 
    | Name | Value |
@@ -66,6 +73,13 @@ Vercel redeploys automatically.
 ```powershell
 Set-Location "D:\Plan B\Apps\JOBFLOW\jobflow-web"
 .\dev.bat
+```
+
+Add to `.env.local` for **Send email** in dev:
+
+```
+RESEND_API_KEY=re_...
+EMAIL_FROM=John Ortega <noreply@yourdomain.com>
 ```
 
 Only **one** terminal needed. PDF works via browser print — no `api\dev.bat`.

@@ -1,0 +1,40 @@
+{
+    "vendors": [
+        {
+            "name": "Verona Collins",
+            "brand": "PPG",
+            "vendor_email": "VCollins@pittsburghpaints.com",
+            "store_email": "paf8116@pittsburghpaints.com"
+        },
+        {
+            "name": "Marcos L Ybarra",
+            "brand": "Sherwin",
+            "vendor_email": "marcos.l.ybarra@sherwin.com",
+            "store_email": ""
+        },
+        {
+            "name": "RJ Jim",
+            "brand": "Behr",
+            "vendor_email": "RJJIM@Behr.com",
+            "store_email": ""
+        },
+        {
+            "name": "G",
+            "brand": "Vista Paint",
+            "vendor_email": "eponsiglione@vistapaint.com",
+            "store_email": ""
+        },
+        {
+            "name": "Mike",
+            "brand": "BM",
+            "vendor_email": "Mike.Lopez@mycreativepaints.com",
+            "store_email": ""
+        },
+        {
+            "name": "Scott Prosser",
+            "brand": "DunnEdwards",
+            "vendor_email": "Scott.Prosser@DunnEdwards.com",
+            "store_email": ""
+        }
+    ]
+}

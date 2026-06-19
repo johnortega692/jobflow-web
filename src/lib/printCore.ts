@@ -6,6 +6,31 @@ export function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Letterhead line under logo: address | Office: phone | License #… */
+export function buildCompanyContactLine(
+  address: string,
+  phone: string,
+  license: string,
+): string {
+  const parts: string[] = [];
+  const addr = address.trim();
+  const ph = phone.trim();
+  const lic = license.trim();
+  if (addr) parts.push(addr);
+  if (ph) parts.push(/^office\s*:/i.test(ph) ? ph : `Office: ${ph}`);
+  if (lic) {
+    if (/^license\s*#/i.test(lic)) parts.push(lic);
+    else if (/^license/i.test(lic)) parts.push(lic);
+    else parts.push(`License #${lic.replace(/^#/, "")}`);
+  }
+  return parts.join(" | ");
+}
+
+/** Settings → letterhead line (single row: address | phone | license). */
+export function companyLetterheadLine(branding: PrintBranding): string {
+  return (branding.companyContactLine || branding.companyInfo).trim();
+}
+
 export function cb(checked: boolean): string {
   return `<span class="cb${checked ? " checked" : ""}"></span>`;
 }
@@ -68,7 +93,12 @@ export function formatShortDate(d = new Date()): string {
 }
 
 export type PrintBranding = {
+  companyName: string;
+  companyAddress: string;
+  companyPhone: string;
+  companyLicense: string;
   companyInfo: string;
+  companyContactLine: string;
   logoUrl: string;
   logoAlt: string;
   footerName: string;
@@ -77,21 +107,29 @@ export type PrintBranding = {
   fromBlock: string;
   fromPhone: string;
   signerName: string;
+  signerTitle: string;
   signerPhone: string;
   signerEmail: string;
 };
 
+/** @deprecated Use resolvePrintBranding() from letterheadSettings.ts */
 export function getPrintBranding(): PrintBranding {
   const name = import.meta.env.VITE_COMPANY_NAME?.trim() || "Plan B Apps";
   const addr = import.meta.env.VITE_COMPANY_ADDRESS?.trim() || "";
   const phone = import.meta.env.VITE_COMPANY_PHONE?.trim() || "";
+  const license = import.meta.env.VITE_COMPANY_LICENSE?.trim() || "";
   const email = import.meta.env.VITE_SIGNER_EMAIL?.trim() || "";
   const signer = import.meta.env.VITE_SIGNER_NAME?.trim() || name;
   const logoUrl = import.meta.env.VITE_LOGO_URL?.trim() || "";
-  const companyInfo = [name, addr, phone].filter(Boolean).join(" | ");
+  const companyContactLine = buildCompanyContactLine(addr, phone, license);
   const fromBlock = [name, addr].filter(Boolean).join("\n");
   return {
-    companyInfo,
+    companyName: name,
+    companyAddress: addr,
+    companyPhone: phone,
+    companyLicense: license,
+    companyInfo: companyContactLine,
+    companyContactLine,
     logoUrl,
     logoAlt: name,
     footerName: signer,
@@ -100,6 +138,7 @@ export function getPrintBranding(): PrintBranding {
     fromBlock,
     fromPhone: phone,
     signerName: signer,
+    signerTitle: "",
     signerPhone: phone,
     signerEmail: email,
   };
