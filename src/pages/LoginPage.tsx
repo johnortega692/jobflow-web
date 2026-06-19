@@ -1,16 +1,21 @@
 import { FormEvent, useState } from "react";
-import { Link } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
 
 export function LoginPage() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user, loading } = useAuth();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  if (!loading && user) {
+    return <Navigate to="/projects" replace />;
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -29,7 +34,9 @@ export function LoginPage() {
     if (mode === "signup") {
       setMessage("Account created. Check your email if confirmation is required, then sign in.");
       setMode("signin");
+      return;
     }
+    navigate("/projects", { replace: true });
   }
 
   return (
@@ -94,9 +101,6 @@ export function LoginPage() {
 
         <p className="muted small">
           First time? Run <code>supabase/schema.sql</code> in your Supabase SQL Editor.
-        </p>
-        <p className="small">
-          <Link to="/projects">Skip to projects</Link> (requires login)
         </p>
       </div>
     </div>
