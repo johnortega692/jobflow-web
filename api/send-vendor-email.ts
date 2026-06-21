@@ -34,4 +34,4 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-export = handler;
+export default handler;
