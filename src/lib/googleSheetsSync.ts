@@ -1,4 +1,3 @@
-import { jobFullAddressOneLine } from "./jobInfo";
 import { googleSheetsPost } from "./googleSheetsApi";
 
 export { jobFullAddressOneLine } from "./jobInfo";

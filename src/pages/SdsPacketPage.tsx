@@ -7,6 +7,7 @@ import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import {
   coerceTransmittalContract,
   hasTransmittalContractSwitch,
+  jobFullAddressOneLine,
   transmittalPrintInfo,
   type TransmittalContract,
 } from "../lib/jobInfo";

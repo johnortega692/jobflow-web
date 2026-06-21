@@ -4,7 +4,6 @@ import { patchUserSettings } from "../../lib/budgetLibrary";
 import {
   DEFAULT_GOOGLE_URLS,
   GOOGLE_URL_FIELDS,
-  normalizeGoogleUrls,
   validateGoogleUrls,
   type GoogleUrlKey,
 } from "../../lib/googleSheetsConfig";

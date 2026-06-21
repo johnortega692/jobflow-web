@@ -398,8 +398,8 @@ export function WallcoveringSubmittalsPage() {
       {historyOpen && (
         <SubmittalHistoryModal
           scope="wallcovering"
-          jobNumber={wcJobNumber}
-          jobName={wcJobName}
+          jobNumber={wcPrint.job_number}
+          jobName={wcPrint.job_name}
           history={history}
           onLoadWallcovering={loadHistoryItems}
           onDelete={(n) => void onDeleteHistory(n)}

@@ -1,5 +1,3 @@
-import { sanitizeFilenamePart } from "./sdsPacketPresets";
-
 export const TRANSMITTAL_PREFIX = "TR-";
 
 /** Format sequence as TR-001, TR-002, … */

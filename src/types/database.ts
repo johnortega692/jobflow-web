@@ -1,6 +1,7 @@
 import type { Database, Json } from "./database.generated";
+export type { Database, Json };
 import type { JobInfoData } from "./jobInfo";
-import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
+import { normalizeJobInfo, type TransmittalContract } from "../lib/jobInfo";
 
 export type RfiAttachedFile = {
   id: string;

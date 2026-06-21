@@ -7,7 +7,6 @@ import { supabase } from "./supabase";
 import type { ProjectForm, Json } from "../types/database";
 import { normalizeProject } from "../types/database";
 import {
-  defaultPaintTrackerState,
   defaultWcTrackerLineFields,
   normalizePaintTrackerState,
   normalizeWcTrackerLines,

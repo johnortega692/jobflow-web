@@ -1,6 +1,6 @@
 import { useCallback, useRef, type PointerEvent } from "react";
-import type { ScanBBox } from "../types/workOrderScan";
-import type { ScanBoxKind } from "../types/workOrderScan";
+import type { ScanBBox } from "../../types/workOrderScan";
+import type { ScanBoxKind } from "../../types/workOrderScan";
 
 type Props = {
   kind: ScanBoxKind;

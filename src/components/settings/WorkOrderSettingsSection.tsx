@@ -92,7 +92,7 @@ export function WorkOrderSettingsSection({
     }
     setMaterials(nextMaterials);
     setLaborRates(nextLabor);
-    markSaved({ materials: nextMaterials, laborRates: nextLabor, fonts });
+    markSaved();
     setMessage("Work order settings saved.");
     return true;
   }, [user?.id, materials, laborRates, fonts, markSaved]);
@@ -103,7 +103,7 @@ export function WorkOrderSettingsSection({
     setMaterials(s.materials);
     setLaborRates(s.laborRates);
     setFonts(s.fonts);
-    markSaved({ materials: s.materials, laborRates: s.laborRates, fonts: s.fonts });
+    markSaved();
     setMessage(null);
     setError(null);
   }, [user?.id, markSaved]);

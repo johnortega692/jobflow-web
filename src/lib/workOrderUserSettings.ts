@@ -31,7 +31,6 @@ import {
   type WorkOrderTotalPositions,
 } from "./workOrderTotalPositions";
 import {
-  defaultTextSpacing,
   normalizeTextSpacing,
   type WorkOrderTextSpacing,
 } from "./workOrderOverlayLayout";

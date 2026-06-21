@@ -16,7 +16,7 @@ export function parseStartupChecklist(raw: unknown): StartupChecklistState {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
   const o = raw as Record<string, unknown>;
   for (const step of PROJECT_STARTUP_STEPS) {
-    if (typeof o[step.id] === "boolean") base[step.id] = o[step.id];
+    if (typeof o[step.id] === "boolean") base[step.id] = o[step.id] as boolean;
   }
   return base;
 }

@@ -121,6 +121,7 @@ export function PaintCatalogSettingsSection({
   }
 
   async function onResetDefaults() {
+    if (!user?.id) return;
     if (
       !window.confirm(
         "Reset to the built-in product and sheen lists? Your saved custom lists will be removed.",

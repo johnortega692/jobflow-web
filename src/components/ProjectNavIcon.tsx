@@ -99,14 +99,6 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <rect x="10" y="4" width="10" height="14" rx="1.5" />
         </svg>
       );
-    case "track":
-      return (
-        <svg {...common}>
-          <circle cx="6" cy="18" r="2" />
-          <circle cx="18" cy="6" r="2" />
-          <path d="M8 16c3-2 5-4 8-10" />
-        </svg>
-      );
     case "orders":
       return (
         <svg {...common}>

@@ -1,7 +1,6 @@
 import {
   DEFAULT_EMAIL_SIGNATURE,
   normalizeEmailSignature,
-  type EmailSignatureSettings,
 } from "./emailSignature";
 import type { PaintVendor } from "./paintVendorEmail";
 import { normalizeTrackerEmailSchedule, type TrackerEmailSchedule } from "./trackerEmailSchedule";

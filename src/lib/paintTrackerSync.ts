@@ -4,6 +4,10 @@ import {
   type PaintVendorLabel,
 } from "./googleSheetsConfig";
 
+export function paintTrackerBaseUrl(googleUrls: Record<string, string>): string {
+  return (googleUrls.paint_tracker ?? "").trim();
+}
+
 export function normalizePaintVendor(raw: string): PaintVendorLabel {
   const trimmed = raw.trim();
   if (PAINT_VENDOR_OPTIONS.includes(trimmed as PaintVendorLabel)) {

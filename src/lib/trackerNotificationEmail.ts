@@ -522,7 +522,7 @@ export async function sendPaintTrackerNotifications(options: {
   fromName: string;
   gasUrl: string;
   logoUrl?: string;
-}): Promise<string[]> {
+}): Promise<PaintTrackerNotificationKind[]> {
   const {
     kinds,
     project,
@@ -552,7 +552,7 @@ export async function sendPaintTrackerNotifications(options: {
     primaryName,
   };
 
-  const sent: string[] = [];
+  const sent: PaintTrackerNotificationKind[] = [];
 
   for (const kind of kinds) {
     let subject: string;

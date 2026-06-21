@@ -5,6 +5,7 @@ import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad";
 import type { TrackerEmailSchedule } from "./trackerEmailSchedule";
 
 export type { PaintVendor } from "./paintVendorEmail";
+import type { EmailSignatureSettings } from "./emailSignature";
 export type { EmailSignatureSettings } from "./emailSignature";
 
 export type SuperEmail = { name: string; email: string };

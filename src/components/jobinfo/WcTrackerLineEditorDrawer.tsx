@@ -47,8 +47,10 @@ export function WcTrackerLineEditorDrawer({
 }: Props) {
   if (!open || !line) return null;
 
-  function patch(patch: Partial<WcTrackerLineState>) {
-    onChange({ ...line, ...patch });
+  const current = line;
+
+  function patch(p: Partial<WcTrackerLineState>) {
+    onChange({ ...current, ...p });
   }
 
   return (
