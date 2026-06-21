@@ -1,4 +1,4 @@
-import { loadRawUserSettings } from "./budgetLibrary";
+import { loadEffectiveUserSettings } from "./orgSettings";
 import { parseProjectDataBlob } from "./jobInfo";
 import { supabase } from "./supabase";
 import type { Database, Json } from "../types/database";
@@ -59,7 +59,7 @@ export async function resolveActivityUser(): Promise<ActivityUser> {
   }
 
   try {
-    const settings = await loadRawUserSettings(userId);
+    const settings = await loadEffectiveUserSettings(userId);
     const signer = typeof settings.signer_name === "string" ? settings.signer_name.trim() : "";
     const userName = typeof settings.user_name === "string" ? settings.user_name.trim() : "";
     const name = signer || userName;

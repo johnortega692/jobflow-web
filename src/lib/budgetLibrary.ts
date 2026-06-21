@@ -13,8 +13,13 @@ import {
   buildSummaryRows,
   normalizeLibrary,
 } from "./budgetMakerCore";
-import { exportFilename } from "./budgetPdfParse";
 import type { BudgetLibrary, BudgetMakerData, BudgetScanLine } from "../types/budgetMaker";
+
+function exportFilename(stem: string, extension: string, jobName = ""): string {
+  const ext = extension.replace(/^\./, "");
+  const job = jobName.trim().replace(/[<>:"/\\|?*]+/g, "").replace(/\s+/g, "_");
+  return job ? `${job}-${stem}.${ext}` : `${stem}.${ext}`;
+}
 import { defaultBudgetLibrary } from "../types/budgetMaker";
 import type { Json } from "../types/database";
 

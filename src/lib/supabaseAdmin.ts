@@ -2,9 +2,6 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../types/database";
 
 function readSupabaseUrl(): string {
-  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_SUPABASE_URL) {
-    return String(import.meta.env.VITE_SUPABASE_URL).trim();
-  }
   return (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "").trim();
 }
 
