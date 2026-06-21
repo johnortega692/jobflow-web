@@ -204,7 +204,7 @@ export async function patchPaintTrackerSubmittalOrdered(
 ): Promise<string | null> {
   const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
   if (error) return error.message;
-  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data));
+  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
   const tracker = resolvePaintTracker(trade);
   return savePaintTrackerState(projectId, { ...tracker, submittalOrdered });
 }

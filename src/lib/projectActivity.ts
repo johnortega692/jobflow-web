@@ -1,7 +1,7 @@
 import { loadRawUserSettings } from "./budgetLibrary";
 import { parseProjectDataBlob } from "./jobInfo";
 import { supabase } from "./supabase";
-import type { Json } from "../types/database";
+import type { Database, Json } from "../types/database";
 import type { ProjectTradeData } from "../types/tradeDocuments";
 
 export type ProjectActivityAction =
@@ -207,12 +207,15 @@ export async function commitProjectUpdate(options: CommitProjectUpdateOptions): 
   if (loadErr) return loadErr.message;
 
   const base = parseProjectDataBlob(row?.data);
-  const payload: Record<string, unknown> = { updated_by: actor.userId, ...columns };
+  const payload: Database["public"]["Tables"]["projects"]["Update"] = {
+    updated_by: actor.userId,
+    ...(columns as Database["public"]["Tables"]["projects"]["Update"]),
+  };
 
   if (mergeData) {
     payload.data = { ...base, ...mergeData } as Json;
   } else if (columns?.data !== undefined) {
-    payload.data = columns.data;
+    payload.data = columns.data as Json;
   }
 
   const { error: updateErr } = await supabase.from("projects").update(payload).eq("id", projectId);

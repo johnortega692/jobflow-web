@@ -20,7 +20,7 @@ import {
   upsertFieldRequestJob,
 } from "./fieldRequestOrderSync";
 import { parseProjectTradeData } from "../types/tradeDocuments";
-import type { ProjectForm } from "../types/database";
+import type { ProjectForm, Json } from "../types/database";
 
 export type GoogleSheetsActionContext = {
   googleUrls: Record<string, string>;
@@ -53,7 +53,7 @@ export async function loadGoogleSheetsActionContext(
       : settings.user_name.trim();
 
   const blob = parseProjectDataBlob(data?.data);
-  const trade = parseProjectTradeData(blob);
+  const trade = parseProjectTradeData(blob as Json);
   const savedVendor = parseGoogleSheetsProjectFields(blob.google_sheets).paint_vendor;
 
   return {
@@ -92,7 +92,7 @@ export async function runPushFieldRequestBrushOuts(
 ): Promise<GoogleSheetsSyncResult> {
   const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
   if (error) return { ok: false, message: error.message };
-  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data));
+  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
   const items = trade.paint_submittal?.items ?? [];
   return pushFieldRequestBrushOuts(
     fieldRequestOrderUrl(ctx.googleUrls),
