@@ -1,4 +1,4 @@
-import { runSendVendorEmail, verifySupabaseUser } from "./sendVendorEmailCore";
+import { runSendVendorEmail, verifySupabaseUser } from "../server/sendVendorEmailCore";
 
 type VercelRequest = {
   method?: string;

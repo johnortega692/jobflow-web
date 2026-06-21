@@ -1,10 +1,10 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
-import { createExtractPaintMiddleware } from "./api/extractPaintDev";
-import { createRfiAssistMiddleware } from "./api/rfiAssistDev";
-import { createBrushoutsMiddleware } from "./api/brushoutsDev";
-import { createGoogleSheetsMiddleware } from "./api/googleSheetsDev";
-import { createSendVendorEmailMiddleware } from "./api/sendVendorEmailDev";
+import { createExtractPaintMiddleware } from "./server/extractPaintDev";
+import { createRfiAssistMiddleware } from "./server/rfiAssistDev";
+import { createBrushoutsMiddleware } from "./server/brushoutsDev";
+import { createGoogleSheetsMiddleware } from "./server/googleSheetsDev";
+import { createSendVendorEmailMiddleware } from "./server/sendVendorEmailDev";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");

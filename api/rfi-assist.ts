@@ -1,4 +1,4 @@
-import { runRfiAssist, type RfiAssistRequest } from "./rfiAssistCore";
+import { runRfiAssist, type RfiAssistRequest } from "../server/rfiAssistCore";
 
 type VercelRequest = {
   method?: string;
