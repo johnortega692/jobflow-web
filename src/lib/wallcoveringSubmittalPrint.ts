@@ -1,4 +1,6 @@
-import { esc, groupByFloor, logoBlock, printHtml, type PrintBranding } from "./printCore";
+import { esc, groupByFloor, logoBlock, printHtml, projectAddressPrintHtml, type PrintBranding } from "./printCore";
+import { pdfTitleFromFilename, wallcoveringSubmittalFilename } from "./pdfFilenames";
+import type { ProjectPrintInfo } from "./jobInfo";
 import type { WallcoveringItem, WallcoveringSubmittalData } from "../types/tradeDocuments";
 
 const SUBMITTAL_CSS = `
@@ -62,7 +64,7 @@ table tr { page-break-inside: avoid; break-inside: avoid; }
 }
 `;
 
-type ProjectInfo = { job_number: string; job_name: string; job_address: string };
+type ProjectInfo = ProjectPrintInfo;
 
 function wcRows(items: WallcoveringItem[], substitution: boolean): string {
   return items
@@ -116,6 +118,7 @@ export function buildWallcoveringSubmittalHtml(
   project: ProjectInfo,
   data: WallcoveringSubmittalData,
   branding: PrintBranding,
+  saveFilename?: string,
 ): string {
   const substitution = data.submittal_type === "substitution";
   const groups = groupByFloor(
@@ -139,7 +142,9 @@ export function buildWallcoveringSubmittalHtml(
           )
           .join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Wallcovering Submittal</title><style>${SUBMITTAL_CSS}</style></head><body>
+  const pageTitle = pdfTitleFromFilename(saveFilename ?? "Wallcovering_Submittal");
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(pageTitle)}</title><style>${SUBMITTAL_CSS}</style></head><body>
   <p class="no-print" style="font-family:Arial,sans-serif;font-size:11pt;margin-bottom:12px;">
     Choose <strong>Save as PDF</strong> as the printer.
   </p>
@@ -152,7 +157,7 @@ export function buildWallcoveringSubmittalHtml(
   <div class="form-title">Submittals</div>
   <div class="project-info">
     <p class="info-row">Project: ${esc(project.job_name)}</p>
-    <p class="info-row">Address: ${esc(project.job_address)}</p>
+    ${projectAddressPrintHtml(project.job_address, project.job_address_line2)}
     <p class="info-row">Job Number: ${esc(project.job_number)}</p>
     <p class="info-row info-row-subject">Subject: ${esc(data.subject)}</p>
   </div>
@@ -174,5 +179,14 @@ export function printWallcoveringSubmittal(
   data: WallcoveringSubmittalData,
   branding: PrintBranding,
 ): void {
-  printHtml(buildWallcoveringSubmittalHtml(project, data, branding));
+  const filename = wallcoveringSubmittalFilename(
+    project.job_name,
+    project.job_number,
+    data.submittal_number,
+    data.submittal_type,
+  );
+  printHtml(
+    buildWallcoveringSubmittalHtml(project, data, branding, filename),
+    pdfTitleFromFilename(filename),
+  );
 }

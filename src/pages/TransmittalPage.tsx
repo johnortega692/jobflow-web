@@ -1,12 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { TransmittalCustomLineModal } from "../components/transmittal/TransmittalCustomLineModal";
+import { TransmittalEmailRelayModal } from "../components/transmittal/TransmittalEmailRelayModal";
+import { EmailVendorModal } from "../components/paint/EmailVendorModal";
 import { DateInput } from "../components/DateInput";
 import { TransmittalEnclosureRow } from "../components/transmittal/TransmittalEnclosureRow";
 import { TransmittalHistoryPickerModal } from "../components/transmittal/TransmittalHistoryPickerModal";
 import { TransmittalSheetPickerModal } from "../components/transmittal/TransmittalSheetPickerModal";
+import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { useLetterhead } from "../contexts/LetterheadContext";
-import { applyJobInfoToTransmittal } from "../lib/jobInfo";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  applyJobInfoToTransmittal,
+  applyTransmittalContractIfDistinct,
+  coerceTransmittalContract,
+  hasTransmittalContractSwitch,
+  transmittalPrintInfo,
+} from "../lib/jobInfo";
+import { loadPaintUserSettings } from "../lib/paintUserSettings";
 import {
   loadSubmittalLogRows,
   markRowsSubmitted,
@@ -15,6 +26,7 @@ import { applyTransmittalProfileDefaults } from "../lib/userProfile";
 import {
   nextTransmittalNumber,
   normalizeTransmittalNumber,
+  transmittalFilename,
 } from "../lib/transmittalNumber";
 import { remarkTemplateGroups } from "../lib/transmittalRemarks";
 import { printTransmittal } from "../lib/transmittalPrint";
@@ -22,7 +34,7 @@ import {
   addItemsFromPaintHistory,
   addItemsFromWallcoveringHistory,
   appendPendingToEnclosures,
-  buildEmailRelayBody,
+  buildAtticStockFromTransmittal,
   includedLogRowIds,
   moveEnclosure,
   paintSheetLabel,
@@ -32,7 +44,7 @@ import {
   removePendingItems,
 } from "../lib/transmittalHelpers";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
-import type { ProjectForm } from "../types/database";
+import type { AtticStockCustomItem, AtticStockPaintItem } from "../lib/paintVendorEmail";
 import {
   type PaintItem,
   type WallcoveringItem,
@@ -42,6 +54,7 @@ import {
   type TransmittalData,
   type TransmittalEnclosure,
 } from "../types/tradeDocuments";
+import type { ProjectForm } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
@@ -66,6 +79,7 @@ const CONTENT_CHECKS: { key: keyof TransmittalData; label: string }[] = [
 const DELIVERY_RADIO = ["FedEx", "UPS", "Courier", "Hand Delivered"] as const;
 
 export function TransmittalPage() {
+  const { user } = useAuth();
   const { branding, profile } = useLetterhead();
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
@@ -75,17 +89,51 @@ export function TransmittalPage() {
   const [customLineOpen, setCustomLineOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sheetPicker, setSheetPicker] = useState<"paint" | "wallcovering" | null>(null);
+  const [emailRelayOpen, setEmailRelayOpen] = useState(false);
+  const [atticStockOpen, setAtticStockOpen] = useState(false);
+  const [atticStockData, setAtticStockData] = useState<{
+    paintItems: AtticStockPaintItem[];
+    customItems: AtticStockCustomItem[];
+  } | null>(null);
+  const [userSettings, setUserSettings] = useState<Awaited<ReturnType<typeof loadPaintUserSettings>> | null>(
+    null,
+  );
   const [remarkTemplateKey, setRemarkTemplateKey] = useState("");
+
+  const showContractSwitch = hasTransmittalContractSwitch(project);
+  const transmittalJob = useMemo(
+    () => transmittalPrintInfo(project, draft.contract),
+    [project, draft.contract],
+  );
+
+  const outputFilename = useMemo(
+    () =>
+      transmittalFilename(
+        transmittalJob.job_name,
+        transmittalJob.job_number,
+        draft.transmittal_number,
+      ),
+    [transmittalJob.job_name, transmittalJob.job_number, draft.transmittal_number],
+  );
 
   const reloadDraft = useCallback(() => {
     const base = normalizeTransmittal(tradeData.transmittal);
     const withProfile = applyTransmittalProfileDefaults(base, profile, branding);
-    setDraft(applyJobInfoToTransmittal(withProfile, project.contractor, project.jobInfo));
-  }, [tradeData.transmittal, profile, branding, project.contractor, project.jobInfo]);
+    const withJobInfo = applyJobInfoToTransmittal(withProfile, project.contractor, project.jobInfo);
+    setDraft({
+      ...withJobInfo,
+      contract: coerceTransmittalContract(project, withJobInfo.contract),
+    });
+  }, [tradeData.transmittal, profile, branding, project.contractor, project.jobInfo, project]);
 
   useEffect(() => {
     if (!loading) reloadDraft();
   }, [loading, reloadDraft]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void loadPaintUserSettings(user.id).then(setUserSettings);
+  }, [user?.id]);
 
   async function persistTransmittal(next: TransmittalData) {
     setDraft(next);
@@ -158,18 +206,10 @@ export function TransmittalPage() {
   }
 
   async function onGenerate() {
-    if (draft.use_excel_template) {
-      setError("Excel transmittal template is available in the desktop app only.");
-      return;
-    }
     const ok = await persistTransmittal(draft);
     if (!ok) return;
     try {
-      printTransmittal(
-        { job_number: project.job_number, job_name: project.job_name },
-        draft,
-        branding,
-      );
+      printTransmittal(transmittalJob, draft, branding);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Print failed");
       return;
@@ -182,7 +222,7 @@ export function TransmittalPage() {
         const rows = await loadSubmittalLogRows(projectId);
         const toMark = rows.filter((r) => logIds.includes(r.id));
         if (toMark.length) {
-          await markRowsSubmitted(toMark, draft.transmittal_number);
+          await markRowsSubmitted(projectId, toMark, draft.transmittal_number);
           stamped = toMark.length;
         }
       } catch {
@@ -202,7 +242,7 @@ export function TransmittalPage() {
     };
     await persistTransmittal(nextDraft);
 
-    const parts = ["Transmittal PDF opened for save/print."];
+    const parts = [`Transmittal opened for save/print as ${outputFilename}.`];
     if (stamped) parts.push(`Stamped ${stamped} submittal log row(s) as Submitted.`);
     else if (logIds.length === 0) {
       parts.push("No submittal log rows stamped — link enclosures to log rows before generating.");
@@ -215,10 +255,32 @@ export function TransmittalPage() {
   }
 
   function onEmailRelay() {
-    const subject = `${project.job_number} — ${draft.transmittal_number} — ${draft.subject || "Submittals"}`;
-    const body = buildEmailRelayBody(project, draft);
-    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    setStatus("Opened email draft (attach PDFs from your downloads folder).");
+    setEmailRelayOpen(true);
+  }
+
+  function onOrderAtticStock() {
+    const jobNumber = project.job_number.trim();
+    const jobName = project.job_name.trim();
+    if (!jobNumber || !jobName) {
+      setError("Please fill in Job Number and Job Name (Job Info tab).");
+      setStatus(null);
+      return;
+    }
+    const result = buildAtticStockFromTransmittal(draft, tradeData);
+    if (!result.ok) {
+      setError(result.error);
+      setStatus(null);
+      return;
+    }
+    if (!userSettings) {
+      setError("Paint vendor settings are still loading. Try again in a moment.");
+      setStatus(null);
+      return;
+    }
+    setAtticStockData({ paintItems: result.paintItems, customItems: result.customItems });
+    setAtticStockOpen(true);
+    setError(null);
+    setStatus(null);
   }
 
   function applyRemarkTemplate(templateId: string) {
@@ -246,8 +308,77 @@ export function TransmittalPage() {
 
   return (
     <div className="stack transmittal-page">
+      <div className="row-between">
+        <div>
+          <h2>Transmittal</h2>
+          <p className="muted small">
+            Cover letter, enclosures, email relay, attic stock orders, and submittal log stamping.
+          </p>
+        </div>
+        <div className="row-gap wrap">
+          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => void onGenerate()}>
+            Transmittal PDF
+          </button>
+        </div>
+      </div>
+
+      <p className="sds-filename-preview muted small">
+        PDF filename: <code>{outputFilename}</code>
+      </p>
+
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
+
+      <section className="card stack transmittal-generate-section">
+        <div className="row-gap wrap transmittal-generate-row">
+          <button type="button" className="btn btn-secondary" onClick={onEmailRelay}>
+            Email Relay
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={pullFromJobInfo}>
+            From Job Info
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onOrderAtticStock}>
+            Order Attic Stock
+          </button>
+        </div>
+        <div className="transmittal-sheet-row row-gap wrap">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={draft.include_paint_sheet}
+              onChange={(e) => patch({ include_paint_sheet: e.target.checked })}
+            />
+            Include Paint sheet
+          </label>
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("paint")}>
+            Choose…
+          </button>
+          <span className="muted small">{paintSheetLabel(draft.paint_submittal_nums)}</span>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={draft.include_wc_sheet}
+              onChange={(e) => patch({ include_wc_sheet: e.target.checked })}
+            />
+            Include Wallcovering sheet
+          </label>
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("wallcovering")}>
+            Choose…
+          </button>
+          <span className="muted small">{paintSheetLabel(draft.wc_submittal_nums)}</span>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={draft.combine_enclosures}
+              onChange={(e) => patch({ combine_enclosures: e.target.checked })}
+            />
+            Combine into one PDF
+          </label>
+        </div>
+      </section>
 
       <section className="card stack transmittal-section">
         <p className="transmittal-section-label">RECIPIENT &amp; SUBJECT</p>
@@ -269,12 +400,15 @@ export function TransmittalPage() {
                 onChange={(e) => patch({ to_address: e.target.value })}
               />
             </label>
-            <label>
-              Phone:
-              <input value={draft.to_phone} onChange={(e) => patch({ to_phone: e.target.value })} />
-            </label>
           </div>
           <div className="stack transmittal-header-right">
+            {showContractSwitch && (
+              <TradeContractTabs
+                project={project}
+                value={draft.contract}
+                onChange={(contract) => patch({ contract })}
+              />
+            )}
             <div className="transmittal-meta-row">
               <label>
                 Date:
@@ -282,9 +416,9 @@ export function TransmittalPage() {
               </label>
               <label>
                 Job #:
-                <input value={project.job_number} readOnly className="readonly" />
+                <input value={transmittalJob.job_number} readOnly className="readonly" />
               </label>
-              <label>
+              <label className="transmittal-meta-number">
                 Transmittal #:
                 <input
                   value={draft.transmittal_number}
@@ -295,24 +429,20 @@ export function TransmittalPage() {
                   placeholder="TR-001"
                 />
               </label>
+              <label className="transmittal-meta-subject">
+                Subject:
+                <input value={draft.subject} onChange={(e) => patch({ subject: e.target.value })} />
+              </label>
             </div>
             <label>
               Job Name:
-              <input value={project.job_name} readOnly className="readonly" />
+              <input value={transmittalJob.job_name} readOnly className="readonly" />
             </label>
             <label>
-              Subject:
-              <input value={draft.subject} onChange={(e) => patch({ subject: e.target.value })} />
+              Phone:
+              <input value={draft.to_phone} onChange={(e) => patch({ to_phone: e.target.value })} />
             </label>
           </div>
-        </div>
-        <div className="row-gap wrap">
-          <button type="button" className="btn btn-secondary btn-small" onClick={pullFromJobInfo}>
-            From Job Info
-          </button>
-          <span className="muted small">
-            Fills Attn, GC, Address, and Phone from tab 1 GC Info.
-          </span>
         </div>
         <div className="transmittal-delivery-row">
           <span className="transmittal-delivery-label">Delivery Method:</span>
@@ -582,65 +712,6 @@ export function TransmittalPage() {
         </label>
       </section>
 
-      <section className="card stack transmittal-generate-section">
-        <div className="row-gap wrap transmittal-generate-row">
-          <button type="button" className="btn btn-primary" onClick={() => void onGenerate()}>
-            Generate Transmittal
-          </button>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.combine_enclosures}
-              onChange={(e) => patch({ combine_enclosures: e.target.checked })}
-            />
-            Combine into one PDF
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.use_excel_template}
-              onChange={(e) => patch({ use_excel_template: e.target.checked })}
-            />
-            Use Excel template
-          </label>
-          <button type="button" className="btn btn-success" onClick={onEmailRelay}>
-            Email Relay
-          </button>
-          <button type="button" className="btn btn-secondary" disabled title="Available in desktop app">
-            Order Attic Stock
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-        <div className="transmittal-sheet-row row-gap wrap">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.include_paint_sheet}
-              onChange={(e) => patch({ include_paint_sheet: e.target.checked })}
-            />
-            Include Paint sheet
-          </label>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("paint")}>
-            Choose…
-          </button>
-          <span className="muted small">{paintSheetLabel(draft.paint_submittal_nums)}</span>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.include_wc_sheet}
-              onChange={(e) => patch({ include_wc_sheet: e.target.checked })}
-            />
-            Include Wallcovering sheet
-          </label>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("wallcovering")}>
-            Choose…
-          </button>
-          <span className="muted small">{paintSheetLabel(draft.wc_submittal_nums)}</span>
-        </div>
-      </section>
-
       {customLineOpen && (
         <TransmittalCustomLineModal
           showForColumn={draft.show_for_column}
@@ -662,21 +733,30 @@ export function TransmittalPage() {
           paintHistory={paintHistory}
           wcHistory={wcHistory}
           onAddPaint={(entry, replace) => {
-            setDraft((d) =>
-              addItemsFromPaintHistory(d, entry.items as PaintItem[], replace, d.include_paint_floor),
-            );
+            setDraft((d) => {
+              let next = addItemsFromPaintHistory(
+                d,
+                entry.items as PaintItem[],
+                replace,
+                d.include_paint_floor,
+              );
+              next = applyTransmittalContractIfDistinct(project, next, "paint");
+              return next;
+            });
             setHistoryOpen(false);
             setStatus(`Loaded paint submittal #${entry.submittal_number} into enclosures.`);
           }}
           onAddWallcovering={(entry, replace) => {
-            setDraft((d) =>
-              addItemsFromWallcoveringHistory(
+            setDraft((d) => {
+              let next = addItemsFromWallcoveringHistory(
                 d,
                 entry.items as WallcoveringItem[],
                 replace,
                 d.include_wc_floor,
-              ),
-            );
+              );
+              next = applyTransmittalContractIfDistinct(project, next, "wallcovering");
+              return next;
+            });
             setHistoryOpen(false);
             setStatus(`Loaded wallcovering submittal #${entry.submittal_number} into enclosures.`);
           }}
@@ -697,6 +777,42 @@ export function TransmittalPage() {
             setSheetPicker(null);
           }}
           onClose={() => setSheetPicker(null)}
+        />
+      )}
+
+      {emailRelayOpen && (
+        <TransmittalEmailRelayModal
+          project={{ job_number: project.job_number, job_name: project.job_name }}
+          transmittal={draft}
+          fromEmail={profile.email || branding.signerEmail}
+          onClose={() => setEmailRelayOpen(false)}
+          onDone={(msg) => {
+            setStatus(msg);
+            setError(null);
+          }}
+        />
+      )}
+
+      {atticStockOpen && userSettings && atticStockData && (
+        <EmailVendorModal
+          mode="attic_stock"
+          jobNumber={project.job_number}
+          jobName={project.job_name}
+          items={atticStockData.paintItems}
+          atticCustomItems={atticStockData.customItems}
+          submittalType="revised"
+          vendors={userSettings.vendors}
+          superEmails={userSettings.super_emails}
+          defaultQty={userSettings.default_brushout_qty}
+          signature={userSettings.signature}
+          logoUrl={branding.logoUrl}
+          fromEmail={profile.email || branding.signerEmail}
+          fromName={branding.companyName}
+          jobSuper={project.jobInfo?.gc_superintendent}
+          onClose={() => {
+            setAtticStockOpen(false);
+            setAtticStockData(null);
+          }}
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 import type { Project, RfiFormData } from "../types/database";
-import type { PrintBranding } from "./printCore";
-import { esc } from "./printCore";
+import { esc, pdfSignerDisplayName, printHtml, type PrintBranding } from "./printCore";
+import { pdfTitleFromFilename, rfiFilename } from "./pdfFilenames";
 
 const PRINT_CSS = `
 @page { size: letter; margin: 0.25in 0.25in 0.5in 0.25in; }
@@ -84,21 +84,24 @@ export type RfiPrintInput = {
   branding: PrintBranding;
 };
 
-export function buildRfiPrintHtml({ project, rfi_number, subject, form, branding }: RfiPrintInput): string {
+export function buildRfiPrintHtml(
+  { project, rfi_number, subject, form, branding }: RfiPrintInput,
+  saveFilename?: string,
+): string {
   const logoBlock = branding.logoUrl
     ? `<img src="${esc(branding.logoUrl)}" alt="${esc(branding.logoAlt)}"/>`
     : `<div class="hdr-logo-text">${esc(branding.companyName)}</div>`;
 
-  const fromName = form.from_name.trim() || branding.signerName;
-  const signerLine = branding.signerTitle
-    ? `${branding.signerName}, ${branding.signerTitle}`
-    : branding.signerName;
+  const fromName = form.from_name.trim() || (branding.pdfShow.signer_name ? branding.signerName : "");
+  const signerLine = pdfSignerDisplayName(branding);
+
+  const pageTitle = pdfTitleFromFilename(saveFilename ?? `RFI_${rfi_number}`);
 
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>RFI ${esc(rfi_number)}</title>
+  <title>${esc(pageTitle)}</title>
   <style>${PRINT_CSS}</style>
 </head>
 <body>
@@ -129,6 +132,7 @@ export function buildRfiPrintHtml({ project, rfi_number, subject, form, branding
       <td style="width:50%;vertical-align:middle;padding:0;">
         <table class="left-fields" style="height:100%;">
           <tr><td class="lf-lbl" style="border-bottom:none;">Project:</td><td class="lf-val" style="border-bottom:none;">${esc(project.job_name || "")}</td></tr>
+          <tr><td class="lf-lbl" style="border-bottom:none;">Job #:</td><td class="lf-val" style="border-bottom:none;">${esc(project.job_number || "")}</td></tr>
           <tr><td class="lf-lbl" style="border-bottom:none;">Address:</td><td class="lf-val" style="border-bottom:none;font-size:8.5pt;">${esc(project.job_address || "")}</td></tr>
           <tr><td class="lf-lbl" style="border-bottom:none;"></td><td class="lf-val" style="border-bottom:none;font-size:8.5pt;">${esc(project.job_address2 || "")}</td></tr>
           <tr style="height:100%;"><td colspan="2" style="border-bottom:none;"></td></tr>
@@ -201,7 +205,7 @@ export function buildRfiPrintHtml({ project, rfi_number, subject, form, branding
   ${
     form.pdf_show_response
       ? `<div class="sec-lbl">RESPONSE:</div>
-  <div class="lined-box resp-box">${wlines(form.impact_notes, 10)}</div>`
+  <div class="lined-box resp-box">${wlines("", 10)}</div>`
       : ""
   }
   <table class="sig-tbl">
@@ -216,32 +220,6 @@ export function buildRfiPrintHtml({ project, rfi_number, subject, form, branding
 }
 
 export function printRfi(input: RfiPrintInput): void {
-  const html = buildRfiPrintHtml(input);
-  const frame = document.createElement("iframe");
-  frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = "position:fixed;width:0;height:0;border:0;left:-9999px;top:0;";
-  document.body.appendChild(frame);
-
-  const win = frame.contentWindow;
-  const doc = win?.document;
-  if (!win || !doc) {
-    frame.remove();
-    throw new Error("Could not open print view. Try Chrome or Edge instead of an embedded preview.");
-  }
-
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  const runPrint = () => {
-    win.focus();
-    win.print();
-    window.setTimeout(() => frame.remove(), 1500);
-  };
-
-  if (doc.readyState === "complete") {
-    window.setTimeout(runPrint, 150);
-  } else {
-    frame.onload = () => window.setTimeout(runPrint, 150);
-  }
+  const filename = rfiFilename(input.project.job_name, input.project.job_number, input.rfi_number);
+  printHtml(buildRfiPrintHtml(input, filename), pdfTitleFromFilename(filename));
 }

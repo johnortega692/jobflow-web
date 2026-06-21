@@ -1,4 +1,5 @@
 import { esc, formatLongDate, logoBlock, printHtml, type PrintBranding } from "./printCore";
+import { pdfTitleFromFilename, wallcoveringOrderFormFilename } from "./pdfFilenames";
 import type { DeliverySchedulingSettings } from "./deliverySettings";
 import { DEFAULT_DELIVERY_SCHEDULING } from "./deliverySettings";
 import type { WallcoveringItem } from "../types/tradeDocuments";
@@ -79,6 +80,7 @@ export function buildWallcoveringOrderFormHtml(
   job: WcOrderFormJob,
   branding: PrintBranding,
   deliverySettings: DeliverySchedulingSettings = DEFAULT_DELIVERY_SCHEDULING,
+  saveFilename?: string,
 ): string {
   const ds = deliverySettings;
   const bodyRows =
@@ -96,7 +98,9 @@ export function buildWallcoveringOrderFormHtml(
         <tbody>${orderRows(job.items)}</tbody>
       </table>`;
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Wallcovering Order Form</title><style>${ORDER_FORM_CSS}</style></head><body>
+  const pageTitle = pdfTitleFromFilename(saveFilename ?? "Wallcovering_Order_Form");
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(pageTitle)}</title><style>${ORDER_FORM_CSS}</style></head><body>
   <div class="company-logo">${logoBlock(branding)}</div>
   <div class="header-line"></div>
   <div class="company-info">${esc(branding.companyContactLine || branding.companyInfo)}</div>
@@ -134,5 +138,9 @@ export function printWallcoveringOrderForm(
   branding: PrintBranding,
   deliverySettings?: DeliverySchedulingSettings,
 ): void {
-  printHtml(buildWallcoveringOrderFormHtml(job, branding, deliverySettings));
+  const filename = wallcoveringOrderFormFilename(job.project_name, job.job_number);
+  printHtml(
+    buildWallcoveringOrderFormHtml(job, branding, deliverySettings, filename),
+    pdfTitleFromFilename(filename),
+  );
 }

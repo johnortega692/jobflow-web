@@ -2,24 +2,38 @@ import { useEffect, useMemo, useState } from "react";
 import type { PaintItem, TradeSubmittalType } from "../../types/tradeDocuments";
 import type { EmailSignatureSettings } from "../../lib/emailSignature";
 import type { SuperEmail } from "../../lib/paintUserSettings";
-import { sendVendorEmailFromApp } from "../../lib/sendVendorEmail";
+import { sendVendorEmail } from "../../lib/sendVendorEmail";
+import { embedLogoUrlInHtml } from "../../lib/emailImageEmbed";
+import { useLetterhead } from "../../contexts/LetterheadContext";
+import { loadPaintUserSettings } from "../../lib/paintUserSettings";
+import { useAuth } from "../../contexts/AuthContext";
 import {
+  atticStockEmlFilename,
+  buildAtticStockEmailHtmlBody,
+  buildAtticStockEmailPlainBody,
+  buildAtticStockEmailSubject,
   buildMailtoUrl,
+  buildPrepEmailHtmlBody,
+  buildPrepEmailPlainBody,
+  buildPrepEmailSubject,
   buildVendorEmailHtmlBody,
   buildVendorEmailPlainBody,
   buildVendorEmailSubject,
   buildVendorEmlBlob,
   copyHtmlToClipboard,
   downloadVendorEml,
+  prepEmlFilename,
   vendorEmlFilename,
   vendorRecipientEmails,
+  type AtticStockCustomItem,
+  type AtticStockPaintItem,
   type PaintVendor,
 } from "../../lib/paintVendorEmail";
 
 type Props = {
   jobNumber: string;
   jobName: string;
-  items: PaintItem[];
+  items: PaintItem[] | AtticStockPaintItem[];
   submittalType: TradeSubmittalType;
   vendors: PaintVendor[];
   superEmails: SuperEmail[];
@@ -27,7 +41,12 @@ type Props = {
   signature: EmailSignatureSettings;
   logoUrl?: string;
   fromEmail?: string;
+  fromName?: string;
   jobSuper?: string;
+  mode?: "brushout" | "attic_stock" | "prep";
+  atticCustomItems?: AtticStockCustomItem[];
+  prepSite?: string;
+  prepGc?: string;
   onClose: () => void;
   onSent?: () => void;
 };
@@ -43,16 +62,42 @@ export function EmailVendorModal({
   signature,
   logoUrl = "",
   fromEmail = "",
+  fromName = "",
   jobSuper,
+  mode = "brushout",
+  atticCustomItems = [],
+  prepSite = "",
+  prepGc = "",
   onClose,
   onSent,
 }: Props) {
+  const isAtticStock = mode === "attic_stock";
+  const isPrep = mode === "prep";
+  const atticPaintItems = items as AtticStockPaintItem[];
+
   const [vendorIdx, setVendorIdx] = useState(0);
-  const [subject, setSubject] = useState(() => buildVendorEmailSubject(jobNumber, jobName, submittalType));
+  const [subject, setSubject] = useState(() => {
+    if (isAtticStock) return buildAtticStockEmailSubject(jobNumber, jobName);
+    if (isPrep) return buildPrepEmailSubject(prepSite);
+    return buildVendorEmailSubject(jobNumber, jobName, submittalType);
+  });
   const [ccSelected, setCcSelected] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [gasUrl, setGasUrl] = useState("");
+
+  const { user } = useAuth();
+  const { settings, branding } = useLetterhead();
+  const effectiveLogoUrl = logoUrl.trim() || settings.logo_url.trim() || branding.logoUrl.trim();
+  const effectiveFromName = fromName.trim() || branding.companyName.trim();
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void loadPaintUserSettings(user.id).then((s) => {
+      setGasUrl((s.google_urls.paint_tracker ?? "").trim());
+    });
+  }, [user?.id]);
 
   useEffect(() => {
     if (!superEmails.length) return;
@@ -71,28 +116,107 @@ export function EmailVendorModal({
   const ccList = superEmails.filter((s) => ccSelected[s.email]).map((s) => s.email);
 
   const plainBody = useMemo(
-    () =>
-      vendor
-        ? buildVendorEmailPlainBody(vendor, jobNumber, jobName, items, submittalType, defaultQty)
-        : "",
-    [vendor, jobNumber, jobName, items, submittalType, defaultQty],
+    () => {
+      if (!vendor) return "";
+      if (isAtticStock) {
+        return buildAtticStockEmailPlainBody(
+          vendor,
+          jobNumber,
+          jobName,
+          atticPaintItems,
+          atticCustomItems,
+          signature,
+        );
+      }
+      if (isPrep) {
+        return buildPrepEmailPlainBody(
+          vendor,
+          prepSite,
+          prepGc,
+          items as PaintItem[],
+          defaultQty,
+          signature,
+        );
+      }
+      return buildVendorEmailPlainBody(
+        vendor,
+        jobNumber,
+        jobName,
+        items as PaintItem[],
+        submittalType,
+        defaultQty,
+        signature,
+      );
+    },
+    [
+      vendor,
+      isAtticStock,
+      isPrep,
+      jobNumber,
+      jobName,
+      items,
+      atticPaintItems,
+      atticCustomItems,
+      submittalType,
+      defaultQty,
+      signature,
+      prepSite,
+      prepGc,
+    ],
   );
 
   const htmlBody = useMemo(
-    () =>
-      vendor
-        ? buildVendorEmailHtmlBody(
-            vendor,
-            jobNumber,
-            jobName,
-            items,
-            submittalType,
-            defaultQty,
-            signature,
-            logoUrl,
-          )
-        : "",
-    [vendor, jobNumber, jobName, items, submittalType, defaultQty, signature, logoUrl],
+    () => {
+      if (!vendor) return "";
+      if (isAtticStock) {
+        return buildAtticStockEmailHtmlBody(
+          vendor,
+          jobNumber,
+          jobName,
+          atticPaintItems,
+          atticCustomItems,
+          signature,
+          effectiveLogoUrl,
+        );
+      }
+      if (isPrep) {
+        return buildPrepEmailHtmlBody(
+          vendor,
+          prepSite,
+          prepGc,
+          items as PaintItem[],
+          defaultQty,
+          signature,
+          effectiveLogoUrl,
+        );
+      }
+      return buildVendorEmailHtmlBody(
+        vendor,
+        jobNumber,
+        jobName,
+        items as PaintItem[],
+        submittalType,
+        defaultQty,
+        signature,
+        effectiveLogoUrl,
+      );
+    },
+    [
+      vendor,
+      isAtticStock,
+      isPrep,
+      jobNumber,
+      jobName,
+      items,
+      atticPaintItems,
+      atticCustomItems,
+      submittalType,
+      defaultQty,
+      signature,
+      effectiveLogoUrl,
+      prepSite,
+      prepGc,
+    ],
   );
 
   async function sendFromApp() {
@@ -100,17 +224,24 @@ export function EmailVendorModal({
     setSending(true);
     setSendError(null);
     setMessage(null);
+    const htmlForSend = await embedLogoUrlInHtml(htmlBody, effectiveLogoUrl);
+    const payload = {
+      to: vendorRecipientEmails(vendor),
+      cc: ccList,
+      subject,
+      html: htmlForSend,
+      text: plainBody,
+      reply_to: fromEmail || undefined,
+      from_name: effectiveFromName || undefined,
+    };
     try {
-      const id = await sendVendorEmailFromApp({
-        to: vendorRecipientEmails(vendor),
-        cc: ccList,
-        subject,
-        html: htmlBody,
-        text: plainBody,
-        reply_to: fromEmail || undefined,
-      });
+      const { id, channel } = await sendVendorEmail(payload, { gasUrl: gasUrl || undefined });
       onSent?.();
-      setMessage(`Email sent to ${vendor.name} (${id}).`);
+      setMessage(
+        channel === "gas"
+          ? `Email sent to ${vendor.name} via Gmail (${id}).`
+          : `Email sent to ${vendor.name} (${id}).`,
+      );
     } catch (e) {
       setSendError(e instanceof Error ? e.message : "Could not send email.");
     } finally {
@@ -127,9 +258,19 @@ export function EmailVendorModal({
       subject,
       htmlBody,
       plainBody,
-      from: fromEmail,
+      from:
+        fromEmail && effectiveFromName
+          ? `${effectiveFromName} <${fromEmail}>`
+          : fromEmail || effectiveFromName,
     });
-    downloadVendorEml(vendorEmlFilename(jobNumber, jobName), blob);
+    downloadVendorEml(
+      isAtticStock
+        ? atticStockEmlFilename(jobNumber, jobName)
+        : isPrep
+          ? prepEmlFilename(prepSite)
+          : vendorEmlFilename(jobNumber, jobName),
+      blob,
+    );
     onSent?.();
     setMessage(
       "Downloaded .eml file — double-click it to open in classic Outlook (or right-click → Open with → Outlook). HTML body and signature are included.",
@@ -143,12 +284,13 @@ export function EmailVendorModal({
     );
   }
 
-  function openMailtoHeadersOnly() {
+  function openMailto() {
     if (!vendor) return;
-    const mailto = buildMailtoUrl(vendorRecipientEmails(vendor), ccList, subject);
+    const mailto = buildMailtoUrl(vendorRecipientEmails(vendor), ccList, subject, plainBody);
     window.location.href = mailto;
+    onSent?.();
     setMessage(
-      "Opened mail app with To/CC/Subject only. Paste HTML (Copy HTML button) into the body. Tip: use Download .eml for classic Outlook with formatting.",
+      "Opened mail app with To, CC, subject, and formatted plain-text body. For HTML tables and logo, use Download .eml instead.",
     );
   }
 
@@ -156,7 +298,7 @@ export function EmailVendorModal({
     return (
       <div className="modal-backdrop" onClick={onClose}>
         <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
-          <h3>Email vendor</h3>
+          <h3>{isAtticStock ? "Order Attic Stock" : isPrep ? "Send brush-out request (no job # yet)" : "Email vendor"}</h3>
           <p className="banner banner-error">
             No vendors configured. Add vendors under Settings → Paint &amp; email.
           </p>
@@ -176,26 +318,24 @@ export function EmailVendorModal({
         aria-labelledby="email-vendor-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id="email-vendor-title">Email vendor</h3>
-        <p className="muted small">
-          <strong>Send from app</strong> delivers HTML email directly (requires Resend setup in Settings/DEPLOY).
-          Or use <strong>Download .eml</strong> for classic Outlook, or <strong>Copy HTML</strong> to paste manually.
-        </p>
+        <h3 id="email-vendor-title">
+          {isAtticStock ? "Order Attic Stock" : isPrep ? "Send brush-out request (no job # yet)" : "Email vendor"}
+        </h3>
 
-        <fieldset className="stack">
-          <legend className="paint-col-head">Select vendor</legend>
-          {vendors.map((v, i) => (
-            <label key={`${v.vendor_email}-${i}`} className="check">
-              <input
-                type="radio"
-                name="vendor"
-                checked={vendorIdx === i}
-                onChange={() => setVendorIdx(i)}
-              />
-              {v.name} ({v.brand}) — {v.vendor_email}
-            </label>
-          ))}
-        </fieldset>
+        <label>
+          Select vendor
+          <select
+            className="paint-field-select"
+            value={vendorIdx}
+            onChange={(e) => setVendorIdx(Number(e.target.value))}
+          >
+            {vendors.map((v, i) => (
+              <option key={`${v.vendor_email}-${i}`} value={i}>
+                {v.name} ({v.brand}) — {v.vendor_email}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label>
           Subject
@@ -229,6 +369,16 @@ export function EmailVendorModal({
         {sendError && <div className="banner banner-error">{sendError}</div>}
         {message && <div className="banner banner-ok">{message}</div>}
 
+        {gasUrl ? (
+          <p className="muted small">
+            Sends through your <strong>Dashboard Web App</strong> Google account (Settings → Google Apps Script URLs).
+          </p>
+        ) : (
+          <p className="muted small">
+            Set the <strong>Dashboard Web App URL</strong> in Settings to send via Gmail, or configure Resend on the server.
+          </p>
+        )}
+
         <div className="row-gap wrap">
           <button
             type="button"
@@ -236,7 +386,7 @@ export function EmailVendorModal({
             disabled={sending || !vendor}
             onClick={() => void sendFromApp()}
           >
-            {sending ? "Sending…" : "Send email"}
+            {sending ? "Sending…" : gasUrl ? "Send via Gmail" : "Send email"}
           </button>
           <button type="button" className="btn btn-secondary" onClick={openClassicOutlook}>
             Download .eml
@@ -244,8 +394,8 @@ export function EmailVendorModal({
           <button type="button" className="btn btn-secondary" onClick={() => void copyHtml()}>
             Copy HTML
           </button>
-          <button type="button" className="btn btn-secondary" onClick={openMailtoHeadersOnly}>
-            Open mail app (headers only)
+          <button type="button" className="btn btn-secondary" onClick={openMailto}>
+            Open in mail app
           </button>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel

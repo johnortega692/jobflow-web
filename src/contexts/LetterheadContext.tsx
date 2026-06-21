@@ -39,7 +39,7 @@ type LetterheadContextValue = {
 const LetterheadContext = createContext<LetterheadContextValue | null>(null);
 
 export function LetterheadProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [settings, setSettingsState] = useState<LetterheadSettings>(emptyLetterheadSettings());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -79,11 +79,11 @@ export function LetterheadProvider({ children }: { children: ReactNode }) {
     if (!user) return "Sign in to save settings.";
     setSaving(true);
     setError(null);
-    const err = await saveLetterheadSettings(user.id, settings);
+    const err = await saveLetterheadSettings(user.id, settings, { isAdmin });
     setSaving(false);
     if (err) setError(err);
     return err;
-  }, [user, settings]);
+  }, [user, settings, isAdmin]);
 
   const branding = useMemo(
     () => (user ? letterheadToPrintBranding(settings) : resolvePrintBranding(null)),

@@ -54,11 +54,8 @@ export function WcOrderSamplesModal({
   function openMailto() {
     saveWcShippingAddress(address);
     const to = vendorEmail.trim();
-    const params = new URLSearchParams({
-      subject: email.subject,
-      body: email.body,
-    });
-    window.location.href = `mailto:${encodeURIComponent(to)}?${params.toString()}`;
+    const q = `subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
+    window.location.href = `mailto:${encodeURIComponent(to)}?${q}`;
   }
 
   return (

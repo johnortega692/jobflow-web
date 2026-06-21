@@ -3,9 +3,16 @@ import { useOutletContext } from "react-router-dom";
 import { BudgetSplitLineModal } from "../components/budget/BudgetSplitLineModal";
 import { BudgetBucketsModal } from "../components/budget/BudgetBucketsModal";
 import { BudgetLibraryModal } from "../components/budget/BudgetLibraryModal";
+import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { useAuth } from "../contexts/AuthContext";
-import { loadBudgetLibrary, downloadBudgetExcel } from "../lib/budgetLibrary";
+import {
+  coerceTransmittalContract,
+  hasTransmittalContractSwitch,
+  transmittalPrintInfo,
+} from "../lib/jobInfo";
+import { loadBudgetLibrary, downloadBudgetExcel, saveBudgetLibrary } from "../lib/budgetLibrary";
 import { downloadBudgetPdf, downloadHoursPdf } from "../lib/budgetExportPdf";
+import { budgetHoursPdfFilename, budgetPdfFilename } from "../lib/pdfFilenames";
 import {
   activeLines,
   applyLineSplit,
@@ -14,17 +21,25 @@ import {
   bucketLabel,
   buildSummaryRows,
   computeSummaryMetrics,
+  defaultTemplateDraftPatch,
   formatPct,
+  resolveDefaultTemplateName,
 } from "../lib/budgetMakerCore";
 import { parseBudgetPdf } from "../lib/budgetPdfParse";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import type { ProjectForm } from "../types/database";
 import {
   defaultBudgetMaker,
+  defaultBudgetLibrary,
+  emptyBudgetScanLine,
   normalizeBudgetMaker,
+  parseBudgetNumber,
   PUSH_COLS,
+  BUDGET_LINE_CATEGORIES,
+  BUDGET_UOM_OPTIONS,
   type BudgetLibrary,
   type BudgetMakerData,
+  type BudgetScanLine,
 } from "../types/budgetMaker";
 
 type Ctx = { project: ProjectForm; projectId: string };
@@ -47,6 +62,12 @@ export function BudgetPage() {
   const [scanning, setScanning] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
+  const lib = library ?? defaultBudgetLibrary();
+
+  const templateNames = useMemo(
+    () => lib.bucket_templates.map((t) => t.name).filter(Boolean),
+    [lib],
+  );
 
   const loadLib = useCallback(async () => {
     if (!user) return;
@@ -60,24 +81,35 @@ export function BudgetPage() {
   useEffect(() => {
     if (!loading) {
       const raw = tradeData.budget_maker ?? (tradeData as { budget?: unknown }).budget;
-      setDraft(normalizeBudgetMaker(raw, project.job_name));
+      const base = normalizeBudgetMaker(raw, project.job_name);
+      setDraft({
+        ...base,
+        contract: coerceTransmittalContract(project, base.contract),
+      });
     }
-  }, [loading, tradeData.budget_maker, tradeData, project.job_name]);
+  }, [loading, tradeData.budget_maker, tradeData, project.job_name, project]);
 
   useEffect(() => {
-    if (library?.default_bucket_template && draft.buckets.length === 0 && !draft.loaded_template_name) {
-      const tpl = library.bucket_templates.find((t) => t.name === library.default_bucket_template);
-      if (tpl?.buckets?.length) {
-        setDraft((d) => ({
-          ...d,
-          buckets: tpl.buckets.map((b) => ({ ...b })),
-          loaded_template_name: tpl.name,
-        }));
-      }
-    }
-  }, [library, draft.buckets.length, draft.loaded_template_name]);
+    if (!library || loading) return;
+    if (draft.buckets.length > 0) return;
+    const tplPatch = defaultTemplateDraftPatch(library);
+    if (!tplPatch) return;
+    setDraft((d) => ({ ...d, ...tplPatch }));
+  }, [library, loading, draft.buckets.length]);
 
-  const lib = library ?? { cost_codes: [], cost_classes: [], bucket_templates: [], default_bucket_template: "" };
+  const contractJob = useMemo(
+    () => transmittalPrintInfo(project, draft.contract),
+    [project, draft.contract],
+  );
+
+  const budgetPdfName = useMemo(
+    () => budgetPdfFilename(contractJob.job_name, contractJob.job_number),
+    [contractJob.job_name, contractJob.job_number],
+  );
+  const budgetHoursPdfName = useMemo(
+    () => budgetHoursPdfFilename(contractJob.job_name, contractJob.job_number),
+    [contractJob.job_name, contractJob.job_number],
+  );
   const visibleLines = useMemo(() => activeLines(draft.lines), [draft.lines]);
   const metrics = useMemo(
     () => computeSummaryMetrics(draft.lines, draft.grand_total),
@@ -95,7 +127,66 @@ export function BudgetPage() {
     setDraft((d) => ({ ...d, ...p }));
   }
 
-  function patchLine(id: string, patchRow: Partial<BudgetMakerData["lines"][0]>) {
+  function addLine() {
+    const line = emptyBudgetScanLine();
+    setDraft((d) => ({
+      ...d,
+      lines: [...d.lines, line],
+      scanned_pdf_name: d.scanned_pdf_name || "Manual entry",
+    }));
+    setSelectedLineIds(new Set([line.id]));
+    setError(null);
+  }
+
+  function removeSelectedLines() {
+    if (!selectedLineIds.size) {
+      setError("Select one or more lines to remove.");
+      return;
+    }
+    const nextLines = draft.lines.filter((l) => !selectedLineIds.has(l.id));
+    patch({
+      lines: nextLines,
+      scanned_pdf_name: nextLines.length === 0 ? "" : draft.scanned_pdf_name,
+    });
+    setSelectedLineIds(new Set());
+    setError(null);
+  }
+
+  function duplicateSelectedLines() {
+    const ids = [...selectedLineIds];
+    if (!ids.length) {
+      setError("Select one or more lines to duplicate.");
+      return;
+    }
+    const copies = draft.lines
+      .filter((l) => ids.includes(l.id))
+      .map((l) => ({ ...l, id: crypto.randomUUID(), Bucket: "" }));
+    setDraft((d) => ({
+      ...d,
+      lines: [...d.lines, ...copies],
+      scanned_pdf_name: d.scanned_pdf_name || "Manual entry",
+    }));
+    setSelectedLineIds(new Set(copies.map((l) => l.id)));
+    setError(null);
+  }
+
+  function lineSourceLabel(): string {
+    if (!draft.lines.length) return "No lines yet";
+    const name = draft.scanned_pdf_name.trim();
+    if (name === "Manual entry") return `✏️ ${visibleLines.length} manual line${visibleLines.length === 1 ? "" : "s"}`;
+    if (name) {
+      return `📄 ${visibleLines.length} item${visibleLines.length === 1 ? "" : "s"} · ${name}${hiddenCount ? ` · ${hiddenCount} hidden` : ""}`;
+    }
+    return `${visibleLines.length} line${visibleLines.length === 1 ? "" : "s"}${hiddenCount ? ` · ${hiddenCount} hidden` : ""}`;
+  }
+
+  function requireLines(action: string): boolean {
+    if (draft.lines.length) return true;
+    setError(`Add lines manually or scan a PDF first (${action}).`);
+    return false;
+  }
+
+  function patchLine(id: string, patchRow: Partial<BudgetScanLine>) {
     setDraft((d) => ({
       ...d,
       lines: d.lines.map((l) => (l.id === id ? { ...l, ...patchRow } : l)),
@@ -109,6 +200,22 @@ export function BudgetPage() {
     if (ok) {
       setDraft(next);
       setSavedAt(next.saved_at ?? null);
+    }
+  }
+
+  async function handleDefaultTemplateChange(name: string) {
+    if (!user) return;
+    const nextLib = { ...lib, default_bucket_template: name };
+    const err = await saveBudgetLibrary(user.id, nextLib);
+    if (err) {
+      setError(err);
+      return;
+    }
+    setLibrary(nextLib);
+    setError(null);
+    if (!draft.buckets.length && name) {
+      const tplPatch = defaultTemplateDraftPatch(nextLib);
+      if (tplPatch) setDraft((d) => ({ ...d, ...tplPatch }));
     }
   }
 
@@ -137,17 +244,14 @@ export function BudgetPage() {
   }
 
   function pushSelected() {
-    if (!draft.lines.length) {
-      setError("Scan a PDF first.");
-      return;
-    }
+    if (!requireLines("push to buckets")) return;
     if (!draft.buckets.length) {
       setError("Open Buckets & Templates and add at least one bucket first.");
       return;
     }
     const ids = [...selectedLineIds];
     if (!ids.length) {
-      setError("Select one or more PDF lines.");
+      setError("Select one or more lines.");
       return;
     }
     patch({
@@ -167,10 +271,7 @@ export function BudgetPage() {
   }
 
   function runAutoPush() {
-    if (!draft.lines.length) {
-      setError("Scan a PDF first.");
-      return;
-    }
+    if (!requireLines("auto-push")) return;
     if (!draft.buckets.length) {
       setError("Add buckets first.");
       return;
@@ -199,21 +300,15 @@ export function BudgetPage() {
   }
 
   function exportExcel() {
-    if (!draft.lines.length) {
-      setError("Nothing to export yet. Scan a PDF first.");
-      return;
-    }
+    if (!requireLines("export")) return;
     downloadBudgetExcel(draft, lib);
     setError(null);
   }
 
   async function exportPdf() {
-    if (!draft.lines.length) {
-      setError("Nothing to export yet. Scan a PDF first.");
-      return;
-    }
+    if (!requireLines("export")) return;
     try {
-      await downloadBudgetPdf(draft, lib);
+      await downloadBudgetPdf(draft, lib, contractJob.job_number);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF export failed");
@@ -221,12 +316,9 @@ export function BudgetPage() {
   }
 
   async function exportHoursPdf() {
-    if (!draft.lines.length) {
-      setError("Nothing to export yet. Scan a PDF first.");
-      return;
-    }
+    if (!requireLines("export")) return;
     try {
-      await downloadHoursPdf(draft, lib);
+      await downloadHoursPdf(draft, lib, contractJob.job_number);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Hours PDF export failed");
@@ -239,7 +331,7 @@ export function BudgetPage() {
       return;
     }
     if (selectedLineIds.size !== 1) {
-      setError("Select exactly one PDF line to split.");
+      setError("Select exactly one line to split.");
       return;
     }
     setSplitLineId([...selectedLineIds][0]);
@@ -255,8 +347,16 @@ export function BudgetPage() {
 
   const splitLine = splitLineId ? draft.lines.find((l) => l.id === splitLineId) : null;
 
+  function onContractChange(contract: typeof draft.contract) {
+    const ids = transmittalPrintInfo(project, contract);
+    patch({
+      contract,
+      job_name: ids.job_name || ids.job_number,
+    });
+  }
+
   function applyFromJob() {
-    patch({ job_name: project.job_name || project.job_number });
+    onContractChange(draft.contract);
   }
 
   const hiddenCount = draft.lines.filter((l) => l.Hidden).length;
@@ -269,7 +369,9 @@ export function BudgetPage() {
         <div className="row-between wrap">
           <div>
             <h2>Budget Maker</h2>
-            <p className="muted small">Scan a Job Cost Summary PDF, push lines to buckets, export Excel.</p>
+            <p className="muted small">
+              Scan a Job Cost Summary PDF or enter lines by hand, push to buckets, then export.
+            </p>
           </div>
           <div className="row-gap wrap">
             {savedAt && <span className="muted small">Saved {savedAt}</span>}
@@ -289,17 +391,102 @@ export function BudgetPage() {
         </div>
 
         <section className="card stack">
+          <div className="row-gap wrap">
+            <label
+              className="btn btn-primary btn-sm"
+              style={scanning ? { opacity: 0.65, pointerEvents: "none" } : undefined}
+            >
+              {scanning ? "Scanning…" : "Open PDF…"}
+              <input
+                ref={pdfRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className="sr-only"
+                disabled={scanning}
+                onClick={(e) => {
+                  (e.currentTarget as HTMLInputElement).value = "";
+                }}
+                onChange={(e) => void onPdfFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={runAutoPush}>
+              Auto-push
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={hideSelected}>
+              Hide selected
+            </button>
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => patch({ lines: draft.lines.map((l) => ({ ...l, Hidden: false })) })}
+              >
+                Unhide all ({hiddenCount})
+              </button>
+            )}
+            <span className="paint-action-sep" aria-hidden="true" />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={exportExcel}>
+              Export Excel…
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void exportPdf()}>
+              Export PDF…
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void exportHoursPdf()}>
+              Export Hours PDF…
+            </button>
+            <label className="budget-inline-label">
+              Default template
+              <select
+                value={resolveDefaultTemplateName(lib)}
+                disabled={!templateNames.length}
+                onChange={(e) => void handleDefaultTemplateChange(e.target.value)}
+              >
+                <option value="">
+                  {templateNames.length ? "— Select default —" : "No saved templates"}
+                </option>
+                {templateNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="sds-filename-preview muted small">
+            Budget PDF: <code>{budgetPdfName}</code>
+            {" · "}
+            Hours PDF: <code>{budgetHoursPdfName}</code>
+            {draft.loaded_template_name && (
+              <>
+                {" · "}
+                Active template: <code>{draft.loaded_template_name}</code>
+              </>
+            )}
+          </p>
+        </section>
+
+        <section className="card stack">
+          {hasTransmittalContractSwitch(project) && (
+            <TradeContractTabs
+              project={project}
+              value={draft.contract}
+              onChange={onContractChange}
+              showJobLabel
+            />
+          )}
           <div className="row-between wrap">
             <div className="row-gap wrap budget-summary-inputs">
               <label>
                 Job
                 <input value={draft.job_name} onChange={(e) => patch({ job_name: e.target.value })} />
               </label>
-              <span className="muted small budget-scan-status">
-                {draft.lines.length
-                  ? `📄 ${visibleLines.length} item${visibleLines.length === 1 ? "" : "s"} · ${draft.scanned_pdf_name}${hiddenCount ? ` · ${hiddenCount} hidden` : ""}`
-                  : "No PDF loaded"}
-              </span>
+              {hasTransmittalContractSwitch(project) && (
+                <label>
+                  Job #
+                  <input value={contractJob.job_number} readOnly className="readonly" />
+                </label>
+              )}
+              <span className="muted small budget-scan-status">{lineSourceLabel()}</span>
               <label>
                 Grand total
                 <input value={draft.grand_total} onChange={(e) => patch({ grand_total: e.target.value })} placeholder="$" />
@@ -336,10 +523,15 @@ export function BudgetPage() {
         <section className="card stack">
           <div className="row-between wrap">
             <div className="row-gap wrap">
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => pdfRef.current?.click()} disabled={scanning}>
-                {scanning ? "Scanning…" : "Open PDF…"}
+              <button type="button" className="btn btn-success btn-sm" onClick={addLine}>
+                Add line
               </button>
-              <input ref={pdfRef} type="file" hidden accept=".pdf,application/pdf" onChange={(e) => void onPdfFile(e.target.files?.[0] ?? null)} />
+              <button type="button" className="btn btn-secondary btn-sm" onClick={duplicateSelectedLines}>
+                Duplicate selected
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={removeSelectedLines}>
+                Remove selected
+              </button>
               <label className="budget-inline-label">
                 Target bucket
                 <select
@@ -360,9 +552,6 @@ export function BudgetPage() {
               <button type="button" className="btn btn-ghost btn-sm" onClick={clearSelectedBuckets}>
                 Clear selected
               </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={runAutoPush}>
-                Auto-push
-              </button>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -372,18 +561,6 @@ export function BudgetPage() {
               >
                 Split line…
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={hideSelected}>
-                Hide selected
-              </button>
-              {hiddenCount > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => patch({ lines: draft.lines.map((l) => ({ ...l, Hidden: false })) })}
-                >
-                  Unhide all ({hiddenCount})
-                </button>
-              )}
             </div>
             {draft.loaded_template_name && (
               <span className="muted small">Template: {draft.loaded_template_name}</span>
@@ -392,7 +569,8 @@ export function BudgetPage() {
 
           {!draft.lines.length && (
             <p className="muted budget-drop-hint">
-              Upload a Job Cost Summary PDF to scan line items (File → Open PDF in desktop app).
+              Scan a Job Cost Summary PDF with <strong>Open PDF…</strong>, or click <strong>Add line</strong> to
+              enter job cost items by hand. You can mix PDF import and manual lines on the same job.
             </p>
           )}
 
@@ -423,44 +601,96 @@ export function BudgetPage() {
                         />
                       </td>
                       <td>{bucketDisplay(line.Bucket, draft.buckets, lib)}</td>
-                      <td>{line.Category}</td>
-                      <td>{line["PDF Code"]}</td>
-                      <td>{line.Description}</td>
-                      <td className="num">{line.Quantity ?? ""}</td>
-                      <td>{line.UoM}</td>
-                      <td className="num">{line["Unit Cost"] ?? ""}</td>
-                      <td className="num">{line.Amount ?? ""}</td>
-                      <td className="num">{line["Man Hours"] ?? ""}</td>
+                      <td>
+                        <select
+                          className="budget-cell-input"
+                          value={line.Category}
+                          onChange={(e) => patchLine(line.id, { Category: e.target.value })}
+                        >
+                          <option value="">—</option>
+                          {BUDGET_LINE_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td>
                         <input
-                          className="budget-notes-input"
+                          className="budget-cell-input budget-cell-code"
+                          value={line["PDF Code"]}
+                          onChange={(e) => patchLine(line.id, { "PDF Code": e.target.value })}
+                          placeholder="Code"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="budget-cell-input budget-cell-desc"
+                          value={line.Description}
+                          onChange={(e) => patchLine(line.id, { Description: e.target.value })}
+                          placeholder="Description"
+                        />
+                      </td>
+                      <td className="num">
+                        <input
+                          className="budget-cell-input budget-cell-num"
+                          value={line.Quantity ?? ""}
+                          onChange={(e) => patchLine(line.id, { Quantity: parseBudgetNumber(e.target.value) })}
+                          placeholder="0"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="budget-cell-input budget-cell-uom"
+                          value={line.UoM}
+                          onChange={(e) => patchLine(line.id, { UoM: e.target.value.toUpperCase() })}
+                          list="budget-uom-options"
+                          placeholder="EA"
+                        />
+                      </td>
+                      <td className="num">
+                        <input
+                          className="budget-cell-input budget-cell-num"
+                          value={line["Unit Cost"] ?? ""}
+                          onChange={(e) => patchLine(line.id, { "Unit Cost": parseBudgetNumber(e.target.value) })}
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="num">
+                        <input
+                          className="budget-cell-input budget-cell-num"
+                          value={line.Amount ?? ""}
+                          onChange={(e) => patchLine(line.id, { Amount: parseBudgetNumber(e.target.value) })}
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="num">
+                        <input
+                          className="budget-cell-input budget-cell-num"
+                          value={line["Man Hours"] ?? ""}
+                          onChange={(e) => patchLine(line.id, { "Man Hours": parseBudgetNumber(e.target.value) })}
+                          placeholder="0"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="budget-cell-input budget-cell-notes"
                           value={line.Notes}
                           onChange={(e) => patchLine(line.id, { Notes: e.target.value })}
+                          placeholder="Notes"
                         />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <datalist id="budget-uom-options">
+                {BUDGET_UOM_OPTIONS.map((uom) => (
+                  <option key={uom} value={uom} />
+                ))}
+              </datalist>
             </div>
           )}
-        </section>
-
-        <section className="card stack">
-          <div className="row-between wrap">
-            <h3>Export</h3>
-            <div className="row-gap wrap">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={exportExcel}>
-                Export Excel…
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void exportPdf()}>
-                Export PDF…
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void exportHoursPdf()}>
-                Export Hours PDF…
-              </button>
-            </div>
-          </div>
         </section>
 
         <section className="card stack">

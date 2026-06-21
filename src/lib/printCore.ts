@@ -1,9 +1,20 @@
+import { defaultLetterheadPdfVisibility } from "../types/letterheadSettings";
+
 export function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** Street + city/zip line block for submittal PDF headers. */
+export function projectAddressPrintHtml(street: string, cityLine: string): string {
+  const line1 = street.trim();
+  const line2 = cityLine.trim();
+  if (!line1 && !line2) return `<p class="info-row">Address:</p>`;
+  if (!line2) return `<p class="info-row">Address: ${esc(line1)}</p>`;
+  return `<p class="info-row">Address: ${esc(line1)}</p><p class="info-row">${esc(line2)}</p>`;
 }
 
 /** Letterhead line under logo: address | Office: phone | License #… */
@@ -35,7 +46,7 @@ export function cb(checked: boolean): string {
   return `<span class="cb${checked ? " checked" : ""}"></span>`;
 }
 
-export function printHtml(html: string): void {
+export function printHtml(html: string, documentTitle?: string): void {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;width:0;height:0;border:0;left:-9999px;top:0;";
@@ -49,6 +60,9 @@ export function printHtml(html: string): void {
   doc.open();
   doc.write(html);
   doc.close();
+  if (documentTitle?.trim()) {
+    doc.title = documentTitle.trim();
+  }
   const runPrint = () => {
     win.focus();
     win.print();
@@ -58,7 +72,25 @@ export function printHtml(html: string): void {
   else frame.onload = () => window.setTimeout(runPrint, 150);
 }
 
-export const FLOOR_ORDER = ["1st Floor", "2nd Floor", "3rd Floor", "All Floors", ""] as const;
+function ordinalFloorLabel(n: number): string {
+  const mod100 = n % 100;
+  const suffix =
+    mod100 >= 11 && mod100 <= 13
+      ? "th"
+      : n % 10 === 1
+        ? "st"
+        : n % 10 === 2
+          ? "nd"
+          : n % 10 === 3
+            ? "rd"
+            : "th";
+  return `${n}${suffix} Floor`;
+}
+
+/** Floors 1–30 for paint / wallcovering item dropdowns and PDF grouping order. */
+export const FLOOR_OPTIONS = Array.from({ length: 30 }, (_, i) => ordinalFloorLabel(i + 1));
+
+export const FLOOR_ORDER = [...FLOOR_OPTIONS, "All Floors", ""] as const;
 
 export function groupByFloor<T extends { floor?: string }>(
   items: T[],
@@ -110,7 +142,16 @@ export type PrintBranding = {
   signerTitle: string;
   signerPhone: string;
   signerEmail: string;
+  pdfShow: import("../types/letterheadSettings").LetterheadPdfVisibility;
 };
+
+/** Name + title line for PDF signature blocks, respecting visibility toggles. */
+export function pdfSignerDisplayName(branding: PrintBranding): string {
+  const name = branding.pdfShow.signer_name ? branding.signerName.trim() : "";
+  const title = branding.pdfShow.signer_title ? branding.signerTitle.trim() : "";
+  if (name && title) return `${name}, ${title}`;
+  return name || title;
+}
 
 /** @deprecated Use resolvePrintBranding() from letterheadSettings.ts */
 export function getPrintBranding(): PrintBranding {
@@ -141,6 +182,7 @@ export function getPrintBranding(): PrintBranding {
     signerTitle: "",
     signerPhone: phone,
     signerEmail: email,
+    pdfShow: defaultLetterheadPdfVisibility(),
   };
 }
 
@@ -148,6 +190,8 @@ export function logoBlock(branding: PrintBranding, fallbackText?: string): strin
   if (branding.logoUrl) {
     return `<img src="${esc(branding.logoUrl)}" alt="${esc(branding.logoAlt)}">`;
   }
-  const text = esc(fallbackText || branding.logoAlt).replace(/\n/g, "<br>");
-  return `<div class="logo-text">${text}</div>`;
+  const text = (fallbackText || branding.logoAlt).trim();
+  if (!text) return "";
+  const html = esc(text).replace(/\n/g, "<br>");
+  return `<div class="logo-text">${html}</div>`;
 }

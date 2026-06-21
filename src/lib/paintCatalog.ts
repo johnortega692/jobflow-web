@@ -1,17 +1,15 @@
-/** Paint product / sheen / color catalogs (from desktop json/). */
+/** Paint product / sheen / color catalogs (from desktop json/ + user_settings overrides). */
+
+import { loadRawUserSettings } from "./budgetLibrary";
 
 export type PaintProduct = { product: string; manufacturer: string };
+
+export const PAINT_PRODUCTS_KEY = "paint_products";
+export const PAINT_SHEENS_KEY = "paint_sheens";
+
+export const PAINT_MANUFACTURER_OPTIONS = ["PPG", "SW", "BM", "DE", "BEHR", "Vista"] as const;
 export type PaintColorEntry = { number: string; name: string };
 export type PaintColorsDb = Record<string, PaintColorEntry[]>;
-
-const MFR_TO_COLOR_KEYS: Record<string, string[]> = {
-  SW: ["SW", "SherwinWilliams"],
-  BM: ["BM", "BenjaminMoore"],
-  PPG: ["PPG"],
-  DE: ["DE"],
-  BEHR: ["BEHR"],
-  VISTA: ["VISTA", "Vista"],
-};
 
 const PREFIX_MAP: Record<string, string> = {
   BM: "BM",
@@ -25,8 +23,8 @@ const PREFIX_MAP: Record<string, string> = {
   Vista: "Vista",
 };
 
-let productsCache: PaintProduct[] | null = null;
-let sheensCache: string[] | null = null;
+let defaultProductsCache: PaintProduct[] | null = null;
+let defaultSheensCache: string[] | null = null;
 let colorsCache: PaintColorsDb | null = null;
 let colorsLoadPromise: Promise<PaintColorsDb> | null = null;
 
@@ -36,16 +34,86 @@ async function fetchJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function loadPaintProducts(): Promise<PaintProduct[]> {
-  if (productsCache) return productsCache;
-  productsCache = await fetchJson<PaintProduct[]>("/json/paint_products.json");
-  return productsCache;
+export function normalizePaintProducts(raw: unknown): PaintProduct[] | null {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw)) return null;
+  return raw
+    .map((item) => {
+      if (typeof item !== "object" || item === null) return null;
+      const o = item as Record<string, unknown>;
+      const product = typeof o.product === "string" ? o.product.trim() : "";
+      const manufacturer = typeof o.manufacturer === "string" ? o.manufacturer.trim() : "";
+      if (!product) return null;
+      return { product, manufacturer };
+    })
+    .filter((p): p is PaintProduct => p !== null);
 }
 
-export async function loadPaintSheens(): Promise<string[]> {
-  if (sheensCache) return sheensCache;
-  sheensCache = await fetchJson<string[]>("/json/paint_sheens.json");
-  return sheensCache;
+export function normalizePaintSheens(raw: unknown): string[] | null {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw)) return null;
+  return raw
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+}
+
+export function clearPaintCatalogCache(): void {
+  defaultProductsCache = null;
+  defaultSheensCache = null;
+}
+
+export async function loadDefaultPaintProducts(): Promise<PaintProduct[]> {
+  if (defaultProductsCache) return defaultProductsCache;
+  defaultProductsCache = await fetchJson<PaintProduct[]>("/json/paint_products.json");
+  return defaultProductsCache;
+}
+
+export async function loadDefaultPaintSheens(): Promise<string[]> {
+  if (defaultSheensCache) return defaultSheensCache;
+  defaultSheensCache = await fetchJson<string[]>("/json/paint_sheens.json");
+  return defaultSheensCache;
+}
+
+export async function loadPaintProducts(userId?: string | null): Promise<PaintProduct[]> {
+  if (userId) {
+    const raw = await loadRawUserSettings(userId);
+    const custom = normalizePaintProducts(raw[PAINT_PRODUCTS_KEY]);
+    if (custom !== null) return custom;
+  }
+  return loadDefaultPaintProducts();
+}
+
+export async function loadPaintSheens(userId?: string | null): Promise<string[]> {
+  if (userId) {
+    const raw = await loadRawUserSettings(userId);
+    const custom = normalizePaintSheens(raw[PAINT_SHEENS_KEY]);
+    if (custom !== null) return custom;
+  }
+  return loadDefaultPaintSheens();
+}
+
+export type PaintCatalogSettingsDraft = {
+  products: PaintProduct[];
+  sheens: string[];
+  usingCustomProducts: boolean;
+  usingCustomSheens: boolean;
+};
+
+/** Load editable catalog lists for Settings (custom overrides or built-in defaults). */
+export async function loadPaintCatalogSettingsDraft(userId: string): Promise<PaintCatalogSettingsDraft> {
+  const raw = await loadRawUserSettings(userId);
+  const [defaultProducts, defaultSheens] = await Promise.all([
+    loadDefaultPaintProducts(),
+    loadDefaultPaintSheens(),
+  ]);
+  const customProducts = normalizePaintProducts(raw[PAINT_PRODUCTS_KEY]);
+  const customSheens = normalizePaintSheens(raw[PAINT_SHEENS_KEY]);
+  return {
+    products: customProducts ?? defaultProducts.map((p) => ({ ...p })),
+    sheens: customSheens ?? [...defaultSheens],
+    usingCustomProducts: customProducts !== null,
+    usingCustomSheens: customSheens !== null,
+  };
 }
 
 export async function loadPaintColors(): Promise<PaintColorsDb> {
@@ -79,6 +147,46 @@ export function getProductDisplayList(products: PaintProduct[], preferredManufac
   return result;
 }
 
+export function formatSheenLabel(sheen: string): string {
+  return sheen.replace(/,\s*/g, ", ").trim();
+}
+
+export type ProductSelectGroup = {
+  manufacturer: string;
+  items: { display: string; product: string }[];
+};
+
+/** Group products for select / optgroup menus (PPG first). */
+export function groupProductsForSelect(
+  products: PaintProduct[],
+  preferredManufacturer = "PPG",
+): ProductSelectGroup[] {
+  const byManufacturer = new Map<string, PaintProduct[]>();
+  for (const p of products) {
+    const mfr = p.manufacturer.trim() || "Other";
+    const list = byManufacturer.get(mfr) ?? [];
+    list.push(p);
+    byManufacturer.set(mfr, list);
+  }
+
+  const order = [
+    preferredManufacturer,
+    ...[...byManufacturer.keys()].filter((m) => m !== preferredManufacturer).sort(),
+  ];
+
+  return order
+    .filter((m) => byManufacturer.has(m))
+    .map((manufacturer) => ({
+      manufacturer,
+      items: [...(byManufacturer.get(manufacturer) ?? [])]
+        .sort((a, b) => a.product.localeCompare(b.product))
+        .map((p) => ({
+          product: p.product,
+          display: p.manufacturer ? `${p.product} (${p.manufacturer})` : p.product,
+        })),
+    }));
+}
+
 export function extractProductName(display: string): string {
   if (display.includes("(") && display.endsWith(")")) {
     return display.split("(")[0]!.trim();
@@ -101,9 +209,67 @@ export function manufacturerForProduct(products: PaintProduct[], productName: st
   return products.find((p) => p.product === productName)?.manufacturer ?? "";
 }
 
-function colorKeysForManufacturer(mfr: string, colors: PaintColorsDb): string[] {
-  const keys = MFR_TO_COLOR_KEYS[mfr.toUpperCase()] ?? [mfr];
-  return keys.filter((k) => k in colors);
+const QUERY_VENDOR_PREFIX: Record<string, string[]> = {
+  sw: ["SherwinWilliams", "SW"],
+  bm: ["BenjaminMoore", "BM"],
+  de: ["DE"],
+  ppg: ["PPG"],
+  behr: ["BEHR"],
+  vista: ["Vista", "VISTA"],
+};
+
+/** Split "SW7004", "SW 7004", "DEW380" etc. into vendor keys + search term. */
+export function parseColorLookupQuery(raw: string): {
+  vendorKeys: string[] | null;
+  term: string;
+  full: string;
+} {
+  const trimmed = raw.trim();
+  const full = trimmed.toLowerCase();
+  if (!trimmed) return { vendorKeys: null, term: "", full: "" };
+
+  const m = trimmed.match(/^(SW|BM|DE|PPG|BEHR|Vista)\s*[-.]?\s*(.*)$/i);
+  if (m) {
+    const vendorKeys = QUERY_VENDOR_PREFIX[m[1]!.toLowerCase()] ?? null;
+    const rest = (m[2] ?? "").trim();
+    return {
+      vendorKeys,
+      term: (rest || trimmed).toLowerCase(),
+      full,
+    };
+  }
+  return { vendorKeys: null, term: full, full };
+}
+
+function colorEntryMatches(entry: PaintColorEntry, term: string, full: string): boolean {
+  const num = (entry.number || "").trim().toLowerCase();
+  const name = (entry.name || "").trim().toLowerCase();
+  if (!num) return false;
+  if (full === num || full === name) return true;
+  if (term && (num.includes(term) || name.includes(term))) return true;
+  if (full && (num.includes(full) || name.includes(full))) return true;
+  return false;
+}
+
+function collectColorMatches(
+  colors: PaintColorsDb,
+  manufacturers: string[],
+  term: string,
+  full: string,
+): { display: string; vendor: string }[] {
+  const matches: { display: string; vendor: string }[] = [];
+  const seen = new Set<string>();
+  for (const mfr of manufacturers) {
+    for (const c of colors[mfr] ?? []) {
+      if (!colorEntryMatches(c, term, full)) continue;
+      const display = formatColorDisplay(mfr, c);
+      const key = `${mfr}::${display}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matches.push({ display, vendor: mfr });
+    }
+  }
+  return matches;
 }
 
 export function formatColorDisplay(mfrKey: string, entry: PaintColorEntry): string {
@@ -116,27 +282,17 @@ export function formatColorDisplay(mfrKey: string, entry: PaintColorEntry): stri
 export function searchPaintColors(
   colors: PaintColorsDb,
   query: string,
-  productDisplay: string,
+  _productDisplay?: string,
 ): { display: string; vendor: string }[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
+  const { vendorKeys, term, full } = parseColorLookupQuery(query);
+  if (!full) return [];
 
-  const productMfr = extractManufacturerFromDisplay(productDisplay);
-  let manufacturers = productMfr ? colorKeysForManufacturer(productMfr, colors) : [];
+  let manufacturers =
+    vendorKeys?.length ? vendorKeys.filter((k) => k in colors) : Object.keys(colors);
+
   if (!manufacturers.length) manufacturers = Object.keys(colors);
 
-  const matches: { display: string; vendor: string }[] = [];
-  for (const mfr of manufacturers) {
-    for (const c of colors[mfr] ?? []) {
-      const num = (c.number || "").trim();
-      const name = (c.name || "").trim();
-      if (!num) continue;
-      if (q === num.toLowerCase() || q === name.toLowerCase() || num.toLowerCase().includes(q) || name.toLowerCase().includes(q)) {
-        matches.push({ display: formatColorDisplay(mfr, c), vendor: mfr });
-      }
-    }
-  }
-  return matches;
+  return collectColorMatches(colors, manufacturers, term, full);
 }
 
 /** Skip lookup when color already looks formatted (matches desktop). */

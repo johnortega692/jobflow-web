@@ -4,10 +4,26 @@
       "memory": 1024,
       "maxDuration": 60
     },
+    "api/rfi-assist.ts": {
+      "maxDuration": 60
+    },
     "api/send-vendor-email.ts": {
       "maxDuration": 30
+    },
+    "api/tracker-email-cron.ts": {
+      "maxDuration": 120
     }
   },
+  "crons": [
+    {
+      "path": "/api/tracker-email-cron?slot=daily",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/tracker-email-cron?slot=weekly",
+      "schedule": "0 15 * * 5"
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]

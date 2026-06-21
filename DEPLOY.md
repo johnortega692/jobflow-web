@@ -32,6 +32,17 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
    | `VITE_COMPANY_ADDRESS` | your address |
    | `VITE_COMPANY_PHONE` | your phone |
 
+   **Scheduled tracker emails (Vercel Cron — replaces GAS time triggers):**
+
+   | Name | Value |
+   |------|--------|
+   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → **service_role** (server only — never expose to browser) |
+   | `CRON_SECRET` | Random string; Vercel sends `Authorization: Bearer …` on cron hits. Generate with `openssl rand -hex 32` or any password manager. |
+
+   Optional: set `TRACKER_CRON_USER_ID` to a Supabase user UUID to run cron for one account only (otherwise every account with **Enable automatic tracker emails** in Settings → Paint & email).
+
+   Cron schedule (UTC, configured in `vercel.json`): daily follow-ups at **15:00 UTC**; weekly digests **Fridays 15:00 UTC** (~7:00 AM US Pacific in standard time). Enable which emails run in **Settings → Paint & email → Scheduled emails**.
+
 5. Click **Deploy**
 6. Copy your live URL, e.g. `https://jobflow-web.vercel.app`
 

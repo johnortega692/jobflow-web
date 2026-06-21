@@ -1,9 +1,10 @@
-import type { Json } from "../types/database";
+import { loadRawUserSettings, patchOrgSettings, patchUserSettings } from "./budgetLibrary";
 import { supabase } from "./supabase";
-import { loadRawUserSettings } from "./budgetLibrary";
 import {
+  defaultLetterheadPdfVisibility,
   emptyLetterheadSettings,
   normalizeLetterheadSettings,
+  type LetterheadPdfVisibility,
   type LetterheadSettings,
 } from "../types/letterheadSettings";
 import type { PrintBranding } from "./printCore";
@@ -27,7 +28,7 @@ function envFallback(): Partial<LetterheadSettings> {
 }
 
 function mergeSettings(saved: LetterheadSettings, env: Partial<LetterheadSettings>): LetterheadSettings {
-  const pick = (key: keyof LetterheadSettings) => saved[key] || env[key] || "";
+  const pick = (key: keyof Omit<LetterheadSettings, "pdf_show">) => saved[key] || env[key] || "";
   return {
     company_name: pick("company_name"),
     company_address: pick("company_address"),
@@ -38,19 +39,36 @@ function mergeSettings(saved: LetterheadSettings, env: Partial<LetterheadSetting
     signer_title: pick("signer_title"),
     signer_phone: pick("signer_phone"),
     signer_email: pick("signer_email"),
+    pdf_show: saved.pdf_show,
   };
 }
 
-export function letterheadToPrintBranding(settings: LetterheadSettings): PrintBranding {
-  const companyName = settings.company_name.trim() || "Plan B Apps";
-  const companyAddress = settings.company_address.trim();
-  const companyPhone = settings.company_phone.trim();
-  const companyLicense = settings.company_license.trim();
-  const signerName = settings.signer_name.trim() || companyName;
-  const signerPhone = settings.signer_phone.trim() || companyPhone;
-  const signerEmail = settings.signer_email.trim();
+function applyPdfVisibility(
+  show: LetterheadPdfVisibility,
+  values: {
+    companyName: string;
+    companyAddress: string;
+    companyPhone: string;
+    companyLicense: string;
+    logoUrl: string;
+    signerName: string;
+    signerTitle: string;
+    signerPhone: string;
+    signerEmail: string;
+  },
+) {
+  const companyName = show.company_name ? values.companyName : "";
+  const companyAddress = show.company_address ? values.companyAddress : "";
+  const companyPhone = show.company_phone ? values.companyPhone : "";
+  const companyLicense = show.company_license ? values.companyLicense : "";
+  const logoUrl = show.logo ? values.logoUrl : "";
+  const signerName = show.signer_name ? values.signerName : "";
+  const signerTitle = show.signer_title ? values.signerTitle : "";
+  const signerPhone = show.signer_phone ? values.signerPhone : "";
+  const signerEmail = show.signer_email ? values.signerEmail : "";
   const companyContactLine = buildCompanyContactLine(companyAddress, companyPhone, companyLicense);
-  const fromBlock = [companyName, companyAddress].filter(Boolean).join("\n");
+  const fromParts = [companyName, companyAddress].filter(Boolean);
+  const fromBlock = fromParts.join("\n");
 
   return {
     companyName,
@@ -59,18 +77,42 @@ export function letterheadToPrintBranding(settings: LetterheadSettings): PrintBr
     companyLicense,
     companyInfo: companyContactLine,
     companyContactLine,
-    logoUrl: settings.logo_url.trim(),
-    logoAlt: companyName,
+    logoUrl,
+    logoAlt: companyName || values.companyName,
     footerName: signerName,
     footerPhone: signerPhone,
     footerEmail: signerEmail,
     fromBlock,
-    fromPhone: signerPhone,
+    fromPhone: signerPhone || companyPhone,
+    signerName,
+    signerTitle,
+    signerPhone,
+    signerEmail,
+    pdfShow: show,
+  };
+}
+
+export function letterheadToPrintBranding(settings: LetterheadSettings): PrintBranding {
+  const show = settings.pdf_show ?? defaultLetterheadPdfVisibility();
+  const companyName = settings.company_name.trim() || "Plan B Apps";
+  const companyAddress = settings.company_address.trim();
+  const companyPhone = settings.company_phone.trim();
+  const companyLicense = settings.company_license.trim();
+  const signerName = settings.signer_name.trim() || companyName;
+  const signerPhone = settings.signer_phone.trim() || companyPhone;
+  const signerEmail = settings.signer_email.trim();
+
+  return applyPdfVisibility(show, {
+    companyName,
+    companyAddress,
+    companyPhone,
+    companyLicense,
+    logoUrl: settings.logo_url.trim(),
     signerName,
     signerTitle: settings.signer_title.trim(),
     signerPhone,
     signerEmail,
-  };
+  });
 }
 
 export function resolvePrintBranding(settings?: LetterheadSettings | null): PrintBranding {
@@ -100,43 +142,43 @@ function writeLocalCache(settings: LetterheadSettings): void {
 }
 
 export async function loadLetterheadSettings(userId: string): Promise<LetterheadSettings> {
-  const { data, error } = await supabase
-    .from("user_settings")
-    .select("settings")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (error) {
-    console.warn("user_settings load failed, using cache/env:", error.message);
+  try {
+    const effective = await loadRawUserSettings(userId);
+    const normalized = normalizeLetterheadSettings(effective);
+    writeLocalCache(normalized);
+    return mergeSettings(normalized, envFallback());
+  } catch (e) {
+    console.warn("letterhead settings load failed, using cache/env:", e);
     return mergeSettings(readLocalCache() ?? emptyLetterheadSettings(), envFallback());
   }
-
-  if (!data?.settings) {
-    return mergeSettings(emptyLetterheadSettings(), envFallback());
-  }
-
-  const normalized = normalizeLetterheadSettings(data.settings);
-  writeLocalCache(normalized);
-  return mergeSettings(normalized, envFallback());
 }
 
 export async function saveLetterheadSettings(
   userId: string,
   settings: LetterheadSettings,
+  options?: { isAdmin?: boolean },
 ): Promise<string | null> {
   const normalized = normalizeLetterheadSettings(settings);
   writeLocalCache(normalized);
 
-  const current = await loadRawUserSettings(userId);
-  const { error } = await supabase.from("user_settings").upsert(
-    {
-      user_id: userId,
-      settings: { ...current, ...normalized } as Json,
-    },
-    { onConflict: "user_id" },
-  );
+  const personalErr = await patchUserSettings(userId, {
+    signer_name: normalized.signer_name,
+    signer_title: normalized.signer_title,
+    signer_phone: normalized.signer_phone,
+    signer_email: normalized.signer_email,
+  });
+  if (personalErr) return personalErr;
 
-  return error?.message ?? null;
+  if (!options?.isAdmin) return null;
+
+  return patchOrgSettings(userId, {
+    company_name: normalized.company_name,
+    company_address: normalized.company_address,
+    company_phone: normalized.company_phone,
+    company_license: normalized.company_license,
+    logo_url: normalized.logo_url,
+    pdf_show: normalized.pdf_show,
+  });
 }
 
 export async function uploadLetterheadLogo(userId: string, file: File): Promise<string> {

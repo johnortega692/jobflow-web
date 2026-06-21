@@ -1,4 +1,5 @@
-/** Budget Maker — aligned with desktop ``budget_maker.py``. */
+import type { TransmittalContract } from "../lib/jobInfo";
+import { normalizeTransmittalContract } from "../lib/jobInfo";
 
 export type CostCodeRecord = {
   gl_account: string;
@@ -50,6 +51,8 @@ export type BudgetScanLine = {
 
 export type BudgetMakerData = {
   job_name: string;
+  /** Billing contract identity for exports */
+  contract: TransmittalContract;
   grand_total: string;
   hide_zero_amounts: boolean;
   scanned_pdf_name: string;
@@ -120,6 +123,7 @@ export function defaultBudgetLibrary(): BudgetLibrary {
 export function defaultBudgetMaker(jobName = ""): BudgetMakerData {
   return {
     job_name: jobName,
+    contract: "paint",
     grand_total: "",
     hide_zero_amounts: false,
     scanned_pdf_name: "",
@@ -127,6 +131,40 @@ export function defaultBudgetMaker(jobName = ""): BudgetMakerData {
     lines: [],
     buckets: [],
   };
+}
+
+export function emptyBudgetScanLine(): BudgetScanLine {
+  return {
+    id: crypto.randomUUID(),
+    Bucket: "",
+    Category: "",
+    "PDF Code": "",
+    Description: "",
+    Quantity: null,
+    UoM: "",
+    "Unit Cost": null,
+    Amount: null,
+    "Man Hours": null,
+    Notes: "",
+    Hidden: false,
+  };
+}
+
+export const BUDGET_LINE_CATEGORIES = [
+  "Material",
+  "Labor",
+  "Equipment",
+  "Other",
+  "Subcontractor",
+] as const;
+
+export const BUDGET_UOM_OPTIONS = ["EA", "LF", "SF", "LY", "SY", "CY", "HR", "MO", "LS", "GAL"] as const;
+
+export function parseBudgetNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = parseFloat(trimmed.replace(/[$,]/g, ""));
+  return Number.isNaN(n) ? null : n;
 }
 
 export function normalizeBudgetMaker(raw: unknown, jobName = ""): BudgetMakerData {
@@ -166,6 +204,7 @@ export function normalizeBudgetMaker(raw: unknown, jobName = ""): BudgetMakerDat
     : base.buckets;
   return {
     job_name: String(o.job_name ?? jobName),
+    contract: normalizeTransmittalContract(o.contract),
     grand_total: String(o.grand_total ?? ""),
     hide_zero_amounts: Boolean(o.hide_zero_amounts),
     scanned_pdf_name: String(o.scanned_pdf_name ?? ""),

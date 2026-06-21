@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { BrushoutPrepLink, PaintItem } from "../../types/tradeDocuments";
 import type { BrushoutPrepRecord } from "../../lib/paintUserSettings";
 
@@ -46,8 +47,8 @@ export function ImportBrushoutPrepModal({ preps, onImport, onClose }: Props) {
         <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
           <h3>Import brush-out prep</h3>
           <p className="muted">
-            No open brush-out preps in your account settings. Save preps from the desktop Brush-Out Request tab
-            into <code>user_settings.brushout_preps</code>, or add them in Settings later.
+            No open brush-out preps. Create one on the{" "}
+            <Link to="/brush-out-request">Brush-out request</Link> page, save it, then import here.
           </p>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Close

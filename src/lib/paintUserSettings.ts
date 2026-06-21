@@ -1,10 +1,8 @@
 import { loadRawUserSettings } from "./budgetLibrary";
-import {
-  DEFAULT_EMAIL_SIGNATURE,
-  normalizeEmailSignature,
-  type EmailSignatureSettings,
-} from "./emailSignature";
+import { normalizeGoogleUrls } from "./googleSheetsConfig";
 import { loadDefaultPaintVendorsFromJson, type PaintVendor } from "./paintVendorEmail";
+import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad";
+import type { TrackerEmailSchedule } from "./trackerEmailSchedule";
 
 export type { PaintVendor } from "./paintVendorEmail";
 export type { EmailSignatureSettings } from "./emailSignature";
@@ -16,8 +14,13 @@ export type BrushoutPrepRecord = {
   site_location?: string;
   gc?: string;
   internal_reference?: string;
+  paint_vendor?: string;
   status?: string;
   emailed_date?: string;
+  linked_job_key?: string;
+  linked_at?: string;
+  created?: string;
+  last_modified?: string;
   paint_items?: {
     label?: string;
     manufacturer?: string;
@@ -33,49 +36,34 @@ export type BrushoutPrepRecord = {
 export type PaintUserSettings = {
   google_urls: Record<string, string>;
   user_name: string;
+  /** Primary To address for paint tracker approval/revision notifications (legacy EMAIL_CONFIG.PRIMARY). */
+  notification_primary_email: string;
+  /** Display name in notification subjects/headers (legacy EMAIL_CONFIG.PRIMARY_NAME). */
+  notification_primary_name: string;
   super_emails: SuperEmail[];
   default_brushout_qty: number;
   brushout_preps: BrushoutPrepRecord[];
   vendors: PaintVendor[];
   signature: EmailSignatureSettings;
+  /** Vercel cron auto-send for follow-up reminders and weekly digests. */
+  tracker_email_schedule: TrackerEmailSchedule;
 };
 
 export async function loadPaintUserSettings(userId: string): Promise<PaintUserSettings> {
   const raw = await loadRawUserSettings(userId);
-  const google =
-    raw.google_urls && typeof raw.google_urls === "object" && !Array.isArray(raw.google_urls)
-      ? (raw.google_urls as Record<string, string>)
-      : {};
-  const superEmails = Array.isArray(raw.super_emails)
-    ? (raw.super_emails as SuperEmail[]).filter((s) => s?.email?.trim())
-    : [];
-  const qty = typeof raw.default_brushout_qty === "number" ? raw.default_brushout_qty : 6;
-  const preps = Array.isArray(raw.brushout_preps)
-    ? (raw.brushout_preps as BrushoutPrepRecord[])
-    : [];
-
-  let vendors: PaintVendor[] = [];
-  if (Array.isArray(raw.vendors)) {
-    vendors = (raw.vendors as PaintVendor[]).filter((v) => v?.vendor_email?.trim());
+  let vendorsOverride: PaintVendor[] | undefined;
+  const hasVendors =
+    Array.isArray(raw.vendors) &&
+    (raw.vendors as PaintVendor[]).some((v) => v?.vendor_email?.trim());
+  if (!hasVendors) {
+    vendorsOverride = await loadDefaultPaintVendorsFromJson();
   }
-  if (!vendors.length) {
-    vendors = await loadDefaultPaintVendorsFromJson();
-  }
-
-  const signature = raw.signature
-    ? normalizeEmailSignature(raw.signature)
-    : { ...DEFAULT_EMAIL_SIGNATURE };
-
-  return {
-    google_urls: google,
-    user_name: typeof raw.user_name === "string" ? raw.user_name : "",
-    super_emails: superEmails,
-    default_brushout_qty: qty,
-    brushout_preps: preps,
-    vendors,
-    signature,
-  };
+  const settings = loadPaintUserSettingsFromRaw(raw, vendorsOverride);
+  settings.google_urls = normalizeGoogleUrls(settings.google_urls as Record<string, string>);
+  return settings;
 }
+
+export { DEFAULT_TRACKER_EMAIL_SCHEDULE, type TrackerEmailSchedule } from "./trackerEmailSchedule";
 
 export function listOpenBrushoutPreps(preps: BrushoutPrepRecord[]): BrushoutPrepRecord[] {
   return preps.filter((p) => {

@@ -13,7 +13,7 @@ export function parseFlexibleDate(text: string): Date | null {
   if (slash) {
     let y = +slash[3]!;
     if (y < 100) y += 2000;
-    return localDate(y, +slash[2]! - 1, +slash[1]!);
+    return localDate(y, +slash[1]! - 1, +slash[2]!);
   }
 
   const named = raw.match(

@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { loadRawUserSettings, patchUserSettings } from "./budgetLibrary";
+import { loadRawUserSettings, patchOrgSettings } from "./budgetLibrary";
 import {
   defaultContactDirectory,
   emptyArchitectEntry,
@@ -241,7 +241,7 @@ export async function saveContactDirectory(
   userId: string,
   data: ContactDirectorySettings,
 ): Promise<string | null> {
-  return patchUserSettings(userId, {
+  return patchOrgSettings(userId, {
     [VENDORS_KEY]: dedupeMaterialVendors(
       data.material_vendors.filter((v) => v.name.trim() || v.email.trim() || v.products.trim()),
     ),

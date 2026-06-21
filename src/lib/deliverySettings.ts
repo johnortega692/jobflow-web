@@ -1,4 +1,4 @@
-import { loadRawUserSettings, patchUserSettings } from "./budgetLibrary";
+import { loadRawUserSettings, patchOrgSettings } from "./budgetLibrary";
 
 export type DeliverySchedulingSettings = {
   default_delivery_address: string;
@@ -61,5 +61,5 @@ export async function saveDeliverySettings(
   userId: string,
   settings: DeliverySchedulingSettings,
 ): Promise<string | null> {
-  return patchUserSettings(userId, { delivery_scheduling: settings });
+  return patchOrgSettings(userId, { delivery_scheduling: settings });
 }

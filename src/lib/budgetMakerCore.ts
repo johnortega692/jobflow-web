@@ -324,6 +324,30 @@ export function savedTemplateNames(lib: BudgetLibrary): string[] {
   return lib.bucket_templates.map((t) => t.name).filter(Boolean);
 }
 
+/** Saved default name, or empty if unset / missing from library. */
+export function resolveDefaultTemplateName(lib: BudgetLibrary): string {
+  const name = lib.default_bucket_template.trim();
+  if (!name) return "";
+  return savedTemplateNames(lib).includes(name) ? name : "";
+}
+
+export function bucketsFromTemplate(lib: BudgetLibrary, name: string): BudgetBucket[] | null {
+  const tpl = lib.bucket_templates.find((t) => t.name === name);
+  if (!tpl?.buckets?.length) return null;
+  return tpl.buckets.map(bucketSnapshot);
+}
+
+/** When a budget has no buckets yet, apply the user's default saved template. */
+export function defaultTemplateDraftPatch(
+  lib: BudgetLibrary,
+): Pick<BudgetMakerData, "buckets" | "loaded_template_name"> | null {
+  const name = resolveDefaultTemplateName(lib);
+  if (!name) return null;
+  const buckets = bucketsFromTemplate(lib, name);
+  if (!buckets) return null;
+  return { buckets, loaded_template_name: name };
+}
+
 export function normalizeLibrary(raw: unknown): BudgetLibrary {
   const base = defaultBudgetLibrary();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;

@@ -1,0 +1,600 @@
+{
+  "defaults": {
+    "image_path": "",
+    "print_name": "John Ortega",
+    "font_name": "Script MT Bold",
+    "font_size": 18
+  },
+  "files": [
+    {
+      "file": "01 - Contract\\01 Job Start Form.xlsx",
+      "mappings": [
+        {
+          "field": "job_number",
+          "named_range": "D3:G3",
+          "merged": true
+        },
+        {
+          "field": "job_name",
+          "named_range": "D4:G4",
+          "merged": true
+        },
+        {
+          "field": "job_address",
+          "named_range": "D5:G5",
+          "merged": true
+        },
+        {
+          "field": "job_city",
+          "named_range": "D6",
+          "merged": false
+        },
+        {
+          "field": "job_zip",
+          "named_range": "E6",
+          "merged": false
+        },
+        {
+          "field": "job_county",
+          "named_range": "G6",
+          "merged": false
+        },
+        {
+          "field": "gc_office_phone",
+          "named_range": "D7:G7",
+          "merged": true
+        },
+        {
+          "field": "gc",
+          "named_range": "D8:G8",
+          "merged": true
+        },
+        {
+          "field": "gc_address",
+          "named_range": "D9:G9",
+          "merged": true
+        },
+        {
+          "field": "contract_amount",
+          "named_range": "k3:N3",
+          "merged": true
+        },
+        {
+          "field": "start_date",
+          "named_range": "K6:N6",
+          "merged": true
+        },
+        {
+          "field": "end_date",
+          "named_range": "K7:N7",
+          "merged": true
+        },
+        {
+          "field": "gc_fax",
+          "named_range": "K8:N8",
+          "merged": true
+        },
+        {
+          "field": "gc_job_number",
+          "named_range": "K9:N9",
+          "merged": true
+        },
+        {
+          "field": "owner_name",
+          "named_range": "D12:G12",
+          "merged": true
+        },
+        {
+          "field": "owner_address",
+          "named_range": "D13:G13",
+          "merged": true
+        },
+        {
+          "field": "owner_city_state_zip",
+          "named_range": "D14:G14",
+          "merged": true
+        },
+        {
+          "field": "owner_contact",
+          "named_range": "D15:G15",
+          "merged": true
+        },
+        {
+          "field": "owner_phone",
+          "named_range": "D16:G16",
+          "merged": true
+        },
+        {
+          "field": "architect",
+          "named_range": "K12:N12",
+          "merged": true
+        },
+        {
+          "field": "architect_address",
+          "named_range": "K13:N13",
+          "merged": true
+        },
+        {
+          "field": "architect_city_state_zip",
+          "named_range": "K14:N14",
+          "merged": true
+        },
+        {
+          "field": "architect_contact",
+          "named_range": "K15:N15",
+          "merged": true
+        },
+        {
+          "field": "architect_phone",
+          "named_range": "K16:N16",
+          "merged": true
+        },
+        {
+          "field": "icbi_estimator",
+          "named_range": "D19:G19",
+          "merged": true
+        },
+        {
+          "field": "icbi_pm",
+          "named_range": "D20:G20",
+          "merged": true
+        },
+        {
+          "field": "icbi_engineer",
+          "named_range": "D21:G21",
+          "merged": true
+        },
+        {
+          "field": "icbi_foreman",
+          "named_range": "D22:G22",
+          "merged": true
+        },
+        {
+          "field": "gc_estimator",
+          "named_range": "K19:N19",
+          "merged": true
+        },
+        {
+          "field": "gc_pm",
+          "named_range": "K20:N20",
+          "merged": true
+        },
+        {
+          "field": "gc_engineer",
+          "named_range": "K21:N21",
+          "merged": true
+        },
+        {
+          "field": "gc_superintendent",
+          "named_range": "K22:N22",
+          "merged": true
+        },
+        {
+          "field": "job_type",
+          "named_range": "K4:N4",
+          "merged": true
+        },
+        {
+          "field": "job_cost_type",
+          "named_range": "K5:N5",
+          "merged": true
+        },
+        {
+          "field": "req_bond",
+          "named_range": "B34",
+          "merged": false
+        },
+        {
+          "field": "req_prevailing_wage",
+          "named_range": "E34",
+          "merged": false
+        },
+        {
+          "field": "req_work_preservation",
+          "named_range": "H34",
+          "merged": false
+        },
+        {
+          "field": "req_prevailing_wage",
+          "named_range": "K34",
+          "merged": false
+        },
+        {
+          "field": "req_local_hire",
+          "named_range": "N34",
+          "merged": false
+        },
+        {
+          "field": "req_ocip",
+          "named_range": "B35",
+          "merged": false
+        },
+        {
+          "field": "req_work_comp",
+          "named_range": "E35",
+          "merged": false
+        },
+        {
+          "field": "req_gen_liab_excess",
+          "named_range": "H35",
+          "merged": false
+        },
+        {
+          "field": "job_date",
+          "named_range": "K1:N1",
+          "merged": true
+        },
+        {
+          "field": "project_description",
+          "named_range": "D24:N24",
+          "merged": true
+        },
+        {
+          "field": "scope_of_out_work",
+          "named_range": "D25:N25",
+          "merged": true
+        }
+      ]
+    },
+    {
+      "file": "03 - Billing\\00 Billing Summary.xlsx",
+      "mappings": [
+        {
+          "field": "gc",
+          "named_range": "B1:D1",
+          "merged": true
+        },
+        {
+          "field": "gc_job_number",
+          "named_range": "F1:G1",
+          "merged": true
+        },
+        {
+          "field": "job_number",
+          "named_range": "I1:K1",
+          "merged": true
+        },
+        {
+          "field": "job_name",
+          "named_range": "F2:K2",
+          "merged": true
+        },
+        {
+          "field": "icbi_pm",
+          "named_range": "F3:K3",
+          "merged": true
+        },
+        {
+          "field": "gc_office_phone",
+          "named_range": "B4:C4",
+          "merged": true
+        },
+        {
+          "field": "gc_fax",
+          "named_range": "D4",
+          "merged": false
+        },
+        {
+          "field": "icbi_engineer",
+          "named_range": "B6:D6",
+          "merged": true
+        },
+        {
+          "field": "job_address",
+          "named_range": "F6:K6",
+          "merged": true
+        },
+        {
+          "field": "contract_amount",
+          "named_range": "F9:K9",
+          "merged": true
+        }
+      ],
+      "rename_on_fill": {
+        "enabled": true,
+        "find": "000",
+        "replace_field": "job_number"
+      }
+    },
+    {
+      "file": "12 - Field\\4 - RFIs\\000 ICBI RFI Log.xlsx",
+      "rename_on_fill": {
+        "enabled": true,
+        "find": "000",
+        "replace_field": "job_number"
+      },
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "H1",
+          "merged": false
+        },
+        {
+          "field": "job_number",
+          "named_range": "H2",
+          "merged": false
+        }
+      ]
+    },
+    {
+      "file": "12 - Field\\5 - Submittals\\000 ICBI SUBMITTAL Log.xlsx",
+      "rename_on_fill": {
+        "enabled": true,
+        "find": "000",
+        "replace_field": "job_number"
+      },
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "G1:I1",
+          "merged": true
+        },
+        {
+          "field": "job_number",
+          "named_range": "G2:I2",
+          "merged": false
+        }
+      ]
+    },
+    {
+      "file": "12 - Field\\5 - Submittals\\SUBMITTAL TEMPLATE TOC (Lath and Plaster).xlsx",
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "B2",
+          "merged": false
+        },
+        {
+          "field": "job_number",
+          "named_range": "B3",
+          "merged": false
+        }
+      ]
+    },
+    {
+      "file": "12 - Field\\11 - Equipment Tracking\\000 - ICBI Equipment Tracking Log.xlsx",
+      "rename_on_fill": {
+        "enabled": true,
+        "find": "000",
+        "replace_field": "job_number"
+      },
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "D2:F3",
+          "merged": true
+        }
+      ]
+    },
+    {
+      "file": "12 - Field\\5 - Submittals\\SUBMITTAL TEMPLATE TOC (Lath and Plaster).xlsx",
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "B2",
+          "merged": false
+        },
+        {
+          "field": "job_number",
+          "named_range": "B3",
+          "merged": false
+        }
+      ]
+    },
+    {
+      "file": "12 - Field\\6 - Purchase Orders\\0.2 - Purchase Order Log.xlsx",
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "B3:H3",
+          "merged": true
+        },
+        {
+          "field": "job_number",
+          "named_range": "B4:H4",
+          "merged": true
+        }
+      ]
+    },
+    {
+      "file": "12 - Field\\6 - Purchase Orders\\00 - PO Template - Plexxis Codes 011817.xls",
+      "mappings": [
+        {
+          "field": "job_number",
+          "named_range": "G13:H13",
+          "merged": true
+        },
+        {
+          "field": "job_name",
+          "named_range": "G14:H14",
+          "merged": true
+        },
+        {
+          "field": "job_address",
+          "named_range": "G15:H15",
+          "merged": true
+        }
+      ]
+    },
+    {
+      "file": "01 - Contract\\Warranty Template.xlsx",
+      "mappings": [
+        {
+          "field": "signature_print_name",
+          "named_range": "D38",
+          "merged": false
+        },
+        {
+          "field": "job_date",
+          "named_range": "H38",
+          "merged": false
+        },
+        {
+          "field": "gc",
+          "named_range": "C14:J14",
+          "merged": true
+        },
+        {
+          "field": "job_name",
+          "named_range": "C15:J15",
+          "merged": true
+        },
+        {
+          "field": "job_number",
+          "named_range": "C16:J16",
+          "merged": true
+        }
+      ]
+    },
+    {
+      "file": "01 - Contract\\PROJECT INFORMATION.xlsx",
+      "mappings": [
+        {
+          "field": "job_number",
+          "named_range": "G11",
+          "merged": false
+        },
+        {
+          "field": "job_name",
+          "named_range": "B13",
+          "merged": false
+        },
+        {
+          "field": "job_address",
+          "named_range": "B15",
+          "merged": false
+        },
+        {
+          "field": "owner_name",
+          "named_range": "B19",
+          "merged": false
+        },
+        {
+          "field": "owner_address",
+          "named_range": "B20",
+          "merged": false
+        },
+        {
+          "field": "owner_city_state_zip",
+          "named_range": "B21",
+          "merged": false
+        },
+        {
+          "field": "gc",
+          "named_range": "B28",
+          "merged": false
+        },
+        {
+          "field": "gc_address",
+          "named_range": "B29",
+          "merged": false
+        }
+      ]
+    },
+    {
+      "file": "05 - Correspondence\\00 Correpondence Log.xls",
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "A1:I2",
+          "merged": true
+        }
+      ]
+    },
+    {
+      "file": "05 - Correspondence\\Record of Conversation.xls",
+      "mappings": [
+        {
+          "field": "job_number",
+          "named_range": "D14",
+          "merged": false
+        }
+      ]
+    },
+    {
+      "file": "06 - CORs\\000 ICBI COR Log.xlsx",
+      "rename_on_fill": {
+        "enabled": true,
+        "find": "000",
+        "replace_field": "job_number"
+      },
+      "mappings": [
+        {
+          "field": "job_name",
+          "named_range": "H1:K1",
+          "merged": false
+        },
+        {
+          "field": "job_number",
+          "named_range": "H2:K2",
+          "merged": false
+        }
+      ]
+    },
+    {
+      "file": "06 - CORs\\000 COR Template - PM.xlsx",
+      "mappings": [
+        {
+          "field": "gc_pm",
+          "named_range": "A11:D11",
+          "merged": true
+        },
+        {
+          "field": "gc",
+          "named_range": "A12:D12",
+          "merged": true
+        },
+        {
+          "field": "gc_address",
+          "named_range": "A13:D13",
+          "merged": true
+        },
+        {
+          "field": "job_name",
+          "named_range": "B16:E16",
+          "merged": true
+        },
+        {
+          "field": "job_number",
+          "named_range": "B17:E17",
+          "merged": true
+        }
+      ],
+      "rename_on_fill": {
+        "enabled": true,
+        "find": "000",
+        "replace_field": "job_number"
+      }
+    },
+    {
+      "file": "01 - Contract\\Contract Review Checklist.xls",
+      "mappings": [
+        {
+          "field": "job_number",
+          "named_range": "C3",
+          "merged": false
+        },
+        {
+          "field": "job_name",
+          "named_range": "C4:F4",
+          "merged": true
+        },
+        {
+          "field": "gc",
+          "named_range": "C5:F5",
+          "merged": true
+        },
+        {
+          "field": "gc_pm",
+          "named_range": "K4:M4",
+          "merged": true
+        },
+        {
+          "field": "contract_amount",
+          "named_range": "D6:F6",
+          "merged": true
+        }
+      ]
+    }
+  ]
+}

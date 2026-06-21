@@ -1,7 +1,12 @@
-export type { Database, Json } from "./database.generated";
-import type { Database } from "./database.generated";
+import type { Database, Json } from "./database.generated";
 import type { JobInfoData } from "./jobInfo";
-import { normalizeJobInfo } from "../lib/jobInfo";
+import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
+
+export type RfiAttachedFile = {
+  id: string;
+  filename: string;
+  storage_path: string;
+};
 
 export interface RfiFormData {
   rfi_date: string;
@@ -35,6 +40,9 @@ export interface RfiFormData {
   attach_markup: boolean;
   attach_submittal: boolean;
   attach_other: string;
+  attached_files: RfiAttachedFile[];
+  /** Billing contract identity for this RFI */
+  contract: TransmittalContract;
 }
 
 export const defaultRfiFormData = (): RfiFormData => {
@@ -76,13 +84,31 @@ export const defaultRfiFormData = (): RfiFormData => {
     attach_markup: false,
     attach_submittal: false,
     attach_other: "",
+    attached_files: [],
+    contract: "paint",
   };
 };
+
+export function normalizeRfiAttachedFiles(raw: unknown): RfiAttachedFile[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      const id = typeof o.id === "string" ? o.id : "";
+      const filename = typeof o.filename === "string" ? o.filename : "";
+      const storage_path = typeof o.storage_path === "string" ? o.storage_path : "";
+      if (!id || !filename || !storage_path) return null;
+      return { id, filename, storage_path };
+    })
+    .filter((f): f is RfiAttachedFile => Boolean(f));
+}
 
 export type Project = Database["public"]["Tables"]["projects"]["Row"];
 export type Rfi = Database["public"]["Tables"]["rfis"]["Row"];
 
 export type Submittal = Database["public"]["Tables"]["submittals"]["Row"];
+export type WorkOrder = Database["public"]["Tables"]["work_orders"]["Row"];
 
 export const SUBMITTAL_SCOPES = ["", "Paint", "Wallcovering", "FRP", "Track", "Other"] as const;
 export const SUBMITTAL_STATUSES = ["Draft", "Ready", "Submitted", "Returned"] as const;

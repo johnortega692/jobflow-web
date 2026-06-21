@@ -1,3 +1,4 @@
+import { logProjectActivityEvent } from "./projectActivity";
 import { supabase } from "./supabase";
 import {
   buildAutoLogRow,
@@ -27,10 +28,20 @@ export async function insertSubmittalLogRow(
   const payload = logRowToDbPayload(normalizeLogRow(row), projectId, userData.user?.id);
   const { data, error } = await supabase.from("submittals").insert(payload).select("*").single();
   if (error) throw new Error(error.message);
-  return dbRowToLog(data as Submittal);
+  const saved = dbRowToLog(data as Submittal);
+  await logProjectActivityEvent({
+    projectId,
+    action: "submittal_log_added",
+    summary: `Submittal log row #${saved.line_number} added`,
+  });
+  return saved;
 }
 
-export async function updateSubmittalLogRow(row: SubmittalLogRow): Promise<SubmittalLogRow> {
+export async function updateSubmittalLogRow(
+  projectId: string,
+  row: SubmittalLogRow,
+  options?: { log?: boolean },
+): Promise<SubmittalLogRow> {
   const payload = logRowToDbPayload(normalizeLogRow(row), "", null);
   const { data, error } = await supabase
     .from("submittals")
@@ -48,13 +59,29 @@ export async function updateSubmittalLogRow(row: SubmittalLogRow): Promise<Submi
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  return dbRowToLog(data as Submittal);
+  const saved = dbRowToLog(data as Submittal);
+  if (options?.log !== false) {
+    await logProjectActivityEvent({
+      projectId,
+      action: "submittal_log_updated",
+      summary: `Submittal log row #${saved.line_number} updated`,
+    });
+  }
+  return saved;
 }
 
-export async function deleteSubmittalLogRows(ids: string[]): Promise<void> {
+export async function deleteSubmittalLogRows(projectId: string, ids: string[]): Promise<void> {
   if (!ids.length) return;
   const { error } = await supabase.from("submittals").delete().in("id", ids);
   if (error) throw new Error(error.message);
+  await logProjectActivityEvent({
+    projectId,
+    action: "submittal_log_deleted",
+    summary:
+      ids.length === 1
+        ? "Submittal log row deleted"
+        : `${ids.length} submittal log rows deleted`,
+  });
 }
 
 export async function recordPdfLogRow(
@@ -67,6 +94,7 @@ export async function recordPdfLogRow(
 }
 
 export async function markRowsSubmitted(
+  projectId: string,
   rows: SubmittalLogRow[],
   transmittalNumber: string,
 ): Promise<SubmittalLogRow[]> {
@@ -80,7 +108,17 @@ export async function markRowsSubmitted(
       status: "Submitted",
       transmittal_number: transmittalNumber.trim() || row.transmittal_number,
     });
-    updated.push(await updateSubmittalLogRow(next));
+    updated.push(await updateSubmittalLogRow(projectId, next, { log: false }));
+  }
+  if (updated.length) {
+    const trans = transmittalNumber.trim();
+    await logProjectActivityEvent({
+      projectId,
+      action: "submittal_log_submitted",
+      summary: trans
+        ? `${updated.length} submittal log row(s) marked submitted (Transmittal #${trans})`
+        : `${updated.length} submittal log row(s) marked submitted`,
+    });
   }
   return updated;
 }

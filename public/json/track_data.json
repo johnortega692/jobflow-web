@@ -1,0 +1,309 @@
+{
+    "1/2-SBL-N": {
+        "products": [
+            "1/2\" Square Bottom Load Natural"
+        ],
+        "category": "track"
+    },
+    "1/2-STL-N": {
+        "products": [
+            "1/2\" Square Top Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "1/2-STL-B": {
+        "products": [
+            "1/2\" Square Top Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "1/2-SMW-N": {
+        "products": [
+            "1/2\" Square Midwall Natural"
+        ],
+        "category": "track"
+    },
+    "1/2-SMW-B": {
+        "products": [
+            "1/2\" Square Midwall Black"
+        ],
+        "category": "track"
+    },
+    "1/2-OSC-N": {
+        "products": [
+            "1/2\" Oustside Corner Natural"
+        ],
+        "category": "track"
+    },
+    "5/8-SBL-N": {
+        "products": [
+            "5/8\" Square Bottom Load Natural"
+        ],
+        "category": "track"
+    },
+    "5/8-SBL-B": {
+        "products": [
+            "5/8\" Square Bottom Load Black"
+        ],
+        "category": "track"
+    },
+    "5/8-STL-N": {
+        "products": [
+            "5/8\" Square Top Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "5/8-STL-B": {
+        "products": [
+            "5/8\" Square Top Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "5/8-SMW-N": {
+        "products": [
+            "5/8\" Square Midwall Natural"
+        ],
+        "category": "track"
+    },
+    "5/8-SMW-B": {
+        "products": [
+            "5/8\" Square Midwall Black"
+        ],
+        "category": "track"
+    },
+    "5/8-SSL-N": {
+        "products": [
+            "5/8\" Square Side Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "5/8-SSL-B": {
+        "products": [
+            "5/8\" Square Side Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "1-SBL-N": {
+        "products": [
+            "1\" Square Bottom Load Natural"
+        ],
+        "category": "track"
+    },
+    "1-SBL-B": {
+        "products": [
+            "1\" Square Bottom Load Black"
+        ],
+        "category": "track"
+    },
+    "1-SSL-N": {
+        "products": [
+            "1\" Square Side Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "1-SSL-B": {
+        "products": [
+            "1\" Square Side Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "1-STL-N": {
+        "products": [
+            "1\" Square Top Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "1-STL-B": {
+        "products": [
+            "1\" Square Top Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "1-SMW-N": {
+        "products": [
+            "1\" Square Midwall Natural"
+        ],
+        "category": "track"
+    },
+    "1-SMW-B": {
+        "products": [
+            "1\" Square Midwall Black"
+        ],
+        "category": "track"
+    },
+    "1-BSL-N": {
+        "products": [
+            "1\" Bevel Side Load Natural"
+        ],
+        "category": "track"
+    },
+    "1-BMW-N": {
+        "products": [
+            "1\" Bevel Midwall Natural"
+        ],
+        "category": "track"
+    },
+    "1-SSL--B-NPVC": {
+        "products": [
+            "1\" Square Side Load Perimeter PVC Free Black"
+        ],
+        "category": "track"
+    },
+    "1-STL--B-NPVC": {
+        "products": [
+            "1\" Square Top Load Perimeter PVC Free Black"
+        ],
+        "category": "track"
+    },
+    "1-SMW--B-NPVC": {
+        "products": [
+            "1\" Square Midwall PVC Free Black"
+        ],
+        "category": "track"
+    },
+    "1-SBL--B-NPVC": {
+        "products": [
+            "1\" Square Bottom Load PVC Free Black"
+        ],
+        "category": "track"
+    },
+    "1.125-SBL-B": {
+        "products": [
+            "1.125\" Square Bottom Load Black"
+        ],
+        "category": "track"
+    },
+    "1.125-SSL-N": {
+        "products": [
+            "1.125\" Square Side Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "1.125-SSL-B": {
+        "products": [
+            "1.125\" Square Side Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "1.125-STL-N": {
+        "products": [
+            "1.125\" Square Top Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "1.125-STL-B": {
+        "products": [
+            "1.125\" Square Top Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "1.125-SMW-N": {
+        "products": [
+            "1.125\" Square Midwall Natural"
+        ],
+        "category": "track"
+    },
+    "1.125-SMW-B": {
+        "products": [
+            "1.125\" Square Midwall Black"
+        ],
+        "category": "track"
+    },
+    "1-OSC-N": {
+        "products": [
+            "1\" Outside Corner Natural"
+        ],
+        "category": "track"
+    },
+    "2-STL-N": {
+        "products": [
+            "2 1/2\" Square Top Load Perimeter Natural"
+        ],
+        "category": "track"
+    },
+    "2-STL-B": {
+        "products": [
+            "2 1/2\" Square Top Load Perimeter Black"
+        ],
+        "category": "track"
+    },
+    "2-SMW-N": {
+        "products": [
+            "2 1/2\" Square Midwall Natural"
+        ],
+        "category": "track"
+    },
+    "2-SMW-B": {
+        "products": [
+            "2 1/2\" Square Midwall Black"
+        ],
+        "category": "track"
+    },
+    "2-SBL-N": {
+        "products": [
+            "2 1/2\" Square Bottom Load Black",
+            "2 1/2\" Square Bottom Load Natural"
+        ],
+        "category": "track"
+    },
+    "ECO-50-9.5-W": {
+        "products": [
+            "1/2\" Ecocore 49\" x 97\" 9.5 PCF White"
+        ],
+        "category": "infill"
+    },
+    "ECO-50-9.5-B": {
+        "products": [
+            "1/2\" Ecocore 49\" x 97\" 9.5 PCF Black"
+        ],
+        "category": "infill"
+    },
+    "ECO-100-3-W": {
+        "products": [
+            "1\" Ecocore 49\" x 97\" 3 PCF White"
+        ],
+        "category": "infill"
+    },
+    "ECO-100-3-B": {
+        "products": [
+            "1\" Ecocore 49\" x 97\" 3 PCF Black"
+        ],
+        "category": "infill"
+    },
+    "ECO-100-6-W": {
+        "products": [
+            "1\" Ecocore 49\" x 97\" 6 PCF White"
+        ],
+        "category": "infill"
+    },
+    "ECO-100-6-B": {
+        "products": [
+            "1\" Ecocore 49\" x 97\" 6 PCF Black"
+        ],
+        "category": "infill"
+    },
+    "ECO-200-5.4-W": {
+        "products": [
+            "2\" Ecocore 49\" x 97\" 5.4 PCF White"
+        ],
+        "category": "infill"
+    },
+    "ECO-200-5.4-B": {
+        "products": [
+            "2\" Ecocore 49\" x 97\" 5.4 PCF Black"
+        ],
+        "category": "infill"
+    },
+    "FG-100-6": {
+        "products": [
+            "1\" Fiberglass 49\" x 97\" 6 PCF"
+        ],
+        "category": "infill"
+    },
+    "FG-200-6": {
+        "products": [
+            "2\" Fiberglass 49\" x 97\" 6 PCF"
+        ],
+        "category": "infill"
+    }
+}

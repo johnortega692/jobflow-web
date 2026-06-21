@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { commitProjectUpdate, inferTradeDataActivity, type ProjectActivityAction } from "./projectActivity";
 import { supabase } from "./supabase";
-import type { Json } from "../types/database";
 import { parseProjectTradeData, type ProjectTradeData } from "../types/tradeDocuments";
-import { parseProjectDataBlob } from "./jobInfo";
+
+export type TradeDataSaveActivity = {
+  action: ProjectActivityAction;
+  summary: string;
+};
 
 export function useProjectTradeData(projectId: string) {
   const [tradeData, setTradeData] = useState<ProjectTradeData>({});
@@ -30,33 +34,24 @@ export function useProjectTradeData(projectId: string) {
   }, [load]);
 
   const save = useCallback(
-    async (next: ProjectTradeData) => {
+    async (next: ProjectTradeData, activityOverride?: TradeDataSaveActivity) => {
       setSaving(true);
       setError(null);
-      const { data: row, error: loadErr } = await supabase
-        .from("projects")
-        .select("data")
-        .eq("id", projectId)
-        .single();
-      if (loadErr) {
-        setSaving(false);
-        setError(loadErr.message);
-        return false;
-      }
-      const base = parseProjectDataBlob(row?.data);
-      const { error: err } = await supabase
-        .from("projects")
-        .update({ data: { ...base, ...next } as unknown as Json })
-        .eq("id", projectId);
+      const activity = activityOverride ?? inferTradeDataActivity(tradeData, next);
+      const err = await commitProjectUpdate({
+        projectId,
+        mergeData: next as Record<string, unknown>,
+        activity,
+      });
       setSaving(false);
       if (err) {
-        setError(err.message);
+        setError(err);
         return false;
       }
       setTradeData(next);
       return true;
     },
-    [projectId],
+    [projectId, tradeData],
   );
 
   return { tradeData, setTradeData, loading, saving, error, setError, load, save };

@@ -1,5 +1,7 @@
 import type { Json } from "./database";
 import type { BudgetMakerData } from "./budgetMaker";
+import type { PaintTrackerState, WcTrackerLineState } from "./fieldTracker";
+import { normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
 import { normalizeTransmittalNumber as normalizeTransmittalNumberField } from "../lib/transmittalNumber";
 import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks";
 import { normalizeSdsSection as normalizeSdsSectionRow } from "../lib/sdsSectionModel";
@@ -53,9 +55,9 @@ export type BrushoutPrepLink = {
 export type SubmittalHistoryEntry = {
   submittal_number: number;
   date: string;
-  items: PaintItem[] | WallcoveringItem[];
+  items: PaintItem[] | WallcoveringItem[] | FrpItem[];
   submittal_type?: TradeSubmittalType;
-  scope?: "paint" | "wallcovering";
+  scope?: "paint" | "wallcovering" | "frp";
 };
 
 export type WallcoveringSubmittalData = {
@@ -65,6 +67,39 @@ export type WallcoveringSubmittalData = {
   date: string;
   items: WallcoveringItem[];
   got_track?: boolean;
+};
+
+export type FrpItem = {
+  manufacturer: string;
+  product: string;
+  color: string;
+  quantity: string;
+  notes: string;
+  label: string;
+  panel_size: string;
+  trim_size: string;
+  /** Include in Orders by Vendor */
+  order: boolean;
+};
+
+export type FrpSubmittalData = {
+  submittal_number: number;
+  items: FrpItem[];
+};
+
+export type TrackItemType = "Track" | "Infill" | "";
+
+export type TrackItem = {
+  type: TrackItemType;
+  product: string;
+  mat_code: string;
+  quantity: string;
+  /** Include in Orders by Vendor */
+  order: boolean;
+};
+
+export type TrackSubmittalData = {
+  items: TrackItem[];
 };
 
 export type TransmittalEnclosure = {
@@ -128,7 +163,6 @@ export type TransmittalData = {
   include_paint_floor: boolean;
   include_wc_floor: boolean;
   combine_enclosures: boolean;
-  use_excel_template: boolean;
   include_paint_sheet: boolean;
   include_wc_sheet: boolean;
   paint_submittal_nums: number[];
@@ -138,6 +172,8 @@ export type TransmittalData = {
   signer_name: string;
   enclosures: TransmittalEnclosure[];
   pending_submittal_queue: PendingSubmittalItem[];
+  /** Which contract identity appears on the transmittal cover sheet */
+  contract: TransmittalContract;
 };
 
 export type ProjectTradeData = {
@@ -145,9 +181,13 @@ export type ProjectTradeData = {
   paint_submittal_history?: SubmittalHistoryEntry[];
   wallcovering_submittal?: WallcoveringSubmittalData;
   wallcovering_submittal_history?: SubmittalHistoryEntry[];
+  frp_submittal?: FrpSubmittalData;
+  track_submittal?: TrackSubmittalData;
   transmittal?: TransmittalData;
   sds_packet?: SdsPacketData;
   budget_maker?: BudgetMakerData;
+  paint_tracker?: PaintTrackerState;
+  wc_tracker_lines?: WcTrackerLineState[];
 };
 
 import {
@@ -201,6 +241,8 @@ export type SdsPacketData = {
   include_end: boolean;
   add_to_submittal_log: boolean;
   add_to_transmittal: boolean;
+  /** Which contract identity appears on the package cover and PDF filename */
+  contract: TransmittalContract;
   sections: SdsSection[];
 };
 
@@ -248,6 +290,7 @@ export function defaultSdsPacket(): SdsPacketData {
     include_end: true,
     add_to_submittal_log: true,
     add_to_transmittal: true,
+    contract: "paint",
     sections: [],
   };
 }
@@ -273,6 +316,7 @@ export function normalizeSdsPacket(raw: Partial<SdsPacketData> | undefined): Sds
     include_end: raw.include_end ?? base.include_end,
     add_to_submittal_log: raw.add_to_submittal_log ?? base.add_to_submittal_log,
     add_to_transmittal: raw.add_to_transmittal ?? base.add_to_transmittal,
+    contract: normalizeTransmittalContract(raw.contract),
     sections: Array.isArray(raw.sections)
       ? raw.sections.map((s) => normalizeSdsSectionRow(s as Parameters<typeof normalizeSdsSectionRow>[0]))
       : base.sections,
@@ -415,6 +459,24 @@ export function emptyWallcoveringItem(): WallcoveringItem {
   };
 }
 
+export function emptyFrpItem(): FrpItem {
+  return {
+    manufacturer: "",
+    product: "",
+    color: "",
+    quantity: "",
+    notes: "",
+    label: "",
+    panel_size: "",
+    trim_size: "",
+    order: false,
+  };
+}
+
+export function emptyTrackItem(): TrackItem {
+  return { type: "", product: "", mat_code: "", quantity: "", order: false };
+}
+
 export function emptyEnclosure(): TransmittalEnclosure {
   return {
     id: crypto.randomUUID(),
@@ -471,6 +533,7 @@ export function normalizeTransmittal(raw: Partial<TransmittalData> | null | unde
     pending_submittal_queue: (raw.pending_submittal_queue ?? []).map(normalizePendingItem),
     paint_submittal_nums: [...(raw.paint_submittal_nums ?? [])],
     wc_submittal_nums: [...(raw.wc_submittal_nums ?? [])],
+    contract: normalizeTransmittalContract(raw.contract),
   };
 }
 
@@ -501,6 +564,19 @@ export function defaultWallcoveringSubmittal(): WallcoveringSubmittalData {
     subject: wcSubjectForType("new"),
     date: formatToday(),
     items: [emptyWallcoveringItem()],
+  };
+}
+
+export function defaultFrpSubmittal(): FrpSubmittalData {
+  return {
+    submittal_number: 1,
+    items: [emptyFrpItem()],
+  };
+}
+
+export function defaultTrackSubmittal(): TrackSubmittalData {
+  return {
+    items: [emptyTrackItem()],
   };
 }
 
@@ -539,7 +615,6 @@ export function defaultTransmittal(): TransmittalData {
     include_paint_floor: false,
     include_wc_floor: false,
     combine_enclosures: false,
-    use_excel_template: false,
     include_paint_sheet: false,
     include_wc_sheet: false,
     paint_submittal_nums: [],
@@ -549,6 +624,7 @@ export function defaultTransmittal(): TransmittalData {
     signer_name: "",
     enclosures: [emptyEnclosure()],
     pending_submittal_queue: [],
+    contract: "paint",
   };
 }
 

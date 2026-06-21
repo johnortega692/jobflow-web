@@ -1,0 +1,149 @@
+/**
+ * JobFlow vendor / submittal email — paste into John's Dashboard Code.gs
+ *
+ * Uses GmailApp first (scope: gmail.send — already in your appsscript.json).
+ * Falls back to MailApp (scope: script.send_mail).
+ *
+ * In doPost(e), inside: if (contentType === "application/json") { var postData = JSON.parse(...)
+ * add BEFORE action === "update":
+ *
+ *   if (postData.action === "sendVendorEmail" || postData.action === "sendJobFlowEmail") {
+ *     return handleSendVendorEmail_(postData);
+ *   }
+ *
+ * AFTER changing appsscript.json or this code:
+ *   Deploy → Manage deployments → Edit → New version → Deploy
+ *   Execute as: Me | Who has access: Anyone (or Anyone with Google account)
+ * Update JobFlow Settings → Dashboard Web App URL to match.
+ */
+
+function handleSendVendorEmail_(data) {
+  var toList = normalizeEmailList_(data.to);
+  if (!toList.length) {
+    return jobFlowJsonResponse_({ status: "error", message: "At least one To address is required." });
+  }
+
+  var ccList = normalizeEmailList_(data.cc);
+  var subject = String(data.subject || "").trim();
+  if (!subject) {
+    return jobFlowJsonResponse_({ status: "error", message: "Subject is required." });
+  }
+
+  var html = String(data.html || "").trim();
+  var text = String(data.text || "").trim();
+  if (!html && !text) {
+    return jobFlowJsonResponse_({ status: "error", message: "Email body is required." });
+  }
+  if (html && !text) {
+    text = "This message contains HTML formatting. Open in an HTML-capable email client.";
+  }
+
+  var mailOptions = {
+    to: toList.join(","),
+    subject: subject,
+    body: text,
+    name: String(data.from_name || "").trim() || "JobFlow",
+  };
+  if (html) mailOptions.htmlBody = html;
+  if (ccList.length) mailOptions.cc = ccList.join(",");
+  var replyTo = String(data.reply_to || "").trim();
+  if (replyTo) mailOptions.replyTo = replyTo;
+
+  try {
+    sendJobFlowVendorEmail_(mailOptions);
+  } catch (err) {
+    var msg = String(err && err.message ? err.message : err);
+    if (
+      msg.indexOf("script.send_mail") !== -1 ||
+      msg.indexOf("gmail.send") !== -1 ||
+      msg.indexOf("permissions are not sufficient") !== -1
+    ) {
+      msg =
+        "Gmail not authorized for this web app deployment. " +
+        "Run authorizeJobFlowVendorEmail in the script editor, then Deploy → Manage deployments → " +
+        "Edit → New version → Deploy (Execute as: Me). " +
+        "If it still fails, revoke the app at myaccount.google.com/permissions and authorize again.";
+    }
+    return jobFlowJsonResponse_({ status: "error", message: msg });
+  }
+
+  return jobFlowJsonResponse_({ status: "success", id: "gas-" + new Date().getTime() });
+}
+
+/** Prefer GmailApp (gmail.send). MailApp used only as fallback. */
+function sendJobFlowVendorEmail_(mailOptions) {
+  var lastErr = null;
+  try {
+    GmailApp.sendEmail(mailOptions);
+    return;
+  } catch (gmailErr) {
+    lastErr = gmailErr;
+    Logger.log("GmailApp.sendEmail failed: " + gmailErr);
+  }
+  try {
+    MailApp.sendEmail(mailOptions);
+    return;
+  } catch (mailErr) {
+    Logger.log("MailApp.sendEmail failed: " + mailErr);
+    throw lastErr || mailErr;
+  }
+}
+
+function authorizeJobFlowVendorEmail() {
+  var me = Session.getActiveUser().getEmail();
+  if (!me) {
+    throw new Error("Run while logged in as the dashboard owner in Apps Script.");
+  }
+
+  sendJobFlowVendorEmail_({
+    to: me,
+    subject: "[JobFlow] Gmail send authorized",
+    body:
+      "JobFlow vendor email works for " +
+      me +
+      ".\n\nImportant: Deploy → Manage deployments → Edit → New version → Deploy (Execute as: Me).",
+    name: "JobFlow",
+  });
+
+  try {
+    SpreadsheetApp.getUi().alert(
+      "JobFlow email OK",
+      "Test email sent to " + me + ".\n\nNow redeploy the web app (New version, Execute as: Me).",
+      SpreadsheetApp.getUi().ButtonSet.OK,
+    );
+  } catch (uiErr) {
+    Logger.log("authorizeJobFlowVendorEmail OK — sent to " + me);
+  }
+}
+
+function showJobFlowEmailManifestHelp() {
+  var steps =
+    "Your appsscript.json already includes gmail.send and script.send_mail.\n\n" +
+    "Editor works but JobFlow fails = OLD WEB APP DEPLOYMENT.\n\n" +
+    "1. Run authorizeJobFlowVendorEmail once (script editor)\n" +
+    "2. Deploy → Manage deployments → Edit (pencil)\n" +
+    "3. New version → Deploy\n" +
+    "   Execute as: Me (USER_DEPLOYING)\n" +
+    "   Who has access: Anyone\n" +
+    "4. Copy the NEW deployment URL into JobFlow Settings\n" +
+    "5. Try Email vendor again\n\n" +
+    "Optional: Google Account → Security → Third-party access → remove this Apps Script project → authorize again.";
+
+  try {
+    SpreadsheetApp.getUi().alert("JobFlow web app email", steps, SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (uiErr) {
+    Logger.log(steps);
+  }
+}
+
+function normalizeEmailList_(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map(function (e) { return String(e || "").trim(); }).filter(Boolean);
+  }
+  return String(raw).split(/[,;]/).map(function (e) { return e.trim(); }).filter(Boolean);
+}
+
+function jobFlowJsonResponse_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}

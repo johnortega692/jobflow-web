@@ -186,7 +186,11 @@ export function BudgetBucketsModal({
     } else {
       nextTemplates.push(entry);
     }
-    const nextLib = { ...library, bucket_templates: nextTemplates };
+    const nextLib = {
+      ...library,
+      bucket_templates: nextTemplates,
+      default_bucket_template: library.default_bucket_template || name.trim(),
+    };
     const err = await saveBudgetLibrary(userId, nextLib);
     if (err) {
       setError(err);
@@ -217,6 +221,21 @@ export function BudgetBucketsModal({
   async function setDefaultTemplate() {
     if (!templatePick) return;
     const nextLib = { ...library, default_bucket_template: templatePick };
+    const err = await saveBudgetLibrary(userId, nextLib);
+    if (err) {
+      setError(err);
+      return;
+    }
+    onLibraryChange(nextLib);
+    if (!draft.buckets.length) {
+      loadTemplate(templatePick, "replace");
+    }
+    setError(null);
+  }
+
+  async function clearDefaultTemplate() {
+    if (!library.default_bucket_template) return;
+    const nextLib = { ...library, default_bucket_template: "" };
     const err = await saveBudgetLibrary(userId, nextLib);
     if (err) setError(err);
     else onLibraryChange(nextLib);
@@ -268,8 +287,11 @@ export function BudgetBucketsModal({
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void setDefaultTemplate()}>
             Set as default
           </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void clearDefaultTemplate()}>
+            Clear default
+          </button>
           {library.default_bucket_template && (
-            <span className="muted small">Default: {library.default_bucket_template}</span>
+            <span className="muted small">Default at startup: {library.default_bucket_template}</span>
           )}
         </div>
 

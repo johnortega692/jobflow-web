@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
 import { parseSdsFilename, removeSdsPdf, uploadSdsPdf } from "../../lib/sdsFileStorage";
 import { sanitizeFinishType } from "../../lib/sdsSectionModel";
 import {
@@ -83,9 +83,9 @@ export function SdsSectionEditorModal({ title, section: initial, projectId, onSa
         <h3 id="sds-section-editor-title">{title}</h3>
         <p className="muted small">
           Enter section details once, then attach product data, SDS, warranty, LEED/HPD/EPD, test reports,
-          and maintenance PDFs. Name files like <code>PPG - Speedhide - Eggshell.pdf</code> or{" "}
-          <code>PPG - Speedhide - Eggshell - SDS.pdf</code> — the finish field stays{" "}
-          <strong>Eggshell</strong> (attachment type comes from the file you pick).
+          and maintenance PDFs. Drop a PDF onto each row or use Browse. Name files like{" "}
+          <code>PPG - Speedhide - Eggshell.pdf</code> or <code>PPG - Speedhide - Eggshell - SDS.pdf</code>{" "}
+          — the finish field stays <strong>Eggshell</strong> (attachment type comes from the row you use).
         </p>
         {error && <div className="banner banner-error">{error}</div>}
         <div className="grid-2">
@@ -188,11 +188,50 @@ function FilePickRow({
   onPick: (file: File | null) => void;
   onClear: () => void;
 }) {
+  const [dragOver, setDragOver] = useState(false);
+
+  function pickPdfFromDataTransfer(dataTransfer: DataTransfer | null) {
+    if (!dataTransfer?.files.length || busy) return;
+    const file = [...dataTransfer.files].find((f) => f.name.toLowerCase().endsWith(".pdf"));
+    if (file) onPick(file);
+  }
+
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!busy) setDragOver(true);
+  }
+
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!busy) e.dataTransfer.dropEffect = "copy";
+  }
+
+  function onDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false);
+  }
+
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    pickPdfFromDataTransfer(e.dataTransfer);
+  }
+
   return (
-    <div className="sds-file-row stack">
+    <div
+      className={`sds-file-row stack${dragOver ? " sds-file-row-dragover" : ""}${filename ? " sds-file-row-has-file" : ""}`}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <span className="muted small">{label}</span>
-      <div className="row-gap">
-        <span className="small">{filename || "—"}</span>
+      <div className="row-gap wrap sds-file-row-actions">
+        <span className="small sds-file-row-name">{filename || "Drop PDF here"}</span>
         <label className="btn btn-secondary btn-small">
           {busy ? "Uploading…" : "Browse"}
           <input
@@ -204,7 +243,7 @@ function FilePickRow({
           />
         </label>
         {filename && (
-          <button type="button" className="btn btn-ghost btn-small" onClick={onClear}>
+          <button type="button" className="btn btn-ghost btn-small" disabled={busy} onClick={onClear}>
             Clear
           </button>
         )}

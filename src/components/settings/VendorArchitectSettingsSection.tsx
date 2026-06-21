@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   emptyArchitectEntry,
@@ -11,11 +11,23 @@ import {
   parseSpreadsheetFile,
   saveContactDirectory,
 } from "../../lib/contactDirectory";
-import type { ArchitectEntry, ContactDirectorySettings, MaterialVendor } from "../../types/contactDirectory";
+import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
+import {
+  defaultContactDirectory,
+  type ArchitectEntry,
+  type ContactDirectorySettings,
+  type MaterialVendor,
+} from "../../types/contactDirectory";
+import type { SettingsSectionBindings } from "./settingsSectionTypes";
+import { SharedSettingsNotice } from "./SharedSettingsNotice";
 
 type ImportMode = "merge" | "replace";
 
-export function VendorArchitectSettingsSection() {
+export function VendorArchitectSettingsSection({
+  readOnly = false,
+  onDirtyChange,
+  onBindActions,
+}: SettingsSectionBindings) {
   const { user } = useAuth();
   const [data, setData] = useState<ContactDirectorySettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,6 +38,9 @@ export function VendorArchitectSettingsSection() {
   const [architectImportMode, setArchitectImportMode] = useState<ImportMode>("merge");
   const vendorFileRef = useRef<HTMLInputElement>(null);
   const architectFileRef = useRef<HTMLInputElement>(null);
+  const trackData = data ?? defaultContactDirectory();
+  const ready = !loading && data !== null && Boolean(user?.id);
+  const { markSaved, readBaseline, getIsDirty } = useSettingsDirtyTracker(trackData, ready, onDirtyChange);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -36,19 +51,41 @@ export function VendorArchitectSettingsSection() {
       .finally(() => setLoading(false));
   }, [user?.id]);
 
-  if (loading) return <p className="muted">Loading vendors &amp; architects…</p>;
-  if (!data || !user?.id) return null;
-
-  async function onSave(e: FormEvent) {
-    e.preventDefault();
+  const persist = useCallback(async (): Promise<boolean> => {
+    if (!user?.id || !data) return false;
     setSaving(true);
     setMessage(null);
     setError(null);
-    const err = await saveContactDirectory(user!.id, data!);
+    const err = await saveContactDirectory(user.id, data);
     setSaving(false);
-    if (err) setError(err);
-    else setMessage("Vendors and architects saved.");
+    if (err) {
+      setError(err);
+      return false;
+    }
+    markSaved();
+    setMessage("Vendors and architects saved.");
+    return true;
+  }, [data, markSaved, user?.id]);
+
+  useEffect(() => {
+    if (!ready || !onBindActions || readOnly) return;
+    onBindActions({
+      save: persist,
+      discard: () => {
+        const snapshot = readBaseline();
+        if (snapshot) setData(snapshot);
+      },
+      getIsDirty,
+    });
+  }, [ready, onBindActions, persist, readBaseline, getIsDirty, readOnly]);
+
+  async function onSave(e: FormEvent) {
+    e.preventDefault();
+    await persist();
   }
+
+  if (loading) return <p className="muted">Loading vendors &amp; architects…</p>;
+  if (!data || !user?.id) return null;
 
   async function importVendors(file: File | null) {
     if (!file) return;
@@ -126,10 +163,12 @@ export function VendorArchitectSettingsSection() {
 
   return (
     <form className="stack contact-directory-settings" onSubmit={(e) => void onSave(e)}>
+      {readOnly && <SharedSettingsNotice />}
       {(error || message) && (
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
       )}
 
+      <fieldset disabled={readOnly} className="stack settings-shared-fieldset">
       <section className="stack">
         <h2>Material vendors</h2>
         <p className="muted small">
@@ -138,6 +177,7 @@ export function VendorArchitectSettingsSection() {
           <strong>Products</strong> (same as desktop vendors.xlsx).
         </p>
 
+        {!readOnly && (
         <div className="row-gap wrap contact-import-bar">
           <label className="check">
             <input
@@ -184,6 +224,7 @@ export function VendorArchitectSettingsSection() {
           </button>
           <span className="muted small">{data.material_vendors.length} vendor(s)</span>
         </div>
+        )}
 
         <div className="paint-settings-table-wrap">
           <table className="paint-settings-table">
@@ -258,6 +299,7 @@ export function VendorArchitectSettingsSection() {
           (same as desktop architects.xlsx). Used for specifier address lookup.
         </p>
 
+        {!readOnly && (
         <div className="row-gap wrap contact-import-bar">
           <label className="check">
             <input
@@ -304,6 +346,7 @@ export function VendorArchitectSettingsSection() {
           </button>
           <span className="muted small">{data.architects.length} architect(s)</span>
         </div>
+        )}
 
         <div className="paint-settings-table-wrap">
           <table className="paint-settings-table">
@@ -358,10 +401,13 @@ export function VendorArchitectSettingsSection() {
           </table>
         </div>
       </section>
+      </fieldset>
 
+      {!readOnly && (
       <button type="submit" className="btn btn-primary" disabled={saving}>
         {saving ? "Saving…" : "Save vendors & architects"}
       </button>
+      )}
     </form>
   );
 }

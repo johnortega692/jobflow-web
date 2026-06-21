@@ -17,7 +17,11 @@ export type JobInfoData = {
   gc_fax: string;
   gc_job_number: string;
   gc_pm: string;
+  gc_pm_phone: string;
+  gc_pm_email: string;
   gc_superintendent: string;
+  gc_super_phone: string;
+  gc_super_email: string;
   gc_estimator: string;
   gc_engineer: string;
   owner_address: string;
@@ -33,6 +37,24 @@ export type JobInfoData = {
   icbi_pm: string;
   icbi_engineer: string;
   icbi_foreman: string;
+  /** PM name exactly as listed on Field Request Order → PMs sheet */
+  field_request_pm: string;
+  /** Super name exactly as listed on Field Request Order → Supers sheet */
+  field_request_super: string;
+  /** Project includes a wallcovering contract / scope */
+  has_wallcovering: boolean;
+  /** Separate job number for Wallcovering Tracker (falls back to primary job #) */
+  wc_job_number: string;
+  /** Separate job name for Wallcovering Tracker (falls back to primary job name) */
+  wc_job_name: string;
+  /** Project includes FRP scope / contract */
+  has_frp: boolean;
+  frp_job_number: string;
+  frp_job_name: string;
+  /** Project includes track scope / contract */
+  has_track: boolean;
+  track_job_number: string;
+  track_job_name: string;
 };
 
 export const JOB_TYPES = ["Commercial", "Residential"] as const;
@@ -56,7 +78,11 @@ export function defaultJobInfo(): JobInfoData {
     gc_fax: "",
     gc_job_number: "",
     gc_pm: "",
+    gc_pm_phone: "",
+    gc_pm_email: "",
     gc_superintendent: "TBD",
+    gc_super_phone: "",
+    gc_super_email: "",
     gc_estimator: "",
     gc_engineer: "",
     owner_address: "",
@@ -72,5 +98,16 @@ export function defaultJobInfo(): JobInfoData {
     icbi_pm: "",
     icbi_engineer: "",
     icbi_foreman: "",
+    field_request_pm: "",
+    field_request_super: "",
+    has_wallcovering: false,
+    wc_job_number: "",
+    wc_job_name: "",
+    has_frp: false,
+    frp_job_number: "",
+    frp_job_name: "",
+    has_track: false,
+    track_job_number: "",
+    track_job_name: "",
   };
 }

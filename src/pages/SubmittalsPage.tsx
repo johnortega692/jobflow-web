@@ -82,7 +82,7 @@ export function SubmittalsPage() {
   }
 
   async function onEditSave(row: SubmittalLogRow) {
-    await updateSubmittalLogRow(row);
+    await updateSubmittalLogRow(projectId, row);
     setEditor(null);
     setStatus(`Updated row #${row.line_number}.`);
     await reload();
@@ -94,7 +94,7 @@ export function SubmittalsPage() {
       return;
     }
     if (!window.confirm(`Delete ${selectedRows.length} row(s) from the submittal log?`)) return;
-    await deleteSubmittalLogRows(selectedRows.map((r) => r.id));
+    await deleteSubmittalLogRows(projectId, selectedRows.map((r) => r.id));
     setSelected(new Set());
     setStatus(`Deleted ${selectedRows.length} row(s).`);
     await reload();
@@ -105,7 +105,7 @@ export function SubmittalsPage() {
       setError("Select one or more rows to mark submitted.");
       return;
     }
-    await markRowsSubmitted(selectedRows, transNumber);
+    await markRowsSubmitted(projectId, selectedRows, transNumber);
     setTransPromptOpen(false);
     setTransNumber("");
     setStatus(`Marked ${selectedRows.length} row(s) submitted.`);
@@ -269,13 +269,14 @@ export function SubmittalsPage() {
                 <th>RESULT</th>
                 <th>Status</th>
                 <th>Trans #</th>
+                <th>Files</th>
                 <th>NOTES</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="muted small">
+                  <td colSpan={13} className="muted small">
                     No log rows yet. Build a PDF or click Add row.
                   </td>
                 </tr>
@@ -300,6 +301,13 @@ export function SubmittalsPage() {
                     <td>{row.result}</td>
                     <td>{row.status}</td>
                     <td>{row.transmittal_number}</td>
+                    <td className="submittal-log-files muted small" title={row.linked_files.join(", ")}>
+                      {row.linked_files.length
+                        ? row.linked_files.length === 1
+                          ? row.linked_files[0]
+                          : `${row.linked_files.length} files`
+                        : "—"}
+                    </td>
                     <td>{row.notes}</td>
                   </tr>
                 ))

@@ -1,5 +1,7 @@
-import { esc, groupByFloor, logoBlock, printHtml, type PrintBranding } from "./printCore";
+import { esc, groupByFloor, logoBlock, printHtml, projectAddressPrintHtml, type PrintBranding } from "./printCore";
+import { paintSubmittalFilename, pdfTitleFromFilename } from "./pdfFilenames";
 import { paintColorForPrint } from "./paintImageImport";
+import type { ProjectPrintInfo } from "./jobInfo";
 import type { PaintItem, PaintSubmittalData } from "../types/tradeDocuments";
 
 const SUBMITTAL_CSS = `
@@ -64,11 +66,7 @@ table tr { page-break-inside: avoid; break-inside: avoid; }
 }
 `;
 
-type ProjectInfo = {
-  job_number: string;
-  job_name: string;
-  job_address: string;
-};
+type ProjectInfo = ProjectPrintInfo;
 
 function paintTableRows(items: PaintItem[], isSub: boolean): string {
   return items
@@ -119,6 +117,7 @@ export function buildPaintSubmittalHtml(
   project: ProjectInfo,
   data: PaintSubmittalData,
   branding: PrintBranding,
+  saveFilename?: string,
 ): string {
   const isSub = data.submittal_type === "substitution";
   const groups = groupByFloor(data.items.filter((i) => i.color.trim() || i.label.trim()));
@@ -133,7 +132,9 @@ export function buildPaintSubmittalHtml(
           )
           .join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Paint Submittal</title><style>${SUBMITTAL_CSS}</style></head><body>
+  const pageTitle = pdfTitleFromFilename(saveFilename ?? "Paint_Submittal");
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(pageTitle)}</title><style>${SUBMITTAL_CSS}</style></head><body>
   <p class="no-print" style="font-family:Arial,sans-serif;font-size:11pt;margin-bottom:12px;">
     Choose <strong>Save as PDF</strong> as the printer.
   </p>
@@ -146,7 +147,7 @@ export function buildPaintSubmittalHtml(
   <div class="form-title">Submittals</div>
   <div class="project-info">
     <p class="info-row">Project: ${esc(project.job_name)}</p>
-    <p class="info-row">Address: ${esc(project.job_address)}</p>
+    ${projectAddressPrintHtml(project.job_address, project.job_address_line2)}
     <p class="info-row">Job Number: ${esc(project.job_number)}</p>
     <p class="info-row info-row-subject">Subject: ${esc(data.subject)}</p>
   </div>
@@ -168,5 +169,14 @@ export function printPaintSubmittal(
   data: PaintSubmittalData,
   branding: PrintBranding,
 ): void {
-  printHtml(buildPaintSubmittalHtml(project, data, branding));
+  const filename = paintSubmittalFilename(
+    project.job_name,
+    project.job_number,
+    data.submittal_number,
+    data.submittal_type,
+  );
+  printHtml(
+    buildPaintSubmittalHtml(project, data, branding, filename),
+    pdfTitleFromFilename(filename),
+  );
 }

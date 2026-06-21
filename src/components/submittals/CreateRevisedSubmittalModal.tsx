@@ -13,6 +13,11 @@ import {
   nextSubmittalNumber,
   type SubmittalScope,
 } from "../../lib/submittalHistory";
+import {
+  jobFullAddressLines,
+  projectPrintInfo,
+  wcPrintInfo,
+} from "../../lib/jobInfo";
 import type { PaintColorsDb, PaintProduct } from "../../lib/paintCatalog";
 import {
   emptyPaintItem,
@@ -28,12 +33,9 @@ import {
   type WallcoveringItem,
   type WallcoveringSubmittalData,
 } from "../../types/tradeDocuments";
+import type { ProjectForm } from "../../types/database";
 
-type ProjectInfo = {
-  job_number: string;
-  job_name: string;
-  job_address: string;
-};
+type ProjectInfo = Pick<ProjectForm, "job_number" | "job_name" | "job_address" | "job_address2" | "jobInfo">;
 
 type PaintCatalogProps = {
   products: PaintProduct[];
@@ -87,6 +89,14 @@ export function CreateRevisedSubmittalModal({
   const showPreviousColor = submittalType === "substitution";
   const title =
     scope === "paint" ? "Create Revised Paint Submittal" : "Create Revised Wallcovering Submittal";
+  const addressLines = useMemo(
+    () => jobFullAddressLines(project, project.jobInfo),
+    [project],
+  );
+  const printProject = useMemo(
+    () => (scope === "wallcovering" ? wcPrintInfo(project, project.jobInfo) : projectPrintInfo(project, project.jobInfo)),
+    [project, scope],
+  );
 
   useEffect(() => {
     if (scopedHistory.length) setHistoryIdx(0);
@@ -145,11 +155,7 @@ export function CreateRevisedSubmittalModal({
     void (async () => {
       try {
         const draft = buildDraft();
-        const projectInfo = {
-          job_number: project.job_number,
-          job_name: project.job_name,
-          job_address: project.job_address,
-        };
+        const projectInfo = printProject;
         if (scope === "paint") {
           printPaintSubmittal(projectInfo, draft as PaintSubmittalData, branding);
         } else {
@@ -199,12 +205,34 @@ export function CreateRevisedSubmittalModal({
       >
         <h3 id="revised-submittal-title">{title}</h3>
 
-        <section className="stack revised-section">
-          <p className="paint-col-head">Job information</p>
-          <p className="small">Job Number: {project.job_number}</p>
-          <p className="small">Job Name: {project.job_name}</p>
-          <p className="small">Job Address: {project.job_address || "—"}</p>
-        </section>
+        <div className="revised-job-info-box">
+          <p className="revised-job-info-label">Job information</p>
+          <dl className="revised-job-info-grid">
+            <div className="revised-job-info-row">
+              <dt>Job #</dt>
+              <dd>{project.job_number || "—"}</dd>
+            </div>
+            <div className="revised-job-info-row">
+              <dt>Name</dt>
+              <dd>{project.job_name || "—"}</dd>
+            </div>
+            <div className="revised-job-info-row">
+              <dt>Address</dt>
+              <dd>
+                {addressLines.length ? (
+                  addressLines.map((line, i) => (
+                    <span key={`${line}-${i}`}>
+                      {line}
+                      {i < addressLines.length - 1 ? <br /> : null}
+                    </span>
+                  ))
+                ) : (
+                  "—"
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
 
         <section className="stack revised-section">
           <p className="paint-col-head">Previous submittals</p>
@@ -278,7 +306,6 @@ export function CreateRevisedSubmittalModal({
                   index={index}
                   total={paintItems.length}
                   products={paintCatalog.products}
-                  productOptions={paintCatalog.productOptions}
                   sheenOptions={paintCatalog.sheenOptions}
                   colors={paintCatalog.colors}
                   showPreviousColor={showPreviousColor}

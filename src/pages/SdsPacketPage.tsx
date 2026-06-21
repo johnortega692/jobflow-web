@@ -3,6 +3,13 @@ import { useOutletContext } from "react-router-dom";
 import { SdsSectionEditorModal } from "../components/sds/SdsSectionEditorModal";
 import { DateInput } from "../components/DateInput";
 import { useLetterhead } from "../contexts/LetterheadContext";
+import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
+import {
+  coerceTransmittalContract,
+  hasTransmittalContractSwitch,
+  transmittalPrintInfo,
+  type TransmittalContract,
+} from "../lib/jobInfo";
 import { buildSdsPacketPdf, downloadPdfBytes, type BuildProgress } from "../lib/sdsPacketBuild";
 import {
   SDS_ATTACHMENT_KINDS,
@@ -56,9 +63,14 @@ export function SdsPacketPage() {
   useEffect(() => {
     if (!loading) {
       const base = applySdsProfileDefaults(normalizeSdsPacket(tradeData.sds_packet), profile);
-      setDraft(base);
+      setDraft({
+        ...base,
+        contract: coerceTransmittalContract(project, base.contract),
+      });
     }
-  }, [loading, tradeData.sds_packet, profile]);
+  }, [loading, tradeData.sds_packet, profile, project]);
+
+  const showContractSwitch = hasTransmittalContractSwitch(project);
 
   const selectedIndices = useMemo(() => {
     const idToIndex = new Map(draft.sections.map((s, i) => [s.id, i]));
@@ -143,7 +155,7 @@ export function SdsPacketPage() {
       setError("No products found to import from paint.");
       return;
     }
-    mergeImportedSections(imported);
+    mergeImportedSections(imported, "paint");
   }
 
   function importFromWallcovering() {
@@ -157,11 +169,15 @@ export function SdsPacketPage() {
       setError("No products found to import from wallcovering.");
       return;
     }
-    mergeImportedSections(imported);
+    mergeImportedSections(imported, "wallcovering");
   }
 
-  function mergeImportedSections(imported: SdsSection[]) {
-    setDraft((d) => ({ ...d, sections: [...d.sections, ...imported] }));
+  function mergeImportedSections(imported: SdsSection[], contract?: TransmittalContract) {
+    setDraft((d) => ({
+      ...d,
+      sections: [...d.sections, ...imported],
+      ...(contract && showContractSwitch ? { contract } : {}),
+    }));
     setError(null);
   }
 
@@ -214,7 +230,10 @@ export function SdsPacketPage() {
 
   async function onSave() {
     const ok = await save({ ...tradeData, sds_packet: draft });
-    if (ok) setError(null);
+    if (ok) {
+      setError(null);
+      setSuccess("Submittal package saved.");
+    }
   }
 
   async function onBuild() {
@@ -227,12 +246,12 @@ export function SdsPacketPage() {
       const ok = await save(nextTrade);
       if (!ok) return;
 
-      const outputName = sdsPacketOutputName(project.job_name, project.job_number, draft);
+      const outputName = sdsPacketOutputName(packageJob.job_name, packageJob.job_number, draft);
       const bytes = await buildSdsPacketPdf(
         {
-          job_name: project.job_name,
-          job_number: project.job_number,
-          job_address: project.job_address ?? "",
+          job_name: packageJob.job_name,
+          job_number: packageJob.job_number,
+          job_address: jobFullAddressOneLine(project, project.jobInfo),
         },
         draft,
         branding,
@@ -266,9 +285,14 @@ export function SdsPacketPage() {
   const sectionCountLabel =
     draft.sections.length === 1 ? "1 section" : `${draft.sections.length} sections`;
 
+  const packageJob = useMemo(
+    () => transmittalPrintInfo(project, draft.contract),
+    [project, draft.contract],
+  );
+
   const outputFilename = useMemo(
-    () => sdsPacketOutputName(project.job_name, project.job_number, draft),
-    [project.job_name, project.job_number, draft],
+    () => sdsPacketOutputName(packageJob.job_name, packageJob.job_number, draft),
+    [packageJob.job_name, packageJob.job_number, draft],
   );
 
   if (loading) return <p className="muted">Loading submittal package…</p>;
@@ -278,13 +302,8 @@ export function SdsPacketPage() {
       <div className="row-between">
         <div>
           <h2>Submittal package</h2>
-          <p className="muted small">
-            Build a combined PDF for any product type — paint, wallcovering, panels, flooring,
-            closeout docs, and more. Includes cover, product summary, section dividers, and
-            manufacturer attachments.
-          </p>
         </div>
-        <div className="row-gap">
+        <div className="row-gap wrap">
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
             {saving ? "Saving…" : "Save"}
           </button>
@@ -294,7 +313,7 @@ export function SdsPacketPage() {
             disabled={building || !draft.sections.length}
             onClick={() => void onBuild()}
           >
-            {building ? "Building…" : "Download packet PDF"}
+            {building ? "Building…" : "Packet PDF"}
           </button>
         </div>
       </div>
@@ -375,6 +394,14 @@ export function SdsPacketPage() {
 
       <div className="card stack">
         <h3>Cover &amp; project info</h3>
+        {showContractSwitch && (
+          <TradeContractTabs
+            project={project}
+            value={draft.contract}
+            onChange={(contract) => setDraft({ ...draft, contract })}
+            showJobLabel
+          />
+        )}
         <div className="stack sds-cover-fields">
           <label>
             Packet type

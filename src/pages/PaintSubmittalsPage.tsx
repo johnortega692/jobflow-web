@@ -19,9 +19,12 @@ import {
   type PaintProduct,
 } from "../lib/paintCatalog";
 import { copyBrushoutsRow, sendToBrushoutsTracker } from "../lib/paintBrushouts";
+import { fieldRequestOrderUrl } from "../lib/fieldRequestOrderSync";
 import type { ExtractedPaintRow } from "../lib/paintImageImport";
+import { applyTransmittalContractIfDistinct, projectPrintInfo } from "../lib/jobInfo";
 import { printPaintSubmittal } from "../lib/paintSubmittalPrint";
-import { syncSubmittalOrderedToSheets } from "../lib/paintSheetsSync";
+import { paintSubmittalFilename } from "../lib/pdfFilenames";
+import { patchPaintTrackerSubmittalOrdered } from "../lib/fieldTrackerProject";
 import {
   addSubmittalToHistory,
   removeSubmittalFromHistory,
@@ -53,6 +56,10 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
   const [row] = next.splice(from, 1);
   next.splice(to, 0, row!);
   return next;
+}
+
+function paintItemHasContent(item: PaintItem): boolean {
+  return Boolean(item.label.trim() || item.color.trim() || item.product.trim());
 }
 
 export function PaintSubmittalsPage() {
@@ -89,7 +96,12 @@ export function PaintSubmittalsPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const [p, s, c] = await Promise.all([loadPaintProducts(), loadPaintSheens(), loadPaintColors()]);
+        const uid = user?.id ?? null;
+        const [p, s, c] = await Promise.all([
+          loadPaintProducts(uid),
+          loadPaintSheens(uid),
+          loadPaintColors(),
+        ]);
         if (!cancelled) {
           setProducts(p);
           setSheens(s);
@@ -104,7 +116,7 @@ export function PaintSubmittalsPage() {
     return () => {
       cancelled = true;
     };
-  }, [setError]);
+  }, [setError, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -144,7 +156,7 @@ export function PaintSubmittalsPage() {
     }));
   }
 
-  function onImported(rows: ExtractedPaintRow[], mode: "replace" | "append") {
+  function onImported(rows: ExtractedPaintRow[]) {
     const mapped: PaintItem[] = rows.map((r) => ({
       label: r.label,
       floor: r.floor,
@@ -154,15 +166,14 @@ export function PaintSubmittalsPage() {
       sheen: r.sheen,
       previous_color: "",
     }));
-    setDraft((d) => ({
-      ...d,
-      items:
-        mode === "append"
-          ? [...d.items.filter((i) => i.label || i.color || i.product), ...mapped]
-          : mapped.length
-            ? mapped
-            : [emptyPaintItem()],
-    }));
+    setDraft((d) => {
+      const existing = d.items.filter(paintItemHasContent);
+      const merged = [...existing, ...mapped];
+      return {
+        ...d,
+        items: merged.length ? merged : [emptyPaintItem()],
+      };
+    });
     setError(null);
   }
 
@@ -192,15 +203,7 @@ export function PaintSubmittalsPage() {
 
   async function onPrint() {
     try {
-      printPaintSubmittal(
-        {
-          job_number: project.job_number,
-          job_name: project.job_name,
-          job_address: project.job_address ?? "",
-        },
-        draft,
-        branding,
-      );
+      printPaintSubmittal(projectPrintInfo(project, project.jobInfo), draft, branding);
       const nextHistory = addSubmittalToHistory(
         history,
         draft.submittal_number,
@@ -223,13 +226,14 @@ export function PaintSubmittalsPage() {
       } catch {
         /* log row optional */
       }
-      const transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
+      let transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
         submittal_type: "Color Samples",
         scope: "Paint",
         source: "paint_submittal",
         trade_submittal_number: String(draft.submittal_number),
         log_row_id: logRowId,
       });
+      transmittal = applyTransmittalContractIfDistinct(project, transmittal, "paint");
       await save({
         ...tradeData,
         paint_submittal: draft,
@@ -265,13 +269,13 @@ export function PaintSubmittalsPage() {
     setBrushoutsBusy(true);
     try {
       await sendToBrushoutsTracker(
-        userSettings?.google_urls.brushouts_tracker,
+        fieldRequestOrderUrl(userSettings?.google_urls ?? {}),
         project.job_number,
         project.job_name,
         paintVendor,
         draft.items,
       );
-      setStatus("Paint data sent to BrushOuts tracker.");
+      setStatus("Brush outs pushed to Field Request sheet.");
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "BrushOuts send failed");
@@ -285,12 +289,11 @@ export function PaintSubmittalsPage() {
     setDraft(next);
     const ok = await persist(next, history);
     if (!ok) return;
-    const sheetsUrl =
-      userSettings?.google_urls.job_manager ?? userSettings?.google_urls.paint_tracker;
-    if (sheetsUrl && project.job_number.trim()) {
-      const syncErr = await syncSubmittalOrderedToSheets(sheetsUrl, project.job_number, checked);
-      if (syncErr) setStatus(`Saved locally. Sheets sync: ${syncErr}`);
-      else setStatus(checked ? "Submittal marked ordered (Paint Tracker updated)." : "Submittal ordered cleared.");
+    const trackerErr = await patchPaintTrackerSubmittalOrdered(projectId, checked);
+    if (trackerErr) {
+      setStatus(`Saved submittal. Paint tracker update failed: ${trackerErr}`);
+    } else {
+      setStatus(checked ? "Submittal marked ordered." : "Submittal ordered cleared.");
     }
   }
 
@@ -305,13 +308,20 @@ export function PaintSubmittalsPage() {
     const next = { ...draft, submittal_ordered: true };
     setDraft(next);
     await persist(next, history);
-    const sheetsUrl =
-      userSettings?.google_urls.job_manager ?? userSettings?.google_urls.paint_tracker;
-    if (sheetsUrl && project.job_number.trim()) {
-      await syncSubmittalOrderedToSheets(sheetsUrl, project.job_number, true);
-    }
+    await patchPaintTrackerSubmittalOrdered(projectId, true);
     setEmailOpen(false);
   }
+
+  const submittalPdfFilename = useMemo(
+    () =>
+      paintSubmittalFilename(
+        project.job_name,
+        project.job_number,
+        draft.submittal_number,
+        draft.submittal_type,
+      ),
+    [project.job_name, project.job_number, draft.submittal_number, draft.submittal_type],
+  );
 
   if (loading) return <p className="muted">Loading paint submittal…</p>;
 
@@ -335,10 +345,14 @@ export function PaintSubmittalsPage() {
         </div>
       </div>
 
+      <p className="sds-filename-preview muted small">
+        PDF filename: <code>{submittalPdfFilename}</code>
+      </p>
+
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
 
-      <section className="card row-gap wrap paint-action-row">
+      <section className="card paint-action-row">
         <button
           type="button"
           className="btn btn-warning"
@@ -350,38 +364,62 @@ export function PaintSubmittalsPage() {
         <button type="button" className="btn btn-secondary" onClick={() => void onCopyBrushouts()}>
           Copy
         </button>
-        <label className="paint-vendor-select">
-          Paint vendor
-          <select
-            value={paintVendor}
-            onChange={(e) => setDraft((d) => ({ ...d, paint_vendor: e.target.value }))}
-          >
-            {PAINT_VENDOR_OPTIONS.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
+        <select
+          className="paint-vendor-inline-select"
+          value={paintVendor}
+          aria-label="Paint vendor"
+          onChange={(e) => setDraft((d) => ({ ...d, paint_vendor: e.target.value }))}
+        >
+          {PAINT_VENDOR_OPTIONS.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+        <span className="paint-action-sep" aria-hidden="true" />
+        <button type="button" className="btn btn-secondary" onClick={() => setEmailOpen(true)}>
+          Email vendor
+        </button>
+        <label className="check paint-action-check">
+          <input
+            type="checkbox"
+            checked={Boolean(draft.submittal_ordered)}
+            onChange={(e) => void onSubmittalOrderedChange(e.target.checked)}
+          />
+          Ordered
         </label>
+        <span className="paint-action-sep" aria-hidden="true" />
+        <button type="button" className="btn btn-secondary" onClick={() => setPrepOpen(true)}>
+          Import Prep List
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
+          History
+        </button>
         {draft.brushout_prep?.prep_id && (
-          <span className="muted small">
+          <span className="muted small paint-action-linked">
             Linked prep: {draft.brushout_prep.prep_id}
             {draft.brushout_prep.site_location ? ` · ${draft.brushout_prep.site_location}` : ""}
           </span>
         )}
       </section>
 
-      <section className="card stack">
-        <div className="grid-3">
-          <label>
-            Submittal #
-            <input
-              type="number"
-              min={1}
-              value={draft.submittal_number}
-              onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
-            />
-          </label>
+      <div className="grid-2 paint-submittal-intro-grid">
+        <section className="card stack">
+          <div className="grid-2">
+            <label>
+              Submittal #
+              <input
+                type="number"
+                min={1}
+                value={draft.submittal_number}
+                onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
+              />
+            </label>
+            <label>
+              Date
+              <DateInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })} />
+            </label>
+          </div>
           <label>
             Type
             <select
@@ -396,25 +434,23 @@ export function PaintSubmittalsPage() {
             </select>
           </label>
           <label>
-            Date
-            <DateInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })} />
+            Subject
+            <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
           </label>
-        </div>
-        <label>
-          Subject
-          <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
-        </label>
-      </section>
+        </section>
 
-      <PaintImageImport onImported={onImported} />
+        <PaintImageImport onImported={onImported} />
+      </div>
 
       <section className="card stack paint-items-section">
         <div className="row-between paint-items-toolbar">
           <div>
             <h3>Paint items</h3>
             <p className="muted small paint-lookup-hint">
-              Color lookup: type a color number and press <kbd>Enter</kbd> or <kbd>Tab</kbd> to look up and
-              fill the name.
+              Color lookup searches <code>paint_colors.json</code> only (not the product field).
+              Type a color <strong>number</strong> or name (e.g. <code>SW7004</code> or{" "}
+              <code>7004</code>), then press <kbd>Enter</kbd>, <kbd>Tab</kbd>, or click{" "}
+              <strong>Lookup</strong> to pick from the list.
             </p>
           </div>
           <div className="paint-add-buttons">
@@ -452,7 +488,6 @@ export function PaintSubmittalsPage() {
               index={index}
               total={draft.items.length}
               products={products}
-              productOptions={productOptions}
               sheenOptions={sheens}
               colors={colors}
               showPreviousColor={showPreviousColor}
@@ -474,30 +509,9 @@ export function PaintSubmittalsPage() {
         </div>
       </section>
 
-      <section className="card row-between wrap paint-bottom-actions">
-        <div className="row-gap wrap">
-          <button type="button" className="btn btn-secondary" onClick={() => setEmailOpen(true)}>
-            Email vendor
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setPrepOpen(true)}>
-            Import brush-out prep…
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
-            Submittal history…
-          </button>
-        </div>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={Boolean(draft.submittal_ordered)}
-            onChange={(e) => void onSubmittalOrderedChange(e.target.checked)}
-          />
-          Submittal ordered
-        </label>
-      </section>
-
       {bulkOpen && (
         <PaintBulkAddModal
+          products={products}
           productOptions={productOptions}
           sheenOptions={sheens}
           onAdd={(items) =>
@@ -530,6 +544,8 @@ export function PaintSubmittalsPage() {
             job_number: project.job_number,
             job_name: project.job_name,
             job_address: project.job_address ?? "",
+            job_address2: project.job_address2 ?? "",
+            jobInfo: project.jobInfo,
           }}
           history={history}
           branding={branding}
@@ -559,6 +575,7 @@ export function PaintSubmittalsPage() {
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
           fromEmail={branding.signerEmail}
+          fromName={branding.companyName}
           jobSuper={project.jobInfo?.gc_superintendent}
           onClose={() => {
             setEmailOpen(false);

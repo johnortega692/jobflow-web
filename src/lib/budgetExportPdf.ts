@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
-import { exportFilename } from "./budgetPdfParse";
+import { budgetHoursPdfFilename, budgetPdfFilename } from "./pdfFilenames";
 import {
   bucketDisplay,
   buildHoursExportRows,
@@ -152,7 +152,11 @@ function drawTable(
   }
 }
 
-export async function downloadBudgetPdf(data: BudgetMakerData, lib: BudgetLibrary): Promise<void> {
+export async function downloadBudgetPdf(
+  data: BudgetMakerData,
+  lib: BudgetLibrary,
+  jobNumber = "",
+): Promise<void> {
   const metrics = computeSummaryMetrics(data.lines, data.grand_total);
   const footer = exportFooterText(
     metrics.budgetTotal,
@@ -213,10 +217,17 @@ export async function downloadBudgetPdf(data: BudgetMakerData, lib: BudgetLibrar
   page.drawText("Bucket Totals", { x: margin, y: page.getHeight() - margin - 12, size: 11, font: bold });
   drawTable(doc, page, true, margin, font, bold, 7, totalCols, totalRows, TOTAL_WEIGHTS);
 
-  downloadPdfBytes(await doc.save(), exportFilename("budget", "pdf", data.job_name));
+  downloadPdfBytes(
+    await doc.save(),
+    budgetPdfFilename(data.job_name, jobNumber),
+  );
 }
 
-export async function downloadHoursPdf(data: BudgetMakerData, lib: BudgetLibrary): Promise<void> {
+export async function downloadHoursPdf(
+  data: BudgetMakerData,
+  lib: BudgetLibrary,
+  jobNumber = "",
+): Promise<void> {
   const { rows, totalHours, totalMaterial } = buildHoursExportRows(data, lib);
   const columns = ["Cost Code", "Work Item", "Hours", "Amount", "Total Hours"];
   const tableRows = rows.map((r) => [r.costCode, r.workItem, r.hours, r.amount, ""]);
@@ -245,5 +256,8 @@ export async function downloadHoursPdf(data: BudgetMakerData, lib: BudgetLibrary
     totalRow,
   });
 
-  downloadPdfBytes(await doc.save(), exportFilename("hours", "pdf", data.job_name));
+  downloadPdfBytes(
+    await doc.save(),
+    budgetHoursPdfFilename(data.job_name, jobNumber),
+  );
 }

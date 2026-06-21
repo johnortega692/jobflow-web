@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { createExtractPaintMiddleware } from "./api/extractPaintDev";
+import { createRfiAssistMiddleware } from "./api/rfiAssistDev";
 import { createBrushoutsMiddleware } from "./api/brushoutsDev";
 import { createGoogleSheetsMiddleware } from "./api/googleSheetsDev";
 import { createSendVendorEmailMiddleware } from "./api/sendVendorEmailDev";
@@ -30,6 +31,7 @@ export default defineConfig(({ mode }) => {
         name: "extract-paint-api",
         configureServer(server) {
           server.middlewares.use(createExtractPaintMiddleware());
+          server.middlewares.use(createRfiAssistMiddleware());
           server.middlewares.use(createBrushoutsMiddleware());
           server.middlewares.use(createGoogleSheetsMiddleware());
           server.middlewares.use(createSendVendorEmailMiddleware());

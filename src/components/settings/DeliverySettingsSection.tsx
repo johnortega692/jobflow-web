@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   DEFAULT_DELIVERY_SCHEDULING,
@@ -6,14 +6,23 @@ import {
   saveDeliverySettings,
   type DeliverySchedulingSettings,
 } from "../../lib/deliverySettings";
+import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
+import type { SettingsSectionBindings } from "./settingsSectionTypes";
+import { SharedSettingsNotice } from "./SharedSettingsNotice";
 
-export function DeliverySettingsSection() {
+export function DeliverySettingsSection({
+  readOnly = false,
+  onDirtyChange,
+  onBindActions,
+}: SettingsSectionBindings) {
   const { user } = useAuth();
   const [data, setData] = useState<DeliverySchedulingSettings>(DEFAULT_DELIVERY_SCHEDULING);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const ready = !loading && Boolean(user?.id);
+  const { markSaved, readBaseline, getIsDirty } = useSettingsDirtyTracker(data, ready, onDirtyChange);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -24,26 +33,49 @@ export function DeliverySettingsSection() {
       .finally(() => setLoading(false));
   }, [user?.id]);
 
-  if (loading) return <p className="muted">Loading delivery settings…</p>;
-  if (!user?.id) return null;
-
-  async function onSave(e: FormEvent) {
-    e.preventDefault();
+  const persist = useCallback(async (): Promise<boolean> => {
+    if (!user?.id) return false;
     setSaving(true);
     setMessage(null);
     setError(null);
-    const err = await saveDeliverySettings(user!.id, data);
+    const err = await saveDeliverySettings(user.id, data);
     setSaving(false);
-    if (err) setError(err);
-    else setMessage("Delivery address and warehouse info saved.");
+    if (err) {
+      setError(err);
+      return false;
+    }
+    markSaved();
+    setMessage("Delivery address and warehouse info saved.");
+    return true;
+  }, [data, markSaved, user?.id]);
+
+  useEffect(() => {
+    if (!ready || !onBindActions || readOnly) return;
+    onBindActions({
+      save: persist,
+      discard: () => {
+        const snapshot = readBaseline();
+        if (snapshot) setData(snapshot);
+      },
+      getIsDirty,
+    });
+  }, [ready, onBindActions, persist, readBaseline, getIsDirty, readOnly]);
+
+  async function onSave(e: FormEvent) {
+    e.preventDefault();
+    await persist();
   }
 
   function patch(partial: Partial<DeliverySchedulingSettings>) {
     setData((d) => ({ ...d, ...partial }));
   }
 
+  if (loading) return <p className="muted">Loading delivery settings…</p>;
+  if (!user?.id) return null;
+
   return (
     <form className="stack delivery-settings" onSubmit={(e) => void onSave(e)}>
+      {readOnly && <SharedSettingsNotice />}
       <div>
         <h2>Order forms — delivery &amp; warehouse</h2>
         <p className="muted small">
@@ -56,6 +88,7 @@ export function DeliverySettingsSection() {
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
       )}
 
+      <fieldset disabled={readOnly} className="stack settings-shared-fieldset">
       <label>
         Default delivery address
         <input
@@ -131,12 +164,15 @@ export function DeliverySettingsSection() {
           onChange={(e) => patch({ closing_note: e.target.value })}
         />
       </label>
+      </fieldset>
 
+      {!readOnly && (
       <div className="row-gap">
         <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Save delivery settings"}
         </button>
       </div>
+      )}
     </form>
   );
 }

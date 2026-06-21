@@ -1,3 +1,5 @@
+import { sanitizeFilenamePart } from "./sdsPacketPresets";
+
 export const TRANSMITTAL_PREFIX = "TR-";
 
 /** Format sequence as TR-001, TR-002, … */
@@ -25,3 +27,5 @@ export function normalizeTransmittalNumber(value: string | number | null | undef
 export function nextTransmittalNumber(value: string | number | null | undefined): string {
   return formatTransmittalNumber(parseTransmittalNumber(value) + 1);
 }
+
+export { transmittalFilename } from "./pdfFilenames";

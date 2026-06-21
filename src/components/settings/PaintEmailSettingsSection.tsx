@@ -1,7 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
-import { patchUserSettings } from "../../lib/budgetLibrary";
+import { patchOrgSettings, patchUserSettings } from "../../lib/budgetLibrary";
 import { buildEmailSignatureHtml, SIGNATURE_FONT_SIZE_OPTIONS, SIGNATURE_LINE_COUNT } from "../../lib/emailSignature";
 import type { SignatureLineStyle } from "../../lib/emailSignature";
 import {
@@ -10,6 +10,25 @@ import {
   type SuperEmail,
 } from "../../lib/paintUserSettings";
 import type { PaintVendor } from "../../lib/paintVendorEmail";
+import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
+import {
+  loadProjectsForFollowUpReminders,
+  sendFollowUpReminder,
+  type FollowUpReminderKind,
+} from "../../lib/trackerFollowUpReminders";
+import {
+  loadProjectsForWeeklyDigest,
+  sendWeeklyTrackerDigest,
+  type WeeklyDigestKind,
+} from "../../lib/trackerWeeklyDigest";
+import type { LetterheadSettings } from "../../types/letterheadSettings";
+import {
+  DEFAULT_TRACKER_EMAIL_SCHEDULE,
+  TRACKER_CRON_UTC_SCHEDULE,
+  type TrackerEmailSchedule,
+} from "../../lib/trackerEmailSchedule";
+import type { SettingsSectionBindings } from "./settingsSectionTypes";
+import { SharedSettingsNotice } from "./SharedSettingsNotice";
 
 function emptyVendor(): PaintVendor {
   return { name: "", brand: "PPG", vendor_email: "", store_email: "" };
@@ -19,7 +38,330 @@ function emptySuper(): SuperEmail {
   return { name: "", email: "" };
 }
 
-export function PaintEmailSettingsSection() {
+function WeeklyDigestSection({
+  data,
+  letterhead,
+  brandingCompanyName,
+}: {
+  data: PaintUserSettings;
+  letterhead: LetterheadSettings;
+  brandingCompanyName: string;
+}) {
+  const [digestSending, setDigestSending] = useState<WeeklyDigestKind | null>(null);
+  const [digestMessage, setDigestMessage] = useState<string | null>(null);
+  const [digestError, setDigestError] = useState<string | null>(null);
+
+  const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
+  const primaryEmail = data.notification_primary_email.trim();
+  const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
+
+  async function sendDigest(kind: WeeklyDigestKind) {
+    setDigestSending(kind);
+    setDigestMessage(null);
+    setDigestError(null);
+
+    if (!gasUrl) {
+      setDigestError("Set Dashboard Web App URL in Settings → Google Sheets.");
+      setDigestSending(null);
+      return;
+    }
+    if (!primaryEmail) {
+      setDigestError("Set primary notification email above.");
+      setDigestSending(null);
+      return;
+    }
+
+    try {
+      const { projects, error } = await loadProjectsForWeeklyDigest();
+      if (error) throw new Error(error);
+      await sendWeeklyTrackerDigest({
+        kind,
+        projects,
+        primaryEmail,
+        primaryName: data.notification_primary_name || data.user_name,
+        superEmails: data.super_emails,
+        companyName,
+        companyAddress: letterhead.company_address,
+        fromName: `${companyName} Dashboard`.trim(),
+        gasUrl,
+        logoUrl: letterhead.logo_url,
+      });
+      setDigestMessage(
+        kind === "combined"
+          ? "Combined weekly submittal digest sent."
+          : "Wallcovering weekly digest sent.",
+      );
+    } catch (e) {
+      setDigestError(e instanceof Error ? e.message : "Could not send digest.");
+    } finally {
+      setDigestSending(null);
+    }
+  }
+
+  return (
+    <section className="stack">
+      <h2>Weekly digests</h2>
+      <p className="muted small">
+        Build a status email from all jobs in JobFlow and send now via Gmail. Same recipients as tracker
+        notifications (primary To, supers CC).
+      </p>
+      {(digestError || digestMessage) && (
+        <div className={`banner ${digestError ? "banner-error" : "banner-ok"}`}>
+          {digestError ?? digestMessage}
+        </div>
+      )}
+      <div className="row-gap wrap">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={digestSending !== null}
+          onClick={() => void sendDigest("combined")}
+        >
+          {digestSending === "combined" ? "Sending…" : "Send combined paint + WC digest"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={digestSending !== null}
+          onClick={() => void sendDigest("wallcovering")}
+        >
+          {digestSending === "wallcovering" ? "Sending…" : "Send wallcovering digest only"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function FollowUpRemindersSection({
+  data,
+  letterhead,
+  brandingCompanyName,
+}: {
+  data: PaintUserSettings;
+  letterhead: LetterheadSettings;
+  brandingCompanyName: string;
+}) {
+  const [sending, setSending] = useState<FollowUpReminderKind | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
+  const primaryEmail = data.notification_primary_email.trim();
+  const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
+
+  async function sendReminder(kind: FollowUpReminderKind) {
+    setSending(kind);
+    setStatus(null);
+    setStatusError(null);
+
+    if (!gasUrl) {
+      setStatusError("Set Dashboard Web App URL in Settings → Google Sheets.");
+      setSending(null);
+      return;
+    }
+    if (!primaryEmail) {
+      setStatusError("Set primary notification email above.");
+      setSending(null);
+      return;
+    }
+
+    try {
+      const { projects, error } = await loadProjectsForFollowUpReminders();
+      if (error) throw new Error(error);
+      await sendFollowUpReminder({
+        kind,
+        projects,
+        primaryEmail,
+        primaryName: data.notification_primary_name || data.user_name,
+        superEmails: data.super_emails,
+        companyName,
+        companyAddress: letterhead.company_address,
+        fromName: `${companyName} Dashboard`.trim(),
+        gasUrl,
+        logoUrl: letterhead.logo_url,
+      });
+      const labels: Record<FollowUpReminderKind, string> = {
+        paint: "Paint follow-up reminder",
+        wallcovering: "Wallcovering follow-up reminder",
+        installs: "Upcoming installations reminder",
+      };
+      setStatus(`${labels[kind]} sent.`);
+    } catch (e) {
+      setStatusError(e instanceof Error ? e.message : "Could not send reminder.");
+    } finally {
+      setSending(null);
+    }
+  }
+
+  return (
+    <section className="stack">
+      <h2>Follow-up &amp; install reminders</h2>
+      <p className="muted small">
+        Daily-style reminders from follow-up dates on paint tracker and wallcovering lines, plus upcoming
+        install dates (next 14 days). Sends only when there is something due or upcoming.
+      </p>
+      {(statusError || status) && (
+        <div className={`banner ${statusError ? "banner-error" : "banner-ok"}`}>
+          {statusError ?? status}
+        </div>
+      )}
+      <div className="row-gap wrap">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={sending !== null}
+          onClick={() => void sendReminder("paint")}
+        >
+          {sending === "paint" ? "Sending…" : "Send paint follow-up reminder"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={sending !== null}
+          onClick={() => void sendReminder("wallcovering")}
+        >
+          {sending === "wallcovering" ? "Sending…" : "Send wallcovering follow-up reminder"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={sending !== null}
+          onClick={() => void sendReminder("installs")}
+        >
+          {sending === "installs" ? "Sending…" : "Send upcoming install reminder"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ScheduledEmailSection({
+  schedule,
+  onChange,
+}: {
+  schedule: TrackerEmailSchedule;
+  onChange: (next: TrackerEmailSchedule) => void;
+}) {
+  function patchSchedule(patch: Partial<TrackerEmailSchedule>) {
+    onChange({ ...schedule, ...patch });
+  }
+
+  function patchDaily(patch: Partial<TrackerEmailSchedule["daily"]>) {
+    onChange({ ...schedule, daily: { ...schedule.daily, ...patch } });
+  }
+
+  function patchWeekly(patch: Partial<TrackerEmailSchedule["weekly"]>) {
+    onChange({ ...schedule, weekly: { ...schedule.weekly, ...patch } });
+  }
+
+  return (
+    <section className="stack">
+      <h2>Scheduled emails (automatic)</h2>
+      <p className="muted small">
+        Replaces Google Apps Script time-driven triggers. When enabled, Vercel runs the same emails as the
+        manual buttons above on a fixed UTC schedule. Requires{" "}
+        <strong>SUPABASE_SERVICE_ROLE_KEY</strong> and <strong>CRON_SECRET</strong> on Vercel (see DEPLOY.md).
+      </p>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={schedule.enabled}
+          onChange={(e) => patchSchedule({ enabled: e.target.checked })}
+        />
+        Enable automatic tracker emails for my account
+      </label>
+      <label>
+        Timezone for &quot;due today&quot; follow-ups
+        <input
+          value={schedule.timezone}
+          onChange={(e) => patchSchedule({ timezone: e.target.value })}
+          placeholder={DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone}
+        />
+      </label>
+
+      <div className="stack">
+        <h3 className="paint-col-head">Daily follow-ups</h3>
+        <p className="muted small">{TRACKER_CRON_UTC_SCHEDULE.daily}</p>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={schedule.daily.enabled}
+            onChange={(e) => patchDaily({ enabled: e.target.checked })}
+          />
+          Send daily follow-up / install reminders
+        </label>
+        <div className="row-gap wrap">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={schedule.daily.paint_followup}
+              disabled={!schedule.daily.enabled}
+              onChange={(e) => patchDaily({ paint_followup: e.target.checked })}
+            />
+            Paint follow-ups
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={schedule.daily.wallcovering_followup}
+              disabled={!schedule.daily.enabled}
+              onChange={(e) => patchDaily({ wallcovering_followup: e.target.checked })}
+            />
+            Wallcovering follow-ups
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={schedule.daily.installs}
+              disabled={!schedule.daily.enabled}
+              onChange={(e) => patchDaily({ installs: e.target.checked })}
+            />
+            Upcoming installs (14 days)
+          </label>
+        </div>
+      </div>
+
+      <div className="stack">
+        <h3 className="paint-col-head">Weekly digest (Fridays)</h3>
+        <p className="muted small">{TRACKER_CRON_UTC_SCHEDULE.weekly}</p>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={schedule.weekly.enabled}
+            onChange={(e) => patchWeekly({ enabled: e.target.checked })}
+          />
+          Send weekly submittal digests
+        </label>
+        <div className="row-gap wrap">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={schedule.weekly.combined_digest}
+              disabled={!schedule.weekly.enabled}
+              onChange={(e) => patchWeekly({ combined_digest: e.target.checked })}
+            />
+            Combined paint + wallcovering digest
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={schedule.weekly.wallcovering_digest}
+              disabled={!schedule.weekly.enabled}
+              onChange={(e) => patchWeekly({ wallcovering_digest: e.target.checked })}
+            />
+            Wallcovering digest only
+          </label>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function PaintEmailSettingsSection({
+  readOnly = false,
+  onDirtyChange,
+  onBindActions,
+}: SettingsSectionBindings) {
   const { user } = useAuth();
   const { settings: letterhead } = useLetterhead();
   const [data, setData] = useState<PaintUserSettings | null>(null);
@@ -27,6 +369,9 @@ export function PaintEmailSettingsSection() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const trackData = data;
+  const ready = !loading && data !== null && Boolean(user?.id);
+  const { markSaved, readBaseline, getIsDirty } = useSettingsDirtyTracker(trackData, ready, onDirtyChange);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -37,6 +382,60 @@ export function PaintEmailSettingsSection() {
       .finally(() => setLoading(false));
   }, [user?.id]);
 
+  const persist = useCallback(async (): Promise<boolean> => {
+    if (!user?.id || !data) return false;
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+
+    if (readOnly) {
+      const err = await patchUserSettings(user.id, { signature: data.signature });
+      setSaving(false);
+      if (err) {
+        setError(err);
+        return false;
+      }
+      markSaved();
+      setMessage("Email signature saved.");
+      return true;
+    }
+
+    const errOrg = await patchOrgSettings(user.id, {
+      vendors: data.vendors.filter((v) => v.vendor_email.trim()),
+      super_emails: data.super_emails.filter((s) => s.email.trim()),
+      notification_primary_email: data.notification_primary_email.trim(),
+      notification_primary_name: data.notification_primary_name.trim(),
+      default_brushout_qty: data.default_brushout_qty,
+      tracker_email_schedule: data.tracker_email_schedule,
+    });
+    if (errOrg) {
+      setSaving(false);
+      setError(errOrg);
+      return false;
+    }
+    const errSig = await patchUserSettings(user.id, { signature: data.signature });
+    setSaving(false);
+    if (errSig) {
+      setError(errSig);
+      return false;
+    }
+    markSaved();
+    setMessage("Paint & email settings saved.");
+    return true;
+  }, [data, markSaved, readOnly, user?.id]);
+
+  useEffect(() => {
+    if (!ready || !onBindActions) return;
+    onBindActions({
+      save: persist,
+      discard: () => {
+        const snapshot = readBaseline();
+        if (snapshot) setData(snapshot);
+      },
+      getIsDirty,
+    });
+  }, [ready, onBindActions, persist, readBaseline, getIsDirty]);
+
   if (loading) return <p className="muted">Loading paint &amp; email settings…</p>;
   if (!data || !user?.id) return null;
 
@@ -44,19 +443,7 @@ export function PaintEmailSettingsSection() {
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
-    if (!user?.id || !data) return;
-    setSaving(true);
-    setMessage(null);
-    setError(null);
-    const err = await patchUserSettings(user.id, {
-      vendors: data.vendors.filter((v) => v.vendor_email.trim()),
-      super_emails: data.super_emails.filter((s) => s.email.trim()),
-      default_brushout_qty: data.default_brushout_qty,
-      signature: data.signature,
-    });
-    setSaving(false);
-    if (err) setError(err);
-    else setMessage("Paint vendors, super emails, and signature saved.");
+    await persist();
   }
 
   function setVendor(i: number, patch: Partial<PaintVendor>) {
@@ -97,15 +484,22 @@ export function PaintEmailSettingsSection() {
 
   return (
     <form className="stack paint-email-settings" onSubmit={(e) => void onSave(e)}>
+      {readOnly && <SharedSettingsNotice />}
       {(error || message) && (
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
       )}
 
+      <fieldset disabled={readOnly} className="stack settings-shared-fieldset">
       <section className="stack">
         <h2>Paint vendors</h2>
         <p className="muted small">
-          Used when you click <strong>Email vendor</strong> on paint submittals. Saved to your account
-          (overrides the default vendors.json list).
+          Used when you click <strong>Email vendor</strong> on paint submittals, transmittals, and brush-out
+          requests. Saved to your account (overrides the default vendors.json list).
+        </p>
+        <p className="muted small">
+          To send from Gmail, set the <strong>Dashboard Web App URL</strong> under Settings → Google Apps Script
+          URLs (same deployment as John&apos;s Dashboard). Without it, JobFlow uses Resend when configured on the
+          server.
         </p>
         <div className="paint-settings-table-wrap">
           <table className="paint-settings-table">
@@ -169,10 +563,63 @@ export function PaintEmailSettingsSection() {
       </section>
 
       <section className="stack">
+        <h2>Paint tracker notifications</h2>
+        <p className="muted small">
+          When you save <strong>Approved</strong>, <strong>Revision</strong>, or <strong>Match existing</strong> on
+          a job&apos;s paint tracker, JobFlow sends a notification email via Gmail (Dashboard web app). Supers below
+          are CC&apos;d. Follow-up dates on trackers drive the reminder emails in the section below.
+        </p>
+        <div className="grid-2">
+          <label>
+            Primary notification email (To)
+            <input
+              type="email"
+              value={data.notification_primary_email}
+              onChange={(e) =>
+                setData((d) => (d ? { ...d, notification_primary_email: e.target.value } : d))
+              }
+              placeholder="PM / office inbox"
+            />
+          </label>
+          <label>
+            PM name (subject line)
+            <input
+              value={data.notification_primary_name}
+              onChange={(e) =>
+                setData((d) => (d ? { ...d, notification_primary_name: e.target.value } : d))
+              }
+              placeholder={data.user_name.trim() || "Project manager name"}
+            />
+          </label>
+        </div>
+      </section>
+      </fieldset>
+
+      <WeeklyDigestSection
+        data={data}
+        letterhead={letterhead}
+        brandingCompanyName={letterhead.company_name}
+      />
+
+      <FollowUpRemindersSection
+        data={data}
+        letterhead={letterhead}
+        brandingCompanyName={letterhead.company_name}
+      />
+
+      <fieldset disabled={readOnly} className="stack settings-shared-fieldset">
+      <ScheduledEmailSection
+        schedule={data.tracker_email_schedule}
+        onChange={(tracker_email_schedule) =>
+          setData((d) => (d ? { ...d, tracker_email_schedule } : d))
+        }
+      />
+
+      <section className="stack">
         <h2>Super email list (CC)</h2>
         <p className="muted small">
-          Shown as CC checkboxes when emailing a paint vendor. Job superintendent names are auto-selected
-          when they match.
+          CC on vendor emails and paint tracker notifications. Job superintendent names are auto-selected
+          when emailing vendors.
         </p>
         <div className="paint-settings-table-wrap">
           <table className="paint-settings-table">
@@ -244,13 +691,14 @@ export function PaintEmailSettingsSection() {
           />
         </label>
       </section>
+      </fieldset>
 
-      <section className="stack">
+      <section className="stack paint-email-signature-personal">
         <h2>HTML email signature</h2>
         <p className="muted small">
-          Appended to vendor brush-out emails. Logo uses your letterhead logo URL above. For custom HTML,
-          replace <code>cid:logo_image</code> with your logo URL or leave it — JobFlow substitutes the
-          letterhead logo automatically.
+          Your personal signature — appended to vendor brush-out and paint emails you send. Logo uses the
+          company letterhead logo. For custom HTML, replace <code>cid:logo_image</code> with your logo URL
+          or leave it — JobFlow substitutes the letterhead logo automatically.
         </p>
         <label className="check">
           <input
@@ -449,7 +897,7 @@ export function PaintEmailSettingsSection() {
       </section>
 
       <button type="submit" className="btn btn-primary" disabled={saving}>
-        {saving ? "Saving…" : "Save paint & email settings"}
+        {saving ? "Saving…" : readOnly ? "Save email signature" : "Save paint & email settings"}
       </button>
     </form>
   );

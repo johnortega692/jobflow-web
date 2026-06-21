@@ -11,6 +11,15 @@ import {
   type TransmittalEnclosure,
   type WallcoveringItem,
 } from "../types/tradeDocuments";
+import { esc, formatLongDate } from "./printCore";
+import {
+  buildMailtoUrl,
+  buildVendorEmlBlob,
+  copyHtmlToClipboard,
+  downloadVendorEml,
+  type AtticStockCustomItem,
+  type AtticStockPaintItem,
+} from "./paintVendorEmail";
 
 export function enclosureOutputDescription(row: TransmittalEnclosure): string {
   const base = row.description.trim();
@@ -146,6 +155,59 @@ export function refreshEnclosuresFromTradeData(
   };
 }
 
+export type AtticStockOrderResult =
+  | { ok: true; paintItems: AtticStockPaintItem[]; customItems: AtticStockCustomItem[] }
+  | { ok: false; error: string };
+
+/** Match included transmittal enclosures to paint tab items (desktop transmittal_order_attic_stock). */
+export function buildAtticStockFromTransmittal(
+  transmittal: TransmittalData,
+  tradeData: ProjectTradeData,
+): AtticStockOrderResult {
+  const includedItems: Record<string, string> = {};
+  for (const row of transmittal.enclosures) {
+    if (!row.included) continue;
+    const desc = row.description.trim();
+    if (!desc) continue;
+    includedItems[desc] = row.copies.trim() || "1";
+  }
+
+  if (!Object.keys(includedItems).length) {
+    return {
+      ok: false,
+      error:
+        "No items are selected in the transmittal. Include at least one enclosure, or use Refresh to populate from Paint/Wallcovering.",
+    };
+  }
+
+  const includePaintFloor = transmittal.include_paint_floor;
+  const paintItems: AtticStockPaintItem[] = [];
+  const matchedDescriptions = new Set<string>();
+
+  for (const item of tradeData.paint_submittal?.items ?? []) {
+    const desc = paintItemToTransmittalDescription(item, includePaintFloor);
+    if (!desc) continue;
+    if (desc in includedItems) {
+      paintItems.push({ ...item, qty: includedItems[desc]! });
+      matchedDescriptions.add(desc);
+    }
+  }
+
+  const customItems: AtticStockCustomItem[] = Object.entries(includedItems)
+    .filter(([desc]) => !matchedDescriptions.has(desc))
+    .map(([description, qty]) => ({ description, qty }));
+
+  if (!paintItems.length && !customItems.length) {
+    return {
+      ok: false,
+      error:
+        "No items in the transmittal match the current Paint tab items. Use Refresh to populate from Paint, or ensure enclosures are included.",
+    };
+  }
+
+  return { ok: true, paintItems, customItems };
+}
+
 export function addItemsFromPaintHistory(
   transmittal: TransmittalData,
   items: PaintItem[],
@@ -222,24 +284,174 @@ export function paintSheetLabel(nums: number[]): string {
   return nums.map((n) => `#${n}`).join(", ");
 }
 
+export type EmailRelayDetails = {
+  tracking?: string;
+  est_delivery?: string;
+  delivered_to?: string;
+  date_delivered?: string;
+};
+
+function emailRelayRecipientFirst(transmittal: TransmittalData): string {
+  const toName = transmittal.to_name.trim();
+  if (toName) return toName.split(/\s+/)[0]!;
+  const gc = transmittal.gc_name.trim();
+  return gc || "there";
+}
+
+function emailRelayGreeting(transmittal: TransmittalData): string {
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Hi";
+  return `${timeGreeting} ${emailRelayRecipientFirst(transmittal)},`;
+}
+
+function emailRelayActionWord(transmittal: TransmittalData): string {
+  return transmittal.delivery_method === "Hand Delivered" ? "hand delivered" : "shipped";
+}
+
+function includedEnclosureDescriptions(transmittal: TransmittalData): string[] {
+  return transmittal.enclosures
+    .filter((e) => e.included && e.description.trim())
+    .map((e) => enclosureOutputDescription(e));
+}
+
+function emailRelayDeliveryPlain(transmittal: TransmittalData, details: EmailRelayDetails): string {
+  if (transmittal.delivery_method === "Hand Delivered") {
+    const lines = ["Delivery Method: Hand Delivered"];
+    if (details.delivered_to?.trim()) lines.push(`Delivered To: ${details.delivered_to.trim()}`);
+    if (details.date_delivered?.trim()) lines.push(`Date Delivered: ${details.date_delivered.trim()}`);
+    return lines.join("\n");
+  }
+  const lines = [`Delivery Method: ${transmittal.delivery_method}`];
+  if (details.tracking?.trim()) lines.push(`Tracking Number: ${details.tracking.trim()}`);
+  if (details.est_delivery?.trim()) lines.push(`Estimated Delivery: ${details.est_delivery.trim()}`);
+  return lines.join("\n");
+}
+
+function emailRelayDeliveryHtml(transmittal: TransmittalData, details: EmailRelayDetails): string {
+  return emailRelayDeliveryPlain(transmittal, details).replace(/\n/g, "<br>");
+}
+
+export function buildEmailRelaySubject(
+  project: { job_number: string; job_name: string },
+  transmittal: TransmittalData,
+): string {
+  const submittalNo = transmittal.transmittal_number.trim() || "TR-001";
+  return `Submittal No. ${submittalNo} – ${project.job_number} – ${project.job_name}`;
+}
+
+/** Plain-text body for mailto: (no HTML support in mailto links). */
+export function buildEmailRelayPlainBody(
+  project: { job_number: string; job_name: string },
+  transmittal: TransmittalData,
+  details: EmailRelayDetails = {},
+): string {
+  const submittalNo = transmittal.transmittal_number.trim() || "TR-001";
+  const enclosures = includedEnclosureDescriptions(transmittal);
+  const encBlock = enclosures.length
+    ? enclosures.map((line) => `• ${line}`).join("\n")
+    : "(See transmittal for full enclosure list)";
+
+  return [
+    emailRelayGreeting(transmittal),
+    "",
+    `Submittal No. ${submittalNo} for ${project.job_name} has been ${emailRelayActionWord(transmittal)}.`,
+    "",
+    "The transmittal and submittal package are attached for your review.",
+    "",
+    "This submittal includes:",
+    encBlock,
+    "",
+    emailRelayDeliveryPlain(transmittal, details),
+    "",
+    "Please let me know if you need anything further.",
+    "",
+    "Thank you,",
+    "",
+  ].join("\n");
+}
+
+/** HTML body for .eml download / copy — matches desktop Outlook relay formatting. */
+export function buildEmailRelayHtmlBody(
+  project: { job_number: string; job_name: string },
+  transmittal: TransmittalData,
+  details: EmailRelayDetails = {},
+): string {
+  const submittalNo = transmittal.transmittal_number.trim() || "TR-001";
+  const enclosures = includedEnclosureDescriptions(transmittal);
+  const encSection = enclosures.length
+    ? `<ul>${enclosures.map((line) => `<li>${esc(line)}</li>`).join("")}</ul>`
+    : "<p><em>(See transmittal for full enclosure list)</em></p>";
+  const p =
+    'style="font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:0 0 12px 0;"';
+  const pTight = 'style="font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:0 0 6px 0;"';
+  const pDelivery = 'style="font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:12px 0 12px 0;"';
+
+  return [
+    `<p ${p}>${esc(emailRelayGreeting(transmittal))}</p>`,
+    `<p ${p}>Submittal No. ${esc(submittalNo)} for ${esc(project.job_name)} has been <strong>${esc(emailRelayActionWord(transmittal))}</strong>.</p>`,
+    `<p ${p}>The transmittal and submittal package are attached for your review.</p>`,
+    `<p ${pTight}><strong>This submittal includes:</strong></p>`,
+    encSection,
+    `<p ${pDelivery}>${emailRelayDeliveryHtml(transmittal, details)}</p>`,
+    `<p ${p}>Please let me know if you need anything further.</p>`,
+    `<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:0 0 0 0;">Thank you,</p>`,
+    "<br>",
+  ].join("");
+}
+
+export function defaultEmailRelayDetails(transmittal: TransmittalData): EmailRelayDetails {
+  if (transmittal.delivery_method === "Hand Delivered") {
+    return { date_delivered: formatLongDate() };
+  }
+  return {};
+}
+
+export function openEmailRelayMailto(
+  project: { job_number: string; job_name: string },
+  transmittal: TransmittalData,
+  details: EmailRelayDetails,
+): void {
+  const subject = buildEmailRelaySubject(project, transmittal);
+  const plainBody = buildEmailRelayPlainBody(project, transmittal, details);
+  window.location.href = buildMailtoUrl([], [], subject, plainBody);
+}
+
+export function downloadEmailRelayEml(
+  project: { job_number: string; job_name: string },
+  transmittal: TransmittalData,
+  details: EmailRelayDetails,
+  fromEmail = "",
+): void {
+  const subject = buildEmailRelaySubject(project, transmittal);
+  const plainBody = buildEmailRelayPlainBody(project, transmittal, details);
+  const htmlBody = `<html><body>${buildEmailRelayHtmlBody(project, transmittal, details)}</body></html>`;
+  const blob = buildVendorEmlBlob({
+    to: [],
+    cc: [],
+    subject,
+    htmlBody,
+    plainBody,
+    from: fromEmail,
+  });
+  const safeJob = `${project.job_number}_${project.job_name}`.replace(/[^\w.-]+/g, "_").slice(0, 48);
+  const safeTr = transmittal.transmittal_number.replace(/[^\w.-]+/g, "_");
+  downloadVendorEml(`Submittal_Relay_${safeJob}_${safeTr}.eml`, blob);
+}
+
+export async function copyEmailRelayHtml(
+  project: { job_number: string; job_name: string },
+  transmittal: TransmittalData,
+  details: EmailRelayDetails,
+): Promise<void> {
+  const plainBody = buildEmailRelayPlainBody(project, transmittal, details);
+  const htmlBody = `<html><body>${buildEmailRelayHtmlBody(project, transmittal, details)}</body></html>`;
+  await copyHtmlToClipboard(htmlBody, plainBody);
+}
+
+/** @deprecated Use buildEmailRelayPlainBody */
 export function buildEmailRelayBody(
   project: { job_number: string; job_name: string },
   transmittal: TransmittalData,
 ): string {
-  const enclosures = transmittal.enclosures
-    .filter((e) => e.included && e.description.trim())
-    .map((e) => `• ${enclosureOutputDescription(e)}`)
-    .join("\n");
-  return [
-    `Job: ${project.job_number} — ${project.job_name}`,
-    `Transmittal #: ${transmittal.transmittal_number}`,
-    `Delivery: ${transmittal.delivery_method}`,
-    "",
-    "Enclosures:",
-    enclosures || "(none selected)",
-    "",
-    transmittal.remarks.trim() ? `Remarks:\n${transmittal.remarks.trim()}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return buildEmailRelayPlainBody(project, transmittal);
 }

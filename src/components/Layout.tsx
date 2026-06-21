@@ -15,11 +15,14 @@ export function Layout() {
           <span className="brand-mark">JF</span>
           <div>
             <div className="brand-title">JobFlow</div>
-            <div className="brand-sub">Web preview</div>
           </div>
         </div>
         <nav className="topnav">
           <Link to="/projects">Projects</Link>
+          <Link to="/field" target="_blank" rel="noopener noreferrer">
+            Field view
+          </Link>
+          <Link to="/brush-out-request">Brush-out request</Link>
           <Link to="/settings">Settings</Link>
         </nav>
         <div className="topbar-right">

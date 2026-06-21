@@ -1,354 +1,129 @@
-import { FormEvent, useRef, useState, type ReactNode } from "react";
-import { useOutletContext } from "react-router-dom";
-import { DateInput } from "../components/DateInput";
-import { supabase } from "../lib/supabase";
-import { jobCityZipCountyLine, parseProjectDataBlob } from "../lib/jobInfo";
-import { applyProposalImportPatch, importJobInfoFromProposalPdf } from "../lib/proposalPdfImport";
+import { useEffect, useState } from "react";
+import { Link, useOutletContext } from "react-router-dom";
+import { GcContactLine } from "../components/jobinfo/GcContactLine";
+import { JobTrackerPanel } from "../components/jobinfo/JobTrackerPanel";
+import { JobInfoSetupDrawer } from "../components/jobinfo/JobInfoSetupDrawer";
+import { ProjectActivityPanel } from "../components/jobinfo/ProjectActivityPanel";
+import { ProjectStartupChecklist } from "../components/jobinfo/ProjectStartupChecklist";
+import { jobSetupStatus } from "../lib/jobInfoCompleteness";
+import {
+  frpJobLabel,
+  hasDistinctFrpContract,
+  hasDistinctTrackContract,
+  hasDistinctWcContract,
+  trackJobLabel,
+  wcTrackerJobLabel,
+} from "../lib/jobInfo";
 import type { ProjectForm } from "../types/database";
-import { JOB_COST_TYPES, JOB_TYPES, type JobInfoData } from "../types/jobInfo";
 
 type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectForm) => void };
-
-function patchJobInfo(info: JobInfoData, patch: Partial<JobInfoData>): JobInfoData {
-  return { ...info, ...patch };
-}
-
-function JobSection({ title, defaultOpen, children }: { title: string; defaultOpen?: boolean; children: ReactNode }) {
-  return (
-    <details className="job-section card stack" open={defaultOpen}>
-      <summary className="job-section-summary">
-        <h3>{title}</h3>
-      </summary>
-      {children}
-    </details>
-  );
-}
 
 export function ProjectOverviewPage() {
   const { project: initial, projectId, setProject: setProjectCtx } = useOutletContext<Ctx>();
   const [project, setProject] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [importSuccess, setImportSuccess] = useState<string | null>(null);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const proposalInputRef = useRef<HTMLInputElement>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
 
-  function setJobInfo(patch: Partial<JobInfoData>) {
-    setProject((p) => ({ ...p, jobInfo: patchJobInfo(p.jobInfo, patch) }));
-  }
+  useEffect(() => {
+    setProject(initial);
+  }, [initial]);
 
-  async function onImportProposal(file: File | null) {
-    if (!file) return;
-    setImporting(true);
-    setError(null);
-    setImportSuccess(null);
-    try {
-      const result = await importJobInfoFromProposalPdf(file);
-      const next = applyProposalImportPatch(project, result);
-      setProject(next);
-      setProjectCtx(next);
-      const layout =
-        result.source === "ironwood"
-          ? "Ironwood paint bid proposal"
-          : result.source === "po"
-            ? "Ironwood purchase order"
-            : "Project / Address / Scope markers";
-      setImportSuccess(`Imported from ${file.name} (${layout}). Review the fields and save job info.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Proposal import failed");
-    } finally {
-      setImporting(false);
-      if (proposalInputRef.current) proposalInputRef.current.value = "";
-    }
-  }
-
-  async function saveProject(e: FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-
-    const { data: row, error: loadErr } = await supabase
-      .from("projects")
-      .select("data")
-      .eq("id", projectId)
-      .single();
-    if (loadErr) {
-      setSaving(false);
-      setError(loadErr.message);
-      return;
-    }
-
-    const cityLine = jobCityZipCountyLine(project.jobInfo);
-    const baseData = parseProjectDataBlob(row?.data);
-    const { error: err } = await supabase
-      .from("projects")
-      .update({
-        job_number: project.job_number,
-        job_name: project.job_name,
-        job_address: project.job_address,
-        job_address2: cityLine || project.job_address2,
-        contractor: project.contractor,
-        architect: project.architect,
-        owner: project.owner,
-        data: { ...baseData, job_info: project.jobInfo },
-      })
-      .eq("id", projectId);
-
-    setSaving(false);
-    if (err) {
-      setError(err.message);
-      return;
-    }
-    const next = { ...project, job_address2: cityLine || project.job_address2 };
-    setProject(next);
-    setProjectCtx(next);
-    setSavedAt(new Date().toLocaleTimeString());
-  }
-
+  const setup = jobSetupStatus(project);
   const j = project.jobInfo;
 
+  function onSaved(next: ProjectForm) {
+    setProject(next);
+    setProjectCtx(next);
+    setActivityRefreshKey((k) => k + 1);
+  }
+
   return (
-    <>
-      {error && <div className="banner banner-error">{error}</div>}
-      {importSuccess && <div className="banner banner-ok">{importSuccess}</div>}
-      <form className="stack job-info-form" onSubmit={saveProject}>
-        <div className="row-between wrap">
-          <div>
-            <h2>Job info</h2>
-            <p className="muted small">
-              Same fields as the desktop Job Info tab. Import from an Ironwood paint bid proposal PDF (searchable
-              text) to fill job, GC, and contract fields.
+    <div className="stack job-dashboard">
+      <header className="card job-dashboard-header">
+        <div className="job-dashboard-title">
+          <p className="job-dashboard-kicker muted small">Project dashboard</p>
+          <h2 className="job-dashboard-heading">
+            {project.job_number || "—"}
+            {project.job_name ? ` · ${project.job_name}` : ""}
+          </h2>
+          {project.contractor && <p className="muted job-dashboard-gc">{project.contractor}</p>}
+          {hasDistinctWcContract(project) && (
+            <p className="muted small job-dashboard-wc-contract">
+              Wallcovering contract: {wcTrackerJobLabel(project)}
             </p>
-          </div>
-          <div className="row-gap wrap">
-            {savedAt && <span className="muted small">Saved {savedAt}</span>}
-            <input
-              ref={proposalInputRef}
-              type="file"
-              accept=".pdf,application/pdf"
-              hidden
-              onChange={(e) => void onImportProposal(e.target.files?.[0] ?? null)}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={importing || saving}
-              onClick={() => proposalInputRef.current?.click()}
-            >
-              {importing ? "Reading PDF…" : "Import from proposal PDF"}
-            </button>
-          </div>
+          )}
+          {hasDistinctFrpContract(project) && (
+            <p className="muted small job-dashboard-wc-contract">
+              FRP contract: {frpJobLabel(project)}
+            </p>
+          )}
+          {hasDistinctTrackContract(project) && (
+            <p className="muted small job-dashboard-wc-contract">
+              Track contract: {trackJobLabel(project)}
+            </p>
+          )}
+          <GcContactLine
+            label="GC PM"
+            name={j.gc_pm.trim()}
+            phone={j.gc_pm_phone.trim()}
+            email={j.gc_pm_email.trim()}
+          />
+          <GcContactLine
+            label="GC Super"
+            name={j.gc_superintendent.trim()}
+            phone={j.gc_super_phone.trim()}
+            email={j.gc_super_email.trim()}
+          />
         </div>
+        <div className="row-gap wrap job-dashboard-actions">
+          {!setup.complete && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSetupOpen(true)}>
+              Complete setup ({setup.missing.length} missing)
+            </button>
+          )}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSetupOpen(true)}>
+            Job setup
+          </button>
+          <Link to={`/projects/${projectId}/paint`} className="btn btn-ghost btn-sm">
+            Paint
+          </Link>
+        </div>
+      </header>
 
-        <JobSection title="Job Info" defaultOpen>
-          <div className="grid-2">
-            <label>
-              Job #
-              <input
-                value={project.job_number}
-                onChange={(e) => setProject({ ...project, job_number: e.target.value })}
-              />
-            </label>
-            <label>
-              Date
-              <DateInput value={j.job_date} onChange={(v) => setJobInfo({ job_date: v })} />
-            </label>
-            <label>
-              Job name
-              <input value={project.job_name} onChange={(e) => setProject({ ...project, job_name: e.target.value })} />
-            </label>
-            <label>
-              Job address
-              <input
-                value={project.job_address}
-                onChange={(e) => setProject({ ...project, job_address: e.target.value })}
-              />
-            </label>
-            <label>
-              City
-              <input value={j.job_city} onChange={(e) => setJobInfo({ job_city: e.target.value })} />
-            </label>
-            <label>
-              Zip
-              <input value={j.job_zip} onChange={(e) => setJobInfo({ job_zip: e.target.value })} />
-            </label>
-            <label>
-              County / State
-              <input value={j.job_county} onChange={(e) => setJobInfo({ job_county: e.target.value })} />
-            </label>
-            <label>
-              Contract amount
-              <input value={j.contract_amount} onChange={(e) => setJobInfo({ contract_amount: e.target.value })} />
-            </label>
-            <label>
-              Job type
-              <select value={j.job_type} onChange={(e) => setJobInfo({ job_type: e.target.value })}>
-                {JOB_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Cost type
-              <select value={j.job_cost_type} onChange={(e) => setJobInfo({ job_cost_type: e.target.value })}>
-                {JOB_COST_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Estimated start date
-              <DateInput value={j.start_date} onChange={(v) => setJobInfo({ start_date: v })} />
-            </label>
-            <label>
-              Estimated end date
-              <DateInput value={j.end_date} onChange={(v) => setJobInfo({ end_date: v })} />
-            </label>
-          </div>
-          <label>
-            Scope of out work
-            <input value={j.scope_of_out_work} onChange={(e) => setJobInfo({ scope_of_out_work: e.target.value })} />
-          </label>
-          <label>
-            Description of project
-            <input value={j.project_description} onChange={(e) => setJobInfo({ project_description: e.target.value })} />
-          </label>
-        </JobSection>
+      {!setup.complete && (
+        <div className="banner banner-warn job-dashboard-setup-hint">
+          One-time job setup feeds templates, submittals, and sheet pushes. Missing:{" "}
+          {setup.missing.join(", ")}.{" "}
+          <button type="button" className="link-btn" onClick={() => setSetupOpen(true)}>
+            Open job setup
+          </button>
+        </div>
+      )}
 
-        <JobSection title="GC Info" defaultOpen>
-          <div className="grid-2">
-            <label>
-              GC name
-              <input
-                value={project.contractor}
-                onChange={(e) => setProject({ ...project, contractor: e.target.value })}
-              />
-            </label>
-            <label>
-              GC job #
-              <input value={j.gc_job_number} onChange={(e) => setJobInfo({ gc_job_number: e.target.value })} />
-            </label>
-            <label>
-              Address
-              <input value={j.gc_address} onChange={(e) => setJobInfo({ gc_address: e.target.value })} />
-            </label>
-            <label>
-              Office phone
-              <input value={j.gc_office_phone} onChange={(e) => setJobInfo({ gc_office_phone: e.target.value })} />
-            </label>
-            <label>
-              Fax
-              <input value={j.gc_fax} onChange={(e) => setJobInfo({ gc_fax: e.target.value })} />
-            </label>
-            <label>
-              PM
-              <input value={j.gc_pm} onChange={(e) => setJobInfo({ gc_pm: e.target.value })} />
-            </label>
-            <label>
-              Superintendent
-              <input value={j.gc_superintendent} onChange={(e) => setJobInfo({ gc_superintendent: e.target.value })} />
-            </label>
-            <label>
-              Estimator
-              <input value={j.gc_estimator} onChange={(e) => setJobInfo({ gc_estimator: e.target.value })} />
-            </label>
-            <label>
-              Project engineer
-              <input value={j.gc_engineer} onChange={(e) => setJobInfo({ gc_engineer: e.target.value })} />
-            </label>
-          </div>
-        </JobSection>
+      <ProjectStartupChecklist
+        project={project}
+        projectId={projectId}
+        jobInfoComplete={setup.complete}
+        onOpenJobSetup={() => setSetupOpen(true)}
+        onActivity={() => setActivityRefreshKey((k) => k + 1)}
+      />
 
-        <JobSection title="Architect Info">
-          <div className="grid-2">
-            <label>
-              Architect
-              <input value={project.architect} onChange={(e) => setProject({ ...project, architect: e.target.value })} />
-            </label>
-            <label>
-              Drawings
-              <input value={j.drawings} onChange={(e) => setJobInfo({ drawings: e.target.value })} />
-            </label>
-            <label>
-              Address
-              <input value={j.architect_address} onChange={(e) => setJobInfo({ architect_address: e.target.value })} />
-            </label>
-            <label>
-              City, state, zip
-              <input
-                value={j.architect_city_state_zip}
-                onChange={(e) => setJobInfo({ architect_city_state_zip: e.target.value })}
-              />
-            </label>
-            <label>
-              Contact
-              <input value={j.architect_contact} onChange={(e) => setJobInfo({ architect_contact: e.target.value })} />
-            </label>
-            <label>
-              Phone
-              <input value={j.architect_phone} onChange={(e) => setJobInfo({ architect_phone: e.target.value })} />
-            </label>
-          </div>
-        </JobSection>
+      <JobTrackerPanel
+        project={project}
+        projectId={projectId}
+        onOpenJobSetup={() => setSetupOpen(true)}
+        onProjectUpdate={onSaved}
+      />
 
-        <JobSection title="Owner Info">
-          <div className="grid-2">
-            <label>
-              Name
-              <input value={project.owner} onChange={(e) => setProject({ ...project, owner: e.target.value })} />
-            </label>
-            <label>
-              Contact
-              <input value={j.owner_contact} onChange={(e) => setJobInfo({ owner_contact: e.target.value })} />
-            </label>
-            <label>
-              Address
-              <input value={j.owner_address} onChange={(e) => setJobInfo({ owner_address: e.target.value })} />
-            </label>
-            <label>
-              Phone
-              <input value={j.owner_phone} onChange={(e) => setJobInfo({ owner_phone: e.target.value })} />
-            </label>
-            <label className="grid-span-2">
-              City, state, zip
-              <input
-                value={j.owner_city_state_zip}
-                onChange={(e) => setJobInfo({ owner_city_state_zip: e.target.value })}
-              />
-            </label>
-          </div>
-        </JobSection>
+      <JobInfoSetupDrawer
+        open={setupOpen}
+        project={project}
+        projectId={projectId}
+        onClose={() => setSetupOpen(false)}
+        onSaved={onSaved}
+      />
 
-        <JobSection title="ICBI Info">
-          <div className="grid-2">
-            <label>
-              Estimator
-              <input value={j.icbi_estimator} onChange={(e) => setJobInfo({ icbi_estimator: e.target.value })} />
-            </label>
-            <label>
-              PM
-              <input value={j.icbi_pm} onChange={(e) => setJobInfo({ icbi_pm: e.target.value })} />
-            </label>
-            <label>
-              PE
-              <input value={j.icbi_engineer} onChange={(e) => setJobInfo({ icbi_engineer: e.target.value })} />
-            </label>
-            <label>
-              Foreman
-              <input value={j.icbi_foreman} onChange={(e) => setJobInfo({ icbi_foreman: e.target.value })} />
-            </label>
-          </div>
-        </JobSection>
-
-        <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? "Saving…" : "Save job info"}
-        </button>
-      </form>
-    </>
+      <ProjectActivityPanel project={project} refreshKey={activityRefreshKey} />
+    </div>
   );
 }

@@ -98,10 +98,6 @@ export function LoginPage() {
             </>
           )}
         </p>
-
-        <p className="muted small">
-          First time? Run <code>supabase/schema.sql</code> in your Supabase SQL Editor.
-        </p>
       </div>
     </div>
   );

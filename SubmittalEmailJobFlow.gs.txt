@@ -1,0 +1,43 @@
+JobFlow vendor email — manifest OK, web app still fails
+=======================================================
+
+Your appsscript.json is correct (gmail.send + script.send_mail are listed).
+authorizeJobFlowVendorEmail completes in the EDITOR but JobFlow still errors.
+
+That almost always means the LIVE WEB APP DEPLOYMENT is stale — it was built
+before the new scopes/code and never got a new version.
+
+FIX (required every time manifest or email code changes)
+--------------------------------------------------------
+
+1. Paste/update code from JobFlowVendorEmail.gs.txt into Code.gs
+   (uses GmailApp first — matches your gmail.send scope)
+
+2. In Apps Script editor, run: authorizeJobFlowVendorEmail
+   → you should receive [JobFlow] Gmail send authorized
+
+3. Deploy → Manage deployments → click Edit (pencil) on the JobFlow web app
+   → Version: New version
+   → Deploy
+
+   Settings:
+     Execute as: Me
+     Who has access: Anyone  (ANYONE is fine; ANYONE_ANONYMOUS also works)
+
+4. Copy the deployment URL (ends in /exec) into JobFlow:
+   Settings → Google Apps Script URLs → Dashboard Web App URL
+
+5. Send test from JobFlow → Email vendor
+
+If still failing
+----------------
+- Google Account → Security → Third-party app access
+  → Remove "John's Dashboard" (or project name) → run authorize again → redeploy
+- Confirm JobFlow URL is the /exec URL from step 3, not an old bookmark
+- Workspace IT may block script email even with correct scopes
+
+doPost hook (must exist before paint/wallcovering row handlers):
+
+  if (postData.action === "sendVendorEmail" || postData.action === "sendJobFlowEmail") {
+    return handleSendVendorEmail_(postData);
+  }

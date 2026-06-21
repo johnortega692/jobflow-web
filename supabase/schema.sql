@@ -12,7 +12,8 @@ create table if not exists projects (
   data jsonb not null default '{}'::jsonb,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id) on delete set null
 );
 
 create index if not exists projects_job_number_idx on projects (job_number);
@@ -69,6 +70,36 @@ create policy "projects_update" on projects for update to authenticated using (t
 drop policy if exists "projects_delete" on projects;
 create policy "projects_delete" on projects for delete to authenticated using (true);
 
+-- Field view (/field): supers without accounts (anon role)
+drop policy if exists "projects_select_anon" on projects;
+create policy "projects_select_anon" on projects for select to anon using (true);
+drop policy if exists "projects_update_anon" on projects;
+create policy "projects_update_anon" on projects for update to anon using (true) with check (true);
+
+create table if not exists project_activity (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  user_name text not null default '',
+  action text not null,
+  summary text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_activity_project_id_created_at_idx
+  on project_activity (project_id, created_at desc);
+
+alter table project_activity enable row level security;
+
+drop policy if exists "project_activity_select" on project_activity;
+create policy "project_activity_select" on project_activity for select to authenticated using (true);
+
+drop policy if exists "project_activity_insert" on project_activity;
+create policy "project_activity_insert" on project_activity for insert to authenticated with check (true);
+
+drop policy if exists "project_activity_insert_anon" on project_activity;
+create policy "project_activity_insert_anon" on project_activity for insert to anon with check (true);
+
 drop policy if exists "rfis_select" on rfis;
 create policy "rfis_select" on rfis for select to authenticated using (true);
 
@@ -114,3 +145,47 @@ drop policy if exists "submittals_update" on submittals;
 create policy "submittals_update" on submittals for update to authenticated using (true);
 drop policy if exists "submittals_delete" on submittals;
 create policy "submittals_delete" on submittals for delete to authenticated using (true);
+
+-- Work orders / EWO (also in supabase/migrations/005_work_orders.sql)
+create table if not exists work_orders (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  ewo_number text not null default '001',
+  ewo_date text not null default '',
+  total_amount numeric not null default 0,
+  material_cost numeric not null default 0,
+  labor_cost numeric not null default 0,
+  delivered boolean not null default false,
+  status text not null default 'draft',
+  data jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists work_orders_project_id_idx on work_orders (project_id);
+
+drop trigger if exists work_orders_updated_at on work_orders;
+create trigger work_orders_updated_at
+  before update on work_orders for each row execute function public.set_updated_at();
+
+alter table work_orders enable row level security;
+
+drop policy if exists "work_orders_select" on work_orders;
+create policy "work_orders_select" on work_orders for select to authenticated using (true);
+drop policy if exists "work_orders_insert" on work_orders;
+create policy "work_orders_insert" on work_orders for insert to authenticated with check (true);
+drop policy if exists "work_orders_update" on work_orders;
+create policy "work_orders_update" on work_orders for update to authenticated using (true);
+drop policy if exists "work_orders_delete" on work_orders;
+create policy "work_orders_delete" on work_orders for delete to authenticated using (true);
+
+insert into storage.buckets (id, name, public)
+values ('work-orders', 'work-orders', false)
+on conflict (id) do nothing;
+
+drop policy if exists "work_orders_storage_authenticated_all" on storage.objects;
+create policy "work_orders_storage_authenticated_all" on storage.objects
+  for all to authenticated
+  using (bucket_id = 'work-orders')
+  with check (bucket_id = 'work-orders');

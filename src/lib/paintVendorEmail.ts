@@ -1,4 +1,4 @@
-import { buildEmailSignatureHtml } from "./emailSignature";
+import { buildEmailSignatureHtml, buildEmailSignaturePlain } from "./emailSignature";
 import type { EmailSignatureSettings } from "./emailSignature";
 import { copyOutlookHtmlToClipboard, emailParagraph, outlookSpacer } from "./outlookClipboard";
 import { FLOOR_ORDER } from "./printCore";
@@ -10,6 +10,9 @@ export type PaintVendor = {
   vendor_email: string;
   store_email?: string;
 };
+
+export type AtticStockPaintItem = PaintItem & { qty: string };
+export type AtticStockCustomItem = { description: string; qty: string };
 
 let vendorsCache: PaintVendor[] | null = null;
 
@@ -56,6 +59,10 @@ function groupByFloor(items: PaintItem[]): [string, PaintItem[]][] {
   return result;
 }
 
+export function buildAtticStockEmailSubject(jobNumber: string, jobName: string): string {
+  return `Attic Stock Order | ${jobNumber} ${jobName}`.trim();
+}
+
 export function buildVendorEmailSubject(
   jobNumber: string,
   jobName: string,
@@ -68,6 +75,102 @@ export function buildVendorEmailSubject(
   return `Brush Out request for Job ${job}`;
 }
 
+export const PREP_SITE_LABELS_SUFFIX =
+  "(labels TBD — job name/number to follow)";
+
+export function buildPrepEmailSubject(siteLocation: string): string {
+  const site = siteLocation.trim() || "site TBD";
+  return `Brush-out request — colors per schedule (official job # to follow) — ${site}`;
+}
+
+function introPrepPlain(vendorName: string, siteLocation: string, gc: string, defaultQty: number): string[] {
+  const first = vendorFirstName(vendorName);
+  const lines = [
+    `Hi ${first},`,
+    "",
+    "Important: Our office has NOT assigned the official job number or project name yet.",
+    "Please use the color list below for this brush-out request. When our office assigns the job, we will reply to this email with the official job number and name so you can label the brush-outs.",
+    "",
+  ];
+  if (siteLocation.trim()) lines.push(PREP_SITE_LABELS_SUFFIX, "");
+  if (gc.trim()) lines.push(`GC: ${gc.trim()}`, "");
+  lines.push(
+    `Can you please provide ${defaultQty} brush-outs in the specified colors and sheens? You can have them delivered or shipped to our office.`,
+    "",
+    "Colors requested:",
+  );
+  return lines;
+}
+
+function introPrepHtml(
+  vendorName: string,
+  siteLocation: string,
+  gc: string,
+  defaultQty: number,
+): string {
+  const greeting = `Hi ${escHtml(vendorFirstName(vendorName))},`;
+  let context = "";
+  if (siteLocation.trim()) {
+    context += emailParagraph(PREP_SITE_LABELS_SUFFIX);
+  }
+  if (gc.trim()) {
+    context += emailParagraph(`<strong>GC:</strong> ${escHtml(gc.trim())}`);
+  }
+  return [
+    emailParagraph(greeting),
+    emailParagraph(
+      "<strong>Important:</strong> Our office has <strong>not</strong> assigned the official job number or project name yet. Please use the color list below for this brush-out request. When our office assigns the job, we will <strong>reply to this email</strong> with the official job number and name so you can label the brush-outs.",
+    ),
+    context,
+    emailParagraph(
+      `Can you please provide <strong>${defaultQty} brush-outs</strong> in the specified colors and sheens? You can have them delivered or shipped to our office.`,
+    ),
+    emailParagraph("<strong>Colors requested:</strong>"),
+  ].join("");
+}
+
+export function buildPrepEmailPlainBody(
+  vendor: PaintVendor,
+  siteLocation: string,
+  gc: string,
+  items: PaintItem[],
+  defaultQty: number,
+  signature?: EmailSignatureSettings,
+): string {
+  const parts = [
+    ...introPrepPlain(vendor.name, siteLocation, gc, defaultQty),
+    "",
+    ...buildPlainItemTables(items, "original"),
+  ];
+  if (signature) parts.push("", buildEmailSignaturePlain(signature));
+  return parts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function buildPrepEmailHtmlBody(
+  vendor: PaintVendor,
+  siteLocation: string,
+  gc: string,
+  items: PaintItem[],
+  defaultQty: number,
+  signature: EmailSignatureSettings,
+  logoUrl = "",
+): string {
+  const intro = introPrepHtml(vendor.name, siteLocation, gc, defaultQty);
+  const tables = buildTablesHtml(items, "original");
+  const sig = buildEmailSignatureHtml(signature, logoUrl);
+  const fragment = `${intro}${tables}${sig}`;
+  return `<html><body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">${fragment}</body></html>`;
+}
+
+export function prepEmlFilename(siteLocation: string): string {
+  const safe = siteLocation.replace(/[^\w.-]+/g, "_").slice(0, 60);
+  return `BrushOut_prep_${safe || "request"}.eml`;
+}
+
+export function vendorDisplayName(vendor: PaintVendor): string {
+  return `${vendor.name} (${vendor.brand})`.trim();
+}
+
 function vendorFirstName(vendorName: string): string {
   return vendorName.split(/\s+/)[0] || "there";
 }
@@ -78,19 +181,134 @@ function introPlain(
   jobName: string,
   submittalType: TradeSubmittalType,
   defaultQty: number,
-): string {
+): string[] {
   const first = vendorFirstName(vendorName);
   const job = `${jobNumber} - ${jobName}`.trim();
+
   if (submittalType === "new") {
-    return `Hi ${first},\n\nWe are adding new paint colors to Job ${job}. Please provide brush-outs for the new colors listed below.\n\nThe brush-outs can be delivered or shipped to our office at your convenience.\n\nNew Colors Added:\n`;
+    return [
+      `Hi ${first},`,
+      "",
+      `We are adding new paint colors to Job ${job}. Please provide brush-outs for the new colors listed below.`,
+      "",
+      "The brush-outs can be delivered or shipped to our office at your convenience. Please let us know if you have any questions or need any additional information.",
+      "",
+      "New Colors Added:",
+    ];
   }
   if (submittalType === "substitution") {
-    return `Hi ${first},\n\nWe need to substitute paint colors on Job ${job}. Please provide brush-outs for the new colors only.\n\nColor Substitutions:\n`;
+    return [
+      `Hi ${first},`,
+      "",
+      `We need to substitute paint colors on Job ${job}. The client approved a color change for the label(s) below. Please provide brush-outs for the new colors only.`,
+      "",
+      "  • Each row shows the previous approved color and the new replacement color for the same label/square",
+      "  • Please confirm product and sheen remain the same unless noted below",
+      "  • Let us know if you have any questions before preparing brush-outs",
+      "",
+      "Color Substitutions:",
+    ];
   }
   if (submittalType === "revised") {
-    return `Hi ${first},\n\nWe need to revise the paint colors for Job ${job}. Control samples will be dropped off at your location for color matching.\n\nRevised Colors:\n`;
+    return [
+      `Hi ${first},`,
+      "",
+      `We need to revise the paint colors for Job ${job}. Please note the following:`,
+      "",
+      "  • Control samples will be dropped off at your location for color matching",
+      "  • Some colors may require a slight adjustment (lighter or darker) to match the approved color",
+      "  • Please review the revised colors below and let us know if you have any questions or concerns",
+      "",
+      "Revised Colors:",
+    ];
   }
-  return `Hi ${first},\n\nCan you please provide ${defaultQty} brush-outs in the specified colors and sheens? You can have them delivered or shipped to our office.\n\nScope of Work:\n`;
+  return [
+    `Hi ${first},`,
+    "",
+    `Can you please provide ${defaultQty} brush-outs in the specified colors and sheens? You can have them delivered or shipped to our office.`,
+    "",
+    "Scope of Work:",
+  ];
+}
+
+function plainColumnWidths(headers: string[], rows: string[][], min = 2, max = 26): number[] {
+  return headers.map((header, i) => {
+    const longest = Math.max(header.length, ...rows.map((row) => (row[i] ?? "").length));
+    return Math.max(min, Math.min(max, longest));
+  });
+}
+
+function plainFormatRow(cells: string[], widths: number[]): string {
+  return cells
+    .map((cell, i) => {
+      const width = widths[i] ?? 8;
+      return (cell ?? "").slice(0, width).padEnd(width);
+    })
+    .join("  ");
+}
+
+function buildPlainItemTable(
+  floorItems: PaintItem[],
+  submittalType: TradeSubmittalType,
+  startNum: number,
+): { text: string; nextNum: number } {
+  const substitution = submittalType === "substitution";
+  const filtered = floorItems.filter((i) => i.color.trim() || i.product.trim());
+  if (!filtered.length) return { text: "", nextNum: startNum };
+
+  const headers = substitution
+    ? ["#", "Label", "Previous", "New Color", "Product", "Sheen"]
+    : ["#", "Product", "Sheen", "Color", "Label"];
+
+  const rows: string[][] = [];
+  let n = startNum;
+  for (const item of filtered) {
+    const product = stripProductMfr(item.product);
+    if (substitution) {
+      rows.push([
+        String(n),
+        item.label,
+        item.previous_color,
+        item.color,
+        product,
+        item.sheen,
+      ]);
+    } else {
+      rows.push([String(n), product, item.sheen, item.color, item.label]);
+    }
+    n += 1;
+  }
+
+  const widths = plainColumnWidths(headers, rows);
+  const rule = widths.map((w) => "-".repeat(w)).join("  ");
+
+  return {
+    text: [plainFormatRow(headers, widths), rule, ...rows.map((row) => plainFormatRow(row, widths))].join(
+      "\n",
+    ),
+    nextNum: n,
+  };
+}
+
+function buildPlainItemTables(
+  items: PaintItem[],
+  submittalType: TradeSubmittalType,
+): string[] {
+  const blocks: string[] = [];
+  let itemNum = 1;
+
+  for (const [floor, floorItems] of groupByFloor(items.filter((i) => i.color.trim() || i.product.trim()))) {
+    if (floor) {
+      blocks.push("", floor.toUpperCase(), "");
+    }
+    const table = buildPlainItemTable(floorItems, submittalType, itemNum);
+    if (table.text) {
+      blocks.push(table.text);
+      itemNum = table.nextNum;
+    }
+  }
+
+  return blocks;
 }
 
 function introHtml(
@@ -207,6 +425,152 @@ function buildTablesHtml(items: PaintItem[], submittalType: TradeSubmittalType):
   return html;
 }
 
+function introAtticStockPlain(vendorName: string, jobNumber: string, jobName: string): string[] {
+  const first = vendorFirstName(vendorName);
+  const job = `${jobNumber} - ${jobName}`.trim();
+  return [
+    `Hi ${first},`,
+    "",
+    `Please provide attic stock paint for the following items for Job ${job}, and let us know when these will be ready or if you need anything further from us.`,
+    "",
+    "Attic Stock Items:",
+  ];
+}
+
+function introAtticStockHtml(vendorName: string, jobNumber: string, jobName: string): string {
+  const greeting = `Hi ${escHtml(vendorFirstName(vendorName))},`;
+  const job = `${escHtml(jobNumber)} - ${escHtml(jobName)}`.trim();
+  return [
+    emailParagraph(greeting),
+    emailParagraph(
+      `Please provide <strong>attic stock paint</strong> for the following items for <strong>Job ${job}</strong>, and let us know when these will be ready or if you need anything further from us.`,
+    ),
+    emailParagraph("<strong>Attic Stock Items:</strong>"),
+  ].join("");
+}
+
+function buildAtticStockPlainTable(
+  paintItems: AtticStockPaintItem[],
+  customItems: AtticStockCustomItem[],
+): string {
+  const headers = ["#", "Product", "Sheen", "Color", "Label", "Qty"];
+  const rows: string[][] = [];
+  let n = 1;
+
+  for (const item of paintItems.filter((i) => i.color.trim() || i.product.trim())) {
+    rows.push([
+      String(n),
+      stripProductMfr(item.product),
+      item.sheen,
+      item.color,
+      item.label,
+      item.qty,
+    ]);
+    n += 1;
+  }
+  for (const custom of customItems) {
+    rows.push([String(n), custom.description, "", "", "", custom.qty]);
+    n += 1;
+  }
+
+  if (!rows.length) return "";
+  const widths = plainColumnWidths(headers, rows);
+  const rule = widths.map((w) => "-".repeat(w)).join("  ");
+  return [plainFormatRow(headers, widths), rule, ...rows.map((row) => plainFormatRow(row, widths))].join(
+    "\n",
+  );
+}
+
+function buildAtticStockTableHtml(
+  paintItems: AtticStockPaintItem[],
+  customItems: AtticStockCustomItem[],
+): string {
+  let html = `<table ${TABLE_STYLE}><thead><tr>
+    <th ${TH_STYLE}>#</th><th ${TH_STYLE}>Product</th><th ${TH_STYLE}>Sheen</th>
+    <th ${TH_STYLE}>Color</th><th ${TH_STYLE}>Label</th><th ${TH_STYLE}>Qty</th>
+  </tr></thead><tbody>`;
+  let itemNum = 1;
+
+  for (const item of paintItems.filter((i) => i.color.trim() || i.product.trim())) {
+    const product = escHtml(stripProductMfr(item.product));
+    html += `<tr>
+      <td ${TD_STYLE}>${itemNum}</td>
+      <td ${TD_STYLE}>${product}</td>
+      <td ${TD_STYLE}>${escHtml(item.sheen)}</td>
+      <td ${TD_STYLE}>${escHtml(item.color)}</td>
+      <td ${TD_STYLE}>${escHtml(item.label)}</td>
+      <td ${TD_STYLE}>${escHtml(item.qty)}</td>
+    </tr>`;
+    itemNum += 1;
+  }
+  for (const custom of customItems) {
+    html += `<tr>
+      <td ${TD_STYLE}>${itemNum}</td>
+      <td colspan="4" ${TD_STYLE}>${escHtml(custom.description)}</td>
+      <td ${TD_STYLE}>${escHtml(custom.qty)}</td>
+    </tr>`;
+    itemNum += 1;
+  }
+
+  html += `</tbody></table>${outlookSpacer(10)}`;
+  return html;
+}
+
+export function buildAtticStockEmailPlainBody(
+  vendor: PaintVendor,
+  jobNumber: string,
+  jobName: string,
+  paintItems: AtticStockPaintItem[],
+  customItems: AtticStockCustomItem[],
+  signature?: EmailSignatureSettings,
+): string {
+  const parts = [
+    ...introAtticStockPlain(vendor.name, jobNumber, jobName),
+    "",
+    buildAtticStockPlainTable(paintItems, customItems),
+  ];
+  if (signature) {
+    parts.push("", buildEmailSignaturePlain(signature));
+  }
+  return parts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function buildAtticStockEmailHtmlFragment(
+  vendor: PaintVendor,
+  jobNumber: string,
+  jobName: string,
+  paintItems: AtticStockPaintItem[],
+  customItems: AtticStockCustomItem[],
+  signature: EmailSignatureSettings,
+  logoUrl = "",
+): string {
+  const intro = introAtticStockHtml(vendor.name, jobNumber, jobName);
+  const table = buildAtticStockTableHtml(paintItems, customItems);
+  const sig = buildEmailSignatureHtml(signature, logoUrl);
+  return `${intro}${table}${sig}`;
+}
+
+export function buildAtticStockEmailHtmlBody(
+  vendor: PaintVendor,
+  jobNumber: string,
+  jobName: string,
+  paintItems: AtticStockPaintItem[],
+  customItems: AtticStockCustomItem[],
+  signature: EmailSignatureSettings,
+  logoUrl = "",
+): string {
+  const fragment = buildAtticStockEmailHtmlFragment(
+    vendor,
+    jobNumber,
+    jobName,
+    paintItems,
+    customItems,
+    signature,
+    logoUrl,
+  );
+  return `<html><body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">${fragment}</body></html>`;
+}
+
 export function buildVendorEmailPlainBody(
   vendor: PaintVendor,
   jobNumber: string,
@@ -214,25 +578,19 @@ export function buildVendorEmailPlainBody(
   items: PaintItem[],
   submittalType: TradeSubmittalType,
   defaultQty: number,
+  signature?: EmailSignatureSettings,
 ): string {
-  const lines = [introPlain(vendor.name, jobNumber, jobName, submittalType, defaultQty)];
-  let n = 1;
-  const substitution = submittalType === "substitution";
-  for (const [floor, floorItems] of groupByFloor(items.filter((i) => i.color.trim() || i.product.trim()))) {
-    if (floor) lines.push(`\n${floor.toUpperCase()}`);
-    for (const item of floorItems) {
-      const product = stripProductMfr(item.product);
-      if (substitution) {
-        lines.push(
-          `${n}. ${item.label} | Prev: ${item.previous_color} → New: ${item.color} | ${product} | ${item.sheen}`,
-        );
-      } else {
-        lines.push(`${n}. ${product} | ${item.sheen} | ${item.color} | ${item.label}`);
-      }
-      n++;
-    }
+  const parts = [
+    ...introPlain(vendor.name, jobNumber, jobName, submittalType, defaultQty),
+    "",
+    ...buildPlainItemTables(items, submittalType),
+  ];
+
+  if (signature) {
+    parts.push("", buildEmailSignaturePlain(signature));
   }
-  return lines.join("\n");
+
+  return parts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export function buildVendorEmailHtmlFragment(
@@ -274,18 +632,22 @@ export function buildVendorEmailHtmlBody(
   return `<html><body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">${fragment}</body></html>`;
 }
 
+/** Outlook / browser mailto links truncate around 2–8 KB; keep a safe upper bound. */
+export const MAILTO_BODY_MAX_CHARS = 7500;
+
 export function buildMailtoUrl(
   to: string[],
   cc: string[],
   subject: string,
   body = "",
 ): string {
-  const params = new URLSearchParams();
-  if (to.length) params.set("to", to.join(";"));
-  if (cc.length) params.set("cc", cc.join(";"));
-  params.set("subject", subject);
-  if (body.trim()) params.set("body", body.slice(0, 1800));
-  return `mailto:?${params.toString()}`;
+  const params: string[] = [];
+  if (to.length) params.push(`to=${encodeURIComponent(to.join(";"))}`);
+  if (cc.length) params.push(`cc=${encodeURIComponent(cc.join(";"))}`);
+  params.push(`subject=${encodeURIComponent(subject)}`);
+  const bodyText = body.trim();
+  if (bodyText) params.push(`body=${encodeURIComponent(bodyText.slice(0, MAILTO_BODY_MAX_CHARS))}`);
+  return `mailto:?${params.join("&")}`;
 }
 
 export function vendorRecipientEmails(vendor: PaintVendor): string[] {
@@ -342,4 +704,9 @@ export async function copyHtmlToClipboard(htmlBody: string, plainFallback: strin
 export function vendorEmlFilename(jobNumber: string, jobName: string): string {
   const safe = `${jobNumber}_${jobName}`.replace(/[^\w.-]+/g, "_").slice(0, 60);
   return `BrushOut_${safe || "request"}.eml`;
+}
+
+export function atticStockEmlFilename(jobNumber: string, jobName: string): string {
+  const safe = `${jobNumber}_${jobName}`.replace(/[^\w.-]+/g, "_").slice(0, 60);
+  return `AtticStock_${safe || "order"}.eml`;
 }

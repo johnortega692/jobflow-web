@@ -1,19 +1,27 @@
 import { useState } from "react";
-import { extractProductName } from "../../lib/paintCatalog";
+import { extractProductName, type PaintProduct } from "../../lib/paintCatalog";
 import type { PaintItem } from "../../types/tradeDocuments";
+import { PaintProductSelect, PaintSheenSelect } from "./PaintFieldSelects";
 
 type Props = {
+  products: PaintProduct[];
   productOptions: string[];
   sheenOptions: string[];
   onAdd: (items: PaintItem[]) => void;
   onClose: () => void;
 };
 
-export function PaintBulkAddModal({ productOptions, sheenOptions, onAdd, onClose }: Props) {
+export function PaintBulkAddModal({
+  products,
+  sheenOptions,
+  onAdd,
+  onClose,
+}: Props) {
   const [count, setCount] = useState("1");
   const [prefix, setPrefix] = useState("");
   const [startAt, setStartAt] = useState("1");
-  const [product, setProduct] = useState("");
+  const [productDisplay, setProductDisplay] = useState("");
+  const [productName, setProductName] = useState("");
   const [sheen, setSheen] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -23,8 +31,8 @@ export function PaintBulkAddModal({ productOptions, sheenOptions, onAdd, onClose
       setError("Enter a positive number of items.");
       return;
     }
-    const productName = extractProductName(product);
-    if (!productName || !sheen.trim()) {
+    const name = productName || extractProductName(productDisplay);
+    if (!name || !sheen.trim()) {
       setError("Select both product and sheen.");
       return;
     }
@@ -37,7 +45,7 @@ export function PaintBulkAddModal({ productOptions, sheenOptions, onAdd, onClose
         floor: "",
         manufacturer: "",
         color: "",
-        product: productName,
+        product: name,
         sheen: sheen.trim(),
         previous_color: "",
       });
@@ -75,27 +83,19 @@ export function PaintBulkAddModal({ productOptions, sheenOptions, onAdd, onClose
 
         <label>
           Product
-          <input
-            list="bulk-product-list"
-            value={product}
-            onChange={(e) => setProduct(e.target.value)}
-            placeholder="Speed Hide Zero (PPG)"
+          <PaintProductSelect
+            value={productDisplay}
+            products={products}
+            onChange={(name, _mfr, display) => {
+              setProductName(name);
+              setProductDisplay(display);
+            }}
           />
-          <datalist id="bulk-product-list">
-            {productOptions.map((p) => (
-              <option key={p} value={p} />
-            ))}
-          </datalist>
         </label>
 
         <label>
           Sheen
-          <input list="bulk-sheen-list" value={sheen} onChange={(e) => setSheen(e.target.value)} />
-          <datalist id="bulk-sheen-list">
-            {sheenOptions.map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
+          <PaintSheenSelect value={sheen} options={sheenOptions} onChange={setSheen} />
         </label>
 
         {error && <div className="banner banner-error">{error}</div>}

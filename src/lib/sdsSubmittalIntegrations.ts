@@ -44,7 +44,10 @@ export function queueSdsForTransmittal(
     source: "sds_packet",
     log_row_id: logRowId ?? "",
   });
-  return { ...tradeData, transmittal: nextTransmittal };
+  return {
+    ...tradeData,
+    transmittal: { ...nextTransmittal, contract: packet.contract ?? "paint" },
+  };
 }
 
 /** @deprecated Use queueSdsForTransmittal — kept for callers that add directly to enclosures */

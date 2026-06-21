@@ -1,4 +1,5 @@
-import { esc, logoBlock, printHtml, type PrintBranding } from "./printCore";
+import { esc, logoBlock, pdfSignerDisplayName, printHtml, type PrintBranding } from "./printCore";
+import { pdfTitleFromFilename, transmittalFilename } from "./pdfFilenames";
 import type { TransmittalData } from "../types/tradeDocuments";
 
 const CSS = `
@@ -169,13 +170,14 @@ export function buildTransmittalHtml(
   project: ProjectInfo,
   data: TransmittalData,
   branding: PrintBranding,
+  saveFilename?: string,
 ): string {
   const toBlock = [data.to_name, data.gc_name, data.to_address].filter((p) => p.trim()).join("\n");
   const fromBlock = data.from_block.trim() || branding.fromBlock;
   const fromPhone = data.from_phone.trim() || branding.fromPhone;
-  const signer = data.signer_name.trim() || branding.signerName;
-  const sigPhone = branding.signerPhone.trim();
-  const sigEmail = branding.signerEmail.trim();
+  const signer = data.signer_name.trim() || (branding.pdfShow.signer_name ? branding.signerName : "");
+  const sigPhone = branding.pdfShow.signer_phone ? branding.signerPhone.trim() : "";
+  const sigEmail = branding.pdfShow.signer_email ? branding.signerEmail.trim() : "";
 
   const included = data.enclosures
     .filter((e) => e.included && e.description.trim())
@@ -197,9 +199,7 @@ export function buildTransmittalHtml(
       ? `<div class="sig-contact">${sigPhone ? esc(sigPhone) : ""}${sigPhone && sigEmail ? "<br>" : ""}${sigEmail ? esc(sigEmail) : ""}</div>`
       : "";
 
-  const signerLine = branding.signerTitle
-    ? `${esc(signer)}, ${esc(branding.signerTitle)}`
-    : esc(signer);
+  const signerLine = esc(pdfSignerDisplayName({ ...branding, signerName: signer }));
 
   const continuedHtml = overflow.length
     ? `<div class="transmittal-continued">
@@ -208,7 +208,9 @@ export function buildTransmittalHtml(
 </div>`
     : "";
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Transmittal</title><style>${CSS}</style></head><body>
+  const pageTitle = pdfTitleFromFilename(saveFilename ?? "Transmittal");
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(pageTitle)}</title><style>${CSS}</style></head><body>
   <p class="no-print" style="font-family:Arial,sans-serif;font-size:11pt;margin-bottom:12px;">
     Choose <strong>Save as PDF</strong> as the printer.
   </p>
@@ -268,5 +270,6 @@ export function printTransmittal(
   data: TransmittalData,
   branding: PrintBranding,
 ): void {
-  printHtml(buildTransmittalHtml(project, data, branding));
+  const filename = transmittalFilename(project.job_name, project.job_number, data.transmittal_number);
+  printHtml(buildTransmittalHtml(project, data, branding, filename), pdfTitleFromFilename(filename));
 }

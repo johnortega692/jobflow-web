@@ -1,4 +1,11 @@
 import * as XLSX from "xlsx";
+import {
+  loadEffectiveUserSettings,
+  removeOrgSettingsKeys,
+  saveOrgSettingsPatch,
+  savePersonalUserSettingsPatch,
+} from "./orgSettings";
+import { ORG_SETTINGS_KEYS, pickPersonalSettingsPatch } from "./orgSettingsKeys";
 import { supabase } from "./supabase";
 import {
   fmtCell,
@@ -12,28 +19,62 @@ import { defaultBudgetLibrary } from "../types/budgetMaker";
 import type { Json } from "../types/database";
 
 const LIB_KEY = "budget_library";
+const ORG_KEY_SET = new Set<string>(ORG_SETTINGS_KEYS);
 
+/** Merged org + personal settings (use for reads across the app). */
 export async function loadRawUserSettings(userId: string): Promise<Record<string, unknown>> {
-  const { data, error } = await supabase
-    .from("user_settings")
-    .select("settings")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error || !data?.settings || typeof data.settings !== "object" || Array.isArray(data.settings)) {
-    return {};
-  }
-  return data.settings as Record<string, unknown>;
+  return loadEffectiveUserSettings(userId);
+}
+
+export async function patchOrgSettings(
+  userId: string,
+  patch: Record<string, unknown>,
+): Promise<string | null> {
+  return saveOrgSettingsPatch(patch, userId);
 }
 
 export async function patchUserSettings(
   userId: string,
   patch: Record<string, unknown>,
 ): Promise<string | null> {
-  const current = await loadRawUserSettings(userId);
+  const personal = pickPersonalSettingsPatch(patch);
+  if (!Object.keys(personal).length) return null;
+  return savePersonalUserSettingsPatch(userId, personal);
+}
+
+export async function removeUserSettingsKeys(
+  userId: string,
+  keys: string[],
+): Promise<string | null> {
+  if (!keys.length) return null;
+  const orgKeys = keys.filter((k) => ORG_KEY_SET.has(k));
+  const personalKeys = keys.filter((k) => !ORG_KEY_SET.has(k));
+
+  if (orgKeys.length) {
+    const orgErr = await removeOrgSettingsKeys(orgKeys);
+    if (orgErr) return orgErr;
+  }
+
+  if (!personalKeys.length) return null;
+
+  const { data, error: loadErr } = await supabase
+    .from("user_settings")
+    .select("settings")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (loadErr) return loadErr.message;
+
+  const current =
+    data?.settings && typeof data.settings === "object" && !Array.isArray(data.settings)
+      ? (data.settings as Record<string, unknown>)
+      : {};
+  const next = { ...current };
+  for (const key of personalKeys) delete next[key];
+
   const { error } = await supabase.from("user_settings").upsert(
     {
       user_id: userId,
-      settings: { ...current, ...patch } as Json,
+      settings: next as Json,
     },
     { onConflict: "user_id" },
   );

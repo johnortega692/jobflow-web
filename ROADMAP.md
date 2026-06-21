@@ -13,6 +13,8 @@ Desktop JobFlow has 15+ modules. The web app is being ported in phases.
 | **Paint submittals** (line items + print PDF) | Done |
 | **Wallcovering submittals** (line items + print PDF) | Done |
 | **Transmittal** (Ironwood layout + print PDF) | Done |
+| **Work Orders (EWO)** — upload PDF/image, text overlays, export | Done (Phase 1–2b) |
+| **Work Orders** — scan enhance, OCR regions, display toggles | Done (Phase 3) |
 
 ## Next (recommended order)
 

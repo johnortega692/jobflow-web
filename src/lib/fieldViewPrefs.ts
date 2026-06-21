@@ -1,0 +1,37 @@
+const MOBILE_KEY = "jobflow-field-mobile-view";
+const DARK_KEY = "jobflow-field-dark-mode";
+
+export function readFieldMobileView(): boolean {
+  try {
+    const stored = localStorage.getItem(MOBILE_KEY);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
+  } catch {
+    /* ignore */
+  }
+  return window.matchMedia("(max-width: 768px)").matches;
+}
+
+export function writeFieldMobileView(value: boolean): void {
+  try {
+    localStorage.setItem(MOBILE_KEY, String(value));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readFieldDarkMode(): boolean {
+  try {
+    return localStorage.getItem(DARK_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function writeFieldDarkMode(value: boolean): void {
+  try {
+    localStorage.setItem(DARK_KEY, String(value));
+  } catch {
+    /* ignore */
+  }
+}

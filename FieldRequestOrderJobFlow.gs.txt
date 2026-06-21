@@ -1,0 +1,135 @@
+// =============================================================================
+// Field Request Order spreadsheet — JobFlow integration
+// Paste into Code.gs, then Deploy → New version.
+// =============================================================================
+
+/**
+ * JobFlow GET ?action=getStaffLists
+ * Returns PM and Super names from the PMs and Supers tabs (for job setup dropdowns).
+ */
+function getFieldRequestStaffLists_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  function namesFromSheet(sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    var out = [];
+    values.forEach(function(row) {
+      var name = (row[0] || '').toString().trim();
+      if (name && out.indexOf(name) === -1) out.push(name);
+    });
+    return out.sort();
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    pms: namesFromSheet('PMs'),
+    supers: namesFromSheet('Supers')
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function upsertJobInJobsSheet_(data) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Jobs');
+
+  if (!sheet) {
+    sheet = ss.insertSheet('Jobs');
+    sheet.getRange(1, 1, 1, 5).setValues([['Job Code', 'Job Name', 'PM', 'Super', 'Address']]);
+    sheet.getRange(1, 1, 1, 5).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+
+  var jobCode = (data.jobCode || '').toString().trim();
+  var jobName = (data.jobName || '').toString().trim();
+  var pm = (data.pm || '').toString().trim();
+  var superName = (data.super || '').toString().trim();
+  var address = (data.address || '').toString().trim();
+
+  if (!jobCode) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: 'jobCode is required'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var lastRow = sheet.getLastRow();
+  var rowToUpdate = -1;
+
+  if (lastRow > 1) {
+    var rows = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var existingCode = (rows[i][0] || '').toString().trim();
+      if (existingCode === jobCode) {
+        rowToUpdate = i + 2;
+        break;
+      }
+    }
+  }
+
+  var rowData = [jobCode, jobName, pm, superName, address];
+
+  if (rowToUpdate > 0) {
+    sheet.getRange(rowToUpdate, 1, 1, 5).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    message: 'Job ' + jobCode + ' saved to Jobs sheet.',
+    jobCode: jobCode
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+
+// ----- Add at the TOP of doGet(e), before other view handling -----
+
+/*
+    if (e.parameter && e.parameter.action === 'getStaffLists') {
+      return getFieldRequestStaffLists_();
+    }
+*/
+
+// ----- Add at the TOP of doPost(e) try { ... } -----
+
+/*
+    if (e.parameter && e.parameter.action === 'upsertJob') {
+      var jobData = JSON.parse(e.postData.contents);
+      return upsertJobInJobsSheet_(jobData);
+    }
+
+    if (e.parameter && e.parameter.sheet === 'brushouts') {
+      var data = JSON.parse(e.postData.contents);
+      return handleBrushoutsData(data);
+    }
+*/
+
+
+// ----- Full doPost example if you prefer to replace the whole function -----
+
+function doPost_JobFlowExample(e) {
+  try {
+    if (e.parameter && e.parameter.action === 'upsertJob') {
+      var jobData = JSON.parse(e.postData.contents);
+      return upsertJobInJobsSheet_(jobData);
+    }
+
+    if (e.parameter && e.parameter.sheet === 'brushouts') {
+      var brushoutsData = JSON.parse(e.postData.contents);
+      return handleBrushoutsData(brushoutsData);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      message: 'Unknown POST. Use ?action=upsertJob or ?sheet=brushouts'
+    })).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    Logger.log('Error in doPost: ' + error.toString());
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: 'Failed to process request: ' + error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}

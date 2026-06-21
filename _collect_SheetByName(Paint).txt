@@ -1,0 +1,75 @@
+SheetByName('Paint');
+  
+  if (!sheet) return [];
+  
+  var data = sheet.getDataRange().getValues();
+  var jobsNeedingRevision = [];
+  
+  for (var i = 1; i < data.length; i++) {
+    var jobNumber = data[i][0];
+    var jobName = data[i][1];
+    var needsRevision = data[i][10]; // Column K
+    var revisionNotes = data[i][11]; // Column L
+    
+    if (!jobNumber) continue;
+    
+    // Only include P2 projects that need revision
+    if (jobNumber.toString().indexOf("P2") > -1 && needsRevision === true) {
+      jobsNeedingRevision.push({
+        jobNumber: jobNumber,
+        jobName: jobName,
+        revisionNotes: revisionNotes || ''
+      });
+    }
+  }
+  
+  return jobsNeedingRevision;
+}
+/**
+ * Send revision notification email
+ * NOW ROUTES TO SUPERINTENDENT BASED ON COLUMN R
+ * OUTLOOK CLASSIC OPTIMIZED
+ */
+function sendRevisionNotificationEmail(jobNumber, ccEmails, additionalNotes) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Paint');
+  
+  // 1. USE THE WORKING CONFIG PATTERN
+  var toEmail = EMAIL_CONFIG.PRIMARY; 
+  
+  if (!sheet) {
+    throw new Error('Paint sheet not found');
+  }
+  
+  var data = sheet.getDataRange().getValues();
+  var jobData = null;
+  
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === jobNumber) {
+      jobData = {
+        jobNumber: data[i][0],
+        jobName: data[i][1],
+        address: data[i][2],
+        gcName: data[i][3],
+        gcSuper: data[i][4],
+        startDate: data[i][5],
+        paintVendor: data[i][6],
+        revisionNotes: data[i][11] || '',
+        creativeTeam: data[i][15],
+        super: data[i][17] || ''
+      };
+      break;
+    }
+  }
+  
+  if (!jobData) { throw new Error('Job not found'); }
+
+  var toEmail = EMAIL_CONFIG.PRIMARY;
+
+  // Supers as base CC, plus any manually passed CC emails from the dialog
+  var ccList = EMAIL_CONFIG.toString(EMAIL_CONFIG.SUPERS_ONLY());
+  if (ccEmails && ccEmails.trim()) {
+    ccList += ',' + ccEmails.trim();
+  }
+
+  var subject = '⚠️ Revi

@@ -1,35 +1,29 @@
 export type GoogleUrlKey =
   | "manpower_schedule"
   | "paint_tracker"
-  | "wallcovering_tracker"
   | "brushouts_tracker"
-  | "job_manager";
+  | "field_request_order";
 
 export const GOOGLE_URL_FIELDS: { key: GoogleUrlKey; title: string; hint: string }[] = [
   {
     key: "manpower_schedule",
     title: "Manpower Schedule URL",
-    hint: "Push manpower data when you run Update Manpower on the Google Sheets tab.",
+    hint: "Push manpower data from the startup checklist Manpower step.",
   },
   {
     key: "paint_tracker",
-    title: "Paint Tracker URL",
-    hint: "Add paint tracker rows via Copy to Paint Tracker; fallback if Job Manager URL is blank.",
-  },
-  {
-    key: "wallcovering_tracker",
-    title: "Wallcovering Tracker URL",
-    hint: "Push wallcovering rows when you sync to the Wallcovering Tracker.",
+    title: "Dashboard Web App URL",
+    hint: "John's Dashboard web app — send vendor/submittal emails via Gmail. Deploy as Execute as: Me; run Authorize vendor email once in the sheet menu.",
   },
   {
     key: "brushouts_tracker",
     title: "BrushOuts Tracker URL",
-    hint: "Push brush-out entries when you use Add BrushOuts on paint submittals.",
+    hint: "Legacy brush-out push from the Paint tab (optional if Field Request URL is set).",
   },
   {
-    key: "job_manager",
-    title: "Job Manager URL",
-    hint: "Read/update Paint Tracker rows (submittal ordered, nights, etc.) through your Web App API.",
+    key: "field_request_order",
+    title: "Field Request Order URL",
+    hint: "Web app for the Field Request Order spreadsheet — Jobs tab + BrushOuts tab (startup checklist).",
   },
 ];
 
@@ -38,11 +32,9 @@ export const DEFAULT_GOOGLE_URLS: Record<GoogleUrlKey, string> = {
     "https://script.google.com/macros/s/AKfycbxmq47UjVWVzSGqpXIvhS_pCeiiKy5uOp99EZRpAFZPcY4lBi6SZH3ybBX9XTEfvBgF/exec",
   paint_tracker:
     "https://script.google.com/macros/s/AKfycbzwBK28rK9w_WGKc87s0FI8V-BFVQ-NljJLliD0M6vZR-58wClc2cIC30-1_qSWmU9h4g/exec",
-  wallcovering_tracker:
-    "https://script.google.com/macros/s/AKfycbzwBK28rK9w_WGKc87s0FI8V-BFVQ-NljJLliD0M6vZR-58wClc2cIC30-1_qSWmU9h4g/exec",
   brushouts_tracker:
     "https://script.google.com/macros/s/AKfycbzwBK28rK9w_WGKc87s0FI8V-BFVQ-NljJLliD0M6vZR-58wClc2cIC30-1_qSWmU9h4g/exec",
-  job_manager: "",
+  field_request_order: "",
 };
 
 export const PAINT_VENDOR_OPTIONS = [

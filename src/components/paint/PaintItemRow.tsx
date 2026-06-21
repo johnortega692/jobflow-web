@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FLOOR_ORDER } from "../../lib/printCore";
 import {
   abbreviateVendorKey,
-  extractManufacturerFromDisplay,
-  extractProductName,
   getProductDisplay,
-  manufacturerForProduct,
   searchPaintColors,
   shouldSkipColorLookup,
   type PaintColorsDb,
@@ -13,13 +10,13 @@ import {
 } from "../../lib/paintCatalog";
 import type { PaintItem } from "../../types/tradeDocuments";
 import { ColorLookupModal } from "./ColorLookupModal";
+import { PaintProductSelect, PaintSheenSelect } from "./PaintFieldSelects";
 
 type Props = {
   item: PaintItem;
   index: number;
   total: number;
   products: PaintProduct[];
-  productOptions: string[];
   sheenOptions: string[];
   colors: PaintColorsDb | null;
   showPreviousColor: boolean;
@@ -34,7 +31,6 @@ export function PaintItemRow({
   index,
   total,
   products,
-  productOptions,
   sheenOptions,
   colors,
   showPreviousColor,
@@ -43,12 +39,9 @@ export function PaintItemRow({
   onMoveDown,
   onRemove,
 }: Props) {
-  const uid = useId();
-  const productListId = `${uid}-products`;
-  const sheenListId = `${uid}-sheens`;
-  const [lookupMatches, setLookupMatches] = useState<{ display: string; vendor: string }[] | null>(
-    null,
-  );
+  const [lookupOpen, setLookupOpen] = useState(false);
+  const [lookupQuery, setLookupQuery] = useState("");
+  const [lookupMatches, setLookupMatches] = useState<{ display: string; vendor: string }[]>([]);
   const [productDisplay, setProductDisplay] = useState(() =>
     item.product ? getProductDisplay(products, item.product) : "",
   );
@@ -59,14 +52,12 @@ export function PaintItemRow({
 
   const runColorLookup = useCallback(() => {
     if (!colors || shouldSkipColorLookup(item.color)) return;
-    const matches = searchPaintColors(colors, item.color, productDisplay);
-    if (matches.length === 1) {
-      const m = matches[0]!;
-      onChange({ color: m.display, manufacturer: abbreviateVendorKey(m.vendor) });
-    } else if (matches.length > 1) {
-      setLookupMatches(matches);
-    }
-  }, [colors, item.color, item.manufacturer, onChange, productDisplay]);
+    const q = item.color.trim();
+    const matches = searchPaintColors(colors, q);
+    setLookupQuery(q);
+    setLookupMatches(matches);
+    setLookupOpen(true);
+  }, [colors, item.color]);
 
   function onColorKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" || e.key === "Tab") {
@@ -77,15 +68,10 @@ export function PaintItemRow({
     }
   }
 
-  function onProductBlur() {
-    const name = extractProductName(productDisplay);
-    const mfr = extractManufacturerFromDisplay(productDisplay) || manufacturerForProduct(products, name);
-    onChange({ product: name, manufacturer: mfr });
-  }
-
   function onLookupSelect(display: string, vendor: string) {
     onChange({ color: display, manufacturer: abbreviateVendorKey(vendor) });
-    setLookupMatches(null);
+    setLookupOpen(false);
+    setLookupMatches([]);
   }
 
   return (
@@ -103,6 +89,7 @@ export function PaintItemRow({
         <label className="paint-col paint-col-floor">
           <span className="paint-col-head">Floor</span>
           <select
+            className="paint-field-select"
             value={item.floor}
             onChange={(e) => onChange({ floor: e.target.value })}
             aria-label={`Floor row ${index + 1}`}
@@ -118,13 +105,24 @@ export function PaintItemRow({
 
         <label className="paint-col paint-col-color">
           <span className="paint-col-head">Color</span>
-          <input
-            value={item.color}
-            onChange={(e) => onChange({ color: e.target.value })}
-            onKeyDown={onColorKeyDown}
-            aria-label={`Color row ${index + 1}`}
-            title="Type a color number and press Enter or Tab to look up"
-          />
+          <div className="paint-color-field">
+            <input
+              value={item.color}
+              onChange={(e) => onChange({ color: e.target.value })}
+              onKeyDown={onColorKeyDown}
+              aria-label={`Color row ${index + 1}`}
+              title="Type a color number, then Enter, Tab, or Lookup"
+            />
+            <button
+              type="button"
+              className="btn btn-small btn-secondary paint-color-lookup-btn"
+              disabled={!colors || !item.color.trim() || shouldSkipColorLookup(item.color)}
+              onClick={runColorLookup}
+              title="Look up color name from catalog"
+            >
+              Lookup
+            </button>
+          </div>
         </label>
 
         {showPreviousColor && (
@@ -140,33 +138,25 @@ export function PaintItemRow({
 
         <label className="paint-col paint-col-product">
           <span className="paint-col-head">Product</span>
-          <input
-            list={productListId}
+          <PaintProductSelect
             value={productDisplay}
-            onChange={(e) => setProductDisplay(e.target.value)}
-            onBlur={onProductBlur}
-            aria-label={`Product row ${index + 1}`}
+            products={products}
+            ariaLabel={`Product row ${index + 1}`}
+            onChange={(productName, manufacturer, display) => {
+              setProductDisplay(display);
+              onChange({ product: productName, manufacturer });
+            }}
           />
-          <datalist id={productListId}>
-            {productOptions.map((p) => (
-              <option key={p} value={p} />
-            ))}
-          </datalist>
         </label>
 
         <label className="paint-col paint-col-sheen">
           <span className="paint-col-head">Sheen</span>
-          <input
-            list={sheenListId}
+          <PaintSheenSelect
             value={item.sheen}
-            onChange={(e) => onChange({ sheen: e.target.value })}
-            aria-label={`Sheen row ${index + 1}`}
+            options={sheenOptions}
+            ariaLabel={`Sheen row ${index + 1}`}
+            onChange={(sheen) => onChange({ sheen })}
           />
-          <datalist id={sheenListId}>
-            {sheenOptions.map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
         </label>
 
         <div className="paint-row-actions" aria-label={`Row ${index + 1} actions`}>
@@ -200,11 +190,12 @@ export function PaintItemRow({
         </div>
       </div>
 
-      {lookupMatches && lookupMatches.length > 0 && (
+      {lookupOpen && (
         <ColorLookupModal
+          query={lookupQuery}
           matches={lookupMatches}
           onSelect={onLookupSelect}
-          onClose={() => setLookupMatches(null)}
+          onClose={() => setLookupOpen(false)}
         />
       )}
     </>

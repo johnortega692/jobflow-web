@@ -1,38 +1,28 @@
-import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useOutletContext } from "react-router-dom";
 import { CreateRevisedSubmittalModal } from "../components/submittals/CreateRevisedSubmittalModal";
 import { DateInput } from "../components/DateInput";
 import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal";
-import { DeliveryAddressModal } from "../components/wallcovering/DeliveryAddressModal";
-import { VendorOrderModal } from "../components/wallcovering/VendorOrderModal";
 import { WallcoveringBulkAddModal } from "../components/wallcovering/WallcoveringBulkAddModal";
 import { WallcoveringItemRow } from "../components/wallcovering/WallcoveringItemRow";
-import { WcOrderSamplesModal } from "../components/wallcovering/WcOrderSamplesModal";
-import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
-import { loadContactDirectory } from "../lib/contactDirectory";
-import {
-  DEFAULT_DELIVERY_SCHEDULING,
-  loadDeliverySettings,
-  type DeliverySchedulingSettings,
-} from "../lib/deliverySettings";
-import { loadPaintUserSettings } from "../lib/paintUserSettings";
 import {
   addSubmittalToHistory,
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { queuePendingItem } from "../lib/transmittalHelpers";
-import { copyWallcoveringToTracker } from "../lib/wcSheetsSync";
+import { buildWcTrackerLinesFromSubmittal, saveWcTrackerLines } from "../lib/fieldTrackerProject";
 import { applyGotTrackToggle, detectGotTrack } from "../lib/wcTrackInfill";
-import { orderedWallcoveringItems } from "../lib/wcSampleOrderEmail";
 import {
-  printWallcoveringOrderForm,
-  wallcoveringItemsToOrderForm,
-} from "../lib/wallcoveringOrderFormPrint";
+  applyTransmittalContractIfDistinct,
+  hasDistinctWcContract,
+  wcPrintInfo,
+  wcTrackerJobLabel,
+} from "../lib/jobInfo";
 import { printWallcoveringSubmittal } from "../lib/wallcoveringSubmittalPrint";
+import { wallcoveringSubmittalFilename } from "../lib/pdfFilenames";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
-import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
   defaultTransmittal,
@@ -71,7 +61,6 @@ function normalizeWcDraft(raw: WallcoveringSubmittalData): WallcoveringSubmittal
 }
 
 export function WallcoveringSubmittalsPage() {
-  const { user } = useAuth();
   const { branding } = useLetterhead();
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
@@ -80,19 +69,8 @@ export function WallcoveringSubmittalsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [revisedOpen, setRevisedOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [deliveryOpen, setDeliveryOpen] = useState(false);
-  const [deliveryMode, setDeliveryMode] = useState<"order_form" | "orders_by_vendor">("order_form");
-  const [pendingDeliveryAddress, setPendingDeliveryAddress] = useState("");
-  const [vendorOpen, setVendorOpen] = useState(false);
-  const [vendorMode, setVendorMode] = useState<"samples" | "orders_by_vendor">("samples");
-  const [pendingVendor, setPendingVendor] = useState<{ name: string; email: string } | null>(null);
-  const [samplesOpen, setSamplesOpen] = useState(false);
   const [trackerBusy, setTrackerBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [vendors, setVendors] = useState<MaterialVendor[]>([]);
-  const [deliverySettings, setDeliverySettings] = useState<DeliverySchedulingSettings>(
-    DEFAULT_DELIVERY_SCHEDULING,
-  );
 
   useEffect(() => {
     if (!loading) {
@@ -103,14 +81,8 @@ export function WallcoveringSubmittalsPage() {
     }
   }, [loading, tradeData.wallcovering_submittal, tradeData.wallcovering_submittal_history]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    void loadContactDirectory(user.id).then((d) => setVendors(d.material_vendors));
-    void loadDeliverySettings(user.id).then(setDeliverySettings);
-  }, [user?.id]);
-
   const showPreviousColor = draft.submittal_type === "substitution";
-  const orderedItems = orderedWallcoveringItems(draft.items);
+  const wcPrint = useMemo(() => wcPrintInfo(project, project.jobInfo), [project]);
 
   async function persist(nextDraft: WallcoveringSubmittalData, nextHistory = history) {
     const ok = await save({
@@ -169,15 +141,7 @@ export function WallcoveringSubmittalsPage() {
 
   async function onPrint() {
     try {
-      printWallcoveringSubmittal(
-        {
-          job_number: project.job_number,
-          job_name: project.job_name,
-          job_address: project.job_address ?? "",
-        },
-        draft,
-        branding,
-      );
+      printWallcoveringSubmittal(wcPrint, draft, branding);
       const nextHistory = addSubmittalToHistory(
         history,
         draft.submittal_number,
@@ -200,13 +164,14 @@ export function WallcoveringSubmittalsPage() {
       } catch {
         /* log row optional */
       }
-      const transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
+      let transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
         submittal_type: "Color Samples",
         scope: "Wallcovering",
         source: "wallcovering_submittal",
         trade_submittal_number: String(draft.submittal_number),
         log_row_id: logRowId,
       });
+      transmittal = applyTransmittalContractIfDistinct(project, transmittal, "wallcovering");
       await save({
         ...tradeData,
         wallcovering_submittal: draft,
@@ -219,117 +184,28 @@ export function WallcoveringSubmittalsPage() {
     }
   }
 
-  function startOrderForm(mode: "order_form" | "orders_by_vendor") {
-    const items =
-      mode === "orders_by_vendor"
-        ? draft.items.filter((i) => i.order)
-        : draft.items.filter((i) => i.manufacturer.trim() || i.product.trim() || i.label.trim());
-    if (!items.length) {
-      setError(
-        mode === "orders_by_vendor"
-          ? 'No items checked for order. Check the "Order" box on items to include.'
-          : "Add wallcovering items before generating an order form.",
-      );
-      return;
-    }
-    if (!project.job_number.trim() || !project.job_name.trim()) {
-      setError("Job number and job name are required.");
-      return;
-    }
-    setDeliveryMode(mode);
-    setDeliveryOpen(true);
-  }
-
-  function onDeliveryConfirmed(address: string) {
-    setDeliveryOpen(false);
-    if (deliveryMode === "orders_by_vendor") {
-      setPendingDeliveryAddress(address);
-      setVendorMode("orders_by_vendor");
-      setVendorOpen(true);
-      return;
-    }
-    try {
-      printWallcoveringOrderForm(
-        {
-          job_number: project.job_number,
-          project_name: project.job_name,
-          delivery_address: address,
-          specifier: project.architect,
-          items: wallcoveringItemsToOrderForm(draft.items),
-        },
-        branding,
-        deliverySettings,
-      );
-      setStatus("Order form PDF opened.");
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not generate order form.");
-    }
-  }
-
-  function onVendorConfirmed(name: string, email: string) {
-    setVendorOpen(false);
-    if (vendorMode === "samples") {
-      setPendingVendor({ name, email });
-      setSamplesOpen(true);
-      return;
-    }
-    try {
-      printWallcoveringOrderForm(
-        {
-          job_number: project.job_number,
-          project_name: project.job_name,
-          delivery_address: pendingDeliveryAddress,
-          specifier: project.architect,
-          items: wallcoveringItemsToOrderForm(
-            draft.items.filter((i) => i.order),
-            name,
-          ),
-        },
-        branding,
-        deliverySettings,
-      );
-      setStatus(`Order form for ${name} opened.`);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not generate order form.");
-    }
-  }
-
-  function startOrderSamples() {
-    if (!orderedItems.length) {
-      setError(
-        'No items checked for order. Check the "Order" box on each item you want to sample.',
-      );
-      return;
-    }
-    if (!project.job_number.trim() || !project.job_name.trim()) {
-      setError("Job number and job name are required.");
-      return;
-    }
-    setVendorMode("samples");
-    setVendorOpen(true);
-  }
-
   async function onCopyToTracker() {
     setTrackerBusy(true);
+    setError(null);
+    setStatus(null);
     try {
-      const settings = user?.id ? await loadPaintUserSettings(user.id) : null;
-      const err = await copyWallcoveringToTracker(
-        settings?.google_urls.wallcovering_tracker,
-        project.job_number,
-        project.job_name,
-        project.contractor,
-        project.jobInfo.start_date,
-        draft.items,
-      );
-      if (err) setError(err);
-      else {
-        setStatus("Data sent to Wallcovering Tracker.");
-        setError(null);
+      const lines = buildWcTrackerLinesFromSubmittal(draft.items);
+      if (!lines.length) {
+        setError("No wallcovering items with data to copy.");
+        return;
       }
+      const saveErr = await saveWcTrackerLines(
+        projectId,
+        lines,
+        `Copied ${lines.length} wallcovering line${lines.length === 1 ? "" : "s"} from submittal`,
+      );
+      if (saveErr) {
+        setError(saveErr);
+        return;
+      }
+      setStatus(`Copied ${lines.length} line${lines.length === 1 ? "" : "s"} to Job Tracker → Wallcovering.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Tracker sync failed");
+      setError(e instanceof Error ? e.message : "Could not save tracker lines.");
     } finally {
       setTrackerBusy(false);
     }
@@ -342,22 +218,56 @@ export function WallcoveringSubmittalsPage() {
     setStatus(`Removed submittal #${submittalNumber} from history.`);
   }
 
+  const submittalPdfFilename = useMemo(
+    () =>
+      wallcoveringSubmittalFilename(
+        wcPrint.job_name,
+        wcPrint.job_number,
+        draft.submittal_number,
+        draft.submittal_type,
+      ),
+    [wcPrint.job_name, wcPrint.job_number, draft.submittal_number, draft.submittal_type],
+  );
+
   if (loading) return <p className="muted">Loading wallcovering submittal…</p>;
 
   return (
     <div className="stack">
-      <h2 className="wc-section-title">Wallcovering Submittals Section</h2>
-
-      <section className="card wc-action-bar">
-        <div className="wc-main-buttons row-gap wrap">
+      <div className="row-between">
+        <div>
+          <h2>Wallcovering submittals</h2>
+          <p className="muted small">
+            Wallcovering submittals, tracker sync, and history. Material orders →{" "}
+            <Link to={`/projects/${projectId}/orders`}>Orders</Link>.
+            {hasDistinctWcContract(project) && (
+              <> Contract: {wcTrackerJobLabel(project)}.</>
+            )}
+          </p>
+        </div>
+        <div className="row-gap wrap">
+          <button type="button" className="btn btn-secondary" onClick={() => setRevisedOpen(true)}>
+            Create revised submittal
+          </button>
+          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
+            {saving ? "Saving…" : "Save"}
+          </button>
           <button type="button" className="btn btn-primary" onClick={() => void onPrint()}>
             Submittal PDF
           </button>
+        </div>
+      </div>
+
+      <p className="sds-filename-preview muted small">
+        PDF filename: <code>{submittalPdfFilename}</code>
+      </p>
+
+      {error && <div className="banner banner-error">{error}</div>}
+      {status && <div className="banner banner-ok">{status}</div>}
+
+      <section className="card wc-action-bar">
+        <div className="wc-main-buttons row-gap wrap">
           <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
             Submittal history…
-          </button>
-          <button type="button" className="btn btn-warning" onClick={startOrderSamples}>
-            Order Samples
           </button>
           <button
             type="button"
@@ -365,29 +275,10 @@ export function WallcoveringSubmittalsPage() {
             disabled={trackerBusy}
             onClick={() => void onCopyToTracker()}
           >
-            {trackerBusy ? "Sending…" : "Copy to WC Tracker"}
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => startOrderForm("order_form")}>
-            Order Form PDF
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => startOrderForm("orders_by_vendor")}
-          >
-            Orders by Vendor
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setRevisedOpen(true)}>
-            Create revised submittal
-          </button>
-          <button type="button" className="btn btn-ghost btn-small" disabled={saving} onClick={() => void onSave()}>
-            {saving ? "Saving…" : "Save"}
+            {trackerBusy ? "Saving…" : "Copy to Job Tracker"}
           </button>
         </div>
       </section>
-
-      {error && <div className="banner banner-error">{error}</div>}
-      {status && <div className="banner banner-ok">{status}</div>}
 
       <section className="card stack">
         <div className="grid-3">
@@ -504,44 +395,11 @@ export function WallcoveringSubmittalsPage() {
         />
       )}
 
-      {deliveryOpen && (
-        <DeliveryAddressModal
-          defaultAddress={project.job_address ?? ""}
-          warehouseAddress={deliverySettings.default_delivery_address}
-          onConfirm={onDeliveryConfirmed}
-          onClose={() => setDeliveryOpen(false)}
-        />
-      )}
-
-      {vendorOpen && (
-        <VendorOrderModal
-          title={vendorMode === "samples" ? "Order Samples — Vendor" : "Wallcovering Orders by Vendor"}
-          vendors={vendors}
-          onConfirm={onVendorConfirmed}
-          onClose={() => setVendorOpen(false)}
-        />
-      )}
-
-      {samplesOpen && pendingVendor && (
-        <WcOrderSamplesModal
-          vendor={pendingVendor.name}
-          vendorEmail={pendingVendor.email}
-          jobNumber={project.job_number}
-          jobName={project.job_name}
-          architect={project.architect}
-          items={orderedItems}
-          onClose={() => {
-            setSamplesOpen(false);
-            setPendingVendor(null);
-          }}
-        />
-      )}
-
       {historyOpen && (
         <SubmittalHistoryModal
           scope="wallcovering"
-          jobNumber={project.job_number}
-          jobName={project.job_name}
+          jobNumber={wcJobNumber}
+          jobName={wcJobName}
           history={history}
           onLoadWallcovering={loadHistoryItems}
           onDelete={(n) => void onDeleteHistory(n)}
@@ -557,6 +415,8 @@ export function WallcoveringSubmittalsPage() {
             job_number: project.job_number,
             job_name: project.job_name,
             job_address: project.job_address ?? "",
+            job_address2: project.job_address2 ?? "",
+            jobInfo: project.jobInfo,
           }}
           history={history}
           branding={branding}
