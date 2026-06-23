@@ -14,7 +14,6 @@ import {
   type SubmittalScope,
 } from "../../lib/submittalHistory";
 import {
-  jobFullAddressLines,
   projectPrintInfo,
   wcPrintInfo,
 } from "../../lib/jobInfo";
@@ -89,10 +88,6 @@ export function CreateRevisedSubmittalModal({
   const showPreviousColor = submittalType === "substitution";
   const title =
     scope === "paint" ? "Create Revised Paint Submittal" : "Create Revised Wallcovering Submittal";
-  const addressLines = useMemo(
-    () => jobFullAddressLines(project, project.jobInfo),
-    [project],
-  );
   const printProject = useMemo(
     () => (scope === "wallcovering" ? wcPrintInfo(project, project.jobInfo) : projectPrintInfo(project, project.jobInfo)),
     [project, scope],
@@ -204,35 +199,6 @@ export function CreateRevisedSubmittalModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="revised-submittal-title">{title}</h3>
-
-        <div className="revised-job-info-box">
-          <p className="revised-job-info-label">Job information</p>
-          <dl className="revised-job-info-grid">
-            <div className="revised-job-info-row">
-              <dt>Job #</dt>
-              <dd>{project.job_number || "—"}</dd>
-            </div>
-            <div className="revised-job-info-row">
-              <dt>Name</dt>
-              <dd>{project.job_name || "—"}</dd>
-            </div>
-            <div className="revised-job-info-row">
-              <dt>Address</dt>
-              <dd>
-                {addressLines.length ? (
-                  addressLines.map((line, i) => (
-                    <span key={`${line}-${i}`}>
-                      {line}
-                      {i < addressLines.length - 1 ? <br /> : null}
-                    </span>
-                  ))
-                ) : (
-                  "—"
-                )}
-              </dd>
-            </div>
-          </dl>
-        </div>
 
         <section className="stack revised-section">
           <p className="paint-col-head">Previous submittals</p>

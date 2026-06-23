@@ -22,7 +22,6 @@ import {
   type AtticStockPaintItem,
   type PaintVendor,
 } from "../../lib/paintVendorEmail";
-import { MailtoSetupHelp } from "../settings/MailtoSetupHelp";
 
 type Props = {
   jobNumber: string;
@@ -270,8 +269,6 @@ export function EmailVendorModal({
         <h3 id="email-vendor-title">
           {isAtticStock ? "Order Attic Stock" : isPrep ? "Send brush-out request (no job # yet)" : "Email vendor"}
         </h3>
-
-        <MailtoSetupHelp compact method={composeEmailMethod} />
 
         <label>
           Select vendor

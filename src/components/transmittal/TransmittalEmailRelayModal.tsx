@@ -9,7 +9,6 @@ import {
 import type { ComposeEmailMethod } from "../../lib/paintUserSettings";
 import { composeEmailButtonLabel } from "../../lib/paintUserSettings";
 import type { TransmittalData } from "../../types/tradeDocuments";
-import { MailtoSetupHelp } from "../settings/MailtoSetupHelp";
 
 type Props = {
   project: { job_number: string; job_name: string };
@@ -65,7 +64,6 @@ export function TransmittalEmailRelayModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="transmittal-email-relay-title">Email Relay – Delivery Details</h3>
-        <MailtoSetupHelp compact method={composeEmailMethod} />
 
         <form className="stack" onSubmit={onOpenMailto}>
           <section className="stack">

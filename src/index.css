@@ -2819,46 +2819,6 @@ input.readonly {
   overflow: auto;
 }
 
-.revised-job-info-box {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.55rem 0.75rem;
-  background: var(--bg-elevated);
-}
-
-.revised-job-info-label {
-  margin: 0 0 0.35rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.revised-job-info-grid {
-  margin: 0;
-  display: grid;
-  gap: 0.2rem;
-}
-
-.revised-job-info-row {
-  display: grid;
-  grid-template-columns: 4.25rem minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: baseline;
-  font-size: 0.875rem;
-  line-height: 1.35;
-}
-
-.revised-job-info-row dt {
-  margin: 0;
-  color: var(--muted);
-}
-
-.revised-job-info-row dd {
-  margin: 0;
-}
-
 .revised-section {
   padding: 0.75rem 0;
   border-top: 1px solid var(--border);
@@ -4323,7 +4283,11 @@ input.readonly {
 }
 
 .paint-email-html-preview--full {
-  max-height: 360px;
+  max-height: 200px;
+}
+
+.paint-email-modal .paint-email-html-preview--full {
+  max-height: 180px;
 }
 
 .paint-email-settings {
