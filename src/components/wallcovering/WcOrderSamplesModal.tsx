@@ -1,4 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+import { loadPaintUserSettings } from "../../lib/paintUserSettings";
+import { composeEmailButtonLabel } from "../../lib/paintUserSettings";
+import { openEmailCompose } from "../../lib/paintVendorEmail";
 import {
   buildWcSampleOrderEmail,
   loadWcShippingAddress,
@@ -25,8 +29,15 @@ export function WcOrderSamplesModal({
   items,
   onClose,
 }: Props) {
+  const { user } = useAuth();
   const [address, setAddress] = useState(() => loadWcShippingAddress());
   const [copied, setCopied] = useState(false);
+  const [composeEmailMethod, setComposeEmailMethod] = useState<"gmail" | "mailto">("gmail");
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void loadPaintUserSettings(user.id).then((s) => setComposeEmailMethod(s.compose_email_method));
+  }, [user?.id]);
 
   const email = useMemo(
     () =>
@@ -51,11 +62,10 @@ export function WcOrderSamplesModal({
     }
   }
 
-  function openMailto() {
+  function openCompose() {
     saveWcShippingAddress(address);
     const to = vendorEmail.trim();
-    const q = `subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
-    window.location.href = `mailto:${encodeURIComponent(to)}?${q}`;
+    openEmailCompose([to], [], email.subject, email.body, composeEmailMethod);
   }
 
   return (
@@ -77,8 +87,8 @@ export function WcOrderSamplesModal({
           <button type="button" className="btn btn-primary" onClick={() => void copyBody()}>
             {copied ? "Copied" : "Copy email"}
           </button>
-          <button type="button" className="btn btn-secondary" onClick={openMailto}>
-            Open in email
+          <button type="button" className="btn btn-secondary" onClick={openCompose}>
+            {composeEmailButtonLabel(composeEmailMethod)}
           </button>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Close

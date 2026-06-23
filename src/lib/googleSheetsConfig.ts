@@ -1,15 +1,9 @@
 export type GoogleUrlKey =
-  | "manpower_schedule"
   | "paint_tracker"
   | "brushouts_tracker"
   | "field_request_order";
 
 export const GOOGLE_URL_FIELDS: { key: GoogleUrlKey; title: string; hint: string }[] = [
-  {
-    key: "manpower_schedule",
-    title: "Manpower Schedule URL",
-    hint: "Push manpower data from the startup checklist Manpower step.",
-  },
   {
     key: "paint_tracker",
     title: "Dashboard Web App URL",
@@ -28,8 +22,6 @@ export const GOOGLE_URL_FIELDS: { key: GoogleUrlKey; title: string; hint: string
 ];
 
 export const DEFAULT_GOOGLE_URLS: Record<GoogleUrlKey, string> = {
-  manpower_schedule:
-    "https://script.google.com/macros/s/AKfycbxmq47UjVWVzSGqpXIvhS_pCeiiKy5uOp99EZRpAFZPcY4lBi6SZH3ybBX9XTEfvBgF/exec",
   paint_tracker:
     "https://script.google.com/macros/s/AKfycbzwBK28rK9w_WGKc87s0FI8V-BFVQ-NljJLliD0M6vZR-58wClc2cIC30-1_qSWmU9h4g/exec",
   brushouts_tracker:

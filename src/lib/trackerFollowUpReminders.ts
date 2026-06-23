@@ -1,5 +1,5 @@
 import type { ProjectForm } from "../types/database";
-import { jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo";
+import { collectProjectForemanCc, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
@@ -448,7 +448,11 @@ export async function sendFollowUpReminder(options: {
     throw new Error("Nothing due — no reminder email sent.");
   }
 
-  const recipients = resolveTrackerNotificationRecipients(options.primaryEmail, options.superEmails);
+  const recipients = resolveTrackerNotificationRecipients(
+    options.primaryEmail,
+    options.superEmails,
+    collectProjectForemanCc(options.projects),
+  );
   if (!recipients) {
     throw new Error("Set a notification primary email in Settings → Paint & email.");
   }

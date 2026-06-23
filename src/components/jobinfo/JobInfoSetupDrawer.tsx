@@ -500,6 +500,15 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                 Foreman
                 <input value={j.icbi_foreman} onChange={(e) => setJobInfo({ icbi_foreman: e.target.value })} />
               </label>
+              <label>
+                Foreman email
+                <input
+                  type="email"
+                  value={j.icbi_foreman_email}
+                  placeholder="CC on paint tracker & vendor emails"
+                  onChange={(e) => setJobInfo({ icbi_foreman_email: e.target.value })}
+                />
+              </label>
             </div>
           </JobSection>
 

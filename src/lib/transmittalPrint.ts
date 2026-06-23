@@ -271,5 +271,5 @@ export function printTransmittal(
   branding: PrintBranding,
 ): void {
   const filename = transmittalFilename(project.job_name, project.job_number, data.transmittal_number);
-  printHtml(buildTransmittalHtml(project, data, branding, filename), pdfTitleFromFilename(filename));
+  printHtml(buildTransmittalHtml(project, data, branding, filename), pdfTitleFromFilename(filename), branding.logoUrl);
 }

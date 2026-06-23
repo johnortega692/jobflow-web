@@ -10,6 +10,7 @@ import {
 } from "../../lib/fieldTrackerProject";
 import { PAINT_VENDOR_OPTIONS } from "../../lib/googleSheetsConfig";
 import { loadPaintUserSettings } from "../../lib/paintUserSettings";
+import { resolvePaintNotificationFromProfile } from "../../lib/paintProfileDefaults";
 import {
   detectPaintTrackerNotificationKinds,
   sendPaintTrackerNotifications,
@@ -71,7 +72,7 @@ export function PaintTrackerStatusSection({
   onSaveControlChange,
 }: Props) {
   const { user } = useAuth();
-  const { settings: letterhead, branding } = useLetterhead();
+  const { settings: letterhead, branding, profile } = useLetterhead();
   const [tracker, setTracker] = useState<PaintTrackerState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -101,11 +102,12 @@ export function PaintTrackerStatusSection({
     if (!user?.id) return;
     void loadPaintUserSettings(user.id).then((s) => {
       setGasUrl((s.google_urls.paint_tracker ?? "").trim());
-      setNotificationPrimaryEmail(s.notification_primary_email);
-      setNotificationPrimaryName(s.notification_primary_name || s.user_name);
+      const resolved = resolvePaintNotificationFromProfile(profile, s);
+      setNotificationPrimaryEmail(resolved.notification_primary_email);
+      setNotificationPrimaryName(resolved.notification_primary_name);
       setSuperEmails(s.super_emails);
     });
-  }, [user?.id]);
+  }, [user?.id, profile.name, profile.email]);
 
   const persistTracker = useCallback(
     async (next: PaintTrackerState) => {
@@ -151,18 +153,23 @@ export function PaintTrackerStatusSection({
 
     if (!notificationPrimaryEmail.trim()) {
       setStatus(
-        "Paint tracker saved. Set primary notification email in Settings → Paint & email to send notifications.",
+        "Paint tracker saved. Set primary notification email in Settings → Profile or Paint & email to send notifications.",
       );
       return;
     }
+
+    const notify = resolvePaintNotificationFromProfile(profile, {
+      notification_primary_email: notificationPrimaryEmail,
+      notification_primary_name: notificationPrimaryName,
+    });
 
     try {
       const sent = await sendPaintTrackerNotifications({
         kinds,
         project,
         tracker,
-        primaryEmail: notificationPrimaryEmail,
-        primaryName: notificationPrimaryName,
+        primaryEmail: notify.notification_primary_email,
+        primaryName: notify.notification_primary_name,
         superEmails,
         companyName: branding.companyName || letterhead.company_name,
         companyAddress: letterhead.company_address,
@@ -189,6 +196,7 @@ export function PaintTrackerStatusSection({
     letterhead.company_name,
     letterhead.company_address,
     letterhead.logo_url,
+    profile,
   ]);
 
   const canSave = Boolean(jobNumber && tracker && !loading);

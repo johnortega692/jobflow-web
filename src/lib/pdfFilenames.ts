@@ -86,6 +86,13 @@ export function trackOrderFormFilename(jobName: string, jobNumber: string): stri
   return `${projectPart}_Stretched_Fabric_Track.pdf`;
 }
 
+export function budgetPdfJobTitle(jobNumber: string, jobName: string): string {
+  const num = jobNumber.trim();
+  const name = jobName.trim();
+  if (num && name) return `${num} - ${name}`;
+  return name || num || "Project";
+}
+
 export function budgetPdfFilename(jobName: string, jobNumber: string): string {
   return `${projectFilenamePart(jobName, jobNumber)}_Budget.pdf`;
 }

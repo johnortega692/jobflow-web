@@ -1,6 +1,5 @@
 /** Manual startup steps — order matches the dashboard stepper left → right. */
 export const PROJECT_STARTUP_ACTIONS = {
-  manpower: "manpower",
   field_request_job: "field_request_job",
   field_request_brushouts: "field_request_brushouts",
 } as const;
@@ -8,12 +7,6 @@ export const PROJECT_STARTUP_ACTIONS = {
 export type ProjectStartupAction = (typeof PROJECT_STARTUP_ACTIONS)[keyof typeof PROJECT_STARTUP_ACTIONS];
 
 export const PROJECT_STARTUP_STEPS = [
-  {
-    id: "manpower_updated",
-    label: "Update manpower schedule",
-    shortLabel: "Manpower",
-    action: PROJECT_STARTUP_ACTIONS.manpower,
-  },
   {
     id: "field_request_app",
     label: "Add job to Field Request sheet",
@@ -29,10 +22,11 @@ export const PROJECT_STARTUP_STEPS = [
   },
   {
     id: "brushouts_ordered",
-    label: "Push approved brush outs to Field Request",
-    shortLabel: "Brush outs",
+    label: "Push BO approved to Field Request",
+    shortLabel: "BO Approved",
     action: PROJECT_STARTUP_ACTIONS.field_request_brushouts,
     modulePath: "paint",
+    oneTime: true,
   },
   {
     id: "field_has_hours",

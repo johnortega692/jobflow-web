@@ -13,7 +13,6 @@ import {
   linkBrushoutPrepToProject,
   listBrushoutPrepsSorted,
   loadBrushoutPreps,
-  markPrepEmailed,
   markPrepLinked,
   paintItemHasContent,
   prepPaintItems,
@@ -217,28 +216,7 @@ export function BrushOutRequestPage() {
     if (saved) setStatus(`Brush-out prep saved as ${saved.prepId}.`);
   }
 
-  async function onEmailSent() {
-    if (!user?.id) return;
-    const saved = await ensureSavedPrep();
-    if (!saved) return;
-    const nextPreps = markPrepEmailed(saved.nextPreps, saved.prepId);
-    const saveErr = await saveBrushoutPreps(user.id, nextPreps);
-    if (saveErr) {
-      setError(saveErr);
-      return;
-    }
-    setPreps(nextPreps);
-    setDraft((d) => ({
-      ...d,
-      prep_id: saved.prepId,
-      status: "brushouts_emailed",
-      emailed_date: new Date().toISOString().slice(0, 10),
-    }));
-    setEmailOpen(false);
-    setStatus("Vendor email sent. Prep marked as brush-outs emailed.");
-  }
-
-  async function onLink(projectId: string, mergeMode: "replace" | "append") {
+  async function onLink(projectId: string, mergeMode: "append" | "replace") {
     if (!user?.id) return;
     const saved = await ensureSavedPrep();
     if (!saved) return;
@@ -478,13 +456,11 @@ export function BrushOutRequestPage() {
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          fromEmail={branding.signerEmail}
-          fromName={branding.companyName}
           mode="prep"
           prepSite={draft.site_location}
           prepGc={draft.gc}
+          composeEmailMethod={userSettings.compose_email_method}
           onClose={() => setEmailOpen(false)}
-          onSent={() => void onEmailSent()}
         />
       )}
     </div>

@@ -3,21 +3,29 @@ import {
   buildEmailRelayPlainBody,
   copyEmailRelayHtml,
   defaultEmailRelayDetails,
-  downloadEmailRelayEml,
   openEmailRelayMailto,
   type EmailRelayDetails,
 } from "../../lib/transmittalHelpers";
+import type { ComposeEmailMethod } from "../../lib/paintUserSettings";
+import { composeEmailButtonLabel } from "../../lib/paintUserSettings";
 import type { TransmittalData } from "../../types/tradeDocuments";
+import { MailtoSetupHelp } from "../settings/MailtoSetupHelp";
 
 type Props = {
   project: { job_number: string; job_name: string };
   transmittal: TransmittalData;
-  fromEmail?: string;
+  composeEmailMethod?: ComposeEmailMethod;
   onClose: () => void;
   onDone?: (message: string) => void;
 };
 
-export function TransmittalEmailRelayModal({ project, transmittal, fromEmail = "", onClose, onDone }: Props) {
+export function TransmittalEmailRelayModal({
+  project,
+  transmittal,
+  composeEmailMethod = "gmail",
+  onClose,
+  onDone,
+}: Props) {
   const isHand = transmittal.delivery_method === "Hand Delivered";
   const [details, setDetails] = useState<EmailRelayDetails>(() => defaultEmailRelayDetails(transmittal));
   const [message, setMessage] = useState<string | null>(null);
@@ -31,29 +39,21 @@ export function TransmittalEmailRelayModal({ project, transmittal, fromEmail = "
     setDetails((d) => ({ ...d, ...partial }));
   }
 
-  function finish(msg: string) {
-    onDone?.(msg);
-    onClose();
-  }
-
   function onOpenMailto(e: FormEvent) {
     e.preventDefault();
-    openEmailRelayMailto(project, transmittal, details);
-    finish(
-      "Opened your mail app with subject and plain-text body. Attach the transmittal PDF(s) before sending.",
-    );
-  }
-
-  function onDownloadEml() {
-    downloadEmailRelayEml(project, transmittal, details, fromEmail);
-    finish(
-      "Downloaded .eml draft with HTML formatting (desktop-style). Double-click to open in Outlook, then attach PDFs.",
-    );
+    void (async () => {
+      const result = await openEmailRelayMailto(project, transmittal, details, composeEmailMethod);
+      const msg =
+        result.warning ??
+        "Compose opened (empty body) — press Ctrl+V to paste formatted HTML, then attach transmittal PDF(s).";
+      setMessage(msg);
+      onDone?.(msg);
+    })();
   }
 
   async function onCopyHtml() {
     await copyEmailRelayHtml(project, transmittal, details);
-    setMessage("HTML copied — paste into the Outlook compose body (Ctrl+V), then attach PDFs.");
+    setMessage("Formatted HTML copied — paste with Ctrl+V in the empty compose body, then attach PDFs.");
   }
 
   return (
@@ -65,10 +65,7 @@ export function TransmittalEmailRelayModal({ project, transmittal, fromEmail = "
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="transmittal-email-relay-title">Email Relay – Delivery Details</h3>
-        <p className="muted small">
-          Same message as the desktop app. <strong>mailto:</strong> uses plain text only; use{" "}
-          <strong>Download .eml</strong> for HTML formatting in Outlook.
-        </p>
+        <MailtoSetupHelp compact method={composeEmailMethod} />
 
         <form className="stack" onSubmit={onOpenMailto}>
           <section className="stack">
@@ -125,17 +122,14 @@ export function TransmittalEmailRelayModal({ project, transmittal, fromEmail = "
           {message && <div className="banner banner-ok">{message}</div>}
 
           <div className="row-gap wrap">
-            <button type="submit" className="btn btn-success">
-              Open in mail app
-            </button>
-            <button type="button" className="btn btn-primary" onClick={onDownloadEml}>
-              Download .eml
+            <button type="submit" className="btn btn-primary">
+              {composeEmailButtonLabel(composeEmailMethod)}
             </button>
             <button type="button" className="btn btn-secondary" onClick={() => void onCopyHtml()}>
               Copy HTML
             </button>
             <button type="button" className="btn btn-ghost" onClick={onClose}>
-              Cancel
+              Close
             </button>
           </div>
         </form>

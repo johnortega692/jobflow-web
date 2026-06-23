@@ -1,6 +1,8 @@
-import { buildEmailSignatureHtml, buildEmailSignaturePlain } from "./emailSignature";
+import type { ComposeEmailMethod } from "./paintUserSettings";
 import type { EmailSignatureSettings } from "./emailSignature";
+import { buildEmailSignatureHtml, buildEmailSignaturePlain, constrainSignatureLogoInHtml } from "./emailSignature";
 import { copyOutlookHtmlToClipboard, emailParagraph, outlookSpacer } from "./outlookClipboard";
+import { embedLogoUrlInHtml } from "./emailImageEmbed";
 import { FLOOR_ORDER } from "./printCore";
 import type { PaintItem, TradeSubmittalType } from "../types/tradeDocuments";
 
@@ -160,11 +162,6 @@ export function buildPrepEmailHtmlBody(
   const sig = buildEmailSignatureHtml(signature, logoUrl);
   const fragment = `${intro}${tables}${sig}`;
   return `<html><body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">${fragment}</body></html>`;
-}
-
-export function prepEmlFilename(siteLocation: string): string {
-  const safe = siteLocation.replace(/[^\w.-]+/g, "_").slice(0, 60);
-  return `BrushOut_prep_${safe || "request"}.eml`;
 }
 
 export function vendorDisplayName(vendor: PaintVendor): string {
@@ -634,6 +631,8 @@ export function buildVendorEmailHtmlBody(
 
 /** Outlook / browser mailto links truncate around 2–8 KB; keep a safe upper bound. */
 export const MAILTO_BODY_MAX_CHARS = 7500;
+/** Total mailto URL length above this often fails silently in Chrome. */
+export const MAILTO_URL_WARN_CHARS = 2000;
 
 export function buildMailtoUrl(
   to: string[],
@@ -641,72 +640,186 @@ export function buildMailtoUrl(
   subject: string,
   body = "",
 ): string {
-  const params: string[] = [];
-  if (to.length) params.push(`to=${encodeURIComponent(to.join(";"))}`);
-  if (cc.length) params.push(`cc=${encodeURIComponent(cc.join(";"))}`);
-  params.push(`subject=${encodeURIComponent(subject)}`);
+  const toPath = to.map((e) => e.trim()).filter(Boolean).join(",");
   const bodyText = body.trim();
-  if (bodyText) params.push(`body=${encodeURIComponent(bodyText.slice(0, MAILTO_BODY_MAX_CHARS))}`);
-  return `mailto:?${params.join("&")}`;
+
+  function assemble(bodyChars: number): string {
+    const params: string[] = [];
+    if (cc.length) params.push(`cc=${encodeURIComponent(cc.join(";"))}`);
+    params.push(`subject=${encodeURIComponent(subject)}`);
+    if (bodyText && bodyChars > 0) {
+      params.push(`body=${encodeURIComponent(bodyText.slice(0, bodyChars))}`);
+    }
+    const query = params.join("&");
+    return toPath ? `mailto:${toPath}?${query}` : `mailto:?${query}`;
+  }
+
+  let bodyChars = Math.min(bodyText.length, MAILTO_BODY_MAX_CHARS);
+  let url = assemble(bodyChars);
+  while (url.length > MAILTO_URL_WARN_CHARS && bodyChars > 200) {
+    bodyChars = Math.floor(bodyChars * 0.75);
+    url = assemble(bodyChars);
+  }
+  return url;
+}
+
+export type OpenMailtoResult = { ok: boolean; warning?: string };
+
+const GMAIL_COMPOSE_URL_WARN_CHARS = 7500;
+
+export function buildGmailComposeUrl(
+  to: string[],
+  cc: string[],
+  subject: string,
+  body = "",
+): string {
+  const bodyText = body.trim();
+
+  function assemble(bodyChars: number): string {
+    const params = new URLSearchParams();
+    params.set("view", "cm");
+    params.set("fs", "1");
+    const toList = to.map((e) => e.trim()).filter(Boolean);
+    if (toList.length) params.set("to", toList.join(","));
+    const ccList = cc.map((e) => e.trim()).filter(Boolean);
+    if (ccList.length) params.set("cc", ccList.join(","));
+    if (subject.trim()) params.set("su", subject);
+    if (bodyText && bodyChars > 0) params.set("body", bodyText.slice(0, bodyChars));
+    return `https://mail.google.com/mail/?${params.toString()}`;
+  }
+
+  let bodyChars = Math.min(bodyText.length, MAILTO_BODY_MAX_CHARS);
+  let url = assemble(bodyChars);
+  while (url.length > GMAIL_COMPOSE_URL_WARN_CHARS && bodyChars > 200) {
+    bodyChars = Math.floor(bodyChars * 0.75);
+    url = assemble(bodyChars);
+  }
+  return url;
+}
+
+/**
+ * Open Gmail compose in a new tab (reliable in Chrome on work PCs).
+ * Falls back to mailto if the pop-up is blocked.
+ */
+export function openEmailCompose(
+  to: string[],
+  cc: string[],
+  subject: string,
+  body = "",
+  method: ComposeEmailMethod = "gmail",
+): OpenMailtoResult {
+  const bodyText = body.trim();
+
+  if (method === "mailto") {
+    openMailtoUrl(buildMailtoUrl(to, cc, subject, body));
+    return { ok: true };
+  }
+
+  const gmailUrl = buildGmailComposeUrl(to, cc, subject, body);
+  let warning: string | undefined;
+  if (bodyText.length > MAILTO_BODY_MAX_CHARS) {
+    warning = "Message body was shortened to fit Gmail.";
+  }
+
+  const popup = window.open(gmailUrl, "_blank", "noopener,noreferrer");
+  if (popup) {
+    return { ok: true, warning };
+  }
+
+  openMailtoUrl(buildMailtoUrl(to, cc, subject, body));
+  return {
+    ok: true,
+    warning:
+      warning ??
+      "Pop-up blocked — allow pop-ups for this site, then try again. Attempted mail app fallback.",
+  };
+}
+
+/**
+ * Copy HTML to clipboard and open compose (empty body). User pastes formatted HTML with Ctrl+V.
+ */
+export async function openGmailComposeWithHtml(options: {
+  to: string[];
+  cc: string[];
+  subject: string;
+  htmlBody: string;
+  /** Plain text for manual Copy HTML only — compose never pre-fills plain text. */
+  plainFallback?: string;
+  logoUrl?: string;
+  logoMaxWidthPx?: number;
+  method?: ComposeEmailMethod;
+}): Promise<OpenMailtoResult> {
+  const method = options.method ?? "gmail";
+  let html = options.htmlBody;
+  const logoUrl = options.logoUrl?.trim() ?? "";
+  if (logoUrl) {
+    html = await embedLogoUrlInHtml(html, logoUrl);
+  }
+  if (options.logoMaxWidthPx && options.logoMaxWidthPx > 0) {
+    html = constrainSignatureLogoInHtml(html, options.logoMaxWidthPx, logoUrl);
+  }
+
+  try {
+    await copyHtmlToClipboard(html, "");
+  } catch {
+    return { ok: false, warning: "Could not copy HTML to clipboard." };
+  }
+
+  if (method === "mailto") {
+    const mailtoResult = openMailtoUrl(buildMailtoUrl(options.to, options.cc, options.subject, ""));
+    if (!mailtoResult.ok) return mailtoResult;
+    return {
+      ok: true,
+      warning:
+        "Compose opened (empty body) — click in the message and press Ctrl+V to paste formatted HTML only.",
+    };
+  }
+
+  const result = openEmailCompose(options.to, options.cc, options.subject, "", "gmail");
+  if (!result.ok) return result;
+
+  return {
+    ok: true,
+    warning:
+      result.warning ??
+      "Gmail opened (empty body) — click in the message and press Ctrl+V to paste formatted HTML only.",
+  };
+}
+
+/** Open mailto in a new tab/window when possible so JobFlow stays open (Chrome + Gmail MAILTO). */
+export function openMailtoUrl(mailtoUrl: string): OpenMailtoResult {
+  if (!mailtoUrl.startsWith("mailto:")) {
+    return { ok: false, warning: "Invalid mail link." };
+  }
+
+  let warning: string | undefined;
+  if (mailtoUrl.length > MAILTO_URL_WARN_CHARS) {
+    warning =
+      "This message is long — Gmail may open with a shorter body. If compose looks empty, use Copy HTML.";
+  }
+
+  const popup = window.open(mailtoUrl, "_blank", "noopener,noreferrer");
+  if (popup) {
+    return { ok: true, warning };
+  }
+
+  const a = document.createElement("a");
+  a.href = mailtoUrl;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  return { ok: true, warning };
 }
 
 export function vendorRecipientEmails(vendor: PaintVendor): string[] {
   return [vendor.vendor_email, vendor.store_email].filter((e): e is string => Boolean(e?.trim()));
 }
 
-function foldHeaderLine(name: string, value: string): string {
-  const maxLen = 998;
-  const line = `${name}: ${value}`;
-  if (line.length <= maxLen) return line;
-  return `${name}: ${value.slice(0, maxLen - name.length - 4)}…`;
-}
-
-/** Downloadable .eml draft — opens in classic Outlook with full HTML body. */
-export function buildVendorEmlBlob(options: {
-  to: string[];
-  cc: string[];
-  subject: string;
-  htmlBody: string;
-  plainBody: string;
-  from?: string;
-}): Blob {
-  const { to, cc, subject, htmlBody, from } = options;
-
-  const headerLines: string[] = [];
-  if (from?.trim()) headerLines.push(foldHeaderLine("From", from.trim()));
-  headerLines.push(foldHeaderLine("To", to.join("; ")));
-  if (cc.length) headerLines.push(foldHeaderLine("Cc", cc.join("; ")));
-  headerLines.push(foldHeaderLine("Subject", subject));
-  headerLines.push("MIME-Version: 1.0");
-  headerLines.push("Content-Type: text/html; charset=UTF-8");
-  headerLines.push("Content-Transfer-Encoding: 8bit");
-  headerLines.push("X-Unsent: 1");
-
-  // Blank line after headers is required — without it Outlook shows MIME parts as plain text.
-  const eml = `${headerLines.join("\r\n")}\r\n\r\n${htmlBody}\r\n`;
-  return new Blob([eml], { type: "message/rfc822" });
-}
-
-export function downloadVendorEml(filename: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export async function copyHtmlToClipboard(htmlBody: string, plainFallback: string): Promise<void> {
   const fragment = htmlBody.replace(/^[\s\S]*<body[^>]*>/i, "").replace(/<\/body>[\s\S]*$/i, "");
   await copyOutlookHtmlToClipboard(fragment, plainFallback);
-}
-
-export function vendorEmlFilename(jobNumber: string, jobName: string): string {
-  const safe = `${jobNumber}_${jobName}`.replace(/[^\w.-]+/g, "_").slice(0, 60);
-  return `BrushOut_${safe || "request"}.eml`;
-}
-
-export function atticStockEmlFilename(jobNumber: string, jobName: string): string {
-  const safe = `${jobNumber}_${jobName}`.replace(/[^\w.-]+/g, "_").slice(0, 60);
-  return `AtticStock_${safe || "order"}.eml`;
 }

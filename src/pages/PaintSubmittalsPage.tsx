@@ -304,14 +304,6 @@ export function PaintSubmittalsPage() {
     setStatus(`Removed submittal #${submittalNumber} from history.`);
   }
 
-  async function onEmailSent() {
-    const next = { ...draft, submittal_ordered: true };
-    setDraft(next);
-    await persist(next, history);
-    await patchPaintTrackerSubmittalOrdered(projectId, true);
-    setEmailOpen(false);
-  }
-
   const submittalPdfFilename = useMemo(
     () =>
       paintSubmittalFilename(
@@ -574,14 +566,14 @@ export function PaintSubmittalsPage() {
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          fromEmail={branding.signerEmail}
-          fromName={branding.companyName}
           jobSuper={project.jobInfo?.gc_superintendent}
+          foremanName={project.jobInfo?.icbi_foreman}
+          foremanEmail={project.jobInfo?.icbi_foreman_email}
+          composeEmailMethod={userSettings.compose_email_method}
           onClose={() => {
             setEmailOpen(false);
             setEmailDraft(null);
           }}
-          onSent={() => void onEmailSent()}
         />
       )}
 

@@ -189,6 +189,67 @@
   border: 1px solid var(--fd-border-soft);
 }
 
+.field-dashboard .header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.field-dashboard .field-header-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.field-dashboard .field-header-link {
+  color: var(--fd-text-soft);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--fd-border);
+}
+
+.field-dashboard .field-header-link:hover {
+  background: var(--fd-surface2);
+  text-decoration: none;
+}
+
+.field-dashboard .field-header-user.user-header-identity {
+  max-width: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+}
+
+.field-dashboard .field-header-user .user-header-identity-line {
+  color: var(--fd-text-soft);
+}
+
+.field-dashboard .field-header-user .user-header-identity-line--muted {
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-header-signout {
+  border: 1px solid var(--fd-border);
+  background: var(--fd-surface2);
+  color: var(--fd-text-soft);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.field-dashboard .field-header-signout:hover {
+  background: var(--fd-border-soft);
+}
+
 .field-dashboard .title-block {
   display: flex;
   flex-direction: column;
@@ -254,19 +315,100 @@
   color: #fff;
 }
 
-.field-dashboard .field-bottom-nav {
+.field-dashboard .nav-button-toggle.active {
+  background: var(--fd-surface2);
+  color: var(--fd-text);
+  border-color: var(--fd-nav-active);
+  box-shadow: inset 0 0 0 1px var(--fd-nav-active);
+}
+
+.field-dashboard.field-dashboard--dark .nav-button-toggle.active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--fd-accent);
+  box-shadow: inset 0 0 0 1px var(--fd-accent);
+  color: #fff;
+}
+
+.field-dashboard .nav-button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+}
+
+.field-dashboard .field-view-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.field-dashboard .field-bottom-nav-wrap {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 100;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
   background: var(--fd-topbar);
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 -2px 12px var(--fd-shadow);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.field-dashboard .field-bottom-nav {
+  position: static;
+  box-shadow: none;
+  border-top: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 8px 10px 4px;
+}
+
+.field-dashboard .field-bottom-nav-utils {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 0 10px 8px;
+}
+
+.field-dashboard .field-bottom-nav-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+.field-dashboard .field-bottom-nav-toggle.active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.field-dashboard .field-bottom-nav-toggle-icon {
+  padding: 8px;
+}
+
+.field-dashboard .field-bottom-nav-toggle-icon .field-view-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.field-dashboard .field-bottom-nav-wrap .field-bottom-nav {
+  position: static;
+  z-index: auto;
+  box-shadow: none;
+  border-top: none;
+  padding: 8px 10px 4px;
+  padding-bottom: 4px;
 }
 
 .field-dashboard .field-bottom-nav-link {
@@ -707,12 +849,317 @@
   border: 1px solid var(--fd-border-soft);
 }
 
-.field-dashboard .calendar-container iframe {
+.field-dashboard .field-cal {
+  background: var(--fd-surface);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px var(--fd-shadow);
+  border: 1px solid var(--fd-border-soft);
+  padding: 16px;
+}
+
+.field-dashboard .field-cal-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.field-dashboard .field-cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-dashboard .field-cal-nav-btn,
+.field-dashboard .field-cal-today-btn {
   border: 1px solid var(--fd-border);
+  background: var(--fd-surface2);
+  color: var(--fd-text-soft);
   border-radius: 6px;
-  width: 100%;
-  max-width: 900px;
-  height: 650px;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 36px;
+}
+
+.field-dashboard .field-cal-nav-btn {
+  width: 36px;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+}
+
+.field-dashboard .field-cal-today-btn {
+  font-size: 13px;
+  padding: 0 12px;
+  margin-left: 4px;
+}
+
+.field-dashboard .field-cal-nav-btn:hover,
+.field-dashboard .field-cal-today-btn:hover {
+  background: var(--fd-border-soft);
+}
+
+.field-dashboard .field-cal-month {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fd-title);
+  min-width: 180px;
+  text-align: center;
+}
+
+.field-dashboard .field-cal-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-dashboard .field-cal-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-cal-legend-dot--start {
+  background: #1976d2;
+}
+
+.field-dashboard .field-cal-legend-dot--install {
+  background: #e65100;
+}
+
+.field-dashboard .field-cal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+.field-dashboard .field-cal-body--mobile {
+  grid-template-columns: 1fr;
+}
+
+.field-dashboard .field-cal-grid-wrap {
+  min-width: 0;
+  border: 1px solid var(--fd-border-soft);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.field-dashboard .field-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--fd-surface2);
+  border-bottom: 1px solid var(--fd-border-soft);
+}
+
+.field-dashboard .field-cal-weekday {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fd-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.field-dashboard .field-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.field-dashboard .field-cal-day {
+  min-height: 96px;
+  border: none;
+  border-right: 1px solid var(--fd-border-soft);
+  border-bottom: 1px solid var(--fd-border-soft);
+  background: var(--fd-surface);
+  padding: 6px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-dashboard .field-cal-day:nth-child(7n) {
+  border-right: none;
+}
+
+.field-dashboard .field-cal-day--muted {
+  background: var(--fd-surface2);
+  opacity: 0.55;
+}
+
+.field-dashboard .field-cal-day--today .field-cal-day-num {
+  background: var(--fd-nav-active);
+  color: #fff;
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-day--today .field-cal-day-num {
+  background: var(--fd-accent);
+}
+
+.field-dashboard .field-cal-day--selected {
+  box-shadow: inset 0 0 0 2px var(--fd-nav-active);
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-day--selected {
+  box-shadow: inset 0 0 0 2px var(--fd-accent);
+}
+
+.field-dashboard .field-cal-day-num {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fd-text-soft);
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.field-dashboard .field-cal-day-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-dashboard .field-cal-event {
+  font-size: 10px;
+  line-height: 1.2;
+  border-radius: 4px;
+  padding: 2px 4px;
+  color: #fff;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.field-dashboard .field-cal-event--start {
+  background: #1976d2;
+}
+
+.field-dashboard .field-cal-event--install {
+  background: #e65100;
+}
+
+.field-dashboard .field-cal-event-job {
+  font-weight: 700;
+}
+
+.field-dashboard .field-cal-event-detail {
+  opacity: 0.92;
+}
+
+.field-dashboard .field-cal-overflow {
+  font-size: 10px;
+  color: var(--fd-muted);
+  padding-left: 2px;
+}
+
+.field-dashboard .field-cal-detail {
+  border: 1px solid var(--fd-border-soft);
+  border-radius: 8px;
+  background: var(--fd-surface2);
+  padding: 12px;
+  min-height: 120px;
+}
+
+.field-dashboard .field-cal-body--mobile .field-cal-detail {
+  display: none;
+}
+
+.field-dashboard .field-cal-body--mobile .field-cal-detail--open {
+  display: block;
+}
+
+.field-dashboard .field-cal-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.field-dashboard .field-cal-detail-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fd-title);
+}
+
+.field-dashboard .field-cal-detail-close {
+  border: none;
+  background: transparent;
+  color: var(--fd-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+
+.field-dashboard .field-cal-detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-dashboard .field-cal-detail-item {
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--fd-surface);
+  border-left: 3px solid var(--fd-border);
+}
+
+.field-dashboard .field-cal-detail-item--start {
+  border-left-color: #1976d2;
+}
+
+.field-dashboard .field-cal-detail-item--install {
+  border-left-color: #e65100;
+}
+
+.field-dashboard .field-cal-detail-kind {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fd-muted);
+  margin-bottom: 2px;
+}
+
+.field-dashboard .field-cal-detail-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-cal-detail-sub {
+  font-size: 12px;
+  color: var(--fd-muted);
+  margin-top: 2px;
+}
+
+.field-dashboard .field-cal-detail-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fd-muted);
 }
 
 .field-dashboard .field-toast {
@@ -969,8 +1416,12 @@
   .field-dashboard .gh-count { grid-area: count; justify-self: start; }
   .field-dashboard .gh-pm { grid-area: pm; justify-self: end; }
 
-  .field-dashboard .calendar-container iframe {
-    height: 500px;
+  .field-dashboard .field-cal-day {
+    min-height: 72px;
+  }
+
+  .field-dashboard .field-cal-event-detail {
+    display: none;
   }
 
   .field-dashboard .table-view {
@@ -984,7 +1435,12 @@
 }
 
 @media (max-width: 768px) {
-  .field-dashboard:not(.field-dashboard--mobile) .field-topbar-user {
+  .field-dashboard .field-header-user {
     display: none;
+  }
+
+  .field-dashboard .header-right {
+    width: 100%;
+    justify-content: space-between;
   }
 }

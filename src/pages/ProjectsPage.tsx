@@ -88,7 +88,6 @@ export function ProjectsPage() {
       <div className="page-header">
         <div>
           <h1>Projects</h1>
-          <p className="muted">Cloud jobs — replaces local saved_jobs for the web apps.</p>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Cancel" : "New project"}

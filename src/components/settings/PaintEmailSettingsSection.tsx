@@ -1,9 +1,11 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
 import { patchOrgSettings, patchUserSettings } from "../../lib/budgetLibrary";
 import { buildEmailSignatureHtml, SIGNATURE_FONT_SIZE_OPTIONS, SIGNATURE_LINE_COUNT } from "../../lib/emailSignature";
+import { uploadEmailSignatureLogo } from "../../lib/letterheadSettings";
 import type { SignatureLineStyle } from "../../lib/emailSignature";
+import { applyProfilePaintDefaults, resolvePaintNotificationFromProfile } from "../../lib/paintProfileDefaults";
 import {
   loadPaintUserSettings,
   type PaintUserSettings,
@@ -11,6 +13,7 @@ import {
 } from "../../lib/paintUserSettings";
 import type { PaintVendor } from "../../lib/paintVendorEmail";
 import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
+import { profileFromSettings } from "../../lib/userProfile";
 import {
   loadProjectsForFollowUpReminders,
   sendFollowUpReminder,
@@ -29,6 +32,7 @@ import {
 } from "../../lib/trackerEmailSchedule";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
 import { SharedSettingsNotice } from "./SharedSettingsNotice";
+import { MailtoSetupHelp } from "./MailtoSetupHelp";
 
 function emptyVendor(): PaintVendor {
   return { name: "", brand: "PPG", vendor_email: "", store_email: "" };
@@ -52,7 +56,8 @@ function WeeklyDigestSection({
   const [digestError, setDigestError] = useState<string | null>(null);
 
   const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
-  const primaryEmail = data.notification_primary_email.trim();
+  const notify = resolvePaintNotificationFromProfile(profileFromSettings(letterhead), data);
+  const primaryEmail = notify.notification_primary_email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
   async function sendDigest(kind: WeeklyDigestKind) {
@@ -78,7 +83,7 @@ function WeeklyDigestSection({
         kind,
         projects,
         primaryEmail,
-        primaryName: data.notification_primary_name || data.user_name,
+        primaryName: notify.notification_primary_name,
         superEmails: data.super_emails,
         companyName,
         companyAddress: letterhead.company_address,
@@ -103,7 +108,7 @@ function WeeklyDigestSection({
       <h2>Weekly digests</h2>
       <p className="muted small">
         Build a status email from all jobs in JobFlow and send now via Gmail. Same recipients as tracker
-        notifications (primary To, supers CC).
+        notifications (primary To, supers CC, plus foreman emails from job setup).
       </p>
       {(digestError || digestMessage) && (
         <div className={`banner ${digestError ? "banner-error" : "banner-ok"}`}>
@@ -146,7 +151,8 @@ function FollowUpRemindersSection({
   const [statusError, setStatusError] = useState<string | null>(null);
 
   const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
-  const primaryEmail = data.notification_primary_email.trim();
+  const notify = resolvePaintNotificationFromProfile(profileFromSettings(letterhead), data);
+  const primaryEmail = notify.notification_primary_email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
   async function sendReminder(kind: FollowUpReminderKind) {
@@ -172,7 +178,7 @@ function FollowUpRemindersSection({
         kind,
         projects,
         primaryEmail,
-        primaryName: data.notification_primary_name || data.user_name,
+        primaryName: notify.notification_primary_name,
         superEmails: data.super_emails,
         companyName,
         companyAddress: letterhead.company_address,
@@ -369,6 +375,8 @@ export function PaintEmailSettingsSection({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [signatureLogoUploading, setSignatureLogoUploading] = useState(false);
+  const signatureLogoFileRef = useRef<HTMLInputElement>(null);
   const trackData = data;
   const ready = !loading && data !== null && Boolean(user?.id);
   const { markSaved, readBaseline, getIsDirty } = useSettingsDirtyTracker(trackData, ready, onDirtyChange);
@@ -376,11 +384,12 @@ export function PaintEmailSettingsSection({
   useEffect(() => {
     if (!user?.id) return;
     setLoading(true);
+    const profile = profileFromSettings(letterhead);
     void loadPaintUserSettings(user.id)
-      .then(setData)
+      .then((loaded) => setData(applyProfilePaintDefaults(loaded, profile)))
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load paint settings"))
       .finally(() => setLoading(false));
-  }, [user?.id]);
+  }, [user?.id, letterhead.signer_name, letterhead.signer_title, letterhead.signer_phone, letterhead.signer_email]);
 
   const persist = useCallback(async (): Promise<boolean> => {
     if (!user?.id || !data) return false;
@@ -389,7 +398,10 @@ export function PaintEmailSettingsSection({
     setError(null);
 
     if (readOnly) {
-      const err = await patchUserSettings(user.id, { signature: data.signature });
+      const err = await patchUserSettings(user.id, {
+        signature: data.signature,
+        compose_email_method: data.compose_email_method,
+      });
       setSaving(false);
       if (err) {
         setError(err);
@@ -413,7 +425,10 @@ export function PaintEmailSettingsSection({
       setError(errOrg);
       return false;
     }
-    const errSig = await patchUserSettings(user.id, { signature: data.signature });
+    const errSig = await patchUserSettings(user.id, {
+      signature: data.signature,
+      compose_email_method: data.compose_email_method,
+    });
     setSaving(false);
     if (errSig) {
       setError(errSig);
@@ -439,6 +454,7 @@ export function PaintEmailSettingsSection({
   if (loading) return <p className="muted">Loading paint &amp; email settings…</p>;
   if (!data || !user?.id) return null;
 
+  const profile = profileFromSettings(letterhead);
   const signaturePreview = buildEmailSignatureHtml(data.signature, letterhead.logo_url);
 
   async function onSave(e: FormEvent) {
@@ -482,6 +498,25 @@ export function PaintEmailSettingsSection({
     });
   }
 
+  async function onSignatureLogoFile(file: File | null) {
+    if (!file || !user?.id) return;
+    setSignatureLogoUploading(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const url = await uploadEmailSignatureLogo(user.id, file);
+      setData((d) =>
+        d ? { ...d, signature: { ...d.signature, signature_logo_url: url } } : d,
+      );
+      setMessage("Email signature logo uploaded. Click Save to keep it.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Logo upload failed");
+    } finally {
+      setSignatureLogoUploading(false);
+      if (signatureLogoFileRef.current) signatureLogoFileRef.current.value = "";
+    }
+  }
+
   return (
     <form className="stack paint-email-settings" onSubmit={(e) => void onSave(e)}>
       {readOnly && <SharedSettingsNotice />}
@@ -489,17 +524,39 @@ export function PaintEmailSettingsSection({
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
       )}
 
+      <section className="stack">
+        <h2>Compose email</h2>
+        <p className="muted small">
+          How <strong>Email vendor</strong>, transmittal relay, and sample-order emails open on your computer.
+          Saved to your account.
+        </p>
+        <label>
+          Open compose with
+          <select
+            className="paint-field-select"
+            value={data.compose_email_method}
+            onChange={(e) =>
+              setData((d) =>
+                d
+                  ? { ...d, compose_email_method: e.target.value === "mailto" ? "mailto" : "gmail" }
+                  : d,
+              )
+            }
+          >
+            <option value="gmail">Gmail (new browser tab)</option>
+            <option value="mailto">Windows default mail app (MAILTO)</option>
+          </select>
+        </label>
+        <MailtoSetupHelp method={data.compose_email_method} />
+      </section>
+
       <fieldset disabled={readOnly} className="stack settings-shared-fieldset">
       <section className="stack">
         <h2>Paint vendors</h2>
         <p className="muted small">
           Used when you click <strong>Email vendor</strong> on paint submittals, transmittals, and brush-out
-          requests. Saved to your account (overrides the default vendors.json list).
-        </p>
-        <p className="muted small">
-          To send from Gmail, set the <strong>Dashboard Web App URL</strong> under Settings → Google Apps Script
-          URLs (same deployment as John&apos;s Dashboard). Without it, JobFlow uses Resend when configured on the
-          server.
+          requests. Uses your <strong>Compose email</strong> choice above. Saved to your account (overrides the
+          default vendors.json list).
         </p>
         <div className="paint-settings-table-wrap">
           <table className="paint-settings-table">
@@ -567,7 +624,7 @@ export function PaintEmailSettingsSection({
         <p className="muted small">
           When you save <strong>Approved</strong>, <strong>Revision</strong>, or <strong>Match existing</strong> on
           a job&apos;s paint tracker, JobFlow sends a notification email via Gmail (Dashboard web app). Supers below
-          are CC&apos;d. Follow-up dates on trackers drive the reminder emails in the section below.
+          are CC&apos;d. Primary To and PM name default from your Profile when left blank.
         </p>
         <div className="grid-2">
           <label>
@@ -578,7 +635,7 @@ export function PaintEmailSettingsSection({
               onChange={(e) =>
                 setData((d) => (d ? { ...d, notification_primary_email: e.target.value } : d))
               }
-              placeholder="PM / office inbox"
+              placeholder={profile.email || "PM / office inbox"}
             />
           </label>
           <label>
@@ -588,7 +645,7 @@ export function PaintEmailSettingsSection({
               onChange={(e) =>
                 setData((d) => (d ? { ...d, notification_primary_name: e.target.value } : d))
               }
-              placeholder={data.user_name.trim() || "Project manager name"}
+              placeholder={profile.name || "Project manager name"}
             />
           </label>
         </div>
@@ -619,7 +676,8 @@ export function PaintEmailSettingsSection({
         <h2>Super email list (CC)</h2>
         <p className="muted small">
           CC on vendor emails and paint tracker notifications. Job superintendent names are auto-selected
-          when emailing vendors.
+          when emailing vendors. Per-project foreman emails (Job setup → ICBI) are always CC&apos;d for that
+          job.
         </p>
         <div className="paint-settings-table-wrap">
           <table className="paint-settings-table">
@@ -696,10 +754,75 @@ export function PaintEmailSettingsSection({
       <section className="stack paint-email-signature-personal">
         <h2>HTML email signature</h2>
         <p className="muted small">
-          Your personal signature — appended to vendor brush-out and paint emails you send. Logo uses the
-          company letterhead logo. For custom HTML, replace <code>cid:logo_image</code> with your logo URL
-          or leave it — JobFlow substitutes the letterhead logo automatically.
+          Your personal signature — appended to vendor brush-out and paint emails you send. Upload a logo sized
+          for email (recommended width matches <strong>Logo max width</strong> below). When empty, the company
+          letterhead logo is used. Lines 1–3 default to Profile full name, job title, and phone when blank.
+          For custom HTML, replace <code>cid:logo_image</code> or leave it — JobFlow substitutes your email
+          logo automatically.
         </p>
+
+        <section className="stack">
+          <p className="paint-col-head">Email signature logo</p>
+          {(data.signature.signature_logo_url || letterhead.logo_url) && (
+            <div className="logo-preview">
+              <img
+                src={data.signature.signature_logo_url || letterhead.logo_url}
+                alt="Email signature logo preview"
+              />
+            </div>
+          )}
+          <p className="muted small">
+            {data.signature.signature_logo_url
+              ? "Using your uploaded email logo."
+              : letterhead.logo_url
+                ? "No email logo uploaded — preview shows letterhead logo as fallback."
+                : "Upload a PNG sized for email (e.g. 220px wide) for reliable Gmail paste."}
+          </p>
+          <div className="row-gap wrap">
+            <input
+              ref={signatureLogoFileRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => void onSignatureLogoFile(e.target.files?.[0] ?? null)}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={signatureLogoUploading}
+              onClick={() => signatureLogoFileRef.current?.click()}
+            >
+              {signatureLogoUploading ? "Uploading…" : "Upload email logo"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={!data.signature.signature_logo_url}
+              onClick={() =>
+                setData((d) =>
+                  d ? { ...d, signature: { ...d.signature, signature_logo_url: "" } } : d,
+                )
+              }
+            >
+              Remove email logo
+            </button>
+          </div>
+          <label>
+            Or email logo URL
+            <input
+              value={data.signature.signature_logo_url}
+              onChange={(e) =>
+                setData((d) =>
+                  d
+                    ? { ...d, signature: { ...d.signature, signature_logo_url: e.target.value } }
+                    : d,
+                )
+              }
+              placeholder="https://… or leave blank for letterhead logo"
+            />
+          </label>
+        </section>
+
         <label className="check">
           <input
             type="checkbox"
@@ -827,8 +950,8 @@ export function PaintEmailSettingsSection({
         ) : (
           <div className="stack paint-signature-lines">
             <p className="muted small">
-              Set text per line. Use Bold / Italic / Size overrides per line (size 0 = default{" "}
-              {data.signature.font_size_pt} pt).
+              Line 1 = full name, line 2 = job title, line 3 = phone (from Profile when empty). Bold /
+              Italic / Size overrides per line (size 0 = default {data.signature.font_size_pt} pt).
             </p>
             <div className="paint-settings-table-wrap">
               <table className="paint-settings-table paint-signature-style-table">

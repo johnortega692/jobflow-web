@@ -10,6 +10,21 @@ export type { EmailSignatureSettings } from "./emailSignature";
 
 export type SuperEmail = { name: string; email: string };
 
+export type ComposeEmailMethod = "gmail" | "mailto";
+
+export const COMPOSE_EMAIL_METHOD_LABELS: Record<ComposeEmailMethod, string> = {
+  gmail: "Gmail (new browser tab)",
+  mailto: "Windows default mail app (MAILTO)",
+};
+
+export function normalizeComposeEmailMethod(raw: unknown): ComposeEmailMethod {
+  return raw === "mailto" ? "mailto" : "gmail";
+}
+
+export function composeEmailButtonLabel(method: ComposeEmailMethod): string {
+  return method === "mailto" ? "Open in mail app" : "Open in Gmail";
+}
+
 export type BrushoutPrepRecord = {
   prep_id: string;
   site_location?: string;
@@ -48,6 +63,8 @@ export type PaintUserSettings = {
   signature: EmailSignatureSettings;
   /** Vercel cron auto-send for follow-up reminders and weekly digests. */
   tracker_email_schedule: TrackerEmailSchedule;
+  /** How vendor / relay compose opens — Gmail tab or Windows MAILTO. */
+  compose_email_method: ComposeEmailMethod;
 };
 
 export async function loadPaintUserSettings(userId: string): Promise<PaintUserSettings> {

@@ -1,10 +1,10 @@
 import { FormEvent, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
 
 export function LoginPage() {
-  const { signIn, signUp, user, loading } = useAuth();
+  const { signIn, signUp, user, loading, roleLoading, isApproved } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -13,7 +13,7 @@ export function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!loading && user) {
+  if (!loading && !roleLoading && user && isApproved) {
     return <Navigate to="/projects" replace />;
   }
 
@@ -32,7 +32,9 @@ export function LoginPage() {
       return;
     }
     if (mode === "signup") {
-      setMessage("Account created. Check your email if confirmation is required, then sign in.");
+      setMessage(
+        "Account created. An administrator must approve your access before you can sign in to JobFlow office.",
+      );
       setMode("signin");
       return;
     }
@@ -80,6 +82,16 @@ export function LoginPage() {
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
         </form>
+
+        <p className="auth-switch" style={{ marginTop: 12 }}>
+          <Link to="/field" target="_blank" rel="noopener noreferrer" className="link-btn">
+            Open Field view
+          </Link>
+          <span className="muted" style={{ margin: "0 6px" }}>
+            ·
+          </span>
+          No login required
+        </p>
 
         <p className="auth-switch">
           {mode === "signin" ? (

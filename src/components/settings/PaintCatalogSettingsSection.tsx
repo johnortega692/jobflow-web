@@ -195,7 +195,7 @@ export function PaintCatalogSettingsSection({
           {products.length} product{products.length === 1 ? "" : "s"}. Manufacturer codes match color
           lookup (PPG, SW, BM, etc.).
         </p>
-        <div className="paint-settings-table-wrap">
+        <div className="paint-settings-table-wrap settings-scroll-table-wrap">
           <table className="paint-settings-table">
             <thead>
               <tr>

@@ -99,10 +99,33 @@ export async function removeOrgSettingsKeys(keys: string[]): Promise<string | nu
   return error?.message ?? null;
 }
 
+const SIGNER_PDF_SHOW_KEYS = ["signer_name", "signer_title", "signer_phone", "signer_email"] as const;
+
+function mergePersonalSignerPdfShow(
+  orgSettings: Record<string, unknown>,
+  personalRow: Record<string, unknown>,
+): Record<string, unknown> {
+  const personalPdfShow = personalRow.pdf_show;
+  if (!personalPdfShow || typeof personalPdfShow !== "object" || Array.isArray(personalPdfShow)) {
+    return orgSettings;
+  }
+  const orgPdfShow =
+    orgSettings.pdf_show && typeof orgSettings.pdf_show === "object" && !Array.isArray(orgSettings.pdf_show)
+      ? (orgSettings.pdf_show as Record<string, unknown>)
+      : {};
+  const personalShow = personalPdfShow as Record<string, unknown>;
+  const mergedShow = { ...orgPdfShow };
+  for (const key of SIGNER_PDF_SHOW_KEYS) {
+    if (typeof personalShow[key] === "boolean") mergedShow[key] = personalShow[key];
+  }
+  return { ...orgSettings, pdf_show: mergedShow };
+}
+
 export async function loadEffectiveUserSettings(userId: string): Promise<Record<string, unknown>> {
   const [org, personalRow] = await Promise.all([loadOrgSettingsBlob(), loadPersonalUserSettingsRow(userId)]);
   const personal = stripOrgKeysFromPersonalBlob(personalRow);
-  const merged = mergeOrgAndPersonalSettings(org, personal);
+  let merged = mergeOrgAndPersonalSettings(org, personal);
+  merged = mergePersonalSignerPdfShow(merged, personalRow);
   if (org.google_urls) {
     merged.google_urls = org.google_urls;
   }

@@ -7,7 +7,6 @@ import {
   buildSheetJobInfo,
   buildSheetsClipboardRow,
   jobFullAddressOneLine,
-  updateManpowerSchedule,
   type GoogleSheetsSyncResult,
 } from "./googleSheetsSync";
 import { parseProjectDataBlob } from "./jobInfo";
@@ -24,7 +23,6 @@ import type { ProjectForm, Json } from "../types/database";
 
 export type GoogleSheetsActionContext = {
   googleUrls: Record<string, string>;
-  userName: string;
   profileName: string;
   paintVendor: PaintVendorLabel;
 };
@@ -58,24 +56,9 @@ export async function loadGoogleSheetsActionContext(
 
   return {
     googleUrls: settings.google_urls,
-    userName: settings.user_name.trim(),
     profileName,
     paintVendor: resolvePaintVendor(trade.paint_submittal?.paint_vendor ?? savedVendor),
   };
-}
-
-export async function runUpdateManpower(
-  project: ProjectForm,
-  ctx: GoogleSheetsActionContext,
-): Promise<GoogleSheetsSyncResult> {
-  return updateManpowerSchedule(ctx.googleUrls.manpower_schedule, {
-    jobNumber: project.job_number,
-    jobName: project.job_name,
-    startDate: project.jobInfo.start_date,
-    gcName: project.contractor,
-    jobAddress: jobFullAddressOneLine(project, project.jobInfo),
-    submittedBy: ctx.userName,
-  });
 }
 
 export async function runAddJobToFieldRequest(

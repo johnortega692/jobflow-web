@@ -1,12 +1,12 @@
 import { Link, Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
-import { profileDisplayLabel } from "../lib/userProfile";
+import { UserHeaderIdentity } from "./UserHeaderIdentity";
+import { PendingApprovalPage } from "../pages/PendingApprovalPage";
 
 export function Layout() {
   const { user, signOut } = useAuth();
   const { profile } = useLetterhead();
-  const displayUser = profileDisplayLabel(profile) || profile.name.trim() || user?.email || "";
 
   return (
     <div className="app-shell">
@@ -17,6 +17,7 @@ export function Layout() {
             <div className="brand-title">JobFlow</div>
           </div>
         </div>
+        <span className="topbar-sep" aria-hidden="true" />
         <nav className="topnav">
           <Link to="/projects">Projects</Link>
           <Link to="/field" target="_blank" rel="noopener noreferrer">
@@ -26,9 +27,7 @@ export function Layout() {
           <Link to="/settings">Settings</Link>
         </nav>
         <div className="topbar-right">
-          <span className="user-email" title={user?.email ?? undefined}>
-            {displayUser}
-          </span>
+          <UserHeaderIdentity profile={profile} email={user?.email} />
           <button type="button" className="btn btn-ghost" onClick={() => signOut()}>
             Sign out
           </button>
@@ -42,9 +41,9 @@ export function Layout() {
 }
 
 export function ProtectedRoute() {
-  const { user, loading } = useAuth();
+  const { user, loading, roleLoading, isApproved } = useAuth();
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="center-screen">
         <p className="muted">Loading…</p>
@@ -54,6 +53,10 @@ export function ProtectedRoute() {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!isApproved) {
+    return <PendingApprovalPage />;
   }
 
   return <Layout />;

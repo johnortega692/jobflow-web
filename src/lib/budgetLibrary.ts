@@ -43,7 +43,10 @@ export async function patchUserSettings(
   patch: Record<string, unknown>,
 ): Promise<string | null> {
   const personal = pickPersonalSettingsPatch(patch);
-  if (!Object.keys(personal).length) return null;
+  if (!Object.keys(personal).length) {
+    const keys = Object.keys(patch).join(", ") || "(empty)";
+    return `Nothing to save — unrecognized settings keys: ${keys}`;
+  }
   return savePersonalUserSettingsPatch(userId, personal);
 }
 
@@ -223,7 +226,9 @@ function lineExportRow(line: BudgetScanLine, buckets: BudgetMakerData["buckets"]
 export function downloadBudgetExcel(data: BudgetMakerData, lib: BudgetLibrary): void {
   const visible = data.lines.filter((l) => !l.Hidden);
   const linesRows = visible.map((l) => lineExportRow(l, data.buckets, lib));
-  const totalsRows = buildSummaryRows(data.buckets, data.lines, lib, data.hide_zero_amounts).map((r) => ({
+  const totalsRows = buildSummaryRows(data.buckets, data.lines, lib, data.hide_zero_amounts, {
+    combineByCostCode: data.combine_cost_codes_on_export !== false,
+  }).map((r) => ({
     "Work Item": r.workItem,
     "Cost Code": r.costCode,
     "Cost Class": r.costClass,

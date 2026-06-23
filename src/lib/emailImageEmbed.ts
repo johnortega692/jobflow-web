@@ -13,9 +13,12 @@ function escapeRegExp(value: string): string {
 
 /** Inline logo as a data URI so Gmail and other clients show it without loading external URLs. */
 export async function embedLogoUrlInHtml(html: string, logoUrl: string): Promise<string> {
-  const url = logoUrl.trim();
+  let url = logoUrl.trim();
   if (!url || !html.trim()) return html;
   if (url.startsWith("data:")) return html;
+  if (url.startsWith("/") && typeof window !== "undefined") {
+    url = `${window.location.origin}${url}`;
+  }
 
   try {
     const res = await fetch(url);

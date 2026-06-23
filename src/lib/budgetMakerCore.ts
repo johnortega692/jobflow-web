@@ -5,6 +5,7 @@ import {
   type BudgetLibrary,
   type BudgetMakerData,
   type BudgetScanLine,
+  type CostClassRecord,
   type CostCodeRecord,
   defaultBudgetLibrary,
 } from "../types/budgetMaker";
@@ -50,19 +51,35 @@ export function sumHours(lines: BudgetScanLine[]): number {
   return lines.reduce((s, row) => s + (row["Man Hours"] ?? 0), 0);
 }
 
-export function formatCostCode(code: string, lib: BudgetLibrary): string {
+export function formatCostCodeRecord(rec: CostCodeRecord): string {
+  const code = fmtCell(rec.cost_code);
+  const desc = fmtCell(rec.description);
+  return desc ? `${code} - ${desc}` : code;
+}
+
+export function costCodeRecordKey(rec: CostCodeRecord): string {
+  return `${fmtCell(rec.cost_code)}|${fmtCell(rec.cost_class)}`;
+}
+
+export function formatCostCode(code: string, lib: BudgetLibrary, costClass?: string): string {
   const c = fmtCell(code);
+  const cls = costClass != null ? fmtCell(costClass) : "";
+  if (cls) {
+    const exact = lib.cost_codes.find(
+      (rec) => fmtCell(rec.cost_code) === c && fmtCell(rec.cost_class) === cls,
+    );
+    if (exact) return formatCostCodeRecord(exact);
+  }
   for (const rec of lib.cost_codes) {
     if (fmtCell(rec.cost_code) === c) {
-      const desc = fmtCell(rec.description);
-      return desc ? `${c} - ${desc}` : c;
+      return formatCostCodeRecord(rec);
     }
   }
   return c;
 }
 
 export function bucketLabel(bucket: BudgetBucket, index: number, lib: BudgetLibrary): string {
-  const codePart = formatCostCode(bucket.cost_code, lib);
+  const codePart = formatCostCode(bucket.cost_code, lib, bucket.cost_class);
   let base = `#${index + 1}: ${codePart} / Class ${bucket.cost_class}`;
   const template = bucket.template_type ?? "";
   if (template && TEMPLATE_LABELS[template]) {
@@ -76,25 +93,94 @@ export function codeType(rec: CostCodeRecord): string {
 }
 
 export function resolveCostClass(codeRec: CostCodeRecord, templateType: string | null): string {
+  const raw = fmtCell(codeRec.cost_class);
+  if (/^\d+$/.test(raw)) return raw;
+
   if (templateType) {
     if (templateType === "EQUIPMENT_RENTED") return TYPE_DEFAULT_CLASS.EQUIPMENT_RENTED;
     if (templateType in TYPE_DEFAULT_CLASS) return TYPE_DEFAULT_CLASS[templateType];
   }
-  const raw = fmtCell(codeRec.cost_class);
-  if (/^\d+$/.test(raw)) return raw;
+
   const ct = codeType(codeRec);
   if (ct in TYPE_DEFAULT_CLASS) return TYPE_DEFAULT_CLASS[ct];
   const m = raw.match(/\d+/);
   return m ? m[0] : "";
 }
 
-export function costCodesForTemplate(lib: BudgetLibrary, templateType: string | null): CostCodeRecord[] {
-  const codes = lib.cost_codes;
-  if (!templateType) return codes.filter((c) => fmtCell(c.cost_code));
-  if (templateType === "EQUIPMENT" || templateType === "EQUIPMENT_RENTED") {
-    return codes.filter((c) => codeType(c) === "EQUIPMENT");
+/** When cost_class is "4 OR 5" (etc.), return the allowed numeric class ids. */
+export function parseCostClassChoices(raw: string): string[] | null {
+  const text = fmtCell(raw);
+  if (/^\d+$/.test(text)) return null;
+  const nums = [...text.toUpperCase().matchAll(/\d+/g)].map((m) => m[0]);
+  const unique = [...new Set(nums)];
+  return unique.length >= 2 ? unique : null;
+}
+
+export function costClassOptionsForCode(
+  lib: BudgetLibrary,
+  codeRec: CostCodeRecord | undefined,
+  templateType: string | null,
+): CostClassRecord[] {
+  const all = lib.cost_classes.filter((c) => fmtCell(c.cost_class));
+  if (!codeRec) return all;
+  const choices = parseCostClassChoices(codeRec.cost_class);
+  if (choices?.length) {
+    const filtered = all.filter((c) => choices.includes(fmtCell(c.cost_class)));
+    if (filtered.length) return filtered;
   }
-  return codes.filter((c) => codeType(c) === templateType);
+  if (templateType === "EQUIPMENT" || templateType === "EQUIPMENT_RENTED") {
+    const cls = templateType === "EQUIPMENT_RENTED" ? "5" : "4";
+    const match = all.filter((c) => fmtCell(c.cost_class) === cls);
+    if (match.length) return match;
+  }
+  return all;
+}
+
+export function costCodesForTemplate(lib: BudgetLibrary, templateType: string | null): CostCodeRecord[] {
+  const codes = lib.cost_codes.filter((c) => fmtCell(c.cost_code));
+  if (!templateType) return dedupeCostCodeRecords(codes);
+
+  let filtered: CostCodeRecord[];
+  if (templateType === "EQUIPMENT" || templateType === "EQUIPMENT_RENTED") {
+    const wantClass = templateType === "EQUIPMENT_RENTED" ? "5" : "4";
+    filtered = codes.filter((c) => {
+      if (codeType(c) !== "EQUIPMENT") return false;
+      if (parseCostClassChoices(c.cost_class)) return true;
+      return resolveCostClass(c, null) === wantClass;
+    });
+  } else {
+    filtered = codes.filter((c) => codeType(c) === templateType);
+  }
+  return dedupeCostCodeRecords(filtered);
+}
+
+export function dedupeCostCodeRecords(codes: CostCodeRecord[]): CostCodeRecord[] {
+  const seen = new Set<string>();
+  const out: CostCodeRecord[] = [];
+  for (const c of codes) {
+    const key = costCodeRecordKey(c);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
+/** @deprecated Use dedupeCostCodeRecords — kept for imports that dedupe by code+class. */
+export function dedupeCostCodesByCode(codes: CostCodeRecord[]): CostCodeRecord[] {
+  return dedupeCostCodeRecords(codes);
+}
+
+export function dedupeCostClassesByClass(classes: CostClassRecord[]): CostClassRecord[] {
+  const seen = new Set<string>();
+  const out: CostClassRecord[] = [];
+  for (const c of classes) {
+    const key = fmtCell(c.cost_class);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
 }
 
 export function makeBucketFromCode(codeRec: CostCodeRecord, templateType: string | null): BudgetBucket {
@@ -116,8 +202,15 @@ export function costClassGlAcct(lib: BudgetLibrary, costClass: string): string {
 
 export function workItemForBucket(bucket: BudgetBucket, lib: BudgetLibrary): string {
   const code = fmtCell(bucket.cost_code);
+  const cls = fmtCell(bucket.cost_class);
+  if (cls) {
+    const exact = lib.cost_codes.find(
+      (rec) => fmtCell(rec.cost_code) === code && fmtCell(rec.cost_class) === cls,
+    );
+    if (exact) return fmtCell(exact.description) || code;
+  }
   for (const rec of lib.cost_codes) {
-    if (fmtCell(rec.cost_code) === code) return fmtCell(rec.description);
+    if (fmtCell(rec.cost_code) === code) return fmtCell(rec.description) || code;
   }
   return code;
 }
@@ -130,6 +223,25 @@ export function bucketIsMaterial(bucket: BudgetBucket, lib: BudgetLibrary): bool
     if (fmtCell(rec.cost_code) === code) return codeType(rec) === "MATERIALS";
   }
   return fmtCell(bucket.cost_class) === TYPE_DEFAULT_CLASS.MATERIALS;
+}
+
+/** Equipment buckets show dollar amounts on the Field Hours PDF (not man-hours). */
+export function bucketIsEquipment(bucket: BudgetBucket, lib: BudgetLibrary): boolean {
+  const templateType = fmtCell(bucket.template_type).toUpperCase();
+  if (templateType === "EQUIPMENT" || templateType === "EQUIPMENT_RENTED") return true;
+  const code = fmtCell(bucket.cost_code);
+  for (const rec of lib.cost_codes) {
+    if (fmtCell(rec.cost_code) === code) return codeType(rec) === "EQUIPMENT";
+  }
+  const cls = fmtCell(bucket.cost_class);
+  return cls === TYPE_DEFAULT_CLASS.EQUIPMENT || cls === TYPE_DEFAULT_CLASS.EQUIPMENT_RENTED;
+}
+
+export function bucketShowsAmountOnFieldHoursExport(
+  bucket: BudgetBucket,
+  lib: BudgetLibrary,
+): boolean {
+  return bucketIsMaterial(bucket, lib) || bucketIsEquipment(bucket, lib);
 }
 
 export function exportFooterText(
@@ -162,44 +274,111 @@ export type HoursExportRow = {
   highlight990: boolean;
 };
 
+function parseCostCodeNumber(label: string): string {
+  const m = label.match(/^(\d+)/);
+  return m ? m[1] : label.split(" - ")[0]?.trim() ?? label;
+}
+
+/** Cost codes whose hours appear on the Field Hours PDF but are excluded from the total. */
+export const FIELD_HOURS_EXCLUDED_COST_CODES = new Set(["990"]);
+
+export function isExcludedFromFieldHoursTotal(costCode: string): boolean {
+  return FIELD_HOURS_EXCLUDED_COST_CODES.has(parseCostCodeNumber(costCode));
+}
+
+function parseHoursCell(hours: string): number {
+  if (!hours) return 0;
+  const n = parseFloat(hours.replace(/,/g, ""));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function parseAmountCell(amount: string): number {
+  if (!amount) return 0;
+  const n = parseFloat(amount.replace(/[$,]/g, ""));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+export function combineHoursExportRows(rows: HoursExportRow[]): HoursExportRow[] {
+  const order: string[] = [];
+  const map = new Map<string, { row: HoursExportRow; hoursNum: number; amountNum: number }>();
+
+  for (const row of rows) {
+    const key = parseCostCodeNumber(row.costCode);
+    const hoursNum = parseHoursCell(row.hours);
+    const amountNum = parseAmountCell(row.amount);
+    const existing = map.get(key);
+    if (!existing) {
+      order.push(key);
+      map.set(key, { row: { ...row }, hoursNum, amountNum });
+      continue;
+    }
+    existing.hoursNum += hoursNum;
+    existing.amountNum += amountNum;
+    if (row.highlight990) existing.row.highlight990 = true;
+  }
+
+  return order.map((key) => {
+    const { row, hoursNum, amountNum } = map.get(key)!;
+    return {
+      ...row,
+      hours: hoursNum ? hoursNum.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
+      amount: amountNum
+        ? `$${amountNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : "",
+      highlight990: isExcludedFromFieldHoursTotal(row.costCode),
+    };
+  });
+}
+
+export type HoursExportOptions = {
+  combineByCostCode?: boolean;
+};
+
 export function buildHoursExportRows(
   data: Pick<BudgetMakerData, "buckets" | "lines" | "hide_zero_amounts">,
   lib: BudgetLibrary,
-): { rows: HoursExportRow[]; totalHours: number; totalMaterial: number } {
-  const rows: HoursExportRow[] = [];
+  options?: HoursExportOptions,
+): {
+  rows: HoursExportRow[];
+  totalHours: number;
+  totalMaterial: number;
+  supervisionHours: number;
+} {
+  let rows: HoursExportRow[] = [];
   let totalHours = 0;
   let totalMaterial = 0;
+  let supervisionHours = 0;
   data.buckets.forEach((bucket, i) => {
     const { amount, hours } = bucketMetrics(i, data.lines);
     if (data.hide_zero_amounts && amount === 0) return;
-    const costCode = formatCostCode(bucket.cost_code, lib);
-    const isMaterial = bucketIsMaterial(bucket, lib);
-    if (isMaterial) {
+    const costCode = formatCostCode(bucket.cost_code, lib, bucket.cost_class);
+    const showAmount = bucketShowsAmountOnFieldHoursExport(bucket, lib);
+    const excluded = isExcludedFromFieldHoursTotal(bucket.cost_code);
+    if (showAmount) {
       totalMaterial += amount;
       rows.push({
         costCode,
         workItem: workItemForBucket(bucket, lib),
         hours: "",
         amount: amount ? `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "",
-        highlight990: parseCostCodeNumber(costCode) === "990",
+        highlight990: excluded,
       });
     } else {
-      totalHours += hours;
+      if (excluded) supervisionHours += hours;
+      else totalHours += hours;
       rows.push({
         costCode,
         workItem: workItemForBucket(bucket, lib),
         hours: hours ? hours.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
         amount: "",
-        highlight990: parseCostCodeNumber(costCode) === "990",
+        highlight990: excluded,
       });
     }
   });
-  return { rows, totalHours, totalMaterial };
-}
-
-function parseCostCodeNumber(label: string): string {
-  const m = label.match(/^(\d+)/);
-  return m ? m[1] : label.split(" - ")[0]?.trim() ?? label;
+  if (options?.combineByCostCode) {
+    rows = combineHoursExportRows(rows);
+  }
+  return { rows, totalHours, totalMaterial, supervisionHours };
 }
 
 export function activeLines(lines: BudgetScanLine[]): BudgetScanLine[] {
@@ -214,6 +393,28 @@ export function bucketMetrics(
   const amount = assigned.reduce((s, l) => s + (l.Amount ?? 0), 0);
   const hours = sumHours(assigned);
   return { lines: assigned.length, amount, hours };
+}
+
+export function computeManpowerBudgetHours(
+  buckets: BudgetBucket[],
+  lines: BudgetScanLine[],
+  includeSupervision: boolean,
+): { fieldHours: number; supervisionHours: number; pushHours: number } {
+  let fieldHours = 0;
+  let supervisionHours = 0;
+  buckets.forEach((bucket, i) => {
+    const { hours } = bucketMetrics(i, lines);
+    if (isExcludedFromFieldHoursTotal(bucket.cost_code)) {
+      supervisionHours += hours;
+    } else {
+      fieldHours += hours;
+    }
+  });
+  return {
+    fieldHours,
+    supervisionHours,
+    pushHours: includeSupervision ? fieldHours + supervisionHours : fieldHours,
+  };
 }
 
 export function bucketDisplay(bucketId: string, buckets: BudgetBucket[], lib: BudgetLibrary): string {
@@ -394,11 +595,58 @@ export type BucketSummaryRow = {
   notes: string;
 };
 
+export function combineSummaryRows(rows: BucketSummaryRow[]): BucketSummaryRow[] {
+  const order: string[] = [];
+  const map = new Map<
+    string,
+    BucketSummaryRow & { hoursNum: number; noteParts: string[] }
+  >();
+
+  for (const row of rows) {
+    const key = parseCostCodeNumber(row.costCode);
+    const hoursNum = parseHoursCell(row.hours);
+    const existing = map.get(key);
+    if (!existing) {
+      order.push(key);
+      map.set(key, {
+        ...row,
+        hoursNum,
+        noteParts: row.notes ? [row.notes] : [],
+      });
+      continue;
+    }
+    existing.amount += row.amount;
+    existing.hoursNum += hoursNum;
+    if (row.notes && !existing.noteParts.includes(row.notes)) {
+      existing.noteParts.push(row.notes);
+    }
+  }
+
+  const budgetTotal = order.reduce((sum, key) => sum + (map.get(key)?.amount ?? 0), 0);
+
+  return order.map((key, index) => {
+    const entry = map.get(key)!;
+    const { hoursNum, noteParts, ...row } = entry;
+    return {
+      ...row,
+      bucketIdx: index,
+      hours: hoursNum ? hoursNum.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
+      pct: formatPct(row.amount, budgetTotal),
+      notes: noteParts.join("; "),
+    };
+  });
+}
+
+export type SummaryRowOptions = {
+  combineByCostCode?: boolean;
+};
+
 export function buildSummaryRows(
   buckets: BudgetBucket[],
   lines: BudgetScanLine[],
   lib: BudgetLibrary,
   hideZero: boolean,
+  options?: SummaryRowOptions,
 ): BucketSummaryRow[] {
   const metrics = computeSummaryMetrics(lines, "");
   const budgetTotal = metrics.budgetTotal;
@@ -409,7 +657,7 @@ export function buildSummaryRows(
     rows.push({
       bucketIdx: i,
       workItem: workItemForBucket(bucket, lib),
-      costCode: formatCostCode(bucket.cost_code, lib),
+      costCode: formatCostCode(bucket.cost_code, lib, bucket.cost_class),
       costClass: bucket.cost_class,
       glAcct: costClassGlAcct(lib, bucket.cost_class),
       hours: hours ? hours.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
@@ -418,6 +666,9 @@ export function buildSummaryRows(
       notes: fmtCell(bucket.notes),
     });
   });
+  if (options?.combineByCostCode) {
+    return combineSummaryRows(rows);
+  }
   return rows;
 }
 
@@ -425,11 +676,12 @@ export function appendBucketsUnique(
   buckets: BudgetBucket[],
   newBuckets: BudgetBucket[],
 ): { buckets: BudgetBucket[]; added: number } {
-  const existing = new Set(buckets.map((b) => `${b.cost_code}|${b.cost_class}`));
+  const bucketKey = (b: BudgetBucket) => `${fmtCell(b.cost_code)}|${fmtCell(b.cost_class)}`;
+  const existing = new Set(buckets.map(bucketKey));
   let added = 0;
   const next = [...buckets];
   for (const b of newBuckets) {
-    const key = `${b.cost_code}|${b.cost_class}`;
+    const key = bucketKey(b);
     if (existing.has(key)) continue;
     next.push(b);
     existing.add(key);

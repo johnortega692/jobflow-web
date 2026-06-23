@@ -151,5 +151,6 @@ export function printFrpOrderForm(
   printHtml(
     buildFrpOrderFormHtml(job, branding, deliverySettings, filename),
     pdfTitleFromFilename(filename),
+    branding.logoUrl,
   );
 }

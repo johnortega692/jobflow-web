@@ -74,6 +74,14 @@ export function ProjectOverviewPage() {
             phone={j.gc_super_phone.trim()}
             email={j.gc_super_email.trim()}
           />
+          {(j.icbi_foreman.trim() || j.icbi_foreman_email.trim()) && (
+            <GcContactLine
+              label="Foreman"
+              name={j.icbi_foreman.trim()}
+              phone=""
+              email={j.icbi_foreman_email.trim()}
+            />
+          )}
         </div>
         <div className="row-gap wrap job-dashboard-actions">
           {!setup.complete && (

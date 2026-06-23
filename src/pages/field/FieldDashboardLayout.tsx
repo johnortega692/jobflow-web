@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { NavLink, Outlet, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
-import { profileDisplayLabel } from "../../lib/userProfile";
+import { UserHeaderIdentity } from "../../components/UserHeaderIdentity";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
@@ -18,6 +18,13 @@ import {
   writeFieldMobileView,
 } from "../../lib/fieldViewPrefs";
 import type { ProjectForm } from "../../types/database";
+import { manpowerCalUrl } from "../../lib/manpowerCalUrl";
+import {
+  FieldDesktopIcon,
+  FieldMobileIcon,
+  FieldMoonIcon,
+  FieldSunIcon,
+} from "../../components/field/FieldViewIcons";
 import "../../field-dashboard.css";
 
 type FieldDashboardContextValue = {
@@ -40,6 +47,45 @@ export function useFieldDashboard() {
   const ctx = useContext(FieldDashboardContext);
   if (!ctx) throw new Error("useFieldDashboard must be used within FieldDashboardLayout");
   return ctx;
+}
+
+function FieldViewToggles({
+  mobileView,
+  setMobileView,
+  darkMode,
+  setDarkMode,
+  className = "nav-button nav-button-toggle nav-button-icon",
+}: {
+  mobileView: boolean;
+  setMobileView: (value: boolean) => void;
+  darkMode: boolean;
+  setDarkMode: (value: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className={`${className}${mobileView ? " active" : ""}`}
+        onClick={() => setMobileView(!mobileView)}
+        title={mobileView ? "Switch to desktop layout" : "Switch to mobile layout"}
+        aria-label={mobileView ? "Switch to desktop layout" : "Switch to mobile layout"}
+        aria-pressed={mobileView}
+      >
+        {mobileView ? <FieldDesktopIcon /> : <FieldMobileIcon />}
+      </button>
+      <button
+        type="button"
+        className={`${className}${darkMode ? " active" : ""}`}
+        onClick={() => setDarkMode(!darkMode)}
+        title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+        aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+        aria-pressed={darkMode}
+      >
+        {darkMode ? <FieldSunIcon /> : <FieldMoonIcon />}
+      </button>
+    </>
+  );
 }
 
 export function FieldDashboardLayout() {
@@ -97,7 +143,6 @@ export function FieldDashboardLayout() {
   const companyName = user
     ? branding.companyName.trim() || "Ironwood Commercial Builders"
     : publicCompanyName.trim() || "Ironwood Commercial Builders";
-  const displayUser = profileDisplayLabel(profile) || profile.name.trim() || user?.email || "";
   const pageTitle = location.pathname.includes("/paint")
     ? "Paint Dashboard"
     : location.pathname.includes("/calendar")
@@ -125,53 +170,6 @@ export function FieldDashboardLayout() {
       >
         <div className={`field-toast${toastMsg ? " show" : ""}`}>{toastMsg ?? ""}</div>
 
-        <header className="field-topbar">
-          <div className="field-topbar-brand">
-            <span className="field-topbar-mark">FV</span>
-            <div>
-              <div className="field-topbar-title">Field view</div>
-              <div className="field-topbar-sub">{companyName}</div>
-            </div>
-          </div>
-          <div className="field-topbar-actions">
-            <button
-              type="button"
-              className={`field-topbar-toggle${mobileView ? " active" : ""}`}
-              onClick={() => setMobileView(!mobileView)}
-              title={mobileView ? "Switch to desktop layout" : "Switch to mobile layout"}
-              aria-pressed={mobileView}
-            >
-              {mobileView ? "Desktop" : "Mobile"}
-            </button>
-            <button
-              type="button"
-              className={`field-topbar-toggle${darkMode ? " active" : ""}`}
-              onClick={() => setDarkMode(!darkMode)}
-              title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-              aria-pressed={darkMode}
-            >
-              {darkMode ? "Light" : "Dark"}
-            </button>
-            {user ? (
-              <>
-                <Link to="/projects" className="field-topbar-link">
-                  Office
-                </Link>
-                <span className="field-topbar-user" title={user.email ?? undefined}>
-                  {displayUser}
-                </span>
-                <button type="button" className="field-topbar-signout" onClick={() => signOut()}>
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <Link to="/login" className="field-topbar-link">
-                Office sign in
-              </Link>
-            )}
-          </div>
-        </header>
-
         <div className="header">
           <div className="title-block">
             <div className="company-name">{companyName}</div>
@@ -179,13 +177,33 @@ export function FieldDashboardLayout() {
               <span>{pageTitle}</span>
             </div>
           </div>
-          <div className="nav-buttons">
+          <div className="header-right">
+            {user ? (
+              <div className="field-header-account">
+                <Link to="/projects" className="field-header-link">
+                  Office
+                </Link>
+                <UserHeaderIdentity profile={profile} email={user.email} className="field-header-user" />
+                <button type="button" className="field-header-signout" onClick={() => signOut()}>
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+            <div className="nav-buttons">
             <NavLink
               to="/field/wallcovering"
               className={({ isActive }) => `nav-button${isActive ? " active" : ""}`}
             >
               Wallcovering
             </NavLink>
+            <a
+              href={manpowerCalUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="nav-button nav-button-external"
+            >
+              Manpower
+            </a>
             <NavLink
               to="/field/paint"
               className={({ isActive }) => `nav-button${isActive ? " active" : ""}`}
@@ -198,6 +216,13 @@ export function FieldDashboardLayout() {
             >
               Calendar
             </NavLink>
+            <FieldViewToggles
+              mobileView={mobileView}
+              setMobileView={setMobileView}
+              darkMode={darkMode}
+              setDarkMode={setDarkMode}
+            />
+            </div>
           </div>
         </div>
 
@@ -206,26 +231,45 @@ export function FieldDashboardLayout() {
         <Outlet />
 
         {mobileView && (
-          <nav className="field-bottom-nav" aria-label="Field view sections">
-            <NavLink
-              to="/field/wallcovering"
-              className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
-            >
-              Wallcovering
-            </NavLink>
-            <NavLink
-              to="/field/paint"
-              className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
-            >
-              Paint
-            </NavLink>
-            <NavLink
-              to="/field/calendar"
-              className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
-            >
-              Calendar
-            </NavLink>
-          </nav>
+          <div className="field-bottom-nav-wrap">
+            <nav className="field-bottom-nav" aria-label="Field view sections">
+              <NavLink
+                to="/field/wallcovering"
+                className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
+              >
+                Wallcovering
+              </NavLink>
+              <NavLink
+                to="/field/paint"
+                className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
+              >
+                Paint
+              </NavLink>
+              <NavLink
+                to="/field/calendar"
+                className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
+              >
+                Calendar
+              </NavLink>
+              <a
+                href={manpowerCalUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="field-bottom-nav-link field-bottom-nav-link-external"
+              >
+                Manpower
+              </a>
+            </nav>
+            <div className="field-bottom-nav-utils">
+              <FieldViewToggles
+                mobileView={mobileView}
+                setMobileView={setMobileView}
+                darkMode={darkMode}
+                setDarkMode={setDarkMode}
+                className="field-bottom-nav-toggle field-bottom-nav-toggle-icon"
+              />
+            </div>
+          </div>
         )}
       </div>
     </FieldDashboardContext.Provider>

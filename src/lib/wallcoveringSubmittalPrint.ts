@@ -188,5 +188,6 @@ export function printWallcoveringSubmittal(
   printHtml(
     buildWallcoveringSubmittalHtml(project, data, branding, filename),
     pdfTitleFromFilename(filename),
+    branding.logoUrl,
   );
 }

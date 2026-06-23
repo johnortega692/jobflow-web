@@ -178,5 +178,6 @@ export function printPaintSubmittal(
   printHtml(
     buildPaintSubmittalHtml(project, data, branding, filename),
     pdfTitleFromFilename(filename),
+    branding.logoUrl,
   );
 }

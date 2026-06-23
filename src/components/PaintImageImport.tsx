@@ -1,10 +1,16 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PaintImportPreviewModal } from "./PaintImportPreviewModal";
 import {
   extractPaintFromImage,
   imageFileFromClipboard,
   imageFileFromDataTransfer,
   type ExtractedPaintRow,
 } from "../lib/paintImageImport";
+
+type PreviewState = {
+  rows: ExtractedPaintRow[];
+  imageUrl: string;
+};
 
 type Props = {
   onImported: (rows: ExtractedPaintRow[]) => void;
@@ -16,6 +22,35 @@ export function PaintImageImport({ onImported, layout = "stack" }: Props) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastCount, setLastCount] = useState<number | null>(null);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
+
+  function closePreview() {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreview(null);
+  }
+
+  function openPreview(rows: ExtractedPaintRow[], file: File) {
+    closePreview();
+    const imageUrl = URL.createObjectURL(file);
+    previewUrlRef.current = imageUrl;
+    setPreview({ rows, imageUrl });
+  }
+
+  function confirmPreview(rows: ExtractedPaintRow[]) {
+    onImported(rows);
+    setLastCount(rows.length);
+    closePreview();
+  }
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -23,8 +58,7 @@ export function PaintImageImport({ onImported, layout = "stack" }: Props) {
     setError(null);
     try {
       const rows = await extractPaintFromImage(file);
-      onImported(rows);
-      setLastCount(rows.length);
+      openPreview(rows, file);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -43,8 +77,7 @@ export function PaintImageImport({ onImported, layout = "stack" }: Props) {
         return;
       }
       const rows = await extractPaintFromImage(file);
-      onImported(rows);
-      setLastCount(rows.length);
+      openPreview(rows, file);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Paste failed");
     } finally {
@@ -60,66 +93,77 @@ export function PaintImageImport({ onImported, layout = "stack" }: Props) {
   }
 
   return (
-    <section
-      className={`card ai-import ai-import-paste-zone${layout === "row" ? " ai-import--row" : " stack"}`}
-      tabIndex={0}
-      onPaste={onPaste}
-      aria-label="Import paint schedule — paste a screenshot or select an image"
-    >
-      <div className={layout === "row" ? "ai-import-row-main" : undefined}>
-        <div>
-          <h3>Import Paint Schedule</h3>
-          <p className="muted small">Paste a screenshot or select an image.</p>
+    <>
+      <section
+        className={`card ai-import ai-import-paste-zone${layout === "row" ? " ai-import--row" : " stack"}`}
+        tabIndex={0}
+        onPaste={onPaste}
+        aria-label="Import paint schedule — paste a screenshot or select an image"
+      >
+        <div className={layout === "row" ? "ai-import-row-main" : undefined}>
+          <div>
+            <h3>Import Paint Schedule</h3>
+            <p className="muted small">Paste a screenshot or select an image. You&apos;ll review before adding.</p>
+          </div>
+
+          <div className="row-gap ai-import-actions">
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={importing}
+              onClick={() => void onPasteClick()}
+            >
+              {importing ? "Reading image…" : "Paste from clipboard"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={importing}
+              onClick={() => inputRef.current?.click()}
+            >
+              Choose image…
+            </button>
+            {lastCount !== null && !error && (
+              <span className="muted small">
+                Added {lastCount} item(s). Review below, then Save.
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="row-gap ai-import-actions">
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
-          />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={importing}
-            onClick={() => void onPasteClick()}
-          >
-            {importing ? "Reading image…" : "Paste from clipboard"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={importing}
-            onClick={() => inputRef.current?.click()}
-          >
-            Choose image…
-          </button>
-          {lastCount !== null && !error && (
-            <span className="muted small">
-              Added {lastCount} item(s). Review below, then Save.
-            </span>
-          )}
-        </div>
-      </div>
-
-      {layout === "row" ? (
-        error ? (
-          <div className="banner banner-error ai-import-row-banner">{error}</div>
+        {layout === "row" ? (
+          error ? (
+            <div className="banner banner-error ai-import-row-banner">{error}</div>
+          ) : (
+            <p className="muted small ai-import-hint ai-import-row-hint">
+              Tip: click this box, then <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste a screenshot.
+            </p>
+          )
         ) : (
-          <p className="muted small ai-import-hint ai-import-row-hint">
-            Tip: click this box, then <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste a screenshot.
-          </p>
-        )
-      ) : (
-        <>
-          <p className="muted small ai-import-hint">
-            Tip: click this box, then <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste a screenshot.
-          </p>
-          {error && <div className="banner banner-error">{error}</div>}
-        </>
-      )}
-    </section>
+          <>
+            <p className="muted small ai-import-hint">
+              Tip: click this box, then <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste a screenshot.
+            </p>
+            {error && <div className="banner banner-error">{error}</div>}
+          </>
+        )}
+      </section>
+
+      {preview ? (
+        <PaintImportPreviewModal
+          rows={preview.rows}
+          imageUrl={preview.imageUrl}
+          onConfirm={confirmPreview}
+          onCancel={closePreview}
+        />
+      ) : null}
+    </>
   );
 }

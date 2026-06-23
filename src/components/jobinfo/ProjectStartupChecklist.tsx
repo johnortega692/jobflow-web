@@ -11,7 +11,6 @@ import {
   loadGoogleSheetsActionContext,
   runAddJobToFieldRequest,
   runPushFieldRequestBrushOuts,
-  runUpdateManpower,
   type GoogleSheetsActionContext,
 } from "../../lib/googleSheetsProjectActions";
 import { parseProjectDataBlob, projectHasWallcovering } from "../../lib/jobInfo";
@@ -45,6 +44,7 @@ type StepperStep = {
   manualId?: ProjectStartupStepId;
   modulePath?: string;
   action?: ProjectStartupAction;
+  oneTime?: boolean;
   auto?: boolean;
 };
 
@@ -90,6 +90,7 @@ export function ProjectStartupChecklist({
         manualId: step.id,
         modulePath: "modulePath" in step ? step.modulePath : undefined,
         action: "action" in step ? step.action : undefined,
+        oneTime: "oneTime" in step ? step.oneTime : undefined,
       });
     });
     return rows;
@@ -164,13 +165,11 @@ export function ProjectStartupChecklist({
     setError(null);
     try {
       const result =
-        step.action === PROJECT_STARTUP_ACTIONS.manpower
-          ? await runUpdateManpower(project, sheetCtx)
-          : step.action === PROJECT_STARTUP_ACTIONS.field_request_job
-            ? await runAddJobToFieldRequest(project, sheetCtx)
-            : step.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
-              ? await runPushFieldRequestBrushOuts(project, sheetCtx, projectId)
-              : { ok: false, message: "Unknown sheet action." };
+        step.action === PROJECT_STARTUP_ACTIONS.field_request_job
+          ? await runAddJobToFieldRequest(project, sheetCtx)
+          : step.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
+            ? await runPushFieldRequestBrushOuts(project, sheetCtx, projectId)
+            : { ok: false, message: "Unknown sheet action." };
       if (result.ok) {
         setActionMessage(result.message);
         const next = { ...checklist, [step.manualId]: true };
@@ -195,6 +194,8 @@ export function ProjectStartupChecklist({
       return;
     }
     if (!step.manualId || loading || savingId === step.manualId || runningAction) return;
+
+    if (step.oneTime && step.done) return;
 
     if (step.action) {
       if (step.done) {
@@ -247,7 +248,7 @@ export function ProjectStartupChecklist({
             <button
               type="button"
               role="listitem"
-              className={`job-startup-step${step.done ? " job-startup-step--done" : ""}${activeKey === step.key ? " job-startup-step--active" : ""}`}
+              className={`job-startup-step${step.done ? " job-startup-step--done" : ""}${step.oneTime && step.done ? " job-startup-step--locked" : ""}${activeKey === step.key ? " job-startup-step--active" : ""}`}
               title={step.fullLabel}
               disabled={Boolean(
                 step.manualId &&
@@ -294,7 +295,12 @@ export function ProjectStartupChecklist({
           {activeStep.done ? (
             <span className="job-startup-detail-status">
               {" "}
-              · Done{activeStep.action ? " · Click to uncheck" : ""}
+              · Done
+              {activeStep.oneTime
+                ? " · Locked — one-time step"
+                : activeStep.action
+                  ? " · Click to uncheck"
+                  : ""}
             </span>
           ) : activeStep.auto ? (
             <>

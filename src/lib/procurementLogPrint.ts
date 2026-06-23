@@ -161,5 +161,5 @@ export function printProcurementLog(options: {
   lastUpdate?: Date;
 }): void {
   const filename = procurementLogFilename(options.jobName, options.jobNumber);
-  printHtml(buildProcurementLogHtml(options), pdfTitleFromFilename(filename));
+  printHtml(buildProcurementLogHtml(options), pdfTitleFromFilename(filename), options.branding.logoUrl);
 }

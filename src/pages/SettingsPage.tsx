@@ -2,11 +2,13 @@ import { FormEvent, useCallback, useEffect, useRef, useState, type MouseEvent } 
 import { Link, useNavigate } from "react-router-dom";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
+import { ManpowerCalSettingsSection } from "../components/settings/ManpowerCalSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
 import { PaintEmailSettingsSection } from "../components/settings/PaintEmailSettingsSection";
 import { PdfFieldRow } from "../components/settings/PdfFieldRow";
 import type { SettingsSectionActions } from "../components/settings/settingsSectionTypes";
 import { UnsavedChangesDialog } from "../components/settings/UnsavedChangesDialog";
+import { UserApprovalsSettingsSection } from "../components/settings/UserApprovalsSettingsSection";
 import { VendorArchitectSettingsSection } from "../components/settings/VendorArchitectSettingsSection";
 import { WorkOrderSettingsSection } from "../components/settings/WorkOrderSettingsSection";
 import { useAuth } from "../contexts/AuthContext";
@@ -18,15 +20,18 @@ import type { LetterheadPdfVisibility } from "../types/letterheadSettings";
 
 const SETTINGS_TABS = [
   { id: "profile", label: "Profile & letterhead" },
+  { id: "users", label: "User approvals", adminOnly: true as const },
   { id: "vendors", label: "Vendors & architects" },
   { id: "delivery", label: "Delivery" },
-  { id: "google", label: "Google Sheets" },
+  { id: "google", label: "Google Sheets", adminOnly: true as const },
   { id: "paint-catalog", label: "Paint products & sheens" },
   { id: "paint-email", label: "Paint & email" },
+  { id: "manpower", label: "Manpower" },
   { id: "work-orders", label: "Work orders" },
 ] as const;
 
-type SettingsTabId = (typeof SETTINGS_TABS)[number]["id"];
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+type SettingsTabId = SettingsTab["id"];
 
 type PendingLeave =
   | { kind: "tab"; tab: SettingsTabId }
@@ -49,6 +54,7 @@ export function SettingsPage() {
   const [dialogSaving, setDialogSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   const setTabDirty = useCallback((tab: SettingsTabId, dirty: boolean) => {
     setDirtyTabs((prev) => {
@@ -99,6 +105,16 @@ export function SettingsPage() {
   }, [getProfileDirty, markProfileSaved, profileReady, reload, save]);
 
   const sharedSettingsReadOnly = !roleLoading && !isAdmin;
+  const visibleTabs = SETTINGS_TABS.filter((tab) => !("adminOnly" in tab && tab.adminOnly) || isAdmin);
+
+  useEffect(() => {
+    if (!roleLoading && activeTab === "users" && !isAdmin) {
+      setActiveTab("profile");
+    }
+    if (!roleLoading && activeTab === "google" && !isAdmin) {
+      setActiveTab("profile");
+    }
+  }, [activeTab, isAdmin, roleLoading]);
 
   function isActiveTabDirty(): boolean {
     return sectionActionsRef.current[activeTab]?.getIsDirty() ?? Boolean(dirtyTabs[activeTab]);
@@ -124,12 +140,16 @@ export function SettingsPage() {
   }
 
   function requestTabChange(tab: SettingsTabId) {
-    if (tab === activeTab) return;
+    if (tab === activeTab) {
+      setNavOpen(false);
+      return;
+    }
     if (isActiveTabDirty()) {
       setPendingLeave({ kind: "tab", tab });
       return;
     }
     setActiveTab(tab);
+    setNavOpen(false);
   }
 
   function onBackClick(e: MouseEvent<HTMLAnchorElement>) {
@@ -157,7 +177,7 @@ export function SettingsPage() {
     setUploading(true);
     setMessage(null);
     try {
-      const url = await uploadLetterheadLogo(user.id, file);
+      const url = await uploadLetterheadLogo(user.id, file, { orgShared: isAdmin });
       setSettings({ logo_url: url });
       setMessage("Logo uploaded. Click Save settings to keep it.");
     } catch (e) {
@@ -190,41 +210,74 @@ export function SettingsPage() {
 
   if (loading) return <p className="muted">Loading settings…</p>;
 
+  const activeTabMeta = visibleTabs.find((t) => t.id === activeTab) ?? visibleTabs[0];
+
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page settings-page">
+      <div className="page-header settings-page-header">
         <div>
           <h1>Settings</h1>
           <p className="muted">
-            Account defaults for letterhead, contacts, integrations, and paint workflows. Each tab
+            Account defaults for letterhead, contacts, integrations, and paint workflows. Each section
             saves independently.
             {!roleLoading && !isAdmin && (
               <>
                 {" "}
-                Company letterhead and integration tabs are shared for everyone. You can edit your
-                profile and manpower user name; other tabs are view-only unless you are an admin.
+                Company letterhead and integration sections are shared for everyone. You can edit your
+                profile; other sections are view-only unless you are an admin.
               </>
             )}
           </p>
         </div>
-        <Link to="/projects" className="btn btn-secondary" onClick={onBackClick}>
-          Back to projects
-        </Link>
+        <div className="settings-page-header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary settings-nav-toggle"
+            aria-expanded={navOpen}
+            aria-controls="settings-sidebar"
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            Sections
+          </button>
+          <Link to="/projects" className="btn btn-secondary" onClick={onBackClick}>
+            Back to projects
+          </Link>
+        </div>
       </div>
 
-      <nav className="settings-tabs" aria-label="Settings sections">
-        {SETTINGS_TABS.map((tab) => (
+      <div className={`settings-shell${navOpen ? " settings-shell--nav-open" : ""}`}>
+        {navOpen && (
           <button
-            key={tab.id}
             type="button"
-            className={`settings-tab${activeTab === tab.id ? " settings-tab--active" : ""}`}
-            aria-current={activeTab === tab.id ? "page" : undefined}
-            onClick={() => requestTabChange(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+            className="settings-nav-backdrop"
+            aria-label="Close settings menu"
+            onClick={() => setNavOpen(false)}
+          />
+        )}
+
+        <aside id="settings-sidebar" className="settings-sidebar" aria-label="Settings sections">
+          <nav className="settings-nav">
+            {visibleTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`settings-nav-item${activeTab === tab.id ? " settings-nav-item--active" : ""}${dirtyTabs[tab.id] ? " settings-nav-item--dirty" : ""}`}
+                aria-current={activeTab === tab.id ? "page" : undefined}
+                onClick={() => requestTabChange(tab.id)}
+              >
+                <span className="settings-nav-item-label">{tab.label}</span>
+                {dirtyTabs[tab.id] ? (
+                  <span className="settings-nav-item-dot" aria-label="Unsaved changes" title="Unsaved changes" />
+                ) : null}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="settings-main">
+          <div className="settings-main-header">
+            <h2 className="settings-main-title">{activeTabMeta?.label ?? "Settings"}</h2>
+          </div>
 
       <div
         className={`card stack settings-form settings-tab-panel${activeTab === "profile" ? "" : " settings-tab-panel--hidden"}`}
@@ -295,7 +348,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          {isAdmin && (
+          {isAdmin ? (
           <>
           <section className="stack">
             <h2>Company &amp; letterhead</h2>
@@ -411,6 +464,42 @@ export function SettingsPage() {
             </label>
           </section>
           </>
+          ) : (
+          <section className="stack">
+            <h2>Company letterhead</h2>
+            <p className="muted small">
+              Shared Ironwood letterhead used on all PDFs. Contact an admin to update company info or
+              the logo.
+            </p>
+            {settings.logo_url ? (
+              <div className="logo-preview">
+                <img src={settings.logo_url} alt="Company logo" />
+              </div>
+            ) : null}
+            <div className="grid-2">
+              <label>
+                Company name
+                <input value={settings.company_name} readOnly disabled />
+              </label>
+              <label>
+                Office phone
+                <input value={settings.company_phone} readOnly disabled />
+              </label>
+              <label className="grid-span-2">
+                Company address
+                <input value={settings.company_address} readOnly disabled />
+              </label>
+              <label>
+                License #
+                <input value={settings.company_license} readOnly disabled />
+              </label>
+            </div>
+            {branding.companyContactLine ? (
+              <p className="muted small settings-contact-preview">
+                Letterhead line: {branding.companyContactLine}
+              </p>
+            ) : null}
+          </section>
           )}
 
           <section className="stack settings-preview">
@@ -454,6 +543,13 @@ export function SettingsPage() {
             </button>
           </div>
         </form>
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "users" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "users"}
+      >
+        <UserApprovalsSettingsSection />
       </div>
 
       <div
@@ -511,6 +607,13 @@ export function SettingsPage() {
       </div>
 
       <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "manpower" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "manpower"}
+      >
+        <ManpowerCalSettingsSection />
+      </div>
+
+      <div
         className={`card stack settings-form settings-tab-panel${activeTab === "work-orders" ? "" : " settings-tab-panel--hidden"}`}
         aria-hidden={activeTab !== "work-orders"}
       >
@@ -519,6 +622,8 @@ export function SettingsPage() {
           onDirtyChange={sharedSettingsReadOnly ? undefined : onWorkOrdersDirty}
           onBindActions={(actions) => bindSectionActions("work-orders", actions)}
         />
+      </div>
+        </div>
       </div>
 
       {pendingLeave && (

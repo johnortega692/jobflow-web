@@ -784,7 +784,7 @@ export function TransmittalPage() {
         <TransmittalEmailRelayModal
           project={{ job_number: project.job_number, job_name: project.job_name }}
           transmittal={draft}
-          fromEmail={profile.email || branding.signerEmail}
+          composeEmailMethod={userSettings?.compose_email_method ?? "gmail"}
           onClose={() => setEmailRelayOpen(false)}
           onDone={(msg) => {
             setStatus(msg);
@@ -806,9 +806,10 @@ export function TransmittalPage() {
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          fromEmail={profile.email || branding.signerEmail}
-          fromName={branding.companyName}
           jobSuper={project.jobInfo?.gc_superintendent}
+          foremanName={project.jobInfo?.icbi_foreman}
+          foremanEmail={project.jobInfo?.icbi_foreman_email}
+          composeEmailMethod={userSettings.compose_email_method}
           onClose={() => {
             setAtticStockOpen(false);
             setAtticStockData(null);

@@ -50,6 +50,7 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     icbi_pm: str(o.icbi_pm),
     icbi_engineer: str(o.icbi_engineer),
     icbi_foreman: str(o.icbi_foreman),
+    icbi_foreman_email: str(o.icbi_foreman_email),
     field_request_pm: str(o.field_request_pm),
     field_request_super: str(o.field_request_super),
     has_wallcovering: Boolean(o.has_wallcovering),
@@ -113,6 +114,21 @@ export function projectPrintInfo(
 
 export function projectHasWallcovering(info: JobInfoData): boolean {
   return Boolean(info.has_wallcovering);
+}
+
+/** Per-project foreman notification CC (Job setup → ICBI foreman email). */
+export function projectForemanEmail(info: JobInfoData | undefined): string {
+  return info?.icbi_foreman_email?.trim() ?? "";
+}
+
+/** Unique foreman CC addresses across projects (weekly digests, follow-up reminders). */
+export function collectProjectForemanCc(projects: Pick<ProjectForm, "jobInfo">[]): string[] {
+  const emails = new Set<string>();
+  for (const project of projects) {
+    const email = projectForemanEmail(project.jobInfo);
+    if (email) emails.add(email);
+  }
+  return [...emails];
 }
 
 export type TransmittalContract = "paint" | "wallcovering" | "frp" | "track";
@@ -325,6 +341,18 @@ export function transmittalPrintInfo(
     default:
       return { job_number: project.job_number.trim(), job_name: project.job_name.trim() };
   }
+}
+
+/** Job name and contract amount for Budget Maker (from Dashboard / Job setup). */
+export function budgetProfileValues(
+  project: Pick<ProjectForm, "job_number" | "job_name" | "jobInfo">,
+  contract: TransmittalContract,
+): { jobName: string; grandTotal: string } {
+  const ids = transmittalPrintInfo(project, contract);
+  return {
+    jobName: ids.job_name || ids.job_number,
+    grandTotal: project.jobInfo.contract_amount.trim(),
+  };
 }
 
 export function normalizeTransmittalContract(raw: unknown): TransmittalContract {

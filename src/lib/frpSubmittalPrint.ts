@@ -108,5 +108,5 @@ export function printFrpSubmittal(
   branding: PrintBranding,
 ): void {
   const filename = frpSubmittalFilename(project.job_name, project.job_number, data.submittal_number);
-  printHtml(buildFrpSubmittalHtml(project, data, branding, filename), pdfTitleFromFilename(filename));
+  printHtml(buildFrpSubmittalHtml(project, data, branding, filename), pdfTitleFromFilename(filename), branding.logoUrl);
 }

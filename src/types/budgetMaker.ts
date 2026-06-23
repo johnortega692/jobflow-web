@@ -60,6 +60,15 @@ export type BudgetMakerData = {
   lines: BudgetScanLine[];
   buckets: BudgetBucket[];
   saved_at?: string;
+  /** Set after a one-time push to Manpower Cal hours tracker */
+  manpower_budget_pushed_at?: string;
+  manpower_budget_hours?: number;
+  manpower_budget_pushed_by?: string;
+  /** Preference before pushing hours to Manpower (field hours only vs incl. 990). */
+  manpower_push_include_supervision?: boolean;
+  manpower_budget_include_supervision?: boolean;
+  /** Merge rows with the same cost code on PDF / Excel export */
+  combine_cost_codes_on_export?: boolean;
 };
 
 export const CODE_TYPES = ["LABOR", "MATERIALS", "EQUIPMENT", "SUBCONTRACTOR", "MISC"] as const;
@@ -100,6 +109,9 @@ export const PUSH_COLS = [
   "Notes",
 ] as const;
 
+/** Line-item columns shown in the Budget Maker table (exports still include Notes). */
+export const BUDGET_LINE_TABLE_COLS = PUSH_COLS.filter((c) => c !== "Notes");
+
 export const SUMMARY_COLS = [
   "Work Item",
   "Cost Code",
@@ -117,6 +129,44 @@ export function defaultBudgetLibrary(): BudgetLibrary {
     cost_classes: [],
     bucket_templates: [],
     default_bucket_template: "",
+  };
+}
+
+export function emptyCostCodeRecord(): CostCodeRecord {
+  return {
+    gl_account: "",
+    cost_code: "",
+    description: "",
+    type: "LABOR",
+    cost_class: "",
+  };
+}
+
+export function emptyEquipmentCostCodeRecord(): CostCodeRecord {
+  return {
+    gl_account: "",
+    cost_code: "997",
+    description: "Paint Equipment Owned",
+    type: "EQUIPMENT",
+    cost_class: "4",
+  };
+}
+
+export function emptyEquipmentRentCostCodeRecord(): CostCodeRecord {
+  return {
+    gl_account: "",
+    cost_code: "997",
+    description: "Paint Equipment Rent",
+    type: "EQUIPMENT",
+    cost_class: "5",
+  };
+}
+
+export function emptyCostClassRecord(): CostClassRecord {
+  return {
+    gl_acct: "",
+    cost_class: "",
+    description: "",
   };
 }
 
@@ -212,6 +262,21 @@ export function normalizeBudgetMaker(raw: unknown, jobName = ""): BudgetMakerDat
     lines,
     buckets,
     saved_at: o.saved_at != null ? String(o.saved_at) : undefined,
+    manpower_budget_pushed_at:
+      o.manpower_budget_pushed_at != null ? String(o.manpower_budget_pushed_at) : undefined,
+    manpower_budget_hours: numOrNull(o.manpower_budget_hours) ?? undefined,
+    manpower_budget_pushed_by:
+      o.manpower_budget_pushed_by != null ? String(o.manpower_budget_pushed_by) : undefined,
+    manpower_push_include_supervision:
+      o.manpower_push_include_supervision != null
+        ? Boolean(o.manpower_push_include_supervision)
+        : undefined,
+    manpower_budget_include_supervision:
+      o.manpower_budget_include_supervision != null
+        ? Boolean(o.manpower_budget_include_supervision)
+        : undefined,
+    combine_cost_codes_on_export:
+      o.combine_cost_codes_on_export != null ? Boolean(o.combine_cost_codes_on_export) : true,
   };
 }
 

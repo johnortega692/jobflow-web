@@ -1,5 +1,5 @@
 import type { ProjectForm } from "../types/database";
-import { projectHasWallcovering } from "./jobInfo";
+import { collectProjectForemanCc, projectHasWallcovering } from "./jobInfo";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
@@ -526,7 +526,11 @@ export async function sendWeeklyTrackerDigest(options: {
   logoUrl?: string;
   gasPost?: GasEmailPost;
 }): Promise<void> {
-  const recipients = resolveTrackerNotificationRecipients(options.primaryEmail, options.superEmails);
+  const recipients = resolveTrackerNotificationRecipients(
+    options.primaryEmail,
+    options.superEmails,
+    collectProjectForemanCc(options.projects),
+  );
   if (!recipients) {
     throw new Error("Set a notification primary email in Settings → Paint & email.");
   }

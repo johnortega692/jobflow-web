@@ -11,6 +11,8 @@ export type EmailSignatureSettings = {
   logo_position: number;
   /** Max width in pixels for signature logo */
   logo_max_width_px: number;
+  /** Personal email logo (sized for Gmail paste). Falls back to letterhead logo when empty. */
+  signature_logo_url: string;
   font_family: string;
   font_size_pt: number;
   font_color: string;
@@ -25,6 +27,7 @@ export const DEFAULT_EMAIL_SIGNATURE: EmailSignatureSettings = {
   line_styles: Array.from({ length: SIGNATURE_LINE_COUNT }, () => ({})),
   logo_position: 0,
   logo_max_width_px: 220,
+  signature_logo_url: "",
   font_family: "Calibri, Arial, sans-serif",
   font_size_pt: 11,
   font_color: "#000000",
@@ -87,13 +90,18 @@ function lineToHtmlParagraph(
   return `<p style="${css}">${esc(text)}</p>${outlookLineBreak()}`;
 }
 
-/** Outlook paste respects the width attribute more than CSS max-width. */
+/** Outlook / Gmail paste — table wrapper + width attribute keeps logo from blowing up to full size. */
 export function sizedLogoImgTag(logoUrl: string, maxWidthPx: number): string {
   const w = Math.max(40, Math.round(maxWidthPx));
-  return (
+  const img =
     `<img src="${esc(logoUrl)}" alt="Company Logo" width="${w}" border="0" ` +
-    `style="width:${w}px;max-width:${w}px;height:auto;display:block;border:0;` +
-    `-ms-interpolation-mode:bicubic;" />`
+    `style="width:${w}px !important;max-width:${w}px !important;height:auto !important;` +
+    `display:block;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;" />`;
+  return (
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" ` +
+    `style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;">` +
+    `<tr><td width="${w}" style="width:${w}px;max-width:${w}px;padding:0;margin:0;line-height:0;font-size:0;">` +
+    `${img}</td></tr></table>`
   );
 }
 
@@ -132,6 +140,9 @@ export function normalizeEmailSignature(raw: unknown): EmailSignatureSettings {
   const logoW = Number(sig.logo_max_width_px);
   out.logo_max_width_px = Number.isFinite(logoW) && logoW > 0 ? Math.round(logoW) : 220;
 
+  out.signature_logo_url =
+    typeof sig.signature_logo_url === "string" ? sig.signature_logo_url.trim() : "";
+
   out.font_family =
     typeof sig.font_family === "string" && sig.font_family.trim()
       ? sig.font_family.trim()
@@ -158,7 +169,8 @@ function applyLogoSizeToHtml(html: string, maxWidthPx: number, logoUrl: string):
     const isLogo =
       /cid:logo_image/i.test(tag) ||
       /alt=["']Company Logo["']/i.test(tag) ||
-      (url.length > 0 && tag.includes(url));
+      (url.length > 0 && tag.includes(url)) ||
+      (/src=["']data:image\//i.test(tag) && /alt=["']Company Logo["']/i.test(tag));
     if (!isLogo) return tag;
 
     const srcMatch = tag.match(/\bsrc=["']([^"']+)["']/i);
@@ -166,6 +178,11 @@ function applyLogoSizeToHtml(html: string, maxWidthPx: number, logoUrl: string):
     if (!src) return tag;
     return sizedLogoImgTag(src, w);
   });
+}
+
+/** Re-apply signature logo width after inlining logo as a data URL (Gmail paste). */
+export function constrainSignatureLogoInHtml(html: string, maxWidthPx: number, logoUrl = ""): string {
+  return applyLogoSizeToHtml(html, maxWidthPx, logoUrl);
 }
 
 /** Add line breaks Outlook keeps when pasting custom signature HTML. */
@@ -212,9 +229,24 @@ function generateHtmlFromFields(signature: EmailSignatureSettings, logoUrl: stri
   return parts.join("");
 }
 
+/** Email signature logo — personal upload first, then letterhead / branding fallbacks. */
+export function resolveEmailSignatureLogoUrl(
+  signature: EmailSignatureSettings,
+  ...fallbacks: (string | undefined)[]
+): string {
+  const own = normalizeEmailSignature(signature).signature_logo_url.trim();
+  if (own) return own;
+  for (const fb of fallbacks) {
+    const url = fb?.trim();
+    if (url) return url;
+  }
+  return "";
+}
+
 /** HTML fragment appended before closing body in vendor emails. */
-export function buildEmailSignatureHtml(signature: EmailSignatureSettings, logoUrl = ""): string {
+export function buildEmailSignatureHtml(signature: EmailSignatureSettings, fallbackLogoUrl = ""): string {
   const sig = normalizeEmailSignature(signature);
+  const logoUrl = resolveEmailSignatureLogoUrl(sig, fallbackLogoUrl);
   if (sig.use_custom_html && sig.html_body.trim()) {
     let body = repairSignatureHtml(sig.html_body);
     body = resolveLogoInHtml(body, logoUrl, sig.logo_max_width_px);

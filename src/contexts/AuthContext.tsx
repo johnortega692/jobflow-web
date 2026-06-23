@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { loadAppRole, isAppAdmin, type AppRole } from "../lib/appRole";
+import { isAppAdmin, loadUserProfileAuth, type AppRole } from "../lib/appRole";
 import { supabase } from "../lib/supabase";
 
 interface AuthContextValue {
@@ -18,6 +18,8 @@ interface AuthContextValue {
   appRole: AppRole | null;
   roleLoading: boolean;
   isAdmin: boolean;
+  isApproved: boolean;
+  refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -29,7 +31,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [appRole, setAppRole] = useState<AppRole | null>(null);
+  const [isApproved, setIsApproved] = useState(false);
   const [roleLoading, setRoleLoading] = useState(false);
+
+  const refreshProfile = useCallback(async () => {
+    const userId = session?.user?.id;
+    if (!userId) {
+      setAppRole(null);
+      setIsApproved(false);
+      setRoleLoading(false);
+      return;
+    }
+    setRoleLoading(true);
+    const profile = await loadUserProfileAuth(userId);
+    setAppRole(profile.appRole);
+    setIsApproved(profile.isApproved);
+    setRoleLoading(false);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -48,39 +66,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const userId = session?.user?.id;
-    if (!userId) {
-      setAppRole(null);
-      setRoleLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setRoleLoading(true);
-    void loadAppRole(userId).then((role) => {
-      if (!cancelled) {
-        setAppRole(role);
-        setRoleLoading(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user?.id]);
+    void refreshProfile();
+  }, [refreshProfile]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return error.message;
     if (data.session) setSession(data.session);
-    return error?.message ?? null;
+    if (data.user) {
+      const profile = await loadUserProfileAuth(data.user.id);
+      if (!profile.isApproved) {
+        return "Your account is awaiting admin approval.";
+      }
+    }
+    return null;
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({ email, password });
-    if (data.session) setSession(data.session);
-    return error?.message ?? null;
+    if (error) return error.message;
+    if (data.session) {
+      await supabase.auth.signOut();
+      setSession(null);
+    }
+    return null;
   }, []);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    setSession(null);
+    setAppRole(null);
+    setIsApproved(false);
   }, []);
 
   const value = useMemo(
@@ -91,11 +107,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       appRole,
       roleLoading,
       isAdmin: isAppAdmin(appRole),
+      isApproved,
+      refreshProfile,
       signIn,
       signUp,
       signOut,
     }),
-    [session, loading, appRole, roleLoading, signIn, signUp, signOut],
+    [session, loading, appRole, roleLoading, isApproved, refreshProfile, signIn, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -64,6 +64,7 @@ export const EXCEL_FIELD_LABELS: Record<string, string> = {
   icbi_pm: "ICBI project manager",
   icbi_engineer: "ICBI engineer",
   icbi_foreman: "ICBI foreman",
+  icbi_foreman_email: "ICBI foreman email",
   signature_print_name: "Printed signer name",
   req_bond: "Req: Bond",
   req_prevailing_wage: "Req: Prevailing wage",

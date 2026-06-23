@@ -13,13 +13,13 @@ import {
 } from "../types/tradeDocuments";
 import { esc, formatLongDate } from "./printCore";
 import {
-  buildMailtoUrl,
-  buildVendorEmlBlob,
+  openGmailComposeWithHtml,
   copyHtmlToClipboard,
-  downloadVendorEml,
+  type OpenMailtoResult,
   type AtticStockCustomItem,
   type AtticStockPaintItem,
 } from "./paintVendorEmail";
+import type { ComposeEmailMethod } from "./paintUserSettings";
 
 export function enclosureOutputDescription(row: TransmittalEnclosure): string {
   const base = row.description.trim();
@@ -370,7 +370,7 @@ export function buildEmailRelayPlainBody(
   ].join("\n");
 }
 
-/** HTML body for .eml download / copy — matches desktop Outlook relay formatting. */
+/** HTML body for relay copy — matches desktop Outlook relay formatting. */
 export function buildEmailRelayHtmlBody(
   project: { job_number: string; job_name: string },
   transmittal: TransmittalData,
@@ -406,36 +406,23 @@ export function defaultEmailRelayDetails(transmittal: TransmittalData): EmailRel
   return {};
 }
 
-export function openEmailRelayMailto(
+export async function openEmailRelayMailto(
   project: { job_number: string; job_name: string },
   transmittal: TransmittalData,
   details: EmailRelayDetails,
-): void {
-  const subject = buildEmailRelaySubject(project, transmittal);
-  const plainBody = buildEmailRelayPlainBody(project, transmittal, details);
-  window.location.href = buildMailtoUrl([], [], subject, plainBody);
-}
-
-export function downloadEmailRelayEml(
-  project: { job_number: string; job_name: string },
-  transmittal: TransmittalData,
-  details: EmailRelayDetails,
-  fromEmail = "",
-): void {
+  method: ComposeEmailMethod = "gmail",
+): Promise<OpenMailtoResult> {
   const subject = buildEmailRelaySubject(project, transmittal);
   const plainBody = buildEmailRelayPlainBody(project, transmittal, details);
   const htmlBody = `<html><body>${buildEmailRelayHtmlBody(project, transmittal, details)}</body></html>`;
-  const blob = buildVendorEmlBlob({
+  return openGmailComposeWithHtml({
     to: [],
     cc: [],
     subject,
     htmlBody,
-    plainBody,
-    from: fromEmail,
+    plainFallback: plainBody,
+    method,
   });
-  const safeJob = `${project.job_number}_${project.job_name}`.replace(/[^\w.-]+/g, "_").slice(0, 48);
-  const safeTr = transmittal.transmittal_number.replace(/[^\w.-]+/g, "_");
-  downloadVendorEml(`Submittal_Relay_${safeJob}_${safeTr}.eml`, blob);
 }
 
 export async function copyEmailRelayHtml(

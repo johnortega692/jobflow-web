@@ -226,7 +226,7 @@ export function VendorArchitectSettingsSection({
         </div>
         )}
 
-        <div className="paint-settings-table-wrap">
+        <div className="paint-settings-table-wrap settings-scroll-table-wrap">
           <table className="paint-settings-table">
             <thead>
               <tr>
@@ -348,7 +348,7 @@ export function VendorArchitectSettingsSection({
         </div>
         )}
 
-        <div className="paint-settings-table-wrap">
+        <div className="paint-settings-table-wrap settings-scroll-table-wrap">
           <table className="paint-settings-table">
             <thead>
               <tr>

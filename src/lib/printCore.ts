@@ -1,4 +1,21 @@
 import { defaultLetterheadPdfVisibility } from "../types/letterheadSettings";
+import { embedLogoUrlInHtml } from "./emailImageEmbed";
+
+function resolveAbsoluteAssetUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `${window.location.protocol}${trimmed}`;
+  if (trimmed.startsWith("/") && typeof window !== "undefined") {
+    return `${window.location.origin}${trimmed}`;
+  }
+  return trimmed;
+}
+
+export function normalizeLogoUrl(url: string): string {
+  if (typeof window === "undefined") return url.trim();
+  return resolveAbsoluteAssetUrl(url);
+}
 
 export function esc(s: string): string {
   return s
@@ -46,7 +63,17 @@ export function cb(checked: boolean): string {
   return `<span class="cb${checked ? " checked" : ""}"></span>`;
 }
 
-export function printHtml(html: string, documentTitle?: string): void {
+export function printHtml(html: string, documentTitle?: string, logoUrl?: string): void {
+  void printHtmlAsync(html, documentTitle, logoUrl);
+}
+
+async function printHtmlAsync(html: string, documentTitle?: string, logoUrl?: string): Promise<void> {
+  let docHtml = html;
+  const resolvedLogo = logoUrl ? normalizeLogoUrl(logoUrl) : "";
+  if (resolvedLogo) {
+    docHtml = await embedLogoUrlInHtml(docHtml, resolvedLogo);
+  }
+
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;width:0;height:0;border:0;left:-9999px;top:0;";
@@ -58,18 +85,43 @@ export function printHtml(html: string, documentTitle?: string): void {
     throw new Error("Could not open print view. Try Chrome or Edge.");
   }
   doc.open();
-  doc.write(html);
+  doc.write(docHtml);
   doc.close();
   if (documentTitle?.trim()) {
     doc.title = documentTitle.trim();
   }
-  const runPrint = () => {
+
+  const waitForImages = () =>
+    new Promise<void>((resolve) => {
+      const images = Array.from(doc.images ?? []);
+      if (!images.length) {
+        resolve();
+        return;
+      }
+      let pending = images.length;
+      const done = () => {
+        pending -= 1;
+        if (pending <= 0) resolve();
+      };
+      for (const img of images) {
+        if (img.complete) done();
+        else {
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+        }
+      }
+      window.setTimeout(resolve, 2500);
+    });
+
+  const runPrint = async () => {
+    await waitForImages();
     win.focus();
     win.print();
     window.setTimeout(() => frame.remove(), 1500);
   };
-  if (doc.readyState === "complete") window.setTimeout(runPrint, 150);
-  else frame.onload = () => window.setTimeout(runPrint, 150);
+
+  if (doc.readyState === "complete") window.setTimeout(() => void runPrint(), 150);
+  else frame.onload = () => window.setTimeout(() => void runPrint(), 150);
 }
 
 function ordinalFloorLabel(n: number): string {

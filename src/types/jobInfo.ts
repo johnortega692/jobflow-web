@@ -37,6 +37,8 @@ export type JobInfoData = {
   icbi_pm: string;
   icbi_engineer: string;
   icbi_foreman: string;
+  /** Foreman email — CC on tracker notifications and vendor emails for this project */
+  icbi_foreman_email: string;
   /** PM name exactly as listed on Field Request Order → PMs sheet */
   field_request_pm: string;
   /** Super name exactly as listed on Field Request Order → Supers sheet */
@@ -98,6 +100,7 @@ export function defaultJobInfo(): JobInfoData {
     icbi_pm: "",
     icbi_engineer: "",
     icbi_foreman: "",
+    icbi_foreman_email: "",
     field_request_pm: "",
     field_request_super: "",
     has_wallcovering: false,

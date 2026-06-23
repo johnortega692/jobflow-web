@@ -36,7 +36,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/field" element={<FieldDashboardLayout />}>
-            <Route index element={<Navigate to="wallcovering" replace />} />
+            <Route index element={<Navigate to="paint" replace />} />
             <Route path="wallcovering" element={<FieldWallcoveringDashboardPage />} />
             <Route path="paint" element={<FieldPaintDashboardPage />} />
             <Route path="calendar" element={<FieldCalendarDashboardPage />} />

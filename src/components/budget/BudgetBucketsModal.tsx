@@ -4,10 +4,15 @@ import {
   bucketLabel,
   bucketMetrics,
   bucketSnapshot,
+  costCodeRecordKey,
   costCodesForTemplate,
+  costClassOptionsForCode,
   deleteBucketIndices,
+  fmtCell,
   formatCostCode,
+  formatCostCodeRecord,
   makeBucketFromCode,
+  parseCostClassChoices,
   resolveCostClass,
   savedTemplateNames,
 } from "../../lib/budgetMakerCore";
@@ -17,25 +22,47 @@ import {
   type BudgetBucket,
   type BudgetLibrary,
   type BudgetMakerData,
+  type CostCodeRecord,
 } from "../../types/budgetMaker";
 
-type Props = {
-  userId: string;
-  library: BudgetLibrary;
-  draft: BudgetMakerData;
-  onClose: () => void;
-  onChange: (patch: Partial<BudgetMakerData>) => void;
-  onLibraryChange: (lib: BudgetLibrary) => void;
-};
+function classLabelForValue(library: BudgetLibrary, costClass: string): string {
+  for (const rec of library.cost_classes) {
+    if (String(rec.cost_class) === costClass) {
+      const gl = rec.gl_acct ? `${rec.gl_acct} / ${rec.cost_class}` : rec.cost_class;
+      return `${gl} – ${rec.description}`;
+    }
+  }
+  return costClass;
+}
+
+function findCodeKeyForBucket(
+  library: BudgetLibrary,
+  bucket: BudgetBucket | undefined,
+  options: CostCodeRecord[],
+): string {
+  if (!bucket) return options[0] ? costCodeRecordKey(options[0]) : "";
+  const exact =
+    library.cost_codes.find(
+      (c) =>
+        fmtCell(c.cost_code) === fmtCell(bucket.cost_code) &&
+        fmtCell(c.cost_class) === fmtCell(bucket.cost_class),
+    ) ??
+    library.cost_codes.find((c) => fmtCell(c.cost_code) === fmtCell(bucket.cost_code));
+  if (!exact) return options[0] ? costCodeRecordKey(options[0]) : "";
+  const key = costCodeRecordKey(exact);
+  return options.some((c) => costCodeRecordKey(c) === key) ? key : costCodeRecordKey(options[0] ?? exact);
+}
 
 function BucketEditor({
   library,
   bucket,
+  existingBuckets = [],
   onSave,
   onCancel,
 }: {
   library: BudgetLibrary;
   bucket?: BudgetBucket;
+  existingBuckets?: BudgetBucket[];
   onSave: (b: BudgetBucket) => void;
   onCancel: () => void;
 }) {
@@ -45,14 +72,58 @@ function BucketEditor({
   const [templateLabel, setTemplateLabel] = useState(initialLabel);
   const templateType = TEMPLATE_OPTIONS.find((o) => o.label === templateLabel)?.key ?? null;
   const codeOptions = costCodesForTemplate(library, templateType);
-  const [code, setCode] = useState(bucket?.cost_code ?? codeOptions[0]?.cost_code ?? "");
-  const codeRec = codeOptions.find((c) => c.cost_code === code) ?? codeOptions[0];
-  const classOptions = library.cost_classes.filter((c) => c.cost_class);
-  const resolvedClass = codeRec ? resolveCostClass(codeRec, templateType) : bucket?.cost_class ?? "";
+  const [codeKey, setCodeKey] = useState(() => findCodeKeyForBucket(library, bucket, codeOptions));
+  const codeRec = codeOptions.find((c) => costCodeRecordKey(c) === codeKey) ?? codeOptions[0];
+  const classOptions = costClassOptionsForCode(library, codeRec, templateType);
+  const defaultClass = codeRec ? resolveCostClass(codeRec, templateType) : bucket?.cost_class ?? "";
+  const [costClass, setCostClass] = useState(bucket?.cost_class ?? defaultClass);
+  const classLocked = Boolean(codeRec && /^\d+$/.test(fmtCell(codeRec.cost_class)));
+
+  function pickClassForCode(rec: CostCodeRecord, nextTemplateType: string | null): string {
+    const explicit = fmtCell(rec.cost_class);
+    if (/^\d+$/.test(explicit)) return explicit;
+
+    const options = costClassOptionsForCode(library, rec, nextTemplateType);
+    const resolved = resolveCostClass(rec, nextTemplateType);
+    const used = new Set(
+      existingBuckets
+        .filter((b) => fmtCell(b.cost_code) === fmtCell(rec.cost_code))
+        .map((b) => fmtCell(b.cost_class)),
+    );
+    const unused = options.find((c) => !used.has(fmtCell(c.cost_class)));
+    if (unused) return String(unused.cost_class);
+    if (options.some((c) => String(c.cost_class) === resolved)) return resolved;
+    return String(options[0]?.cost_class ?? resolved);
+  }
+
+  function syncClassFromSelection(nextKey: string, nextTemplateType: string | null) {
+    const rec = costCodesForTemplate(library, nextTemplateType).find((c) => costCodeRecordKey(c) === nextKey);
+    if (!rec) return;
+    setCostClass(pickClassForCode(rec, nextTemplateType));
+  }
+
+  function onTemplateChange(label: string) {
+    setTemplateLabel(label);
+    const nextType = TEMPLATE_OPTIONS.find((o) => o.label === label)?.key ?? null;
+    const nextCodes = costCodesForTemplate(library, nextType);
+    const keep = nextCodes.find((c) => costCodeRecordKey(c) === codeKey);
+    const nextRec = keep ?? nextCodes[0];
+    if (nextRec) {
+      const nextKey = costCodeRecordKey(nextRec);
+      setCodeKey(nextKey);
+      setCostClass(pickClassForCode(nextRec, nextType));
+    }
+  }
+
+  function onCodeKeyChange(nextKey: string) {
+    setCodeKey(nextKey);
+    syncClassFromSelection(nextKey, templateType);
+  }
 
   function submit() {
     if (!codeRec) return;
     const b = makeBucketFromCode(codeRec, templateType);
+    b.cost_class = costClass;
     if (bucket?.notes) b.notes = bucket.notes;
     onSave(b);
   }
@@ -72,7 +143,7 @@ function BucketEditor({
     <div className="card stack budget-bucket-editor">
       <label>
         Template
-        <select value={templateLabel} onChange={(e) => setTemplateLabel(e.target.value)}>
+        <select value={templateLabel} onChange={(e) => onTemplateChange(e.target.value)}>
           {TEMPLATE_OPTIONS.map((o) => (
             <option key={o.label} value={o.label}>
               {o.label}
@@ -82,28 +153,41 @@ function BucketEditor({
       </label>
       <label>
         Cost code
-        <select value={code} onChange={(e) => setCode(e.target.value)}>
-          {codeOptions.map((c) => (
-            <option key={c.cost_code} value={c.cost_code}>
-              {formatCostCode(c.cost_code, library)}
-            </option>
-          ))}
+        <select value={codeKey} onChange={(e) => onCodeKeyChange(e.target.value)}>
+          {codeOptions.map((c) => {
+            const key = costCodeRecordKey(c);
+            return (
+              <option key={key} value={key}>
+                {formatCostCodeRecord(c)}
+              </option>
+            );
+          })}
         </select>
       </label>
       <label>
         Cost class
         <select
-          value={resolvedClass}
-          onChange={() => {}}
-          disabled
+          value={costClass}
+          disabled={classLocked}
+          onChange={(e) => setCostClass(e.target.value)}
         >
-          {classOptions.map((c) => (
-            <option key={c.cost_class} value={c.cost_class}>
-              {c.gl_acct ? `${c.gl_acct} / ${c.cost_class}` : c.cost_class} – {c.description}
+          {classOptions.map((c, i) => (
+            <option key={`${c.cost_class}-${c.gl_acct}-${i}`} value={c.cost_class}>
+              {classLabelForValue(library, String(c.cost_class))}
             </option>
           ))}
         </select>
       </label>
+      {codeRec && parseCostClassChoices(codeRec.cost_class)?.length ? (
+        <p className="muted small">
+          This code allows more than one class — pick <strong>4</strong> (owned) or <strong>5</strong> (rented).
+          The same cost code can appear twice with different classes.
+        </p>
+      ) : classLocked ? (
+        <p className="muted small">
+          Class <strong>{costClass}</strong> comes from this cost code row in your library.
+        </p>
+      ) : null}
       <div className="row-gap">
         <button type="button" className="btn btn-secondary" onClick={onCancel}>
           Cancel
@@ -116,28 +200,38 @@ function BucketEditor({
   );
 }
 
-export function BudgetBucketsModal({
+export function BudgetBucketsPanel({
   userId,
   library,
   draft,
-  onClose,
   onChange,
   onLibraryChange,
-}: Props) {
+  onError,
+}: {
+  userId: string;
+  library: BudgetLibrary;
+  draft: BudgetMakerData;
+  onChange: (patch: Partial<BudgetMakerData>) => void;
+  onLibraryChange: (lib: BudgetLibrary) => void;
+  onError: (message: string | null) => void;
+}) {
   const [templatePick, setTemplatePick] = useState(library.default_bucket_template || "");
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [error, setError] = useState<string | null>(null);
 
   const templates = library.bucket_templates;
   const names = savedTemplateNames(library);
+
+  function reportError(message: string | null) {
+    onError(message);
+  }
 
   function loadTemplate(name: string, mode: "replace" | "append" | "cancel") {
     if (mode === "cancel") return;
     const tpl = templates.find((t) => t.name === name);
     if (!tpl?.buckets?.length) {
-      setError(`Template "${name}" not found or empty.`);
+      reportError(`Template "${name}" not found or empty.`);
       return;
     }
     const snapshot = tpl.buckets.map(bucketSnapshot);
@@ -150,9 +244,9 @@ export function BudgetBucketsModal({
     } else {
       const { buckets, added } = appendBucketsUnique(draft.buckets, snapshot);
       onChange({ buckets, loaded_template_name: name });
-      if (!added) setError("All bucket rows from template already exist.");
+      if (!added) reportError("All bucket rows from template already exist.");
     }
-    setError(null);
+    reportError(null);
   }
 
   function onLoadTemplate() {
@@ -171,7 +265,7 @@ export function BudgetBucketsModal({
 
   async function saveCurrentTemplate() {
     if (!draft.buckets.length) {
-      setError("Add bucket rows first.");
+      reportError("Add bucket rows first.");
       return;
     }
     const name = window.prompt("Template name:");
@@ -193,7 +287,7 @@ export function BudgetBucketsModal({
     };
     const err = await saveBudgetLibrary(userId, nextLib);
     if (err) {
-      setError(err);
+      reportError(err);
       return;
     }
     onLibraryChange(nextLib);
@@ -211,7 +305,7 @@ export function BudgetBucketsModal({
     };
     const err = await saveBudgetLibrary(userId, nextLib);
     if (err) {
-      setError(err);
+      reportError(err);
       return;
     }
     onLibraryChange(nextLib);
@@ -223,21 +317,21 @@ export function BudgetBucketsModal({
     const nextLib = { ...library, default_bucket_template: templatePick };
     const err = await saveBudgetLibrary(userId, nextLib);
     if (err) {
-      setError(err);
+      reportError(err);
       return;
     }
     onLibraryChange(nextLib);
     if (!draft.buckets.length) {
       loadTemplate(templatePick, "replace");
     }
-    setError(null);
+    reportError(null);
   }
 
   async function clearDefaultTemplate() {
     if (!library.default_bucket_template) return;
     const nextLib = { ...library, default_bucket_template: "" };
     const err = await saveBudgetLibrary(userId, nextLib);
-    if (err) setError(err);
+    if (err) reportError(err);
     else onLibraryChange(nextLib);
   }
 
@@ -253,17 +347,8 @@ export function BudgetBucketsModal({
   const budgetTotal = draft.buckets.reduce((s, _, i) => s + bucketMetrics(i, draft.lines).amount, 0);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal card stack budget-modal budget-modal-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="row-between">
-          <h2>Buckets & templates</h2>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        {error && <div className="banner banner-error">{error}</div>}
-
-        <div className="row-gap wrap">
+    <div className="stack budget-settings-panel">
+      <div className="row-gap wrap">
           <label className="budget-inline-label">
             Template
             <select value={templatePick} onChange={(e) => setTemplatePick(e.target.value)}>
@@ -327,6 +412,7 @@ export function BudgetBucketsModal({
           <BucketEditor
             library={library}
             bucket={editingIdx != null ? draft.buckets[editingIdx] : undefined}
+            existingBuckets={editingIdx != null ? draft.buckets.filter((_, i) => i !== editingIdx) : draft.buckets}
             onCancel={() => {
               setAdding(false);
               setEditingIdx(null);
@@ -338,15 +424,18 @@ export function BudgetBucketsModal({
                 setEditingIdx(null);
               } else {
                 const { buckets, added } = appendBucketsUnique(draft.buckets, [b]);
-                if (!added) setError("That bucket row already exists.");
-                else onChange({ buckets });
+                if (!added) {
+                  reportError(
+                    `A bucket with cost code ${formatCostCode(b.cost_code, library, b.cost_class)} and class ${b.cost_class} already exists. Change the class (e.g. 5 for rented equipment) or edit the existing row.`,
+                  );
+                } else onChange({ buckets });
                 setAdding(false);
               }
             }}
           />
         )}
 
-        <div className="table-wrap">
+        <div className="table-wrap settings-scroll-table-wrap">
           <table className="budget-table-select">
             <thead>
               <tr>
@@ -382,7 +471,7 @@ export function BudgetBucketsModal({
                     </td>
                     <td>{bucketLabel(bucket, i, library)}</td>
                     <td>{bucket.template_type ?? ""}</td>
-                    <td>{formatCostCode(bucket.cost_code, library)}</td>
+                    <td>{formatCostCode(bucket.cost_code, library, bucket.cost_class)}</td>
                     <td>{bucket.cost_class}</td>
                     <td>{m.lines}</td>
                     <td>{m.hours ? m.hours.toFixed(1) : ""}</td>
@@ -394,11 +483,6 @@ export function BudgetBucketsModal({
             </tbody>
           </table>
         </div>
-
-        <button type="button" className="btn btn-primary" onClick={onClose}>
-          Done
-        </button>
-      </div>
     </div>
   );
 }

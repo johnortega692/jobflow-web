@@ -130,5 +130,6 @@ export function printTrackOrderForm(
   printHtml(
     buildTrackOrderFormHtml(job, branding, deliverySettings, filename),
     pdfTitleFromFilename(filename),
+    branding.logoUrl,
   );
 }

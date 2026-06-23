@@ -5,6 +5,7 @@ import {
 import type { PaintVendor } from "./paintVendorEmail";
 import { normalizeTrackerEmailSchedule, type TrackerEmailSchedule } from "./trackerEmailSchedule";
 import type { BrushoutPrepRecord, PaintUserSettings, SuperEmail } from "./paintUserSettings";
+import { normalizeComposeEmailMethod } from "./paintUserSettings";
 
 export function loadPaintUserSettingsFromRaw(
   raw: Record<string, unknown>,
@@ -38,9 +39,7 @@ export function loadPaintUserSettingsFromRaw(
   const notificationPrimaryEmail =
     typeof raw.notification_primary_email === "string" ? raw.notification_primary_email.trim() : "";
   const notificationPrimaryName =
-    typeof raw.notification_primary_name === "string"
-      ? raw.notification_primary_name.trim()
-      : userName.trim();
+    typeof raw.notification_primary_name === "string" ? raw.notification_primary_name.trim() : "";
 
   return {
     google_urls: google,
@@ -53,6 +52,7 @@ export function loadPaintUserSettingsFromRaw(
     vendors,
     signature,
     tracker_email_schedule: normalizeTrackerEmailSchedule(raw.tracker_email_schedule),
+    compose_email_method: normalizeComposeEmailMethod(raw.compose_email_method),
   };
 }
 

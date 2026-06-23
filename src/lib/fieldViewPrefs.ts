@@ -22,10 +22,13 @@ export function writeFieldMobileView(value: boolean): void {
 
 export function readFieldDarkMode(): boolean {
   try {
-    return localStorage.getItem(DARK_KEY) === "true";
+    const stored = localStorage.getItem(DARK_KEY);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
   } catch {
-    return false;
+    /* ignore */
   }
+  return true;
 }
 
 export function writeFieldDarkMode(value: boolean): void {

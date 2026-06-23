@@ -140,7 +140,7 @@ export function WorkOrderSettingsSection({
           </button>
           )}
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap settings-scroll-table-wrap">
           <table className="data-table compact">
             <thead>
               <tr>
@@ -241,7 +241,7 @@ export function WorkOrderSettingsSection({
           </button>
           )}
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap settings-scroll-table-wrap">
           <table className="data-table compact">
             <thead>
               <tr>

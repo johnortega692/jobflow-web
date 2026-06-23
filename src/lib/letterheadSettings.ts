@@ -8,7 +8,7 @@ import {
   type LetterheadSettings,
 } from "../types/letterheadSettings";
 import type { PrintBranding } from "./printCore";
-import { buildCompanyContactLine } from "./printCore";
+import { buildCompanyContactLine, normalizeLogoUrl } from "./printCore";
 
 const STORAGE_KEY = "jobflow-letterhead-v1";
 
@@ -107,7 +107,7 @@ export function letterheadToPrintBranding(settings: LetterheadSettings): PrintBr
     companyAddress,
     companyPhone,
     companyLicense,
-    logoUrl: settings.logo_url.trim(),
+    logoUrl: normalizeLogoUrl(settings.logo_url.trim()),
     signerName,
     signerTitle: settings.signer_title.trim(),
     signerPhone,
@@ -161,12 +161,23 @@ export async function saveLetterheadSettings(
   const normalized = normalizeLetterheadSettings(settings);
   writeLocalCache(normalized);
 
-  const personalErr = await patchUserSettings(userId, {
+  const personalPatch: Record<string, unknown> = {
     signer_name: normalized.signer_name,
     signer_title: normalized.signer_title,
     signer_phone: normalized.signer_phone,
     signer_email: normalized.signer_email,
-  });
+  };
+
+  if (!options?.isAdmin) {
+    personalPatch.pdf_show = {
+      signer_name: normalized.pdf_show.signer_name,
+      signer_title: normalized.pdf_show.signer_title,
+      signer_phone: normalized.pdf_show.signer_phone,
+      signer_email: normalized.pdf_show.signer_email,
+    };
+  }
+
+  const personalErr = await patchUserSettings(userId, personalPatch);
   if (personalErr) return personalErr;
 
   if (!options?.isAdmin) return null;
@@ -181,10 +192,30 @@ export async function saveLetterheadSettings(
   });
 }
 
-export async function uploadLetterheadLogo(userId: string, file: File): Promise<string> {
+export async function uploadEmailSignatureLogo(userId: string, file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "png";
   const safeExt = ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext) ? ext : "png";
-  const path = `${userId}/logo.${safeExt}`;
+  const path = `${userId}/signature-logo.${safeExt}`;
+
+  const { error: uploadError } = await supabase.storage.from("letterhead").upload(path, file, {
+    upsert: true,
+    contentType: file.type || `image/${safeExt}`,
+  });
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data } = supabase.storage.from("letterhead").getPublicUrl(path);
+  if (!data.publicUrl) throw new Error("Could not get logo URL after upload.");
+  return data.publicUrl;
+}
+
+export async function uploadLetterheadLogo(
+  userId: string,
+  file: File,
+  options?: { orgShared?: boolean },
+): Promise<string> {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+  const safeExt = ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext) ? ext : "png";
+  const path = options?.orgShared ? `org/logo.${safeExt}` : `${userId}/logo.${safeExt}`;
 
   const { error: uploadError } = await supabase.storage.from("letterhead").upload(path, file, {
     upsert: true,

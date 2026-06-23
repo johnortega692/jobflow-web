@@ -1,6 +1,7 @@
 import type { ProjectForm } from "../types/database";
 import type { PaintTrackerState } from "../types/fieldTracker";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
+import { projectForemanEmail } from "./jobInfo";
 import type { SuperEmail } from "./paintUserSettings";
 import { sendVendorEmail } from "./sendVendorEmail";
 
@@ -79,11 +80,20 @@ export function projectToPaintNotificationJobData(
 export function resolveTrackerNotificationRecipients(
   primaryEmail: string,
   superEmails: SuperEmail[],
+  extraCc: string[] = [],
 ): TrackerNotificationRecipients | null {
   const to = primaryEmail.trim();
   if (!to) return null;
-  const cc = superEmails.map((s) => s.email.trim()).filter(Boolean);
-  return { to: [to], cc };
+  const ccSet = new Set<string>();
+  for (const s of superEmails) {
+    const email = s.email.trim();
+    if (email) ccSet.add(email);
+  }
+  for (const email of extraCc) {
+    const trimmed = email.trim();
+    if (trimmed) ccSet.add(trimmed);
+  }
+  return { to: [to], cc: [...ccSet] };
 }
 
 export function detectPaintTrackerNotificationKinds(
@@ -540,7 +550,9 @@ export async function sendPaintTrackerNotifications(options: {
   const jobNumber = project.job_number.trim();
   if (!jobNumber || !kinds.length) return [];
 
-  const recipients = resolveTrackerNotificationRecipients(primaryEmail, superEmails);
+  const recipients = resolveTrackerNotificationRecipients(primaryEmail, superEmails, [
+    projectForemanEmail(project.jobInfo),
+  ]);
   if (!recipients) {
     throw new Error("Set a notification primary email in Settings → Paint & email.");
   }

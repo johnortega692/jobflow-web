@@ -221,5 +221,5 @@ export function buildRfiPrintHtml(
 
 export function printRfi(input: RfiPrintInput): void {
   const filename = rfiFilename(input.project.job_name, input.project.job_number, input.rfi_number);
-  printHtml(buildRfiPrintHtml(input, filename), pdfTitleFromFilename(filename));
+  printHtml(buildRfiPrintHtml(input, filename), pdfTitleFromFilename(filename), input.branding.logoUrl);
 }
