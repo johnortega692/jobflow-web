@@ -3586,6 +3586,11 @@ input.readonly {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+  max-height: min(280px, 42vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  padding-right: 0.15rem;
 }
 
 .job-activity-item {

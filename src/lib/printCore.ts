@@ -1,4 +1,5 @@
 import { defaultLetterheadPdfVisibility } from "../types/letterheadSettings";
+import { normalizeRevisionNumber } from "../types/tradeDocuments";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
 
 function resolveAbsoluteAssetUrl(url: string): string {
@@ -33,6 +34,147 @@ export function projectAddressPrintHtml(street: string, cityLine: string): strin
   if (!line2) return `<p class="info-row">Address: ${esc(line1)}</p>`;
   return `<p class="info-row">Address: ${esc(line1)}</p><p class="info-row">${esc(line2)}</p>`;
 }
+
+export function formatSubmittalNumberDisplay(n: number | string | undefined): string {
+  if (n === undefined || n === null || String(n).trim() === "") return "";
+  if (typeof n === "number" && Number.isFinite(n)) return String(Math.trunc(n)).padStart(3, "0");
+  const digits = String(n).trim().replace(/\D/g, "");
+  if (digits) return String(parseInt(digits, 10)).padStart(3, "0");
+  return String(n).trim().padStart(3, "0");
+}
+
+/** True when revision number is &gt; 0 (resubmittal of an existing package). */
+export function isSubmittalRevision(revisionNumber: number | string | undefined): boolean {
+  return normalizeRevisionNumber(revisionNumber) > 0;
+}
+
+export function formatRevisionNumberDisplay(n: number | string | undefined): string {
+  return String(normalizeRevisionNumber(n));
+}
+
+export function submittalRevisionNoteHtml(
+  revisionNumber: number | string | undefined,
+  revisionNote?: string,
+): string {
+  const note = revisionNote?.trim();
+  if (!note || !isSubmittalRevision(revisionNumber)) return "";
+  return `<p class="info-row revision-note"><strong>Revision Note:</strong> ${esc(note)}</p>`;
+}
+
+export function submittalDateSectionHtml(
+  date: string,
+  submittalNumber?: number | string,
+  revisionNumber?: number | string,
+): string {
+  const parts: string[] = [];
+  if (date.trim()) parts.push(`Date: ${esc(date.trim())}`);
+  if (submittalNumber !== undefined && submittalNumber !== null && String(submittalNumber).trim() !== "") {
+    parts.push(`Submittal No: ${esc(formatSubmittalNumberDisplay(submittalNumber))}`);
+  }
+  if (submittalNumber !== undefined && submittalNumber !== null && String(submittalNumber).trim() !== "") {
+    parts.push(`Revision: ${esc(formatRevisionNumberDisplay(revisionNumber ?? 0))}`);
+  }
+  return parts.join("<br>");
+}
+
+export function submittalProjectInfoLines(project: {
+  job_name: string;
+  job_number: string;
+  job_address: string;
+  job_address_line2: string;
+}): string[] {
+  const lines = [`Project: ${project.job_name.trim()}`];
+  if (project.job_number.trim()) lines.push(`Project Number: ${project.job_number.trim()}`);
+  if (project.job_address.trim()) lines.push(`Address: ${project.job_address.trim()}`);
+  if (project.job_address_line2.trim()) lines.push(project.job_address_line2.trim());
+  return lines;
+}
+
+export function submittalProjectInfoHtml(project: {
+  job_name: string;
+  job_number: string;
+  job_address: string;
+  job_address_line2: string;
+}): string {
+  return submittalProjectInfoLines(project)
+    .map((line) => `<p class="info-row">${esc(line)}</p>`)
+    .join("");
+}
+
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "yahoo.com",
+  "hotmail.com",
+  "outlook.com",
+  "live.com",
+  "icloud.com",
+  "me.com",
+  "aol.com",
+  "msn.com",
+]);
+
+/** Company website label for PDF/email footers (e.g. ironwoodcb.com from signer email). */
+export function companyWebsiteFromEmail(email: string): string {
+  const match = email.trim().match(/@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/);
+  if (!match) return "";
+  const domain = match[1].toLowerCase();
+  if (PERSONAL_EMAIL_DOMAINS.has(domain)) return "";
+  return domain;
+}
+
+export function submittalFooterSignerLines(branding: PrintBranding): string[] {
+  const lines: string[] = [];
+  if (branding.pdfShow.signer_name && branding.footerName.trim()) lines.push(branding.footerName.trim());
+  if (branding.pdfShow.signer_phone && branding.footerPhone.trim()) lines.push(branding.footerPhone.trim());
+  if (branding.pdfShow.signer_email && branding.footerEmail.trim()) lines.push(branding.footerEmail.trim());
+  return lines;
+}
+
+export function submittalFooterCompanyLines(branding: PrintBranding): string[] {
+  const lines: string[] = [];
+  if (branding.pdfShow.company_name && branding.companyName.trim()) lines.push(branding.companyName.trim());
+  const website = companyWebsiteFromEmail(branding.footerEmail);
+  if (website) lines.push(website);
+  return lines;
+}
+
+export function submittalFooterHtml(branding: PrintBranding): string {
+  const signer = submittalFooterSignerLines(branding);
+  const company = submittalFooterCompanyLines(branding);
+  if (!signer.length && !company.length) return "";
+
+  const name = signer[0] ?? "";
+  const contact = signer.slice(1);
+
+  return `<div class="footer-rule"></div>
+  <div class="footer-signature-row">
+    <div class="footer-signer">
+      ${name ? `<p class="footer-signer-name">${esc(name)}</p>` : ""}
+      ${contact.map((line) => `<p>${esc(line)}</p>`).join("")}
+    </div>
+    ${
+      company.length
+        ? `<div class="footer-company">${company.map((line) => `<p>${esc(line)}</p>`).join("")}</div>`
+        : ""
+    }
+  </div>`;
+}
+
+export const SUBMITTAL_SIGNATURE_FOOTER_CSS = `
+.footer-section {
+  flex: 0 0 auto;
+  font-size: 10.5pt;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.footer-rule { border-top: 1px solid #000; margin-bottom: 10px; }
+.footer-signature-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+.footer-signer { flex: 1 1 auto; }
+.footer-signer p { margin: 0 0 3px; line-height: 1.3; }
+.footer-signer-name { font-weight: bold; }
+.footer-company { flex: 0 0 auto; text-align: right; font-size: 9pt; color: #595959; }
+.footer-company p { margin: 0 0 3px; line-height: 1.3; }
+`;
 
 /** Letterhead line under logo: address | Office: phone | License #… */
 export function buildCompanyContactLine(

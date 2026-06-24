@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { PaintItemRow } from "../paint/PaintItemRow";
+import { RevisionNoteField } from "./RevisionNoteField";
 import { WallcoveringItemRow } from "../wallcovering/WallcoveringItemRow";
 import { recordPdfLogRow } from "../../lib/submittalLogService";
 import type { PrintBranding } from "../../lib/printCore";
-import { printPaintSubmittal } from "../../lib/paintSubmittalPrint";
-import { printWallcoveringSubmittal } from "../../lib/wallcoveringSubmittalPrint";
+import { downloadPaintSubmittal } from "../../lib/paintSubmittalPrint";
+import { downloadWallcoveringSubmittal } from "../../lib/wallcoveringSubmittalPrint";
 import {
-  addSubmittalToHistory,
   filterHistoryByScope,
   formatSubmittalHistoryLabel,
   mapHistoryItemsForRevisedLoad,
   nextSubmittalNumber,
+  nextRevisionNumber,
   type SubmittalScope,
 } from "../../lib/submittalHistory";
 import {
@@ -22,9 +23,9 @@ import {
   emptyPaintItem,
   emptyWallcoveringItem,
   formatToday,
-  paintSubjectForType,
+  paintSubjectForPackage,
   REVISED_SUBMITTAL_TYPES,
-  wcSubjectForType,
+  wcSubjectForPackage,
   type PaintItem,
   type PaintSubmittalData,
   type SubmittalHistoryEntry,
@@ -82,10 +83,18 @@ export function CreateRevisedSubmittalModal({
   const [historyIdx, setHistoryIdx] = useState(0);
   const [paintItems, setPaintItems] = useState<PaintItem[]>([emptyPaintItem()]);
   const [wcItems, setWcItems] = useState<WallcoveringItem[]>([emptyWallcoveringItem()]);
+  const [revisionNote, setRevisionNote] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const showPreviousColor = submittalType === "substitution";
+  const nextSubmittalNum = useMemo(() => nextSubmittalNumber(scopedHistory), [scopedHistory]);
+  const baseEntry = scopedHistory[historyIdx];
+  const targetSubmittalNum = baseEntry?.submittal_number ?? nextSubmittalNum;
+  const targetRevisionNum = useMemo(
+    () => nextRevisionNumber(scopedHistory, targetSubmittalNum),
+    [scopedHistory, targetSubmittalNum],
+  );
   const title =
     scope === "paint" ? "Create Revised Paint Submittal" : "Create Revised Wallcovering Submittal";
   const printProject = useMemo(
@@ -125,23 +134,37 @@ export function CreateRevisedSubmittalModal({
   }
 
   function buildDraft(): PaintSubmittalData | WallcoveringSubmittalData {
-    const num = nextSubmittalNumber(scopedHistory);
-    const subject = scope === "paint" ? paintSubjectForType(submittalType) : wcSubjectForType(submittalType);
+    const submittal_number = targetSubmittalNum;
+    const revision_number = targetRevisionNum;
+    const package_type = baseEntry?.package_type ?? "Color Samples";
+    const subject =
+      scope === "paint"
+        ? paintSubjectForPackage(package_type, submittalType)
+        : wcSubjectForPackage(package_type, submittalType);
+    const note = revisionNote.trim() || undefined;
     if (scope === "paint") {
       return {
-        submittal_number: num,
+        submittal_number,
+        revision_number,
+        issue_status: "draft",
+        package_type,
         submittal_type: submittalType,
         subject,
         date: formatToday(),
         items: paintItems,
+        revision_note: note,
       };
     }
     return {
-      submittal_number: num,
+      submittal_number,
+      revision_number,
+      issue_status: "draft",
+      package_type,
       submittal_type: submittalType,
       subject,
       date: formatToday(),
       items: wcItems,
+      revision_note: note,
     };
   }
 
@@ -152,18 +175,11 @@ export function CreateRevisedSubmittalModal({
         const draft = buildDraft();
         const projectInfo = printProject;
         if (scope === "paint") {
-          printPaintSubmittal(projectInfo, draft as PaintSubmittalData, branding);
+          await downloadPaintSubmittal(projectInfo, draft as PaintSubmittalData, branding);
         } else {
-          printWallcoveringSubmittal(projectInfo, draft as WallcoveringSubmittalData, branding);
+          await downloadWallcoveringSubmittal(projectInfo, draft as WallcoveringSubmittalData, branding);
         }
-        const nextHistory = addSubmittalToHistory(
-          scopedHistory,
-          draft.submittal_number,
-          draft.items,
-          submittalType,
-          scope,
-        );
-        onCreated({ draft, history: nextHistory });
+        onCreated({ draft, history: scopedHistory });
         try {
           const logScope = scope === "paint" ? "Paint" : "Wallcovering";
           const logSpec = scope === "paint" ? "099000" : "096000";
@@ -178,9 +194,11 @@ export function CreateRevisedSubmittalModal({
         } catch {
           /* log row optional */
         }
-        setMessage(`Submittal #${draft.submittal_number} PDF opened and saved to history.`);
+        setMessage(
+          `Submittal #${String(draft.submittal_number).padStart(3, "0")} Rev ${draft.revision_number} PDF downloaded. Issue when ready to lock this revision.`,
+        );
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not create PDF.");
+        setError(e instanceof Error ? e.message : "Could not download PDF.");
       }
     })();
   }
@@ -200,8 +218,13 @@ export function CreateRevisedSubmittalModal({
       >
         <h3 id="revised-submittal-title">{title}</h3>
 
+        <p className="muted small">
+          Creates <strong>Submittal #{String(targetSubmittalNum).padStart(3, "0")} Rev {targetRevisionNum}</strong>{" "}
+          from the selected package. The submittal number stays the same; only the revision increments after issue.
+        </p>
+
         <section className="stack revised-section">
-          <p className="paint-col-head">Previous submittals</p>
+          <p className="paint-col-head">Source submittal package</p>
           {scopedHistory.length ? (
             <div className="row-gap wrap revised-history-row">
               <select
@@ -210,7 +233,7 @@ export function CreateRevisedSubmittalModal({
                 aria-label="Select previous submittal"
               >
                 {scopedHistory.map((h, i) => (
-                  <option key={h.submittal_number} value={i}>
+                  <option key={`${h.submittal_number}-${h.revision_number ?? 0}`} value={i}>
                     {formatSubmittalHistoryLabel(h)}
                   </option>
                 ))}
@@ -241,6 +264,12 @@ export function CreateRevisedSubmittalModal({
             </label>
           ))}
         </section>
+
+        <RevisionNoteField
+          revisionNumber={targetRevisionNum}
+          value={revisionNote}
+          onChange={setRevisionNote}
+        />
 
         <section className="stack revised-section">
           <div className="row-between">
@@ -323,7 +352,7 @@ export function CreateRevisedSubmittalModal({
             </button>
           )}
           <button type="button" className="btn btn-primary" onClick={onCreatePdf}>
-            Create PDF submittal
+            Download PDF submittal
           </button>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel

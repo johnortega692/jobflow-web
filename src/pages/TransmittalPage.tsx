@@ -29,7 +29,7 @@ import {
   transmittalFilename,
 } from "../lib/transmittalNumber";
 import { remarkTemplateGroups } from "../lib/transmittalRemarks";
-import { printTransmittal } from "../lib/transmittalPrint";
+import { downloadTransmittal } from "../lib/transmittalPrint";
 import {
   addItemsFromPaintHistory,
   addItemsFromWallcoveringHistory,
@@ -88,7 +88,7 @@ export function TransmittalPage() {
   const [pendingSelected, setPendingSelected] = useState<number[]>([]);
   const [customLineOpen, setCustomLineOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [sheetPicker, setSheetPicker] = useState<"paint" | "wallcovering" | null>(null);
+  const [sheetPicker, setSheetPicker] = useState<"paint" | "wallcovering" | "frp" | null>(null);
   const [emailRelayOpen, setEmailRelayOpen] = useState(false);
   const [atticStockOpen, setAtticStockOpen] = useState(false);
   const [atticStockData, setAtticStockData] = useState<{
@@ -209,9 +209,9 @@ export function TransmittalPage() {
     const ok = await persistTransmittal(draft);
     if (!ok) return;
     try {
-      printTransmittal(transmittalJob, draft, branding);
+      await downloadTransmittal(transmittalJob, draft, branding);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Print failed");
+      setError(e instanceof Error ? e.message : "PDF download failed");
       return;
     }
 
@@ -242,13 +242,13 @@ export function TransmittalPage() {
     };
     await persistTransmittal(nextDraft);
 
-    const parts = [`Transmittal opened for save/print as ${outputFilename}.`];
+    const parts = [`Transmittal downloaded as ${outputFilename}.`];
     if (stamped) parts.push(`Stamped ${stamped} submittal log row(s) as Submitted.`);
     else if (logIds.length === 0) {
       parts.push("No submittal log rows stamped — link enclosures to log rows before generating.");
     }
     if (draft.combine_enclosures) {
-      parts.push("Combine into one PDF: attach saved PDFs manually in the browser print dialog.");
+      parts.push("Combine into one PDF: merge enclosure PDFs locally after download.");
     }
     setStatus(parts.join(" "));
     setError(null);
@@ -305,6 +305,7 @@ export function TransmittalPage() {
   const queue = draft.pending_submittal_queue ?? [];
   const paintHistory = tradeData.paint_submittal_history ?? [];
   const wcHistory = tradeData.wallcovering_submittal_history ?? [];
+  const frpHistory = tradeData.frp_submittal_history ?? [];
 
   return (
     <div className="stack transmittal-page">
@@ -320,7 +321,7 @@ export function TransmittalPage() {
             {saving ? "Saving…" : "Save"}
           </button>
           <button type="button" className="btn btn-primary" onClick={() => void onGenerate()}>
-            Transmittal PDF
+            Download PDF
           </button>
         </div>
       </div>
@@ -369,6 +370,18 @@ export function TransmittalPage() {
             Choose…
           </button>
           <span className="muted small">{paintSheetLabel(draft.wc_submittal_nums)}</span>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={draft.include_frp_sheet}
+              onChange={(e) => patch({ include_frp_sheet: e.target.checked })}
+            />
+            Include FRP sheet
+          </label>
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("frp")}>
+            Choose…
+          </button>
+          <span className="muted small">{paintSheetLabel(draft.frp_submittal_nums)}</span>
           <label className="check">
             <input
               type="checkbox"
@@ -767,13 +780,24 @@ export function TransmittalPage() {
       {sheetPicker && (
         <TransmittalSheetPickerModal
           scope={sheetPicker}
-          history={sheetPicker === "paint" ? paintHistory : wcHistory}
+          history={
+            sheetPicker === "paint"
+              ? paintHistory
+              : sheetPicker === "wallcovering"
+                ? wcHistory
+                : frpHistory
+          }
           selected={
-            sheetPicker === "paint" ? draft.paint_submittal_nums : draft.wc_submittal_nums
+            sheetPicker === "paint"
+              ? draft.paint_submittal_nums
+              : sheetPicker === "wallcovering"
+                ? draft.wc_submittal_nums
+                : draft.frp_submittal_nums
           }
           onSave={(nums) => {
             if (sheetPicker === "paint") patch({ paint_submittal_nums: nums, include_paint_sheet: nums.length > 0 });
-            else patch({ wc_submittal_nums: nums, include_wc_sheet: nums.length > 0 });
+            else if (sheetPicker === "wallcovering") patch({ wc_submittal_nums: nums, include_wc_sheet: nums.length > 0 });
+            else patch({ frp_submittal_nums: nums, include_frp_sheet: nums.length > 0 });
             setSheetPicker(null);
           }}
           onClose={() => setSheetPicker(null)}

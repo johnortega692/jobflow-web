@@ -33,12 +33,88 @@ export type WallcoveringItem = {
 
 export type TradeSubmittalType = "new" | "revised" | "substitution" | "original";
 
+export type SubmittalIssueStatus =
+  | "draft"
+  | "issued"
+  | "approved"
+  | "approved_as_noted"
+  | "revise_resubmit"
+  | "closed";
+
+/** Log / transmittal package category (matches submittal log). */
+export type SubmittalPackageCategory =
+  | "Product Data"
+  | "Color Samples"
+  | "Shop Drawings"
+  | "Substitution"
+  | "Other";
+
+export const SUBMITTAL_PACKAGE_CATEGORIES: SubmittalPackageCategory[] = [
+  "Product Data",
+  "Color Samples",
+  "Shop Drawings",
+  "Substitution",
+  "Other",
+];
+
+export const PAINT_PACKAGE_TYPE_OPTIONS: { id: SubmittalPackageCategory; label: string }[] = [
+  { id: "Color Samples", label: "Color Selections / Brush-Outs" },
+  { id: "Product Data", label: "Paint Product Data" },
+  { id: "Shop Drawings", label: "Shop Drawings" },
+  { id: "Substitution", label: "Substitution" },
+  { id: "Other", label: "Other" },
+];
+
+export const WALLCOVERING_PACKAGE_TYPE_OPTIONS: { id: SubmittalPackageCategory; label: string }[] = [
+  { id: "Color Samples", label: "Wallcovering Samples" },
+  { id: "Product Data", label: "Wallcovering Product Data" },
+  { id: "Shop Drawings", label: "Shop Drawings" },
+  { id: "Substitution", label: "Substitution" },
+  { id: "Other", label: "Other" },
+];
+
+export const FRP_PACKAGE_TYPE_OPTIONS: { id: SubmittalPackageCategory; label: string }[] = [
+  { id: "Product Data", label: "FRP Product Data" },
+  { id: "Shop Drawings", label: "Shop Drawings" },
+  { id: "Substitution", label: "Substitution" },
+  { id: "Other", label: "Other" },
+];
+
+export function normalizePackageCategory(value: unknown, fallback: SubmittalPackageCategory): SubmittalPackageCategory {
+  const raw = String(value ?? fallback).trim() as SubmittalPackageCategory;
+  return SUBMITTAL_PACKAGE_CATEGORIES.includes(raw) ? raw : fallback;
+}
+
+export const SUBMITTAL_ISSUE_STATUSES: { id: SubmittalIssueStatus; label: string }[] = [
+  { id: "draft", label: "Draft" },
+  { id: "issued", label: "Issued" },
+  { id: "approved", label: "Approved" },
+  { id: "approved_as_noted", label: "Approved As Noted" },
+  { id: "revise_resubmit", label: "Revise & Resubmit" },
+  { id: "closed", label: "Closed" },
+];
+
+export function normalizeRevisionNumber(value: unknown): number {
+  const n = typeof value === "number" ? value : parseInt(String(value ?? "0"), 10);
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0;
+}
+
+export function normalizeSubmittalIssueStatus(value: unknown): SubmittalIssueStatus {
+  const raw = String(value ?? "draft").trim().toLowerCase() as SubmittalIssueStatus;
+  return SUBMITTAL_ISSUE_STATUSES.some((s) => s.id === raw) ? raw : "draft";
+}
+
 export type PaintSubmittalData = {
   submittal_number: number;
+  revision_number: number;
+  issue_status: SubmittalIssueStatus;
+  package_type: SubmittalPackageCategory;
   submittal_type: TradeSubmittalType;
   subject: string;
   date: string;
   items: PaintItem[];
+  /** Why this revision was created — shown on PDF when revision &gt; 0. */
+  revision_note?: string;
   submittal_ordered?: boolean;
   paint_vendor?: string;
   brushout_prep?: BrushoutPrepLink;
@@ -54,18 +130,28 @@ export type BrushoutPrepLink = {
 
 export type SubmittalHistoryEntry = {
   submittal_number: number;
+  revision_number: number;
   date: string;
   items: PaintItem[] | WallcoveringItem[] | FrpItem[];
+  package_type?: SubmittalPackageCategory;
   submittal_type?: TradeSubmittalType;
   scope?: "paint" | "wallcovering" | "frp";
+  issue_status?: SubmittalIssueStatus;
+  revision_note?: string;
+  /** Prior revisions are locked once a new revision is created or the package is issued. */
+  locked?: boolean;
 };
 
 export type WallcoveringSubmittalData = {
   submittal_number: number;
+  revision_number: number;
+  issue_status: SubmittalIssueStatus;
+  package_type: SubmittalPackageCategory;
   submittal_type: TradeSubmittalType;
   subject: string;
   date: string;
   items: WallcoveringItem[];
+  revision_note?: string;
   got_track?: boolean;
 };
 
@@ -84,6 +170,12 @@ export type FrpItem = {
 
 export type FrpSubmittalData = {
   submittal_number: number;
+  revision_number: number;
+  issue_status: SubmittalIssueStatus;
+  package_type: SubmittalPackageCategory;
+  subject: string;
+  date: string;
+  revision_note?: string;
   items: FrpItem[];
 };
 
@@ -165,8 +257,10 @@ export type TransmittalData = {
   combine_enclosures: boolean;
   include_paint_sheet: boolean;
   include_wc_sheet: boolean;
+  include_frp_sheet: boolean;
   paint_submittal_nums: number[];
   wc_submittal_nums: number[];
+  frp_submittal_nums: number[];
   remarks: string;
   copies_to: string;
   signer_name: string;
@@ -182,6 +276,7 @@ export type ProjectTradeData = {
   wallcovering_submittal?: WallcoveringSubmittalData;
   wallcovering_submittal_history?: SubmittalHistoryEntry[];
   frp_submittal?: FrpSubmittalData;
+  frp_submittal_history?: SubmittalHistoryEntry[];
   track_submittal?: TrackSubmittalData;
   transmittal?: TransmittalData;
   sds_packet?: SdsPacketData;
@@ -439,6 +534,30 @@ export function wcSubjectForType(t: TradeSubmittalType): string {
   return WC_SUBJECTS[t];
 }
 
+export function paintSubjectForPackage(
+  packageType: SubmittalPackageCategory,
+  submittalType: TradeSubmittalType,
+): string {
+  if (packageType === "Product Data") return "Paint Product Data";
+  if (packageType === "Shop Drawings") return "Paint Shop Drawings";
+  return paintSubjectForType(submittalType);
+}
+
+export function wcSubjectForPackage(
+  packageType: SubmittalPackageCategory,
+  submittalType: TradeSubmittalType,
+): string {
+  if (packageType === "Product Data") return "Wallcovering Product Data";
+  if (packageType === "Shop Drawings") return "Wallcovering Shop Drawings";
+  return wcSubjectForType(submittalType);
+}
+
+export function frpSubjectForPackage(packageType: SubmittalPackageCategory): string {
+  if (packageType === "Shop Drawings") return "FRP Shop Drawings";
+  if (packageType === "Substitution") return "FRP Material Substitution";
+  return "FRP Product Data";
+}
+
 export function emptyPaintItem(): PaintItem {
   return { label: "", floor: "", manufacturer: "", color: "", product: "", sheen: "", previous_color: "" };
 }
@@ -533,6 +652,7 @@ export function normalizeTransmittal(raw: Partial<TransmittalData> | null | unde
     pending_submittal_queue: (raw.pending_submittal_queue ?? []).map(normalizePendingItem),
     paint_submittal_nums: [...(raw.paint_submittal_nums ?? [])],
     wc_submittal_nums: [...(raw.wc_submittal_nums ?? [])],
+    frp_submittal_nums: [...(raw.frp_submittal_nums ?? [])],
     contract: normalizeTransmittalContract(raw.contract),
   };
 }
@@ -540,6 +660,9 @@ export function normalizeTransmittal(raw: Partial<TransmittalData> | null | unde
 export function defaultPaintSubmittal(): PaintSubmittalData {
   return {
     submittal_number: 1,
+    revision_number: 0,
+    issue_status: "draft",
+    package_type: "Color Samples",
     submittal_type: "new",
     subject: paintSubjectForType("new"),
     date: formatToday(),
@@ -560,6 +683,9 @@ export const PAINT_VENDOR_OPTIONS = [
 export function defaultWallcoveringSubmittal(): WallcoveringSubmittalData {
   return {
     submittal_number: 1,
+    revision_number: 0,
+    issue_status: "draft",
+    package_type: "Color Samples",
     submittal_type: "new",
     subject: wcSubjectForType("new"),
     date: formatToday(),
@@ -567,9 +693,60 @@ export function defaultWallcoveringSubmittal(): WallcoveringSubmittalData {
   };
 }
 
+export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null | undefined): PaintSubmittalData {
+  const base = defaultPaintSubmittal();
+  if (!raw) return base;
+  return {
+    ...base,
+    ...raw,
+    items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyPaintItem(), ...i })),
+    revision_number: normalizeRevisionNumber(raw.revision_number),
+    issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
+    package_type: normalizePackageCategory(raw.package_type, "Color Samples"),
+    revision_note: raw.revision_note?.trim() || undefined,
+  };
+}
+
+export function normalizeWallcoveringSubmittal(
+  raw: Partial<WallcoveringSubmittalData> | null | undefined,
+): WallcoveringSubmittalData {
+  const base = defaultWallcoveringSubmittal();
+  if (!raw) return base;
+  return {
+    ...base,
+    ...raw,
+    items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyWallcoveringItem(), ...i })),
+    revision_number: normalizeRevisionNumber(raw.revision_number),
+    issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
+    package_type: normalizePackageCategory(raw.package_type, "Color Samples"),
+    revision_note: raw.revision_note?.trim() || undefined,
+  };
+}
+
+export function normalizeFrpSubmittal(raw: Partial<FrpSubmittalData> | null | undefined): FrpSubmittalData {
+  const base = defaultFrpSubmittal();
+  if (!raw) return base;
+  return {
+    ...base,
+    ...raw,
+    items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyFrpItem(), ...i, order: i.order ?? false })),
+    revision_number: normalizeRevisionNumber(raw.revision_number),
+    issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
+    package_type: normalizePackageCategory(raw.package_type, "Product Data"),
+    subject: raw.subject?.trim() || frpSubjectForPackage(normalizePackageCategory(raw.package_type, "Product Data")),
+    date: raw.date?.trim() || formatToday(),
+    revision_note: raw.revision_note?.trim() || undefined,
+  };
+}
+
 export function defaultFrpSubmittal(): FrpSubmittalData {
   return {
     submittal_number: 1,
+    revision_number: 0,
+    issue_status: "draft",
+    package_type: "Product Data",
+    subject: frpSubjectForPackage("Product Data"),
+    date: formatToday(),
     items: [emptyFrpItem()],
   };
 }
@@ -617,8 +794,10 @@ export function defaultTransmittal(): TransmittalData {
     combine_enclosures: false,
     include_paint_sheet: false,
     include_wc_sheet: false,
+    include_frp_sheet: false,
     paint_submittal_nums: [],
     wc_submittal_nums: [],
+    frp_submittal_nums: [],
     remarks: DEFAULT_TRANSMITTAL_REMARK,
     copies_to: "",
     signer_name: "",

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type {
+  FrpItem,
   PaintItem,
   SubmittalHistoryEntry,
   WallcoveringItem,
@@ -14,7 +15,8 @@ type Props = {
   history: SubmittalHistoryEntry[];
   onLoadPaint?: (items: PaintItem[], replace: boolean) => void;
   onLoadWallcovering?: (items: WallcoveringItem[], replace: boolean) => void;
-  onDelete: (submittalNumber: number) => void;
+  onLoadFrp?: (items: FrpItem[], replace: boolean) => void;
+  onDelete: (submittalNumber: number, revisionNumber: number) => void;
   onClose: () => void;
 };
 
@@ -25,27 +27,34 @@ export function SubmittalHistoryModal({
   history,
   onLoadPaint,
   onLoadWallcovering,
+  onLoadFrp,
   onDelete,
   onClose,
 }: Props) {
   const sorted = useMemo(
-    () => [...history].sort((a, b) => (b.submittal_number ?? 0) - (a.submittal_number ?? 0)),
+    () =>
+      [...history].sort((a, b) => {
+        const numDiff = (b.submittal_number ?? 0) - (a.submittal_number ?? 0);
+        if (numDiff !== 0) return numDiff;
+        return (b.revision_number ?? 0) - (a.revision_number ?? 0);
+      }),
     [history],
   );
   const [selected, setSelected] = useState(0);
   const entry = sorted[selected];
-  const scopeLabel = scope === "paint" ? "Paint" : "Wallcovering";
+  const scopeLabel =
+    scope === "paint" ? "Paint" : scope === "wallcovering" ? "Wallcovering" : "FRP";
 
   function confirmDelete() {
     if (!entry) return;
     if (
       !window.confirm(
-        `Remove Submittal #${entry.submittal_number} from history for job ${jobNumber}? This cannot be undone.`,
+        `Remove Submittal #${entry.submittal_number} Rev ${entry.revision_number ?? 0} from history for job ${jobNumber}? This cannot be undone.`,
       )
     ) {
       return;
     }
-    onDelete(entry.submittal_number);
+    onDelete(entry.submittal_number, entry.revision_number ?? 0);
     if (sorted.length <= 1) onClose();
     else setSelected(0);
   }
@@ -85,7 +94,7 @@ export function SubmittalHistoryModal({
             <p className="paint-col-head">Saved submittals</p>
             <ul>
               {sorted.map((h, i) => (
-                <li key={h.submittal_number}>
+                <li key={`${h.submittal_number}-${h.revision_number ?? 0}`}>
                   <button
                     type="button"
                     className={`paint-history-item${i === selected ? " active" : ""}`}
@@ -100,6 +109,11 @@ export function SubmittalHistoryModal({
 
           <div className="paint-history-detail">
             <p className="paint-col-head">Items in selected submittal</p>
+            {entry?.revision_note ? (
+              <p className="muted small">
+                <strong>Revision note:</strong> {entry.revision_note}
+              </p>
+            ) : null}
             <div className="table-wrap">
               {scope === "paint" ? (
                 <table className="data-table compact">
@@ -126,7 +140,7 @@ export function SubmittalHistoryModal({
                     ))}
                   </tbody>
                 </table>
-              ) : (
+              ) : scope === "wallcovering" ? (
                 <table className="data-table compact">
                   <thead>
                     <tr>
@@ -147,6 +161,27 @@ export function SubmittalHistoryModal({
                         <td>{item.product}</td>
                         <td>{item.color}</td>
                         <td>{item.qty}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="data-table compact">
+                  <thead>
+                    <tr>
+                      <th>Label</th>
+                      <th>Manufacturer</th>
+                      <th>Product</th>
+                      <th>Color</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {((entry?.items ?? []) as FrpItem[]).map((item, i) => (
+                      <tr key={i}>
+                        <td>{item.label}</td>
+                        <td>{item.manufacturer}</td>
+                        <td>{item.product}</td>
+                        <td>{item.color}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -190,6 +225,24 @@ export function SubmittalHistoryModal({
                 onClick={() => entry && onLoadWallcovering(entry.items as WallcoveringItem[], true)}
               >
                 Replace wallcovering tab
+              </button>
+            </>
+          )}
+          {scope === "frp" && onLoadFrp && (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => entry && onLoadFrp(entry.items as FrpItem[], false)}
+              >
+                Load to FRP tab
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => entry && onLoadFrp(entry.items as FrpItem[], true)}
+              >
+                Replace FRP tab
               </button>
             </>
           )}

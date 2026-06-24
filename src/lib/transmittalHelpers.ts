@@ -36,9 +36,18 @@ export function pendingItemEnclosureDescription(item: PendingSubmittalItem): str
     if (spec && packet) return `${spec} · ${packet}`;
     return spec || packet || "Product Data";
   }
-  if (source === "paint_submittal") return "Color Samples · Paint";
-  if (source === "wallcovering_submittal") return "Color Samples · Wallcovering";
-  if (source === "frp_submittal") return "Product Data · FRP";
+  if (source === "paint_submittal") {
+    const stype = normalized.submittal_type.trim();
+    return stype ? `${stype} · Paint` : "Color Samples · Paint";
+  }
+  if (source === "wallcovering_submittal") {
+    const stype = normalized.submittal_type.trim();
+    return stype ? `${stype} · Wallcovering` : "Color Samples · Wallcovering";
+  }
+  if (source === "frp_submittal") {
+    const stype = normalized.submittal_type.trim();
+    return stype ? `${stype} · FRP` : "Product Data · FRP";
+  }
   const scope = normalized.scope.trim();
   const stype = normalized.submittal_type.trim();
   if (scope && stype) return `${stype} · ${scope}`;

@@ -1,6 +1,7 @@
-import { esc, logoBlock, pdfSignerDisplayName, printHtml, type PrintBranding } from "./printCore";
+import { esc, logoBlock, pdfSignerDisplayName, type PrintBranding } from "./printCore";
 import { pdfTitleFromFilename, transmittalFilename } from "./pdfFilenames";
 import type { TransmittalData } from "../types/tradeDocuments";
+import { downloadTransmittalPdf } from "./transmittalPdf";
 
 const CSS = `
 @page { size: letter; margin: 0.15in 0.4in 0.4in 0.4in; }
@@ -166,6 +167,15 @@ function enclosureDescription(row: { description: string; digital_copy: boolean 
   return base ? `${base} (Digital Copy)` : "(Digital Copy)";
 }
 
+export async function downloadTransmittal(
+  project: ProjectInfo,
+  data: TransmittalData,
+  branding: PrintBranding,
+): Promise<void> {
+  const filename = transmittalFilename(project.job_name, project.job_number, data.transmittal_number);
+  await downloadTransmittalPdf(project, data, branding, filename);
+}
+
 export function buildTransmittalHtml(
   project: ProjectInfo,
   data: TransmittalData,
@@ -263,13 +273,4 @@ export function buildTransmittalHtml(
   </div>
   ${continuedHtml}
 </body></html>`;
-}
-
-export function printTransmittal(
-  project: ProjectInfo,
-  data: TransmittalData,
-  branding: PrintBranding,
-): void {
-  const filename = transmittalFilename(project.job_name, project.job_number, data.transmittal_number);
-  printHtml(buildTransmittalHtml(project, data, branding, filename), pdfTitleFromFilename(filename), branding.logoUrl);
 }

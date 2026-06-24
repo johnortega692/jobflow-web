@@ -1,8 +1,19 @@
-import { esc, groupByFloor, logoBlock, printHtml, projectAddressPrintHtml, type PrintBranding } from "./printCore";
+import {
+  esc,
+  groupByFloor,
+  logoBlock,
+  submittalRevisionNoteHtml,
+  SUBMITTAL_SIGNATURE_FOOTER_CSS,
+  submittalDateSectionHtml,
+  submittalFooterHtml,
+  submittalProjectInfoHtml,
+  type PrintBranding,
+} from "./printCore";
 import { paintSubmittalFilename, pdfTitleFromFilename } from "./pdfFilenames";
 import { paintColorForPrint } from "./paintImageImport";
 import type { ProjectPrintInfo } from "./jobInfo";
 import type { PaintItem, PaintSubmittalData } from "../types/tradeDocuments";
+import { downloadTradeSubmittalPdf, type SubmittalPdfFloorSection } from "./tradeSubmittalPdf";
 
 const SUBMITTAL_CSS = `
 @page { size: letter; margin: 0.5in 0.55in; }
@@ -27,13 +38,7 @@ body {
   flex: 1 1 auto;
   min-height: 0.5in;
 }
-.footer-section {
-  flex: 0 0 auto;
-  font-size: 10.5pt;
-  page-break-inside: avoid;
-  break-inside: avoid;
-}
-.footer-section p { margin-bottom: 3px; }
+${SUBMITTAL_SIGNATURE_FOOTER_CSS}
 
 .company-logo { text-align: center; margin-bottom: 5px; }
 .company-logo img { max-width: 400px; height: auto; }
@@ -43,7 +48,7 @@ body {
 .date-section { font-size: 10pt; margin-bottom: 20px; }
 .form-title { text-align: center; font-size: 16pt; font-weight: bold; text-decoration: underline; margin-bottom: 25px; }
 .project-info { margin-bottom: 20px; line-height: 1.15; }
-.info-row { font-size: 11pt; line-height: 1.15; }
+.info-row { font-size: 10pt; line-height: 1.15; }
 .info-row-subject { margin-top: 0.85em; }
 .floor-section-title { font-weight: bold; font-size: 11pt; margin: 18px 0 8px; color: #333; }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -113,6 +118,65 @@ function paintTableHead(isSub: boolean): string {
   </tr>`;
 }
 
+export function buildPaintSubmittalSections(
+  data: PaintSubmittalData,
+): SubmittalPdfFloorSection[] {
+  const isSub = data.submittal_type === "substitution";
+  const groups = groupByFloor(data.items.filter((i) => i.color.trim() || i.label.trim()));
+  return groups.map(([floor, items]) => ({
+    floorLabel: floor || undefined,
+    columns: isSub
+      ? ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"]
+      : ["#", "Color", "Product", "Sheen", "Label"],
+    colWeights: isSub ? [0.05, 0.1, 0.22, 0.22, 0.22, 0.19] : [0.05, 0.25, 0.25, 0.25, 0.2],
+    rows: items.map((item, i) => {
+      const displayColor = paintColorForPrint(item.manufacturer, item.color);
+      if (isSub) {
+        return [
+          String(i + 1),
+          item.label.trim(),
+          item.previous_color.trim(),
+          displayColor,
+          item.product.trim(),
+          item.sheen.trim(),
+        ];
+      }
+      return [
+        String(i + 1),
+        displayColor,
+        item.product.trim(),
+        item.sheen.trim(),
+        item.label.trim(),
+      ];
+    }),
+  }));
+}
+
+export async function downloadPaintSubmittal(
+  project: ProjectInfo,
+  data: PaintSubmittalData,
+  branding: PrintBranding,
+): Promise<void> {
+  const filename = paintSubmittalFilename(
+    project.job_name,
+    project.job_number,
+    data.submittal_number,
+    data.submittal_type,
+  );
+  await downloadTradeSubmittalPdf({
+    filename,
+    project,
+    branding,
+    date: data.date,
+    subject: data.subject,
+    submittalNumber: data.submittal_number,
+    revisionNumber: data.revision_number,
+    revisionNote: data.revision_note,
+    sections: buildPaintSubmittalSections(data),
+  });
+}
+
+/** @deprecated Use downloadPaintSubmittal — kept for HTML preview helpers only. */
 export function buildPaintSubmittalHtml(
   project: ProjectInfo,
   data: PaintSubmittalData,
@@ -143,41 +207,17 @@ export function buildPaintSubmittalHtml(
   <div class="company-logo">${logoBlock(branding)}</div>
   <div class="header-line"></div>
   <div class="company-info">${esc(branding.companyContactLine || branding.companyInfo)}</div>
-  <div class="date-section">${esc(data.date)}${data.submittal_number ? `<br>Submittal No: ${data.submittal_number}` : ""}</div>
+  <div class="date-section">${submittalDateSectionHtml(data.date, data.submittal_number, data.revision_number)}</div>
   <div class="form-title">Submittals</div>
   <div class="project-info">
-    <p class="info-row">Project: ${esc(project.job_name)}</p>
-    ${projectAddressPrintHtml(project.job_address, project.job_address_line2)}
-    <p class="info-row">Job Number: ${esc(project.job_number)}</p>
+    ${submittalProjectInfoHtml(project)}
     <p class="info-row info-row-subject">Subject: ${esc(data.subject)}</p>
+    ${submittalRevisionNoteHtml(data.revision_number, data.revision_note)}
   </div>
   ${bodyTables}
   </div>
   <div class="print-footer-spacer" aria-hidden="true"></div>
-  <div class="footer-section">
-    <p>Thank you,</p><p>&nbsp;</p>
-    <p>${esc(branding.footerName)}</p>
-    <p>${esc(branding.footerPhone)}</p>
-    ${branding.footerEmail ? `<p>${esc(branding.footerEmail)}</p>` : ""}
-  </div>
+  <div class="footer-section">${submittalFooterHtml(branding)}</div>
   </div>
 </body></html>`;
-}
-
-export function printPaintSubmittal(
-  project: ProjectInfo,
-  data: PaintSubmittalData,
-  branding: PrintBranding,
-): void {
-  const filename = paintSubmittalFilename(
-    project.job_name,
-    project.job_number,
-    data.submittal_number,
-    data.submittal_type,
-  );
-  printHtml(
-    buildPaintSubmittalHtml(project, data, branding, filename),
-    pdfTitleFromFilename(filename),
-    branding.logoUrl,
-  );
 }

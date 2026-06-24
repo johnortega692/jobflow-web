@@ -60,7 +60,11 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
     try {
       const result = await importJobInfoFromProposalPdf(file);
       const next = applyProposalImportPatch(project, result);
-      setProject(next);
+      setProject({
+        ...next,
+        job_number: project.job_number,
+        job_name: project.job_name,
+      });
       const layout =
         result.source === "ironwood"
           ? "Ironwood paint bid proposal"
@@ -172,13 +176,13 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
           </div>
 
           <JobSection title="Job Info" defaultOpen>
+            <p className="muted small">
+              Job # and name are set when the project is created and cannot be changed here.
+            </p>
             <div className="grid-2">
               <label>
                 Job #
-                <input
-                  value={project.job_number}
-                  onChange={(e) => setProject({ ...project, job_number: e.target.value })}
-                />
+                <input className="readonly" value={project.job_number} readOnly aria-readonly />
               </label>
               <label>
                 Date
@@ -186,7 +190,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
               </label>
               <label>
                 Job name
-                <input value={project.job_name} onChange={(e) => setProject({ ...project, job_name: e.target.value })} />
+                <input className="readonly" value={project.job_name} readOnly aria-readonly />
               </label>
               <label>
                 Job address

@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { CreateRevisedSubmittalModal } from "../components/submittals/CreateRevisedSubmittalModal";
+import { RevisionNoteField } from "../components/submittals/RevisionNoteField";
+import { SubmittalPackageTypeSelect } from "../components/submittals/SubmittalPackageTypeSelect";
+import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { DateInput } from "../components/DateInput";
 import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal";
 import { WallcoveringBulkAddModal } from "../components/wallcovering/WallcoveringBulkAddModal";
 import { WallcoveringItemRow } from "../components/wallcovering/WallcoveringItemRow";
 import { useLetterhead } from "../contexts/LetterheadContext";
+import { SubmittalIssueStatusSelect } from "../components/submittals/SubmittalIssueStatusSelect";
 import {
   addSubmittalToHistory,
+  createNewSubmittalPackageDraft,
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
+import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { queuePendingItem } from "../lib/transmittalHelpers";
 import { buildWcTrackerLinesFromSubmittal, saveWcTrackerLines } from "../lib/fieldTrackerProject";
@@ -20,7 +26,7 @@ import {
   wcPrintInfo,
   wcTrackerJobLabel,
 } from "../lib/jobInfo";
-import { printWallcoveringSubmittal } from "../lib/wallcoveringSubmittalPrint";
+import { downloadWallcoveringSubmittal } from "../lib/wallcoveringSubmittalPrint";
 import { wallcoveringSubmittalFilename } from "../lib/pdfFilenames";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import type { ProjectForm } from "../types/database";
@@ -28,8 +34,10 @@ import {
   defaultTransmittal,
   defaultWallcoveringSubmittal,
   emptyWallcoveringItem,
+  normalizeWallcoveringSubmittal,
+  WALLCOVERING_PACKAGE_TYPE_OPTIONS,
   WALLCOVERING_SUBMITTAL_TYPES,
-  wcSubjectForType,
+  wcSubjectForPackage,
   type SubmittalHistoryEntry,
   type TradeSubmittalType,
   type WallcoveringItem,
@@ -47,14 +55,10 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
 }
 
 function normalizeWcDraft(raw: WallcoveringSubmittalData): WallcoveringSubmittalData {
-  const items = (raw.items ?? [emptyWallcoveringItem()]).map((i) => ({
-    ...emptyWallcoveringItem(),
-    ...i,
-    order: i.order ?? false,
-  }));
+  const normalized = normalizeWallcoveringSubmittal(raw);
+  const items = normalized.items.map((i) => ({ ...i, order: i.order ?? false }));
   return {
-    ...defaultWallcoveringSubmittal(),
-    ...raw,
+    ...normalized,
     items,
     got_track: raw.got_track ?? detectGotTrack(items),
   };
@@ -83,6 +87,7 @@ export function WallcoveringSubmittalsPage() {
 
   const showPreviousColor = draft.submittal_type === "substitution";
   const wcPrint = useMemo(() => wcPrintInfo(project, project.jobInfo), [project]);
+  const draftLocked = submittalDraftIsLocked(draft);
 
   async function persist(nextDraft: WallcoveringSubmittalData, nextHistory = history) {
     const ok = await save({
@@ -98,19 +103,32 @@ export function WallcoveringSubmittalsPage() {
     return ok;
   }
 
+  function updateDraft(updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) {
+    const next = applySubmittalEdit(draft, history, updater);
+    if (!next) return;
+    if (next.revision_number !== draft.revision_number) {
+      setStatus(`Now editing Rev ${next.revision_number} (draft).`);
+    }
+    setDraft({ ...next, got_track: detectGotTrack(next.items) });
+  }
+
   function setType(t: TradeSubmittalType) {
-    setDraft((d) => ({ ...d, submittal_type: t, subject: wcSubjectForType(t) }));
+    updateDraft((d) => ({
+      ...d,
+      submittal_type: t,
+      subject: wcSubjectForPackage(d.package_type, t),
+    }));
   }
 
   function patchItem(index: number, patch: Partial<WallcoveringItem>) {
-    setDraft((d) => ({
+    updateDraft((d) => ({
       ...d,
       items: d.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
     }));
   }
 
   function onGotTrackChange(checked: boolean) {
-    setDraft((d) => ({
+    updateDraft((d) => ({
       ...d,
       got_track: checked,
       items: applyGotTrackToggle(d.items, checked),
@@ -121,7 +139,7 @@ export function WallcoveringSubmittalsPage() {
     const mapped = items.length
       ? items.map((i) => ({ ...emptyWallcoveringItem(), ...i, order: i.order ?? false }))
       : [emptyWallcoveringItem()];
-    setDraft((d) => ({
+    updateDraft((d) => ({
       ...d,
       items: replace
         ? mapped
@@ -139,21 +157,31 @@ export function WallcoveringSubmittalsPage() {
     await persist(draft, history);
   }
 
-  async function onPrint() {
+  async function onDownloadPdf() {
     try {
-      printWallcoveringSubmittal(wcPrint, draft, branding);
-      const nextHistory = addSubmittalToHistory(
-        history,
-        draft.submittal_number,
-        draft.items,
-        draft.submittal_type,
-        "wallcovering",
-      );
+      await downloadWallcoveringSubmittal(wcPrint, draft, branding);
+      let nextHistory = history;
+      if (draftLocked) {
+        nextHistory = addSubmittalToHistory(
+          history,
+          draft.submittal_number,
+          draft.revision_number,
+          draft.items,
+          draft.submittal_type,
+          "wallcovering",
+          {
+            revisionNote: draft.revision_note,
+            issueStatus: draft.issue_status,
+            locked: true,
+            packageType: draft.package_type,
+          },
+        );
+      }
       await persist(draft, nextHistory);
       let logRowId = "";
       try {
         const row = await recordPdfLogRow(projectId, {
-          submittal_type: "Color Samples",
+          submittal_type: draft.package_type,
           scope: "Wallcovering",
           spec: "096000",
           notes: `Wallcovering submittal #${draft.submittal_number}`,
@@ -165,7 +193,7 @@ export function WallcoveringSubmittalsPage() {
         /* log row optional */
       }
       let transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
-        submittal_type: "Color Samples",
+        submittal_type: draft.package_type,
         scope: "Wallcovering",
         source: "wallcovering_submittal",
         trade_submittal_number: String(draft.submittal_number),
@@ -178,9 +206,13 @@ export function WallcoveringSubmittalsPage() {
         wallcovering_submittal_history: nextHistory,
         transmittal,
       });
-      setStatus(`Submittal #${draft.submittal_number} saved to history.`);
+      setStatus(
+        draftLocked
+          ? `Submittal #${String(draft.submittal_number).padStart(3, "0")} Rev ${draft.revision_number} PDF downloaded.`
+          : `Submittal PDF downloaded. Issue this package to lock Rev ${draft.revision_number} in history.`,
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Print failed");
+      setError(e instanceof Error ? e.message : "PDF download failed");
     }
   }
 
@@ -211,11 +243,46 @@ export function WallcoveringSubmittalsPage() {
     }
   }
 
-  async function onDeleteHistory(submittalNumber: number) {
-    const nextHistory = removeSubmittalFromHistory(history, submittalNumber);
+  async function onIssueSubmittal() {
+    const { draft: issued, history: nextHistory } = issueSubmittalDraft(draft, history, "wallcovering");
+    const ok = await persist(issued, nextHistory);
+    if (ok) {
+      setStatus(
+        `Submittal #${String(issued.submittal_number).padStart(3, "0")} Rev ${issued.revision_number} issued and locked.`,
+      );
+    }
+  }
+
+  function onCreateRevision() {
+    const next = startNextRevision(draft, history);
+    if (next === draft) return;
+    setDraft({ ...next, got_track: detectGotTrack(next.items) });
+    setStatus(`Editing Rev ${next.revision_number} (draft). Add a revision note before issuing.`);
+  }
+
+  function onNewSubmittalPackage() {
+    if (
+      !window.confirm(
+        "Start a new submittal package? This assigns the next submittal number and resets revision to 0.",
+      )
+    ) {
+      return;
+    }
+    setDraft({
+      ...createNewSubmittalPackageDraft(draft, history),
+      submittal_type: "new",
+      subject: wcSubjectForPackage(draft.package_type, "new"),
+      items: [emptyWallcoveringItem()],
+      got_track: false,
+    });
+    setStatus("New submittal package started (Rev 0, draft).");
+  }
+
+  async function onDeleteHistory(submittalNumber: number, revisionNumber: number) {
+    const nextHistory = removeSubmittalFromHistory(history, submittalNumber, revisionNumber);
     setHistory(nextHistory);
     await persist(draft, nextHistory);
-    setStatus(`Removed submittal #${submittalNumber} from history.`);
+    setStatus(`Removed submittal #${submittalNumber} Rev ${revisionNumber} from history.`);
   }
 
   const submittalPdfFilename = useMemo(
@@ -246,13 +313,26 @@ export function WallcoveringSubmittalsPage() {
         </div>
         <div className="row-gap wrap">
           <button type="button" className="btn btn-secondary" onClick={() => setRevisedOpen(true)}>
-            Create revised submittal
+            Revision from history…
           </button>
+          <button type="button" className="btn btn-secondary" onClick={onNewSubmittalPackage}>
+            New submittal package
+          </button>
+          {!draftLocked && (
+            <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onIssueSubmittal()}>
+              Issue submittal
+            </button>
+          )}
+          {draftLocked && (
+            <button type="button" className="btn btn-secondary" onClick={onCreateRevision}>
+              Create next revision
+            </button>
+          )}
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
             {saving ? "Saving…" : "Save"}
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => void onPrint()}>
-            Submittal PDF
+          <button type="button" className="btn btn-primary" onClick={() => void onDownloadPdf()}>
+            Download PDF
           </button>
         </div>
       </div>
@@ -263,6 +343,13 @@ export function WallcoveringSubmittalsPage() {
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
+
+      {draftLocked && (
+        <div className="banner banner-warn">
+          This revision is <strong>{draft.issue_status.replace(/_/g, " ")}</strong>. Create a new revision to
+          change items, or update issue status below.
+        </div>
+      )}
 
       <section className="card wc-action-bar">
         <div className="wc-main-buttons row-gap wrap">
@@ -288,8 +375,13 @@ export function WallcoveringSubmittalsPage() {
               type="number"
               min={1}
               value={draft.submittal_number}
+              disabled={draftLocked}
               onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
             />
+          </label>
+          <label>
+            Revision
+            <input type="number" min={0} value={draft.revision_number} readOnly />
           </label>
           <label>
             Type
@@ -308,11 +400,32 @@ export function WallcoveringSubmittalsPage() {
             Date
             <DateInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })} />
           </label>
+          <SubmittalIssueStatusSelect
+            value={draft.issue_status}
+            onChange={(issue_status) => setDraft({ ...draft, issue_status })}
+          />
+          <SubmittalPackageTypeSelect
+            value={draft.package_type}
+            options={WALLCOVERING_PACKAGE_TYPE_OPTIONS}
+            disabled={draftLocked}
+            onChange={(package_type) =>
+              updateDraft((d) => ({
+                ...d,
+                package_type,
+                subject: wcSubjectForPackage(package_type, d.submittal_type),
+              }))
+            }
+          />
         </div>
         <label>
           Subject
           <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
         </label>
+        <RevisionNoteField
+          revisionNumber={draft.revision_number}
+          value={draft.revision_note ?? ""}
+          onChange={(revision_note) => setDraft({ ...draft, revision_note })}
+        />
       </section>
 
       <section className="card stack wc-items-section">
@@ -332,7 +445,9 @@ export function WallcoveringSubmittalsPage() {
                 type="button"
                 className="btn btn-icon btn-primary"
                 title="Add row"
-                onClick={() => setDraft((d) => ({ ...d, items: [...d.items, emptyWallcoveringItem()] }))}
+                onClick={() =>
+                  updateDraft((d) => ({ ...d, items: [...d.items, emptyWallcoveringItem()] }))
+                }
               >
                 +
               </button>
@@ -358,13 +473,13 @@ export function WallcoveringSubmittalsPage() {
               showPreviousColor={showPreviousColor}
               onChange={(patch) => patchItem(index, patch)}
               onMoveUp={() =>
-                setDraft((d) => ({ ...d, items: moveItem(d.items, index, index - 1) }))
+                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index - 1) }))
               }
               onMoveDown={() =>
-                setDraft((d) => ({ ...d, items: moveItem(d.items, index, index + 1) }))
+                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index + 1) }))
               }
               onRemove={() =>
-                setDraft((d) => {
+                updateDraft((d) => {
                   const nextItems =
                     d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items;
                   return {
@@ -382,7 +497,7 @@ export function WallcoveringSubmittalsPage() {
       {bulkOpen && (
         <WallcoveringBulkAddModal
           onAdd={(items) =>
-            setDraft((d) => ({
+            updateDraft((d) => ({
               ...d,
               items: [
                 ...d.items.filter((i) => i.label || i.color || i.manufacturer || i.product),
@@ -402,7 +517,7 @@ export function WallcoveringSubmittalsPage() {
           jobName={wcPrint.job_name}
           history={history}
           onLoadWallcovering={loadHistoryItems}
-          onDelete={(n) => void onDeleteHistory(n)}
+          onDelete={(n, r) => void onDeleteHistory(n, r)}
           onClose={() => setHistoryOpen(false)}
         />
       )}

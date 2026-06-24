@@ -139,6 +139,7 @@ const TRADE_DATA_ACTIVITY_PRIORITY: (keyof ProjectTradeData)[] = [
   "budget_maker",
   "paint_submittal_history",
   "wallcovering_submittal_history",
+  "frp_submittal_history",
   "paint_tracker",
   "wc_tracker_lines",
 ];
@@ -164,6 +165,10 @@ const TRADE_DATA_ACTIVITY: Record<
   wallcovering_submittal_history: {
     action: "wallcovering_submittal_saved",
     summary: "Wallcovering submittal history updated",
+  },
+  frp_submittal_history: {
+    action: "frp_submittal_saved",
+    summary: "FRP submittal history updated",
   },
   paint_tracker: { action: "paint_tracker_saved", summary: "Paint tracker saved" },
   wc_tracker_lines: { action: "wc_tracker_saved", summary: "Wallcovering tracker saved" },

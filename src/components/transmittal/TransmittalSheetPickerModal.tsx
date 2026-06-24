@@ -3,7 +3,7 @@ import { formatSubmittalHistoryLabel } from "../../lib/submittalHistory";
 import type { SubmittalHistoryEntry } from "../../types/tradeDocuments";
 
 type Props = {
-  scope: "paint" | "wallcovering";
+  scope: "paint" | "wallcovering" | "frp";
   history: SubmittalHistoryEntry[];
   selected: number[];
   onSave: (nums: number[]) => void;
@@ -12,7 +12,7 @@ type Props = {
 
 export function TransmittalSheetPickerModal({ scope, history, selected, onSave, onClose }: Props) {
   const [picked, setPicked] = useState<Set<number>>(new Set(selected));
-  const label = scope === "paint" ? "Paint" : "Wallcovering";
+  const label = scope === "paint" ? "Paint" : scope === "wallcovering" ? "Wallcovering" : "FRP";
 
   function toggle(n: number) {
     setPicked((prev) => {
@@ -38,7 +38,7 @@ export function TransmittalSheetPickerModal({ scope, history, selected, onSave, 
             {[...history]
               .sort((a, b) => (b.submittal_number ?? 0) - (a.submittal_number ?? 0))
               .map((h) => (
-                <li key={h.submittal_number}>
+                <li key={`${h.submittal_number}-${h.revision_number ?? 0}`}>
                   <label className="check">
                     <input
                       type="checkbox"
