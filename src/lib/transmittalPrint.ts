@@ -195,7 +195,6 @@ export async function downloadTransmittal(
         combined: false,
         appendedSheets: 0,
         missing: [],
-        enclosureMergeSkipped: false,
       };
 
   const filename = result.combined

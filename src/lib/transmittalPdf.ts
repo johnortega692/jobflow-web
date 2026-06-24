@@ -5,6 +5,7 @@ import {
   drawCheckbox,
   drawDataTable,
   drawWrappedText,
+  drawRightAlignedText,
   embedLogoImage,
   LETTER_HEIGHT,
   LETTER_WIDTH,
@@ -52,28 +53,37 @@ export async function buildTransmittalPdfBytes(
 
   const logoMaxW = contentWidth * 0.38;
   const title = `TRANSMITTAL - ${data.transmittal_number.trim()}`;
+  const titleSize = 18;
+  const rightEdge = pageWidth - PDF_MARGIN_X;
+  const headerTop = y;
+
   if (logo) {
     const scale = Math.min(logoMaxW / logo.width, 96 / logo.height, 1);
     const lw = logo.width * scale;
     const lh = logo.height * scale;
-    page.drawImage(logo, { x: PDF_MARGIN_X, y: y - lh, width: lw, height: lh });
-    page.drawText(truncate(title, bold, 18, contentWidth - lw - 12), {
-      x: PDF_MARGIN_X + lw + 12,
-      y: y - lh / 2,
-      size: 18,
-      font: bold,
-      color: TEXT,
-    });
-    y -= lh + 8;
-  } else {
-    page.drawText(truncate(title, bold, 18, contentWidth), {
+    page.drawImage(logo, { x: PDF_MARGIN_X, y: headerTop - lh, width: lw, height: lh });
+    drawRightAlignedText(
+      page,
+      truncate(title, bold, titleSize, contentWidth - lw - 24),
+      rightEdge,
+      headerTop - lh / 2 - titleSize * 0.35,
+      bold,
+      titleSize,
+    );
+    y = headerTop - lh - 8;
+  } else if (branding.companyName.trim()) {
+    page.drawText(truncate(branding.companyName, bold, 14, contentWidth * 0.5), {
       x: PDF_MARGIN_X,
-      y: y - 18,
-      size: 18,
+      y: headerTop - 14,
+      size: 14,
       font: bold,
       color: TEXT,
     });
-    y -= 28;
+    drawRightAlignedText(page, truncate(title, bold, titleSize, contentWidth * 0.55), rightEdge, headerTop - titleSize, bold, titleSize);
+    y = headerTop - 22;
+  } else {
+    drawRightAlignedText(page, truncate(title, bold, titleSize, contentWidth), rightEdge, headerTop - titleSize, bold, titleSize);
+    y = headerTop - titleSize - 10;
   }
 
   page.drawLine({
@@ -89,22 +99,26 @@ export async function buildTransmittalPdfBytes(
   const fromPhone = data.from_phone.trim() || branding.fromPhone;
   const half = contentWidth / 2 - 8;
 
-  page.drawText("To:", { x: PDF_MARGIN_X, y: y - 10, size: 10.5, font: bold, color: TEXT });
-  y = drawWrappedText(page, toBlock, PDF_MARGIN_X, y - 12, half, font, 10.5) - 4;
-  page.drawText(`Phone: ${data.to_phone.trim()}`, { x: PDF_MARGIN_X, y: y - 10, size: 10.5, font, color: TEXT });
+  const toFromTop = y;
+  const fromX = PDF_MARGIN_X + half + 16;
 
-  let rightTop = page.getHeight() - PDF_MARGIN_TOP - 12;
-  page.drawText("From:", { x: PDF_MARGIN_X + half + 16, y: rightTop - 10, size: 10.5, font: bold, color: TEXT });
-  rightTop = drawWrappedText(page, fromBlock, PDF_MARGIN_X + half + 16, rightTop - 12, half, font, 10.5);
+  page.drawText("To:", { x: PDF_MARGIN_X, y: toFromTop - 10, size: 10.5, font: bold, color: TEXT });
+  let toBottom = drawWrappedText(page, toBlock, PDF_MARGIN_X, toFromTop - 12, half, font, 10.5) - 4;
+  page.drawText(`Phone: ${data.to_phone.trim()}`, { x: PDF_MARGIN_X, y: toBottom - 10, size: 10.5, font, color: TEXT });
+  const leftEnd = toBottom - 16;
+
+  page.drawText("From:", { x: fromX, y: toFromTop - 10, size: 10.5, font: bold, color: TEXT });
+  let fromBottom = drawWrappedText(page, fromBlock, fromX, toFromTop - 12, half, font, 10.5);
   page.drawText(`Phone: ${fromPhone}`, {
-    x: PDF_MARGIN_X + half + 16,
-    y: rightTop - 14,
+    x: fromX,
+    y: fromBottom - 14,
     size: 10.5,
     font,
     color: TEXT,
   });
+  const rightEnd = fromBottom - 20;
 
-  y = Math.min(y - 16, rightTop - 20);
+  y = Math.min(leftEnd, rightEnd);
   page.drawLine({ start: { x: PDF_MARGIN_X, y }, end: { x: pageWidth - PDF_MARGIN_X, y }, thickness: 0.75, color: TEXT });
   y -= 12;
 

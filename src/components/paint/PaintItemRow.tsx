@@ -20,11 +20,23 @@ type Props = {
   sheenOptions: string[];
   colors: PaintColorsDb | null;
   showPreviousColor: boolean;
+  showFloor: boolean;
   onChange: (patch: Partial<PaintItem>) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRemove: () => void;
 };
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.106a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"
+      />
+    </svg>
+  );
+}
 
 export function PaintItemRow({
   item,
@@ -34,6 +46,7 @@ export function PaintItemRow({
   sheenOptions,
   colors,
   showPreviousColor,
+  showFloor,
   onChange,
   onMoveUp,
   onMoveDown,
@@ -86,22 +99,24 @@ export function PaintItemRow({
           />
         </label>
 
-        <label className="paint-col paint-col-floor">
-          <span className="paint-col-head">Floor</span>
-          <select
-            className="paint-field-select"
-            value={item.floor}
-            onChange={(e) => onChange({ floor: e.target.value })}
-            aria-label={`Floor row ${index + 1}`}
-          >
-            <option value="">—</option>
-            {FLOOR_ORDER.filter(Boolean).map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
+        {showFloor && (
+          <label className="paint-col paint-col-floor">
+            <span className="paint-col-head">Floor</span>
+            <select
+              className="paint-field-select"
+              value={item.floor}
+              onChange={(e) => onChange({ floor: e.target.value })}
+              aria-label={`Floor row ${index + 1}`}
+            >
+              <option value="">—</option>
+              {FLOOR_ORDER.filter(Boolean).map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="paint-col paint-col-color">
           <span className="paint-col-head">Color</span>
@@ -111,16 +126,17 @@ export function PaintItemRow({
               onChange={(e) => onChange({ color: e.target.value })}
               onKeyDown={onColorKeyDown}
               aria-label={`Color row ${index + 1}`}
-              title="Type a color number, then Enter, Tab, or Lookup"
+              title="Type a color number, then Enter, Tab, or search"
             />
             <button
               type="button"
-              className="btn btn-small btn-secondary paint-color-lookup-btn"
+              className="btn btn-small btn-secondary paint-color-lookup-btn paint-color-lookup-btn--icon"
               disabled={!colors || !item.color.trim() || shouldSkipColorLookup(item.color)}
               onClick={runColorLookup}
               title="Look up color name from catalog"
+              aria-label="Look up color"
             >
-              Lookup
+              <SearchIcon />
             </button>
           </div>
         </label>

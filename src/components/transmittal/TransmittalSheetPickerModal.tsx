@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { formatSubmittalHistoryLabel } from "../../lib/submittalHistory";
+import {
+  formatSubmittalHistoryLabel,
+  isLockedPackageStatus,
+  latestHistoryEntryPerPackage,
+  normalizeHistoryEntry,
+} from "../../lib/submittalHistory";
 import type { SubmittalHistoryEntry } from "../../types/tradeDocuments";
 
 type Props = {
@@ -13,6 +18,7 @@ type Props = {
 export function TransmittalSheetPickerModal({ scope, history, selected, onSave, onClose }: Props) {
   const [picked, setPicked] = useState<Set<number>>(new Set(selected));
   const label = scope === "paint" ? "Paint" : scope === "wallcovering" ? "Wallcovering" : "FRP";
+  const packages = latestHistoryEntryPerPackage(history);
 
   function toggle(n: number) {
     setPicked((prev) => {
@@ -28,16 +34,17 @@ export function TransmittalSheetPickerModal({ scope, history, selected, onSave, 
       <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
         <h3>Choose {label} submittal sheet(s)</h3>
         <p className="muted small">
-          Select which saved {label.toLowerCase()} submittal numbers to reference when generating the
-          transmittal package.
+          Select which {label.toLowerCase()} submittal numbers to append when combining the PDF. Issued
+          revisions are preferred; the live tab draft is used if nothing is issued yet.
         </p>
-        {!history.length ? (
-          <p className="muted">No saved {label.toLowerCase()} submittals yet.</p>
+        {!packages.length ? (
+          <p className="muted">No saved {label.toLowerCase()} submittals yet — save the {label} tab first.</p>
         ) : (
           <ul className="transmittal-sheet-pick-list">
-            {[...history]
-              .sort((a, b) => (b.submittal_number ?? 0) - (a.submittal_number ?? 0))
-              .map((h) => (
+            {packages.map((h) => {
+              const normalized = normalizeHistoryEntry(h);
+              const issued = isLockedPackageStatus(normalized.issue_status);
+              return (
                 <li key={`${h.submittal_number}-${h.revision_number ?? 0}`}>
                   <label className="check">
                     <input
@@ -46,9 +53,13 @@ export function TransmittalSheetPickerModal({ scope, history, selected, onSave, 
                       onChange={() => toggle(h.submittal_number)}
                     />
                     {formatSubmittalHistoryLabel(h)}
+                    {!issued ? (
+                      <span className="transmittal-sheet-pick-draft muted small"> · draft</span>
+                    ) : null}
                   </label>
                 </li>
-              ))}
+              );
+            })}
           </ul>
         )}
         <div className="row-gap wrap">

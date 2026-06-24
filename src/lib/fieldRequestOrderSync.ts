@@ -146,6 +146,7 @@ export async function pushFieldRequestBrushOuts(
     job_number: `${jobNumber} ${jobName}`.trim(),
     paint_vendor: paintVendor.trim() || "PPG",
     paint_items: paintItems,
+    mode: "merge" as const,
   };
 
   try {

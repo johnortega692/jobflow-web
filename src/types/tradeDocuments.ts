@@ -173,6 +173,10 @@ export type PaintSubmittalData = {
   submittal_ordered?: boolean;
   paint_vendor?: string;
   brushout_prep?: BrushoutPrepLink;
+  /** Last pushed brush-out line per label+floor key (merge wave tracking). */
+  brushout_pushed?: Record<string, string>;
+  /** When false, hide floor column in UI and omit floor grouping on PDF. */
+  show_floor?: boolean;
 };
 
 export type BrushoutPrepLink = {
@@ -325,6 +329,30 @@ export type TransmittalData = {
   contract: TransmittalContract;
 };
 
+/** Record of a generated transmittal package (for review / reload). */
+export type TransmittalHistoryEntry = {
+  id: string;
+  transmittal_number: string;
+  date: string;
+  subject: string;
+  job_number: string;
+  job_name: string;
+  contract: TransmittalContract;
+  generated_at: string;
+  combined: boolean;
+  appended_sheets: number;
+  include_paint_sheet: boolean;
+  include_wc_sheet: boolean;
+  include_frp_sheet: boolean;
+  paint_submittal_nums: number[];
+  wc_submittal_nums: number[];
+  frp_submittal_nums: number[];
+  enclosure_count: number;
+  missing_warnings: string[];
+  /** Full transmittal state at time of download (before number bump). */
+  snapshot: TransmittalData;
+};
+
 export type ProjectTradeData = {
   paint_submittal?: PaintSubmittalData;
   paint_submittal_history?: SubmittalHistoryEntry[];
@@ -334,6 +362,7 @@ export type ProjectTradeData = {
   frp_submittal_history?: SubmittalHistoryEntry[];
   track_submittal?: TrackSubmittalData;
   transmittal?: TransmittalData;
+  transmittal_history?: TransmittalHistoryEntry[];
   sds_packet?: SdsPacketData;
   budget_maker?: BudgetMakerData;
   paint_tracker?: PaintTrackerState;
@@ -721,6 +750,7 @@ export function defaultPaintSubmittal(): PaintSubmittalData {
     items: [emptyPaintItem()],
     submittal_ordered: false,
     paint_vendor: "PPG",
+    show_floor: false,
   };
 }
 
@@ -756,6 +786,13 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "Paint Brush-Outs / Color Samples", "paint"),
     revision_note: raw.revision_note?.trim() || undefined,
+    show_floor: raw.show_floor === true,
+    brushout_pushed:
+      raw.brushout_pushed && typeof raw.brushout_pushed === "object"
+        ? Object.fromEntries(
+            Object.entries(raw.brushout_pushed).map(([k, v]) => [k, String(v)]),
+          )
+        : undefined,
   };
 }
 

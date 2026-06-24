@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
+import {
+  UnsavedNavigationProvider,
+  useUnsavedNavigation,
+} from "../contexts/UnsavedNavigationContext";
 import { ProjectNavIcon } from "./ProjectNavIcon";
 import { PROJECT_MODULES, PROJECT_NAV_SECTIONS } from "../config/projectModules";
 import { projectHasWallcovering } from "../lib/jobInfo";
@@ -21,9 +25,10 @@ function matchModule(pathname: string, base: string) {
   return { activeModule: active, isDetailView };
 }
 
-export function ProjectLayout() {
+function ProjectLayoutShell() {
   const { projectId } = useParams<{ projectId: string }>();
   const location = useLocation();
+  const { requestNavigation } = useUnsavedNavigation();
   const [project, setProject] = useState<ProjectForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +85,9 @@ export function ProjectLayout() {
       <aside id="project-sidebar" className="project-sidebar" aria-label="Project navigation">
         <div className="project-sidebar-header">
           <p className="breadcrumb project-sidebar-breadcrumb">
-            <Link to="/projects">Projects</Link>
+            <Link to="/projects" onClick={(e) => requestNavigation("/projects", e)}>
+              Projects
+            </Link>
           </p>
           <p className="project-sidebar-job">{project.job_number}</p>
           <p className="project-sidebar-name" title={project.job_name}>
@@ -98,11 +105,14 @@ export function ProjectLayout() {
                 <p className="project-nav-section-label">{section.label}</p>
               )}
               <div className="project-nav-section-links">
-                {modules.map((mod) => (
+                {modules.map((mod) => {
+                  const modTo = mod.path ? `${base}/${mod.path}` : base;
+                  return (
                   <NavLink
                     key={mod.id}
-                    to={mod.path ? `${base}/${mod.path}` : base}
+                    to={modTo}
                     end={mod.path === ""}
+                    onClick={(e) => requestNavigation(modTo, e)}
                     className={({ isActive }) =>
                       `project-nav-link${isActive ? " project-nav-link--active" : ""}${mod.ready ? "" : " project-nav-link--soon"}`
                     }
@@ -113,7 +123,8 @@ export function ProjectLayout() {
                     </span>
                     {!mod.ready && <span className="module-soon">Soon</span>}
                   </NavLink>
-                ))}
+                  );
+                })}
               </div>
             </div>
             );
@@ -142,5 +153,13 @@ export function ProjectLayout() {
         <Outlet context={{ project, projectId, setProject }} />
       </div>
     </div>
+  );
+}
+
+export function ProjectLayout() {
+  return (
+    <UnsavedNavigationProvider>
+      <ProjectLayoutShell />
+    </UnsavedNavigationProvider>
   );
 }

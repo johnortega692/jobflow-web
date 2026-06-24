@@ -84,6 +84,37 @@ export function latestHistoryEntryForPackage(
   return best;
 }
 
+/** One row per submittal package — latest revision only. */
+export function latestHistoryEntryPerPackage(history: SubmittalHistoryEntry[]): SubmittalHistoryEntry[] {
+  const byNum = new Map<number, SubmittalHistoryEntry>();
+  for (const entry of history) {
+    const num = entry.submittal_number ?? 0;
+    const existing = byNum.get(num);
+    if (
+      !existing ||
+      normalizeRevisionNumber(entry.revision_number) > normalizeRevisionNumber(existing.revision_number)
+    ) {
+      byNum.set(num, entry);
+    }
+  }
+  return [...byNum.values()].sort((a, b) => {
+    const numDiff = (b.submittal_number ?? 0) - (a.submittal_number ?? 0);
+    if (numDiff !== 0) return numDiff;
+    return normalizeRevisionNumber(b.revision_number) - normalizeRevisionNumber(a.revision_number);
+  });
+}
+
+/** Best history row for PDF append: issued first, else latest revision. */
+export function resolveHistoryEntryForSheet(
+  history: SubmittalHistoryEntry[],
+  submittalNumber: number,
+): SubmittalHistoryEntry | undefined {
+  return (
+    latestIssuedHistoryEntryForPackage(history, submittalNumber) ??
+    latestHistoryEntryForPackage(history, submittalNumber)
+  );
+}
+
 type DraftRevisionCheck = {
   submittal_number: number;
   revision_number: number;

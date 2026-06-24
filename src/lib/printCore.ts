@@ -71,8 +71,8 @@ export function submittalDateSectionHtml(
   if (submittalNumber !== undefined && submittalNumber !== null && String(submittalNumber).trim() !== "") {
     parts.push(`Submittal No: ${esc(formatSubmittalNumberDisplay(submittalNumber))}`);
   }
-  if (submittalNumber !== undefined && submittalNumber !== null && String(submittalNumber).trim() !== "") {
-    parts.push(`Revision: ${esc(formatRevisionNumberDisplay(revisionNumber ?? 0))}`);
+  if (isSubmittalRevision(revisionNumber)) {
+    parts.push(`Revision: ${esc(formatRevisionNumberDisplay(revisionNumber))}`);
   }
   return parts.join("<br>");
 }

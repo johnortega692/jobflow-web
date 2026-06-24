@@ -133,3 +133,17 @@ function doPost_JobFlowExample(e) {
     })).setMimeType(ContentService.MimeType.JSON);
   }
 }
+
+
+// =============================================================================
+// BrushOuts merge handler — also in repo root brushouts_handler.js
+// JobFlow POST ?sheet=brushouts
+//   { job_number, paint_vendor, paint_items[], mode: "merge"|"replace" }
+// Merge updates same label+floor slot; new keys append to next color column.
+// Sheet supports up to BRUSHOUT_MAX_COLORS (25) per job.
+// =============================================================================
+
+var BRUSHOUT_MAX_COLORS = 25;
+
+// Paste handleBrushoutsData + helpers from ../brushouts_handler.js (same file as doPost).
+// After pasting, Deploy → Manage deployments → New version.

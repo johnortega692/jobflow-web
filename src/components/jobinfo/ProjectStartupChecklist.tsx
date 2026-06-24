@@ -6,11 +6,12 @@ import {
   type ProjectStartupAction,
   type ProjectStartupStepId,
 } from "../../config/projectStartupChecklist";
+import { BrushoutsSendModal } from "../paint/BrushoutsSendModal";
 import {
   copySheetsRowToClipboard,
   loadGoogleSheetsActionContext,
   runAddJobToFieldRequest,
-  runPushFieldRequestBrushOuts,
+  runPushFieldRequestBrushOutsSelected,
   type GoogleSheetsActionContext,
 } from "../../lib/googleSheetsProjectActions";
 import { parseProjectDataBlob, projectHasWallcovering } from "../../lib/jobInfo";
@@ -24,6 +25,8 @@ import {
   type StartupChecklistState,
 } from "../../lib/projectStartupChecklist";
 import { supabase } from "../../lib/supabase";
+import { normalizePaintSubmittal, parseProjectTradeData, type PaintSubmittalData } from "../../types/tradeDocuments";
+import type { Json } from "../../types/database";
 import { useAuth } from "../../contexts/AuthContext";
 import type { ProjectForm } from "../../types/database";
 
@@ -65,6 +68,9 @@ export function ProjectStartupChecklist({
   const [clipboardBusy, setClipboardBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [brushoutsSendOpen, setBrushoutsSendOpen] = useState(false);
+  const [brushoutsBusy, setBrushoutsBusy] = useState(false);
+  const [brushoutsPaint, setBrushoutsPaint] = useState<PaintSubmittalData | null>(null);
 
   const hasWallcovering = projectHasWallcovering(project.jobInfo);
   const progress = startupChecklistProgress(checklist, jobInfoComplete, project.jobInfo);
@@ -90,7 +96,7 @@ export function ProjectStartupChecklist({
         manualId: step.id,
         modulePath: "modulePath" in step ? step.modulePath : undefined,
         action: "action" in step ? step.action : undefined,
-        oneTime: "oneTime" in step ? step.oneTime : undefined,
+        oneTime: "oneTime" in step && step.oneTime === true ? true : undefined,
       });
     });
     return rows;
@@ -158,8 +164,68 @@ export function ProjectStartupChecklist({
     setSavingId(null);
   }
 
+  async function openBrushoutsPicker(step: StepperStep) {
+    if (!step.manualId || !sheetCtx) return;
+    setError(null);
+    setActionMessage(null);
+    try {
+      const { data, error: loadErr } = await supabase
+        .from("projects")
+        .select("data")
+        .eq("id", projectId)
+        .single();
+      if (loadErr) throw new Error(loadErr.message);
+      const blob = parseProjectDataBlob(data?.data);
+      const trade = parseProjectTradeData(blob as Json);
+      const paintSubmittal = normalizePaintSubmittal(trade.paint_submittal);
+      const hasColors = paintSubmittal.items.some((item) => item.color.trim());
+      if (!hasColors) {
+        setError("Add paint colors on the Paint tab before pushing brush-outs.");
+        return;
+      }
+      setBrushoutsPaint(paintSubmittal);
+      setBrushoutsSendOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load paint submittal.");
+    }
+  }
+
+  async function onBrushoutsConfirm(vendor: string, selectedIndices: number[]) {
+    if (!sheetCtx || !brushoutsPaint) return;
+    setBrushoutsBusy(true);
+    setError(null);
+    setActionMessage(null);
+    try {
+      const result = await runPushFieldRequestBrushOutsSelected(
+        project,
+        sheetCtx,
+        projectId,
+        vendor,
+        selectedIndices,
+      );
+      if (result.ok) {
+        setActionMessage(result.message);
+        const next = { ...checklist, brushouts_ordered: true };
+        setChecklist(next);
+        await persist(next);
+        setBrushoutsSendOpen(false);
+        setBrushoutsPaint(null);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "BrushOuts push failed.");
+    } finally {
+      setBrushoutsBusy(false);
+    }
+  }
+
   async function runSheetAction(step: StepperStep) {
     if (!step.manualId || !step.action || !sheetCtx) return;
+    if (step.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts) {
+      await openBrushoutsPicker(step);
+      return;
+    }
     setRunningAction(step.action);
     setActionMessage(null);
     setError(null);
@@ -167,9 +233,7 @@ export function ProjectStartupChecklist({
       const result =
         step.action === PROJECT_STARTUP_ACTIONS.field_request_job
           ? await runAddJobToFieldRequest(project, sheetCtx)
-          : step.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
-            ? await runPushFieldRequestBrushOuts(project, sheetCtx, projectId)
-            : { ok: false, message: "Unknown sheet action." };
+          : { ok: false, message: "Unknown sheet action." };
       if (result.ok) {
         setActionMessage(result.message);
         const next = { ...checklist, [step.manualId]: true };
@@ -198,7 +262,8 @@ export function ProjectStartupChecklist({
     if (step.oneTime && step.done) return;
 
     if (step.action) {
-      if (step.done) {
+      const canRepeatWhenDone = step.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts;
+      if (step.done && !canRepeatWhenDone) {
         void onToggle(step.manualId, false);
         return;
       }
@@ -224,9 +289,10 @@ export function ProjectStartupChecklist({
 
   const activeStep = steps.find((s) => s.key === activeKey) ?? steps.find((s) => !s.done) ?? steps[0];
   const activeBusy =
-    activeStep?.action && runningAction === activeStep.action
+    brushoutsBusy ||
+    (activeStep?.action && runningAction === activeStep.action
       ? true
-      : Boolean(activeStep?.manualId && savingId === activeStep.manualId);
+      : Boolean(activeStep?.manualId && savingId === activeStep.manualId));
 
   return (
     <section className="card job-startup-checklist" id="google-sheets">
@@ -254,8 +320,9 @@ export function ProjectStartupChecklist({
                 step.manualId &&
                   (loading ||
                     savingId === step.manualId ||
+                    brushoutsBusy ||
                     (step.action && runningAction === step.action) ||
-                    (step.action && !step.done && !sheetCtx)),
+                    (step.action && !sheetCtx)),
               )}
               onClick={() => onStepClick(step)}
             >
@@ -298,9 +365,11 @@ export function ProjectStartupChecklist({
               · Done
               {activeStep.oneTime
                 ? " · Locked — one-time step"
-                : activeStep.action
-                  ? " · Click to uncheck"
-                  : ""}
+                : activeStep.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
+                  ? " · Click to push again"
+                  : activeStep.action
+                    ? " · Click to uncheck"
+                    : ""}
             </span>
           ) : activeStep.auto ? (
             <>
@@ -313,7 +382,10 @@ export function ProjectStartupChecklist({
           ) : activeStep.action ? (
             <>
               {" "}
-              · Click to run
+              · Click to{" "}
+              {activeStep.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
+                ? "push brush-outs"
+                : "run"}
               {activeBusy ? "…" : ""}
               {!sheetCtx && !loading ? (
                 <>
@@ -332,7 +404,9 @@ export function ProjectStartupChecklist({
                     to={`/projects/${projectId}/${activeStep.modulePath}`}
                     className="job-startup-detail-link"
                   >
-                    Open {activeStep.modulePath} tab
+                    {activeStep.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
+                      ? "Add colors on Paint tab"
+                      : `Open ${activeStep.modulePath} tab`}
                   </Link>
                 </>
               ) : null}
@@ -364,6 +438,22 @@ export function ProjectStartupChecklist({
         </button>
         <span className="muted small">Backup — tab-separated job row from job info</span>
       </div>
+
+      {brushoutsSendOpen && brushoutsPaint && sheetCtx && (
+        <BrushoutsSendModal
+          items={brushoutsPaint.items}
+          pushed={brushoutsPaint.brushout_pushed}
+          initialVendor={brushoutsPaint.paint_vendor ?? sheetCtx.paintVendor}
+          busy={brushoutsBusy}
+          onConfirm={(vendor, indices) => void onBrushoutsConfirm(vendor, indices)}
+          onClose={() => {
+            if (!brushoutsBusy) {
+              setBrushoutsSendOpen(false);
+              setBrushoutsPaint(null);
+            }
+          }}
+        />
+      )}
     </section>
   );
 }

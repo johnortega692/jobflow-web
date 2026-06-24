@@ -1,25 +1,33 @@
 type Props = {
-  tabLabel: string;
+  targetLabel: string;
   saving?: boolean;
+  stayHint?: string;
   onSave: () => void;
   onDiscard: () => void;
   onCancel: () => void;
 };
 
-export function UnsavedChangesDialog({ tabLabel, saving = false, onSave, onDiscard, onCancel }: Props) {
+export function UnsavedChangesDialog({
+  targetLabel,
+  saving = false,
+  stayHint = "stay on this page",
+  onSave,
+  onDiscard,
+  onCancel,
+}: Props) {
   return (
     <div className="modal-backdrop" role="presentation" onClick={onCancel}>
       <div
         className="modal card stack settings-unsaved-dialog"
         role="alertdialog"
-        aria-labelledby="settings-unsaved-title"
-        aria-describedby="settings-unsaved-desc"
+        aria-labelledby="unsaved-changes-title"
+        aria-describedby="unsaved-changes-desc"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id="settings-unsaved-title">Unsaved changes</h3>
-        <p id="settings-unsaved-desc" className="muted small">
-          You edited <strong>{tabLabel}</strong> but haven&apos;t saved. Save your changes, discard
-          them, or stay on this tab.
+        <h3 id="unsaved-changes-title">Unsaved changes</h3>
+        <p id="unsaved-changes-desc" className="muted small">
+          You edited <strong>{targetLabel}</strong> but haven&apos;t saved. Save your changes, discard
+          them, or {stayHint}.
         </p>
         <div className="row-gap wrap">
           <button type="button" className="btn btn-primary" disabled={saving} onClick={onSave}>

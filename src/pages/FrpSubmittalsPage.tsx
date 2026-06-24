@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { FrpAddTrimModal } from "../components/frp/FrpAddTrimModal";
 import { FrpItemRow } from "../components/frp/FrpItemRow";
@@ -7,6 +7,7 @@ import { DateInput } from "../components/DateInput";
 import { RevisionNoteField } from "../components/submittals/RevisionNoteField";
 import { SubmittalIssueStatusSelect } from "../components/submittals/SubmittalIssueStatusSelect";
 import { SubmittalPackageTypeSelect } from "../components/submittals/SubmittalPackageTypeSelect";
+import { SubmittalRevisionField } from "../components/submittals/SubmittalRevisionField";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import type { FrpCatalog } from "../lib/frpCatalog";
 import { loadFrpCatalog } from "../lib/frpCatalog";
@@ -30,6 +31,8 @@ import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { queuePendingItem } from "../lib/transmittalHelpers";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
+import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
+import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext";
 import type { ProjectForm } from "../types/database";
 import {
   defaultFrpSubmittal,
@@ -69,12 +72,50 @@ export function FrpSubmittalsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
+  const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
+  const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
+
+  const persist = useCallback(
+    async (nextDraft: FrpSubmittalData, nextHistory = history) => {
+      const ok = await save({
+        ...tradeData,
+        frp_submittal: nextDraft,
+        frp_submittal_history: nextHistory,
+      });
+      if (ok) {
+        setDraft(nextDraft);
+        setHistory(nextHistory);
+        syncBaseline({ draft: nextDraft, history: nextHistory });
+        setError(null);
+      }
+      return ok;
+    },
+    [history, tradeData, save, setError, syncBaseline],
+  );
+
+  const onDiscardUnsaved = useCallback(() => {
+    const baseline = readBaseline();
+    if (!baseline) return;
+    setDraft(baseline.draft);
+    setHistory(baseline.history);
+  }, [readBaseline]);
+
+  useUnsavedNavigationGuard({
+    sectionLabel: "FRP submittals",
+    isDirty,
+    onSave: () => persist(draft, history),
+    onDiscard: onDiscardUnsaved,
+  });
+
   useEffect(() => {
     if (!loading) {
-      setDraft(normalizeFrpSubmittal(tradeData.frp_submittal));
-      setHistory(tradeData.frp_submittal_history ?? []);
+      const d = normalizeFrpSubmittal(tradeData.frp_submittal);
+      const h = tradeData.frp_submittal_history ?? [];
+      setDraft(d);
+      setHistory(h);
+      syncBaseline({ draft: d, history: h });
     }
-  }, [loading, tradeData.frp_submittal, tradeData.frp_submittal_history]);
+  }, [loading, tradeData.frp_submittal, tradeData.frp_submittal_history, syncBaseline]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,20 +138,6 @@ export function FrpSubmittalsPage() {
   const frpPrint = useMemo(() => frpPrintInfo(project, project.jobInfo), [project]);
   const frpNum = frpJobNumber(project);
   const frpName = frpJobName(project);
-
-  async function persist(nextDraft: FrpSubmittalData, nextHistory = history) {
-    const ok = await save({
-      ...tradeData,
-      frp_submittal: nextDraft,
-      frp_submittal_history: nextHistory,
-    });
-    if (ok) {
-      setDraft(nextDraft);
-      setHistory(nextHistory);
-      setError(null);
-    }
-    return ok;
-  }
 
   function updateDraft(updater: (d: FrpSubmittalData) => FrpSubmittalData) {
     setDraft((current) => {
@@ -289,17 +316,23 @@ export function FrpSubmittalsPage() {
           )}
         </div>
         <div className="row-gap wrap">
-          <button type="button" className="btn btn-secondary" onClick={onNewSubmittalPackage}>
+          <button
+            type="button"
+            className="btn btn-outline-accent"
+            title="Assign the next submittal number (Rev 0, draft). Does not lock or issue."
+            onClick={onNewSubmittalPackage}
+          >
             New submittal package
           </button>
           {!draftLocked && (
-            <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onIssueSubmittal()}>
+            <button
+              type="button"
+              className="btn btn-success"
+              disabled={saving}
+              title="Lock this revision in history as issued"
+              onClick={() => void onIssueSubmittal()}
+            >
               Issue submittal
-            </button>
-          )}
-          {draftLocked && (
-            <button type="button" className="btn btn-secondary" onClick={onCreateRevision}>
-              Create next revision
             </button>
           )}
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
@@ -337,10 +370,11 @@ export function FrpSubmittalsPage() {
               onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
             />
           </label>
-          <label>
-            Revision
-            <input type="number" min={0} value={draft.revision_number} readOnly />
-          </label>
+          <SubmittalRevisionField
+            revisionNumber={draft.revision_number}
+            locked={draftLocked}
+            onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
+          />
           <label>
             Date
             <DateInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })} />

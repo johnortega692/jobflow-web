@@ -101,10 +101,7 @@ export function PaintImageImport({ onImported, layout = "stack" }: Props) {
         aria-label="Import paint schedule — paste a screenshot or select an image"
       >
         <div className={layout === "row" ? "ai-import-row-main" : undefined}>
-          <div>
-            <h3>Import Paint Schedule</h3>
-            <p className="muted small">Paste a screenshot or select an image. You&apos;ll review before adding.</p>
-          </div>
+          <h3>Import Paint Schedule</h3>
 
           <div className="row-gap ai-import-actions">
             <input

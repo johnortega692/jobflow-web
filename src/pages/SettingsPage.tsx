@@ -7,7 +7,7 @@ import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalog
 import { PaintEmailSettingsSection } from "../components/settings/PaintEmailSettingsSection";
 import { PdfFieldRow } from "../components/settings/PdfFieldRow";
 import type { SettingsSectionActions } from "../components/settings/settingsSectionTypes";
-import { UnsavedChangesDialog } from "../components/settings/UnsavedChangesDialog";
+import { UnsavedChangesDialog } from "../components/UnsavedChangesDialog";
 import { UserApprovalsSettingsSection } from "../components/settings/UserApprovalsSettingsSection";
 import { VendorArchitectSettingsSection } from "../components/settings/VendorArchitectSettingsSection";
 import { WorkOrderSettingsSection } from "../components/settings/WorkOrderSettingsSection";
@@ -628,7 +628,8 @@ export function SettingsPage() {
 
       {pendingLeave && (
         <UnsavedChangesDialog
-          tabLabel={tabLabel(activeTab)}
+          targetLabel={tabLabel(activeTab)}
+          stayHint="stay on this tab"
           saving={dialogSaving}
           onSave={() => void onDialogSave()}
           onDiscard={onDialogDiscard}

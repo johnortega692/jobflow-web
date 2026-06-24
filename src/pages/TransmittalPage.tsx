@@ -6,6 +6,7 @@ import { EmailVendorModal } from "../components/paint/EmailVendorModal";
 import { DateInput } from "../components/DateInput";
 import { TransmittalEnclosureRow } from "../components/transmittal/TransmittalEnclosureRow";
 import { TransmittalHistoryPickerModal } from "../components/transmittal/TransmittalHistoryPickerModal";
+import { TransmittalSentHistoryModal, transmittalFromHistoryEntry } from "../components/transmittal/TransmittalSentHistoryModal";
 import { TransmittalSheetPickerModal } from "../components/transmittal/TransmittalSheetPickerModal";
 import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { useLetterhead } from "../contexts/LetterheadContext";
@@ -31,6 +32,15 @@ import {
 import { remarkTemplateGroups } from "../lib/transmittalRemarks";
 import { downloadTransmittal } from "../lib/transmittalPrint";
 import {
+  defaultFrpSubmittalNum,
+  defaultPaintSubmittalNum,
+  defaultWallcoveringSubmittalNum,
+} from "../lib/transmittalCombine";
+import {
+  addTransmittalHistoryEntry,
+  buildTransmittalHistoryEntry,
+} from "../lib/transmittalSendHistory";
+import {
   addItemsFromPaintHistory,
   addItemsFromWallcoveringHistory,
   appendPendingToEnclosures,
@@ -44,6 +54,8 @@ import {
   removePendingItems,
 } from "../lib/transmittalHelpers";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
+import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
+import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext";
 import type { AtticStockCustomItem, AtticStockPaintItem } from "../lib/paintVendorEmail";
 import {
   type PaintItem,
@@ -88,6 +100,7 @@ export function TransmittalPage() {
   const [pendingSelected, setPendingSelected] = useState<number[]>([]);
   const [customLineOpen, setCustomLineOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sentHistoryOpen, setSentHistoryOpen] = useState(false);
   const [sheetPicker, setSheetPicker] = useState<"paint" | "wallcovering" | "frp" | null>(null);
   const [emailRelayOpen, setEmailRelayOpen] = useState(false);
   const [atticStockOpen, setAtticStockOpen] = useState(false);
@@ -116,15 +129,50 @@ export function TransmittalPage() {
     [transmittalJob.job_name, transmittalJob.job_number, draft.transmittal_number],
   );
 
-  const reloadDraft = useCallback(() => {
+  const buildDraftFromTradeData = useCallback(() => {
     const base = normalizeTransmittal(tradeData.transmittal);
     const withProfile = applyTransmittalProfileDefaults(base, profile, branding);
     const withJobInfo = applyJobInfoToTransmittal(withProfile, project.contractor, project.jobInfo);
-    setDraft({
+    return {
       ...withJobInfo,
       contract: coerceTransmittalContract(project, withJobInfo.contract),
-    });
-  }, [tradeData.transmittal, profile, branding, project.contractor, project.jobInfo, project]);
+    };
+  }, [tradeData.transmittal, profile, branding, project]);
+
+  const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(draft, !loading);
+
+  const persistTransmittal = useCallback(
+    async (next: TransmittalData) => {
+      setDraft(next);
+      const ok = await save({ ...tradeData, transmittal: next });
+      if (ok) {
+        syncBaseline(next);
+        setError(null);
+        return true;
+      }
+      return false;
+    },
+    [tradeData, save, syncBaseline, setError],
+  );
+
+  const reloadDraft = useCallback(() => {
+    const next = buildDraftFromTradeData();
+    setDraft(next);
+    syncBaseline(next);
+  }, [buildDraftFromTradeData, syncBaseline]);
+
+  const onDiscardUnsaved = useCallback(() => {
+    const baseline = readBaseline();
+    if (!baseline) return;
+    setDraft(baseline);
+  }, [readBaseline]);
+
+  useUnsavedNavigationGuard({
+    sectionLabel: "Transmittal",
+    isDirty,
+    onSave: () => persistTransmittal(draft),
+    onDiscard: onDiscardUnsaved,
+  });
 
   useEffect(() => {
     if (!loading) reloadDraft();
@@ -135,18 +183,47 @@ export function TransmittalPage() {
     void loadPaintUserSettings(user.id).then(setUserSettings);
   }, [user?.id]);
 
-  async function persistTransmittal(next: TransmittalData) {
-    setDraft(next);
-    const ok = await save({ ...tradeData, transmittal: next });
-    if (ok) {
-      setError(null);
-      return true;
-    }
-    return false;
-  }
-
   function patch(patch: Partial<TransmittalData>) {
     setDraft((d) => ({ ...d, ...patch }));
+  }
+
+  function patchIncludePaintSheet(checked: boolean) {
+    const next: Partial<TransmittalData> = { include_paint_sheet: checked };
+    if (checked && !draft.paint_submittal_nums.length) {
+      const num = defaultPaintSubmittalNum(tradeData);
+      if (num) next.paint_submittal_nums = [num];
+    }
+    patch(next);
+  }
+
+  function patchIncludeWcSheet(checked: boolean) {
+    const next: Partial<TransmittalData> = { include_wc_sheet: checked };
+    if (checked && !draft.wc_submittal_nums.length) {
+      const num = defaultWallcoveringSubmittalNum(tradeData);
+      if (num) next.wc_submittal_nums = [num];
+    }
+    patch(next);
+  }
+
+  function patchIncludeFrpSheet(checked: boolean) {
+    const next: Partial<TransmittalData> = { include_frp_sheet: checked };
+    if (checked && !draft.frp_submittal_nums.length) {
+      const num = defaultFrpSubmittalNum(tradeData);
+      if (num) next.frp_submittal_nums = [num];
+    }
+    patch(next);
+  }
+
+  function patchCombineEnclosures(checked: boolean) {
+    const next: Partial<TransmittalData> = { combine_enclosures: checked };
+    if (checked && !draft.include_paint_sheet && defaultPaintSubmittalNum(tradeData)) {
+      next.include_paint_sheet = true;
+      if (!draft.paint_submittal_nums.length) {
+        const num = defaultPaintSubmittalNum(tradeData);
+        if (num) next.paint_submittal_nums = [num];
+      }
+    }
+    patch(next);
   }
 
   function patchEnclosure(index: number, rowPatch: Partial<TransmittalEnclosure>) {
@@ -239,12 +316,30 @@ export function TransmittalPage() {
     );
     const nextQueue = (draft.pending_submittal_queue ?? []).filter((p) => !consumedPending.has(p.id));
     const nextNumber = nextTransmittalNumber(draft.transmittal_number);
+    const historyEntry = buildTransmittalHistoryEntry(
+      draft,
+      transmittalJob.job_number,
+      transmittalJob.job_name,
+      pdfResult,
+    );
+    const nextTransmittalHistory = addTransmittalHistoryEntry(
+      tradeData.transmittal_history ?? [],
+      historyEntry,
+    );
     const nextDraft: TransmittalData = {
       ...draft,
       transmittal_number: nextNumber,
       pending_submittal_queue: nextQueue,
     };
-    await persistTransmittal(nextDraft);
+    const okAfter = await save({
+      ...tradeData,
+      transmittal: nextDraft,
+      transmittal_history: nextTransmittalHistory,
+    });
+    if (okAfter) {
+      setDraft(nextDraft);
+      syncBaseline(nextDraft);
+    }
 
     const parts = [`Transmittal downloaded as ${outputFilename}.`];
     if (pdfResult.combined) {
@@ -254,11 +349,11 @@ export function TransmittalPage() {
     }
     if (pdfResult.missing.length) {
       parts.push(pdfResult.missing.join(" "));
-    }
-    if (pdfResult.enclosureMergeSkipped) {
-      parts.push(
-        "Enclosure PDF merge is not available in the browser yet — attach SDS/TDS files separately if needed.",
-      );
+    } else if (
+      (draft.include_paint_sheet || draft.include_wc_sheet || draft.include_frp_sheet) &&
+      !pdfResult.combined
+    ) {
+      parts.push("No trade submittal sheets were appended — check Include sheet options and Paint tab data.");
     }
     if (stamped) parts.push(`Stamped ${stamped} submittal log row(s) as Submitted.`);
     else if (logIds.length === 0) {
@@ -320,6 +415,7 @@ export function TransmittalPage() {
   const paintHistory = tradeData.paint_submittal_history ?? [];
   const wcHistory = tradeData.wallcovering_submittal_history ?? [];
   const frpHistory = tradeData.frp_submittal_history ?? [];
+  const transmittalHistory = tradeData.transmittal_history ?? [];
 
   return (
     <div className="stack transmittal-page">
@@ -358,13 +454,21 @@ export function TransmittalPage() {
           <button type="button" className="btn btn-secondary" onClick={onOrderAtticStock}>
             Order Attic Stock
           </button>
+          <button type="button" className="btn btn-secondary" onClick={() => setSentHistoryOpen(true)}>
+            Transmittal history{transmittalHistory.length ? ` (${transmittalHistory.length})` : ""}
+          </button>
         </div>
+        <p className="muted small">
+          Check <strong>Include Paint sheet</strong> and <strong>Combine into one PDF</strong> to merge the
+          transmittal cover with the paint submittal table. Issued history is used when available; otherwise
+          the current Paint tab draft is included.
+        </p>
         <div className="transmittal-sheet-row row-gap wrap">
           <label className="check">
             <input
               type="checkbox"
               checked={draft.include_paint_sheet}
-              onChange={(e) => patch({ include_paint_sheet: e.target.checked })}
+              onChange={(e) => patchIncludePaintSheet(e.target.checked)}
             />
             Include Paint sheet
           </label>
@@ -376,7 +480,7 @@ export function TransmittalPage() {
             <input
               type="checkbox"
               checked={draft.include_wc_sheet}
-              onChange={(e) => patch({ include_wc_sheet: e.target.checked })}
+              onChange={(e) => patchIncludeWcSheet(e.target.checked)}
             />
             Include Wallcovering sheet
           </label>
@@ -388,7 +492,7 @@ export function TransmittalPage() {
             <input
               type="checkbox"
               checked={draft.include_frp_sheet}
-              onChange={(e) => patch({ include_frp_sheet: e.target.checked })}
+              onChange={(e) => patchIncludeFrpSheet(e.target.checked)}
             />
             Include FRP sheet
           </label>
@@ -400,7 +504,7 @@ export function TransmittalPage() {
             <input
               type="checkbox"
               checked={draft.combine_enclosures}
-              onChange={(e) => patch({ combine_enclosures: e.target.checked })}
+              onChange={(e) => patchCombineEnclosures(e.target.checked)}
             />
             Combine into one PDF
           </label>
@@ -441,7 +545,7 @@ export function TransmittalPage() {
                 Date:
                 <DateInput value={draft.date} onChange={(v) => patch({ date: v })} />
               </label>
-              <label>
+              <label className="transmittal-meta-job-number">
                 Job #:
                 <input value={transmittalJob.job_number} readOnly className="readonly" />
               </label>
@@ -788,6 +892,19 @@ export function TransmittalPage() {
             setStatus(`Loaded wallcovering submittal #${entry.submittal_number} into enclosures.`);
           }}
           onClose={() => setHistoryOpen(false)}
+        />
+      )}
+
+      {sentHistoryOpen && (
+        <TransmittalSentHistoryModal
+          history={transmittalHistory}
+          onLoadSnapshot={(entry) => {
+            const loaded = transmittalFromHistoryEntry(entry);
+            setDraft(loaded);
+            setSentHistoryOpen(false);
+            setStatus(`Loaded transmittal ${entry.transmittal_number} into draft. Save to keep changes.`);
+          }}
+          onClose={() => setSentHistoryOpen(false)}
         />
       )}
 

@@ -22,11 +22,10 @@ export const PROJECT_STARTUP_STEPS = [
   },
   {
     id: "brushouts_ordered",
-    label: "Push BO approved to Field Request",
-    shortLabel: "BO Approved",
+    label: "Push approved brush-outs to Field Request",
+    shortLabel: "Brush outs",
     action: PROJECT_STARTUP_ACTIONS.field_request_brushouts,
     modulePath: "paint",
-    oneTime: true,
   },
   {
     id: "field_has_hours",

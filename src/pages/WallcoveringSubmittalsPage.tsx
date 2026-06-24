@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { CreateRevisedSubmittalModal } from "../components/submittals/CreateRevisedSubmittalModal";
+import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { RevisionNoteField } from "../components/submittals/RevisionNoteField";
 import { SubmittalPackageTypeSelect } from "../components/submittals/SubmittalPackageTypeSelect";
+import { SubmittalRevisionField } from "../components/submittals/SubmittalRevisionField";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { DateInput } from "../components/DateInput";
 import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal";
@@ -29,6 +30,8 @@ import {
 import { downloadWallcoveringSubmittal } from "../lib/wallcoveringSubmittalPrint";
 import { wallcoveringSubmittalFilename } from "../lib/pdfFilenames";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
+import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
+import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext";
 import type { ProjectForm } from "../types/database";
 import {
   defaultTransmittal,
@@ -71,37 +74,59 @@ export function WallcoveringSubmittalsPage() {
   const [draft, setDraft] = useState<WallcoveringSubmittalData>(defaultWallcoveringSubmittal());
   const [history, setHistory] = useState<SubmittalHistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [revisedOpen, setRevisedOpen] = useState(false);
+  const [startRevisionOpen, setStartRevisionOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [trackerBusy, setTrackerBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
+  const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
+  const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
+
+  const persist = useCallback(
+    async (nextDraft: WallcoveringSubmittalData, nextHistory = history) => {
+      const ok = await save({
+        ...tradeData,
+        wallcovering_submittal: nextDraft,
+        wallcovering_submittal_history: nextHistory,
+      });
+      if (ok) {
+        setDraft(nextDraft);
+        setHistory(nextHistory);
+        syncBaseline({ draft: nextDraft, history: nextHistory });
+        setError(null);
+      }
+      return ok;
+    },
+    [history, tradeData, save, setError, syncBaseline],
+  );
+
+  const onDiscardUnsaved = useCallback(() => {
+    const baseline = readBaseline();
+    if (!baseline) return;
+    setDraft(baseline.draft);
+    setHistory(baseline.history);
+  }, [readBaseline]);
+
+  useUnsavedNavigationGuard({
+    sectionLabel: "Wallcovering submittals",
+    isDirty,
+    onSave: () => persist(draft, history),
+    onDiscard: onDiscardUnsaved,
+  });
+
   useEffect(() => {
     if (!loading) {
-      setDraft(
-        normalizeWcDraft(tradeData.wallcovering_submittal ?? defaultWallcoveringSubmittal()),
-      );
-      setHistory(tradeData.wallcovering_submittal_history ?? []);
+      const d = normalizeWcDraft(tradeData.wallcovering_submittal ?? defaultWallcoveringSubmittal());
+      const h = tradeData.wallcovering_submittal_history ?? [];
+      setDraft(d);
+      setHistory(h);
+      syncBaseline({ draft: d, history: h });
     }
-  }, [loading, tradeData.wallcovering_submittal, tradeData.wallcovering_submittal_history]);
+  }, [loading, tradeData.wallcovering_submittal, tradeData.wallcovering_submittal_history, syncBaseline]);
 
   const showPreviousColor = draft.submittal_type === "substitution";
   const wcPrint = useMemo(() => wcPrintInfo(project, project.jobInfo), [project]);
   const draftLocked = submittalDraftIsLocked(draft);
-
-  async function persist(nextDraft: WallcoveringSubmittalData, nextHistory = history) {
-    const ok = await save({
-      ...tradeData,
-      wallcovering_submittal: nextDraft,
-      wallcovering_submittal_history: nextHistory,
-    });
-    if (ok) {
-      setDraft(nextDraft);
-      setHistory(nextHistory);
-      setError(null);
-    }
-    return ok;
-  }
 
   function updateDraft(updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) {
     setDraft((current) => {
@@ -314,20 +339,26 @@ export function WallcoveringSubmittalsPage() {
           </p>
         </div>
         <div className="row-gap wrap">
-          <button type="button" className="btn btn-secondary" onClick={() => setRevisedOpen(true)}>
-            Revision from history…
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={onNewSubmittalPackage}>
+          <button
+            type="button"
+            className="btn btn-outline-accent"
+            title="Assign the next submittal number (Rev 0, draft). Does not lock or issue."
+            onClick={onNewSubmittalPackage}
+          >
             New submittal package
           </button>
+          <button type="button" className="btn btn-secondary" onClick={() => setStartRevisionOpen(true)}>
+            Start revision from…
+          </button>
           {!draftLocked && (
-            <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onIssueSubmittal()}>
+            <button
+              type="button"
+              className="btn btn-success"
+              disabled={saving}
+              title="Lock this revision in history as issued"
+              onClick={() => void onIssueSubmittal()}
+            >
               Issue submittal
-            </button>
-          )}
-          {draftLocked && (
-            <button type="button" className="btn btn-secondary" onClick={onCreateRevision}>
-              Create next revision
             </button>
           )}
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
@@ -381,10 +412,11 @@ export function WallcoveringSubmittalsPage() {
               onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
             />
           </label>
-          <label>
-            Revision
-            <input type="number" min={0} value={draft.revision_number} readOnly />
-          </label>
+          <SubmittalRevisionField
+            revisionNumber={draft.revision_number}
+            locked={draftLocked}
+            onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
+          />
           <label>
             Type
             <select
@@ -524,24 +556,19 @@ export function WallcoveringSubmittalsPage() {
         />
       )}
 
-      {revisedOpen && (
-        <CreateRevisedSubmittalModal
+      {startRevisionOpen && (
+        <StartRevisionFromHistoryModal
           scope="wallcovering"
-          projectId={projectId}
-          project={{
-            job_number: project.job_number,
-            job_name: project.job_name,
-            job_address: project.job_address ?? "",
-            job_address2: project.job_address2 ?? "",
-            jobInfo: project.jobInfo,
-          }}
           history={history}
-          branding={branding}
-          onClose={() => setRevisedOpen(false)}
-          onCreated={({ draft: revisedDraft, history: nextHistory }) => {
-            void persist(normalizeWcDraft(revisedDraft as WallcoveringSubmittalData), nextHistory);
-            setRevisedOpen(false);
-            setStatus(`Revised submittal #${revisedDraft.submittal_number} saved.`);
+          currentDraft={draft}
+          onClose={() => setStartRevisionOpen(false)}
+          onStart={(revisedDraft) => {
+            const next = normalizeWcDraft(revisedDraft as WallcoveringSubmittalData);
+            setDraft(next);
+            setStartRevisionOpen(false);
+            setStatus(
+              `Editing Submittal #${String(next.submittal_number).padStart(3, "0")} Rev ${next.revision_number} (draft). Save or issue when ready.`,
+            );
           }}
         />
       )}

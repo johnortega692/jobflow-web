@@ -101,7 +101,9 @@ export async function buildTradeSubmittalPdfBytes(
   if (date.trim()) dateLines.push(`Date: ${date.trim()}`);
   if (submittalNumber !== undefined && submittalNumber !== null && String(submittalNumber).trim() !== "") {
     dateLines.push(`Submittal No: ${formatSubmittalNumberDisplay(submittalNumber)}`);
-    dateLines.push(`Revision: ${formatRevisionNumberDisplay(revisionNumber ?? 0)}`);
+    if (isSubmittalRevision(revisionNumber)) {
+      dateLines.push(`Revision: ${formatRevisionNumberDisplay(revisionNumber)}`);
+    }
   }
   for (const line of dateLines) {
     page.drawText(line, { x: PDF_MARGIN_X, y: y - detailFontSize, size: detailFontSize, font, color: TEXT });

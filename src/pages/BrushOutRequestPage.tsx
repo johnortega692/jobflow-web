@@ -397,6 +397,7 @@ export function BrushOutRequestPage() {
               sheenOptions={sheens}
               colors={colors}
               showPreviousColor={false}
+              showFloor
               onChange={(patch) => patchItem(index, patch)}
               onMoveUp={() => setDraft((d) => ({ ...d, items: moveItem(d.items, index, index - 1) }))}
               onMoveDown={() => setDraft((d) => ({ ...d, items: moveItem(d.items, index, index + 1) }))}

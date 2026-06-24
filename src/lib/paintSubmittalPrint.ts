@@ -122,14 +122,15 @@ export function buildPaintSubmittalSections(
   data: PaintSubmittalData,
 ): SubmittalPdfFloorSection[] {
   const isSub = data.submittal_type === "substitution";
-  const groups = groupByFloor(data.items.filter((i) => i.color.trim() || i.label.trim()));
-  return groups.map(([floor, items]) => ({
-    floorLabel: floor || undefined,
+  const items = data.items.filter((i) => i.color.trim() || i.label.trim());
+  const groups = data.show_floor === true ? groupByFloor(items) : ([["", items]] as [string, PaintItem[]][]);
+  return groups.map(([floor, floorItems]) => ({
+    floorLabel: data.show_floor === true && floor ? floor : undefined,
     columns: isSub
       ? ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"]
       : ["#", "Color", "Product", "Sheen", "Label"],
     colWeights: isSub ? [0.05, 0.1, 0.22, 0.22, 0.22, 0.19] : [0.05, 0.25, 0.25, 0.25, 0.2],
-    rows: items.map((item, i) => {
+    rows: floorItems.map((item, i) => {
       const displayColor = paintColorForPrint(item.manufacturer, item.color);
       if (isSub) {
         return [
@@ -184,15 +185,17 @@ export function buildPaintSubmittalHtml(
   saveFilename?: string,
 ): string {
   const isSub = data.submittal_type === "substitution";
-  const groups = groupByFloor(data.items.filter((i) => i.color.trim() || i.label.trim()));
+  const items = data.items.filter((i) => i.color.trim() || i.label.trim());
+  const groups =
+    data.show_floor === true ? groupByFloor(items) : ([["", items]] as [string, PaintItem[]][]);
   const bodyTables =
     groups.length === 0
       ? `<div style="text-align:center;color:#999;font-style:italic;padding:30px;">No paint items.</div>`
       : groups
           .map(
-            ([floor, items]) => `
-      ${floor ? `<div class="floor-section-title">${esc(floor.toUpperCase())}</div>` : ""}
-      <table><thead>${paintTableHead(isSub)}</thead><tbody>${paintTableRows(items, isSub)}</tbody></table>`,
+            ([floor, floorItems]) => `
+      ${data.show_floor === true && floor ? `<div class="floor-section-title">${esc(floor.toUpperCase())}</div>` : ""}
+      <table><thead>${paintTableHead(isSub)}</thead><tbody>${paintTableRows(floorItems, isSub)}</tbody></table>`,
           )
           .join("");
 

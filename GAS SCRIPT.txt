@@ -1,0 +1,3212 @@
+// =============================================================================
+// Ironwood Field Request Order — Apps Script
+// =============================================================================
+// WEB APP (doGet):
+//   Default URL              → Material order form
+//   ?view=dashboard          → Order dashboard
+//   ?view=brushout           → Brush-out manager page
+//   ?action=getStaffLists    → JobFlow PM/Super JSON (does not affect the form)
+//
+// FORM SUBMISSIONS use google.script.run (submitForm, submitWallcoveringForm, …)
+// — they do NOT go through doPost.
+//
+// EXTERNAL POST (doPost) — JobFlow / desktop only:
+//   ?action=upsertJob        → Jobs sheet
+//   ?sheet=brushouts         → BrushOuts merge
+// =============================================================================
+
+/** Max brush-out color columns per job (sheet headers expand as needed). */
+var BRUSHOUT_MAX_COLORS = 25;
+
+function doGet(e) {
+  var params = (e && e.parameter) ? e.parameter : {};
+
+  // JobFlow job setup — PM / Super dropdowns (JSON response, not HTML)
+  if (params.action === 'getStaffLists') {
+    return getFieldRequestStaffLists_();
+  }
+
+  // Check if a specific view is requested
+  var view = params.view || 'form'; // Default to form view
+  
+  if (view === 'dashboard') {
+    return HtmlService.createHtmlOutputFromFile('Dashboard')
+      .setTitle('Material Order Dashboard')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  } else if (view === 'brushout') {
+    // NEW: Add brushout form as a web app view
+    return HtmlService.createHtmlOutputFromFile('BrushoutForm')
+      .setTitle('Brushout Colors Manager')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  } else {
+    // Your existing form rendering code
+    return HtmlService.createHtmlOutputFromFile('Form')
+      .setTitle('Ironwood Commercial Builders - Field Request Order')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+}
+
+// ============================================================
+// SETTINGS HELPER
+// Reads key-value pairs from the Settings sheet
+// ============================================================
+ 
+function getSetting(key) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Settings');
+  if (!sheet) throw new Error('Settings sheet not found. Please create a Settings sheet.');
+ 
+  var data = sheet.getRange('A2:B20').getValues();
+  for (var i = 0; i < data.length; i++) {
+    var rowKey = data[i][0] ? data[i][0].toString().trim() : '';
+    if (rowKey === key) {
+      return data[i][1] ? data[i][1].toString().trim() : '';
+    }
+  }
+  throw new Error('Setting not found: ' + key);
+}
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Data Cleanup')
+    .addItem('Preview Issues', 'previewCleanup')
+    .addItem('Migrate Jobs to 5 Columns', 'migrateJobsToFiveColumns')
+    .addItem('Clean Job Numbers & Names', 'cleanupJobsPMsAndSupers')
+    .addSeparator()
+    .addItem('Add Brushout Colors', 'openBrushoutForm')
+    .addItem('Import Brushouts from Excel', 'openBrushoutImport')
+    .addSeparator()
+    .addItem('Setup / Initialize Sheets', 'initializeAllSheets')
+    .addToUi();
+
+  // Auto-create POs sheet if missing
+  initializePOsSheet();
+}
+
+function initializePOsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName('POs')) {
+    var poSheet = ss.insertSheet('POs');
+    poSheet.appendRow([
+      'PO Number', 'Job Code', 'Job Name', 'Vendor',
+      'Date Issued', 'PM', 'Super', 'Order Type', 'Items Summary'
+    ]);
+    var headerRange = poSheet.getRange(1, 1, 1, 9);
+    headerRange.setBackground('#1a3a5c');
+    headerRange.setFontColor('#ffffff');
+    headerRange.setFontWeight('bold');
+    poSheet.setFrozenRows(1);
+    poSheet.setColumnWidth(1, 120);
+    poSheet.setColumnWidth(2, 80);
+    poSheet.setColumnWidth(3, 180);
+    poSheet.setColumnWidth(4, 150);
+    poSheet.setColumnWidth(5, 110);
+    poSheet.setColumnWidth(6, 120);
+    poSheet.setColumnWidth(7, 120);
+    poSheet.setColumnWidth(8, 120);
+    poSheet.setColumnWidth(9, 300);
+    Logger.log('POs sheet created');
+  }
+}
+
+function initializeAllSheets() {
+  // Settings
+  if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Settings')) {
+    setupSettingsSheet();
+  }
+
+  // POs
+  initializePOsSheet();
+
+  // Submission sheets
+  ensureSheetExists("Submissions", [
+    "Job Code", "Job Name", "Site Contact", "Notes", "Vendor",
+    "PM", "Super", "Foreman", "Date", "Paint", "Sundries", "Additional", "PO Number"
+  ]);
+  ensureSheetExists("WallcoveringSubmissions", [
+    "Job Code", "Job Name", "Site Contact", "Notes", "Date",
+    "Wallcovering Items", "PM", "Super", "PM Email", "Super Email", "Status"
+  ]);
+  ensureSheetExists("RentalSubmissions", [
+    "Job Code", "Job Name", "Site Contact", "Notes", "Date",
+    "Rental Items", "Rental Rep", "Rental Rep Email"
+  ]);
+  ensureSheetExists("EquipmentSubmissions", [
+    "Job Code", "Job Name", "Site Contact", "Notes", "Date",
+    "Equipment Items", "PM", "Super", "PM Email", "Super Email", "Status"
+  ]);
+  ensureSheetExists("HaulOffSubmissions", [
+    "Job Code", "Job Name", "Site Contact", "Notes", "Date",
+    "Image ID", "PM", "Super", "PM Email", "Super Email", "Status"
+  ]);
+
+  SpreadsheetApp.getUi().alert(
+    'Setup Complete!\n\nAll required sheets have been created.\n\n' +
+    'Next steps:\n' +
+    '1. Open the Settings sheet\n' +
+    '2. Paste your Google Doc template IDs\n' +
+    '3. Update your email and company info'
+  );
+}
+ 
+// ============================================================
+// SETUP FUNCTION — run once to create the Settings sheet
+// Run this manually from the Apps Script editor
+// ============================================================
+ 
+function setupSettingsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Settings');
+ 
+  if (!sheet) {
+    sheet = ss.insertSheet('Settings');
+  }
+ 
+  // Header row
+  sheet.getRange('A1:B1').setValues([['Setting', 'Value']]);
+  var headerRange = sheet.getRange('A1:B1');
+  headerRange.setBackground('#1a3a5c');
+  headerRange.setFontColor('#ffffff');
+  headerRange.setFontWeight('bold');
+ 
+  // Default values — user fills in their own IDs
+  var settings = [
+    ['Material Order Template',   '1n_OwtrZ9AuZNFqrWx74qdOwlZ_0mhxcU6RpQlV9h3Wc'],
+    ['Rental Order Template',     '12012O2GcOMO4cuXXdw0XwFG0EgX1MDYCF8OwChKrzTE'],
+    ['Haul Off Template',         '1U6CBiIts6tPPMbDG5GsbDBfhGbPhz4oYh1BPCPLFEbM'],
+    ['Sender Email',              'jortega@ironwoodcb.com'],
+    ['Sender Name',               'Material Order System'],
+    ['Company Name',              'Ironwood Commercial Builders'],
+    ['Company Address',           '3953 Industrial Way Suite E Concord, CA 94520'],
+    ['Company Phone',             '(925) 609-8356'],
+    ['Default Warehouse Email',   ''],
+    ['Save PDF To Drive',         'No'],
+    ['PDF Folder Name',           'PO Documents'],
+  ];
+ 
+  sheet.getRange(2, 1, settings.length, 2).setValues(settings);
+ 
+  // Format
+  sheet.setColumnWidth(1, 220);
+  sheet.setColumnWidth(2, 420);
+  sheet.setFrozenRows(1);
+ 
+  // Color alternate rows
+  for (var i = 2; i <= settings.length + 1; i++) {
+    if (i % 2 === 0) {
+      sheet.getRange(i, 1, 1, 2).setBackground('#f0f4f8');
+    }
+  }
+ 
+  SpreadsheetApp.getUi().alert(
+    'Settings sheet created!\n\n' +
+    'Update the template IDs and email address in the Settings sheet\n' +
+    'before using the form.'
+  );
+}
+function getFieldRequestStaffLists_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  function namesFromSheet(sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    var out = [];
+    values.forEach(function(row) {
+      var name = (row[0] || '').toString().trim();
+      if (name && out.indexOf(name) === -1) out.push(name);
+    });
+    return out.sort();
+  }
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    pms: namesFromSheet('PMs'),
+    supers: namesFromSheet('Supers')
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+function upsertJobInJobsSheet_(data) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Jobs');
+
+  if (!sheet) {
+    sheet = ss.insertSheet('Jobs');
+    sheet.getRange(1, 1, 1, 5).setValues([['Job Code', 'Job Name', 'PM', 'Super', 'Address']]);
+    sheet.getRange(1, 1, 1, 5).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+
+  var jobCode = (data.jobCode || '').toString().trim();
+  var jobName = (data.jobName || '').toString().trim();
+  var pm = (data.pm || '').toString().trim();
+  var superName = (data.super || '').toString().trim();
+  var address = (data.address || '').toString().trim();
+
+  if (!jobCode) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: 'jobCode is required'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var lastRow = sheet.getLastRow();
+  var rowToUpdate = -1;
+
+  if (lastRow > 1) {
+    var rows = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if ((rows[i][0] || '').toString().trim() === jobCode) {
+        rowToUpdate = i + 2;
+        break;
+      }
+    }
+  }
+
+  var rowData = [jobCode, jobName, pm, superName, address];
+  if (rowToUpdate > 0) {
+    sheet.getRange(rowToUpdate, 1, 1, 5).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    message: 'Job ' + jobCode + ' saved to Jobs sheet.',
+    jobCode: jobCode
+  })).setMimeType(ContentService.MimeType.JSON);
+} 
+/**
+ * JobFlow POST endpoints:
+ *   ?action=upsertJob  — add/update Jobs sheet row
+ *   ?sheet=brushouts   — merge brush-out colors (JobFlow / desktop)
+ */
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          success: false,
+          error: 'POST body required.'
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (e.parameter && e.parameter.action === 'upsertJob') {
+      var jobData = JSON.parse(e.postData.contents);
+      return upsertJobInJobsSheet_(jobData);
+    }
+
+    if (e.parameter && e.parameter.sheet === 'brushouts') {
+      var brushoutsData = JSON.parse(e.postData.contents);
+      return handleBrushoutsData(brushoutsData);
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: false,
+        message: 'Unknown POST. Use ?action=upsertJob or ?sheet=brushouts'
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    Logger.log('Error in doPost: ' + error.toString());
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        success: false,
+        error: 'Failed to process request: ' + error.toString()
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+function openBrushoutImport() {
+  var html = HtmlService.createHtmlOutputFromFile('BrushoutImport')
+      .setWidth(600)
+      .setHeight(550);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Import Brushout Data from Excel');
+}
+// Process pasted data from Excel
+// Process pasted data from Excel
+function processBrushoutImport(jobNumber, pastedData, paintVendor) {
+  if (!paintVendor || paintVendor.trim() === '') {
+    return {
+      success: 0,
+      errors: ['Please select a paint vendor before importing.']
+    };
+  }
+  
+  // Remove quotes and normalize line breaks
+  var cleanedData = pastedData
+    .replace(/"/g, '')  // Remove all quotes
+    .replace(/\t+/g, '\n')  // Replace tabs with line breaks
+    .replace(/\r\n/g, '\n')  // Normalize line endings
+    .replace(/\r/g, '\n');
+  
+  var lines = cleanedData.split('\n').filter(function(line) {
+    return line.trim() !== '';
+  });
+  
+  var colors = [];
+  
+  // Parse the pasted data - look for Color followed by Label
+  for (var i = 0; i < lines.length; i++) {
+    var trimmedLine = lines[i].trim();
+    
+    // Extract colors
+    if (trimmedLine.toLowerCase().indexOf('color:') !== -1) {
+      var color = trimmedLine.split('Color:')[1].trim();
+      
+      if (color && color !== '') {
+        // Look ahead for the label on the next line
+        var label = '';
+        if (i + 1 < lines.length) {
+          var nextLine = lines[i + 1].trim();
+          if (nextLine.toLowerCase().indexOf('label:') !== -1) {
+            label = nextLine.split('Label:')[1].trim();
+          }
+        }
+        
+        // Combine label with color if label exists
+        var fullColor = label ? label + ': ' + color : color;
+        colors.push(fullColor);
+      }
+    }
+  }
+  
+  if (colors.length === 0) {
+    return {
+      success: 0,
+      errors: ['Could not find any colors in the pasted data. Make sure to include the "Color:" rows.']
+    };
+  }
+
+  if (colors.length > BRUSHOUT_MAX_COLORS) {
+    return {
+      success: 0,
+      errors: ['Too many colors (' + colors.length + '). Maximum is ' + BRUSHOUT_MAX_COLORS + ' per job.']
+    };
+  }
+
+  try {
+    var result = handleBrushoutsData({
+      job_number: jobNumber,
+      paint_vendor: paintVendor,
+      paint_items: colors,
+      mode: 'merge'
+    });
+    var parsed = JSON.parse(result.getContent());
+    if (!parsed.success) {
+      return {
+        success: 0,
+        errors: [parsed.error || 'Import failed.']
+      };
+    }
+    return {
+      success: 1,
+      errors: [],
+      jobNumber: jobNumber,
+      paintVendor: paintVendor,
+      colorsFound: colors.length
+    };
+  } catch (e) {
+    return {
+      success: 0,
+      errors: ['Error saving data: ' + e.message]
+    };
+  }
+}
+/**
+ * @OnlyCurrentDoc
+ * @NotOnlyCurrentDoc Uncomment this line to allow the script to access all spreadsheets.
+ */
+
+/**
+ * @customfunction
+ */
+
+
+function openForm() {
+  var htmlOutput = HtmlService.createHtmlOutputFromFile('Form')
+      .setTitle('Job Form')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  SpreadsheetApp.getUi().showSidebar(htmlOutput);
+}
+
+// Add this function to your Apps Script
+function getEmailByCategory(category) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var vendorsSheet = ss.getSheetByName("Vendors");
+  var vendorsData = vendorsSheet.getRange("A2:E" + vendorsSheet.getLastRow()).getValues();
+  
+  for (var i = 0; i < vendorsData.length; i++) {
+    if (vendorsData[i][4] === category) { // Column E contains the category
+      return vendorsData[i][1]; // Return the email from column B
+    }
+  }
+  
+  // Default emails if category not found
+switch(category) {
+  case "Equipment":
+    return getSetting('Default Warehouse Email');
+  case "HaulOff":
+    return getSetting('Default Warehouse Email');
+  case "Wallcovering":
+    return getSetting('Default Warehouse Email');
+  case "Warehouse":
+    return getSetting('Default Warehouse Email');
+  default:
+    return getSetting('Sender Email');
+}
+}
+
+// ============================================================
+// Jobs sheet helpers (supports legacy 4-col and new 5-col layout)
+// ============================================================
+
+function splitJobCodeAndName(fullJob) {
+  var s = (fullJob || '').toString().trim()
+    .replace(/'/g, '')
+    .replace(/'/g, '')
+    .replace(/`/g, '');
+  if (!s) return { code: '', name: '' };
+  var spaceIdx = s.indexOf(' ');
+  if (spaceIdx === -1) {
+    return { code: s, name: '' };
+  }
+  return {
+    code: s.substring(0, spaceIdx).trim(),
+    name: s.substring(spaceIdx + 1).trim()
+  };
+}
+
+function isLegacyFourColumnJobRow(row) {
+  var eEmpty = !row[4] || !row[4].toString().trim();
+  var d = row[3] ? row[3].toString().trim() : '';
+  var dLooksLikeAddress = d && (/\d/.test(d) || /suite|street|\bst\b|ave|blvd|\bdr\b|way|arroyo|clay/i.test(d));
+  var b = row[1] ? row[1].toString().trim() : '';
+  return !!(eEmpty && dLooksLikeAddress && b);
+}
+
+function normalizeJobsRow(row) {
+  if (!row || !row[0] || !row[0].toString().trim()) {
+    return ['', '', '', '', ''];
+  }
+
+  if (isLegacyFourColumnJobRow(row)) {
+    var split = splitJobCodeAndName(row[0]);
+    return [
+      split.code,
+      split.name,
+      row[1] ? row[1].toString().trim() : '',
+      row[2] ? row[2].toString().trim() : '',
+      row[3] ? row[3].toString().trim() : ''
+    ];
+  }
+
+  return [
+    row[0] ? row[0].toString().trim() : '',
+    row[1] ? row[1].toString().trim() : '',
+    row[2] ? row[2].toString().trim() : '',
+    row[3] ? row[3].toString().trim() : '',
+    row[4] ? row[4].toString().trim() : ''
+  ];
+}
+
+function findJobRowByCode(jobsData, jobCode) {
+  var code = jobCode.toString().trim();
+  for (var i = 0; i < jobsData.length; i++) {
+    var normalized = normalizeJobsRow(jobsData[i]);
+    var fullLegacy = jobsData[i][0] ? jobsData[i][0].toString().trim() : '';
+    if (normalized[0] === code) return normalized;
+    if (fullLegacy === code) return normalized;
+    if (normalized[0] + ' - ' + normalized[1] === code) return normalized;
+  }
+  return null;
+}
+
+// ============================================================
+// UPDATED getDropdownData()
+// Replace your existing getDropdownData() with this
+// ============================================================
+ 
+function getDropdownData() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+ 
+  function getSheetData(sheetName, range) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      console.error("Sheet not found:", sheetName);
+      return [];
+    }
+    return sheet.getRange(range).getValues();
+  }
+ 
+  // Jobs: A=JobCode, B=JobName, C=PM, D=Super, E=Address (auto-normalizes legacy 4-col layout)
+  var jobsData = getSheetData("Jobs", "A2:E");
+
+  var jobs = jobsData
+    .map(normalizeJobsRow)
+    .filter(function(row) {
+      return row[0] && row[0] !== '';
+    });
+ 
+  // Vendors data
+  var vendorsData = getSheetData("Vendors", "A2:E");
+ 
+  // Organize vendors by category
+  var vendorsByCategory = {};
+  vendorsData.forEach(function(vendor) {
+    var category = vendor[4];
+    if (category && category.trim() !== "") {
+      if (!vendorsByCategory[category]) vendorsByCategory[category] = [];
+      vendorsByCategory[category].push(vendor);
+    }
+  });
+ 
+  // Paint vendors only
+  var paintVendors = vendorsData.filter(function(vendor) {
+    return vendor[4] && vendor[4].toString().trim() === 'Paint';
+  });
+ 
+  // Sundries
+  var sundriesData = getSheetData("Sundries", "A2:C");
+  var sundryCategories = {};
+  sundriesData.forEach(function(row) {
+    var category = row[1];
+    var item = row[0];
+    if (category && category.trim() !== "" && item && item.trim() !== "") {
+      if (!sundryCategories[category]) sundryCategories[category] = [];
+      sundryCategories[category].push(item);
+    }
+  });
+ 
+  // Wallcovering
+  var wallcoveringData = getSheetData("WC", "A2:B");
+  var wallcoveringCategories = {};
+  wallcoveringData.forEach(function(row) {
+    var item = row[0];
+    var category = row[1];
+    if (category && category.trim() !== "" && item && item.trim() !== "") {
+      if (!wallcoveringCategories[category]) wallcoveringCategories[category] = [];
+      wallcoveringCategories[category].push(item);
+    }
+  });
+ 
+  var rentalEquipment = getRentalEquipment();
+  var equipment = getEquipment();
+ 
+  return {
+    vendors: vendorsData,
+    paintVendors: paintVendors,
+    vendorsByCategory: vendorsByCategory,
+    pms: getSheetData("PMs", "A2:B"),
+    supers: getSheetData("Supers", "A2:B"),
+    sundryCategories: sundryCategories,
+    sheen: getSheetData("Products", "B2:B"),
+    products: getSheetData("Products", "A2:A"),
+    jobs: jobs,  // [jobCode, jobName, pm, super, address]
+    rentalEquipment: rentalEquipment,
+    equipment: equipment,
+    wallcoveringCategories: wallcoveringCategories
+  };
+}
+
+
+function parseRentalData(rentalString) {
+  return rentalString.split('\n').filter(Boolean).map(function(item) {
+    var match = item.match(/(\d+)x\s+(.*?)\s*\((.*?)\)/);
+    if (match) return [match[1], match[2], match[3]];
+    var simplifiedMatch = item.match(/(.*?)\s*\((.*?)\)/);
+    return simplifiedMatch ? ['1', simplifiedMatch[1], simplifiedMatch[2]] : ['1', item, ''];
+  });
+}
+// ============================================================
+// UPDATED submitWallcoveringForm
+// ============================================================
+function parseEquipmentData(equipmentString) {
+  return equipmentString.split('\n').filter(Boolean).map(function(item) {
+    var match = item.match(/(\d+)x\s*(.*)/);
+    return match ? [match[1], match[2]] : ['', item];
+  });
+} 
+function submitWallcoveringForm(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("WallcoveringSubmissions");
+    if (!sheet) {
+      sheet = ss.insertSheet("WallcoveringSubmissions");
+      sheet.appendRow(["Job", "Job Name", "Name", "Notes", "Date", "Wallcovering Items", "PM", "Super", "PM Email", "Super Email"]);
+    }
+ 
+    var inputDate = new Date(data.date);
+    var userTimezoneOffset = inputDate.getTimezoneOffset() * 60000;
+    var adjustedDate = new Date(inputDate.getTime() + userTimezoneOffset);
+    var formattedDate = formatDate(adjustedDate);
+ 
+    var jobCode = data.job;
+    var jobName = data.jobName || '';
+ 
+    sheet.appendRow([jobCode, jobName, data.name, data.notes, formattedDate, data.wallcoveringItems,
+      data.pm, data.super, data.pmEmail, data.superEmail]);
+ 
+    // Pull settings
+    var templateId    = getSetting('Material Order Template');
+    var senderName    = getSetting('Sender Name');
+    var warehouseEmail = getSetting('Default Warehouse Email') || getEmailByCategory("Warehouse");
+    var saveToDrive   = getSetting('Save PDF To Drive').toLowerCase() === 'yes';
+    var pdfFolderName = getSetting('PDF Folder Name');
+ 
+    var templateFile = DriveApp.getFileById(templateId);
+    var copy = templateFile.makeCopy(jobCode + ' - ' + jobName + ' - Wallcovering Order');
+    var doc = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+ 
+    body.replaceText('{{job}}',      jobCode);
+    body.replaceText('{{job_name}}', jobName);
+    body.replaceText('{{name}}',     data.name);
+    body.replaceText('{{notes}}',    data.notes);
+    body.replaceText('{{date}}',     formattedDate);
+    body.replaceText('{{pm}}',       data.pm);
+    body.replaceText('{{super}}',    data.super);
+    body.replaceText('{{vendor}}',   'Wallcovering Order');
+ 
+    setDocumentStyle(doc);
+ 
+    var itemsPlaceholder = body.findText('{{items}}');
+    if (itemsPlaceholder) itemsPlaceholder.getElement().getParent().removeFromParent();
+ 
+    insertItemsTable(body, 'Wallcovering', parseWallcoveringData(data.wallcoveringItems), ['Qty', 'Item']);
+ 
+    var now = new Date();
+    var stampParagraph = body.appendParagraph('Request submitted on: ' + now.toLocaleDateString() + ' at ' + now.toLocaleTimeString());
+    applyTextStyle(stampParagraph, { italic: true, fontSize: 9, foregroundColor: '#666666', fontFamily: 'Arial' });
+    stampParagraph.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+ 
+    doc.saveAndClose();
+ 
+    var pdf = DriveApp.getFileById(copy.getId()).getAs('application/pdf');
+ 
+    var ccRecipients = [];
+    if (data.pmEmail     && data.pmEmail.trim()     !== '') ccRecipients.push(data.pmEmail);
+    if (data.superEmail  && data.superEmail.trim()  !== '') ccRecipients.push(data.superEmail);
+    if (data.superEmail2 && data.superEmail2.trim() !== '') ccRecipients.push(data.superEmail2);
+    if (data.foreman     && data.foreman.trim()     !== '') ccRecipients.push(data.foreman);
+    var ccString = ccRecipients.join(',');
+ 
+    var emailBody = buildWallcoveringEmail(data, jobCode, jobName, formattedDate);
+ 
+    GmailApp.sendEmail(warehouseEmail, jobCode + ' - ' + jobName + ' - Wallcovering Order', '', {
+      cc: ccString, attachments: [pdf], name: senderName, htmlBody: emailBody
+    });
+ 
+    if (saveToDrive) {
+      var folders = DriveApp.getFoldersByName(pdfFolderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(pdfFolderName);
+      DriveApp.getFileById(copy.getId()).moveTo(folder);
+    } else {
+      DriveApp.getFileById(copy.getId()).setTrashed(true);
+    }
+ 
+    return 'Wallcovering order submitted successfully!';
+  } catch (error) {
+    console.error('Error in submitWallcoveringForm:', error);
+    return 'An error occurred: ' + error.toString();
+  }
+}
+
+// Helper function for parsing wallcovering data
+function parseWallcoveringData(wallcoveringString) {
+  const rows = [];
+  if (!wallcoveringString) return rows;
+  
+  const lines = wallcoveringString.split('\n').filter(Boolean);
+  
+  // Track packout data and regular items separately
+  let packoutName = null;
+  let packoutItems = [];
+  let regularItems = [];
+  let packoutQty = "1"; // Default quantity
+  
+  // First pass - identify packouts and items
+  lines.forEach(function(line) {
+    const match = line.match(/(\d+)x\s*(.*)/);
+    
+    if (match) {
+      const qty = match[1];
+      const itemText = match[2];
+      
+      // If it's an actual packout header (explicitly has PACKOUT:)
+      if (itemText.includes('PACKOUT:')) {
+        packoutName = itemText.split('PACKOUT:')[1].trim();
+        packoutQty = qty;
+      }
+      // If it's a packout item (has "Part of")
+      else if (itemText.includes('(Part of ')) {
+        // If we don't have a packout name yet, extract it from item
+        if (!packoutName) {
+          const parts = itemText.match(/\(Part of (.*?)\)/);
+          if (parts && parts[1]) {
+            packoutName = parts[1].trim();
+          }
+        }
+        
+        // Add to packout items array
+        const baseItem = itemText.split('(Part of ')[0].trim();
+        packoutItems.push([qty, baseItem]);
+      }
+      // Regular item
+      else {
+        regularItems.push([qty, itemText]);
+      }
+    } else {
+      // Special case for the mysterious triangle
+      if (line === "▼") {
+        // Skip this line - don't include the triangle in the results
+      } else {
+        // Any non-matching lines
+        regularItems.push(['', line]);
+      }
+    }
+  });
+  
+  // Build the final ordered list
+  
+  // 1. First add the packout header if we found packout items
+  if (packoutName && packoutItems.length > 0) {
+    // Add packout header
+    rows.push([packoutQty, `PACKOUT: ${packoutName}`]);
+    
+    // Then add packout items with four dashes instead of bullets
+    packoutItems.forEach(function(item) {
+      rows.push([item[0], `---- ${item[1]}`]);
+    });
+  }
+  
+  // 2. Then add all regular items
+  regularItems.forEach(function(item) {
+    rows.push(item);
+  });
+  
+  return rows;
+}
+
+
+
+
+// Function to upload an image to Drive and return the file ID
+function uploadImage(base64Data, fileName) {
+  try {
+    // Remove the prefix from the base64 string if it exists
+    var imageData = base64Data.split(',')[1];
+    if (!imageData) {
+      imageData = base64Data;
+    }
+    
+    // Decode the base64 string
+    var blob = Utilities.newBlob(Utilities.base64Decode(imageData), 'image/jpeg', fileName);
+    
+    // Create a folder if it doesn't exist
+    var folderName = 'HaulOffImages';
+    var folders = DriveApp.getFoldersByName(folderName);
+    var folder;
+    
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+    }
+    
+    // Upload the file to the folder
+    var file = folder.createFile(blob);
+    return file.getId();
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    return null;
+  }
+}
+
+function getProductsForVendor(vendorName) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var productsSheet = ss.getSheetByName('Products');
+    
+    if (!productsSheet) {
+      Logger.log('Products sheet not found');
+      return [];
+    }
+    
+    var data = productsSheet.getDataRange().getValues();
+    var products = [];
+    
+    Logger.log('Searching for vendor: "' + vendorName + '"');
+    Logger.log('Total rows in Products sheet: ' + data.length);
+    
+    // Get header row (row 0 in zero-indexed array)
+    var headers = data[0];
+    Logger.log('Headers: ' + JSON.stringify(headers));
+    
+    // Find which column contains the vendor name
+    var vendorColumnIndex = -1;
+    for (var col = 0; col < headers.length; col++) {
+      var headerValue = headers[col] ? headers[col].toString().trim() : '';
+      if (headerValue.toLowerCase() === vendorName.trim().toLowerCase()) {
+        vendorColumnIndex = col;
+        Logger.log('Found vendor "' + vendorName + '" at column index: ' + col);
+        break;
+      }
+    }
+    
+    if (vendorColumnIndex === -1) {
+      Logger.log('Vendor "' + vendorName + '" not found in headers');
+      return [];
+    }
+    
+    // Get all products from that column (skip header row)
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var productName = row[vendorColumnIndex] ? row[vendorColumnIndex].toString().trim() : '';
+      
+      if (productName !== '') {
+        products.push([productName]);
+        Logger.log('Found product: ' + productName);
+      }
+    }
+    
+    Logger.log('Total products found: ' + products.length);
+    return products;
+  } catch (error) {
+    Logger.log('Error in getProductsForVendor: ' + error.toString());
+    return [];
+  }
+}
+
+// ============================================================
+// UPDATED getJobDetails()
+// Replace your existing getJobDetails() with this
+// ============================================================
+ 
+function getJobDetails(jobCode) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var jobsSheet = ss.getSheetByName("Jobs");
+  var supersSheet = ss.getSheetByName("Supers");
+
+  var supersData = supersSheet.getRange("A2:B" + supersSheet.getLastRow()).getValues();
+  var jobsData = jobsSheet.getRange("A2:E" + jobsSheet.getLastRow()).getValues();
+
+  function getSuperEmail(name) {
+    var match = supersData.find(function(row) {
+      return row[0].toString().trim() === name.trim();
+    });
+    return match ? match[1] : '';
+  }
+
+  var row = findJobRowByCode(jobsData, jobCode);
+  if (!row) return null;
+
+  var superNames = row[3].split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+  return {
+    jobCode:     row[0],
+    jobName:     row[1],
+    pm:          row[2],
+    super:       superNames[0] || '',
+    super2:      superNames[1] || '',
+    superEmail:  getSuperEmail(superNames[0] || ''),
+    superEmail2: getSuperEmail(superNames[1] || ''),
+    address:     row[4]
+  };
+}
+
+// Modify the getRentalEquipment function
+function getRentalEquipment() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Rentals");
+  if (!sheet) {
+    console.error("Rentals sheet not found");
+    return [];
+  }
+  
+  var data = sheet.getRange("A2:B" + sheet.getLastRow()).getValues();
+  
+  // Filter out empty rows
+  return data.filter(row => {
+    return row[0] !== undefined && row[0] !== null && 
+           String(row[0]).trim() !== "";
+  });
+}
+
+// Also modify the getEquipment function similarly
+function getEquipment() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Equipment");
+  if (!sheet) {
+    console.error("Equipment sheet not found");
+    return [];
+  }
+  
+  var data = sheet.getRange("A2:B" + sheet.getLastRow()).getValues();
+  
+  // Filter out empty rows
+  return data.filter(row => {
+    return row[0] !== undefined && row[0] !== null && 
+           String(row[0]).trim() !== "";
+  });
+}
+
+// ============================================================
+// PO NUMBER HELPERS
+// ============================================================
+ 
+// ============================================================
+// UPDATED getNextPONumber()
+// Uses job CODE only (column A) — not the full combined string
+// ============================================================
+ 
+function getNextPONumber(jobCode) {
+  // Strip job name if accidentally passed in combined format
+  // e.g. "24-P2033 - St. Francis" → "24-P2033"
+  var cleanCode = jobCode.toString().trim().split(' ')[0];
+ 
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var poSheet = ss.getSheetByName('POs');
+ 
+  if (!poSheet) {
+    poSheet = ss.insertSheet('POs');
+    poSheet.appendRow([
+      'PO Number', 'Job Code', 'Job Name', 'Vendor',
+      'Date Issued', 'PM', 'Super',
+      'Order Type', 'Items Summary'
+    ]);
+    var headerRange = poSheet.getRange(1, 1, 1, 9);
+    headerRange.setBackground('#2c3e50');
+    headerRange.setFontColor('#ffffff');
+    headerRange.setFontWeight('bold');
+    poSheet.setFrozenRows(1);
+  }
+ 
+  var lastRow = poSheet.getLastRow();
+  var highestSeq = 0;
+ 
+  if (lastRow > 1) {
+    // PO Number is col A, Job Code is col B
+    var data = poSheet.getRange(2, 1, lastRow - 1, 2).getValues();
+ 
+data.forEach(function(row) {
+  // Skip completely empty rows
+  if (!row || !row[0] || !row[1]) return;
+
+  var poNum  = row[0].toString().trim();
+  var poCode = row[1].toString().trim().split(' ')[0];
+
+  if (!poNum || !poCode) return;
+
+  if (poCode === cleanCode) {
+    var parts = poNum.split('-');
+    if (parts.length >= 2) {
+      var seq = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(seq) && seq > highestSeq) highestSeq = seq;
+    }
+  }
+});
+  }
+ 
+  var nextSeq = (highestSeq + 1).toString().padStart(3, '0');
+  return cleanCode + '-' + nextSeq;
+}
+ 
+ 
+// ============================================================
+// UPDATED logPO()
+// Now stores job name separately
+// ============================================================
+ 
+function logPO(poNumber, jobCode, jobName, vendor, pm, super_, orderType, itemsSummary) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var poSheet = ss.getSheetByName('POs');
+ 
+  if (!poSheet) {
+    getNextPONumber(jobCode);
+    poSheet = ss.getSheetByName('POs');
+  }
+ 
+  poSheet.appendRow([
+    poNumber,
+    jobCode,
+    jobName,
+    vendor,
+    new Date(),
+    pm,
+    super_,
+    orderType,
+    itemsSummary
+  ]);
+ 
+  poSheet.autoResizeColumns(1, 9);
+  Logger.log('Logged PO: ' + poNumber);
+}
+ 
+/**
+ * Look up existing POs for a job — useful for display in the form
+ * Returns array of {poNumber, vendor, date, orderType}
+ */
+function getPOsForJob(jobNumber) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var poSheet = ss.getSheetByName('POs');
+ 
+  if (!poSheet || poSheet.getLastRow() <= 1) return [];
+ 
+  var data = poSheet.getRange(2, 1, poSheet.getLastRow() - 1, 8).getValues();
+  var results = [];
+ 
+  data.forEach(function(row) {
+    if (row[1] && row[1].toString().trim() === jobNumber.toString().trim()) {
+      results.push({
+        poNumber:  row[0],
+        jobNumber: row[1],
+        vendor:    row[2],
+        date:      row[3] ? Utilities.formatDate(new Date(row[3]), Session.getScriptTimeZone(), 'MM/dd/yyyy') : '',
+        pm:        row[4],
+        super:     row[5],
+        orderType: row[6],
+        items:     row[7]
+      });
+    }
+  });
+ 
+  return results;
+}
+ 
+// ============================================================
+// UPDATED submitForm — pulls all config from Settings
+// ============================================================
+ 
+function submitForm(data) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Submissions");
+ 
+    // Date handling
+    var inputDate = new Date(data.date);
+    var userTimezoneOffset = inputDate.getTimezoneOffset() * 60000;
+    var adjustedDate = new Date(inputDate.getTime() + userTimezoneOffset);
+    var formattedDate = formatDate(adjustedDate);
+ 
+    var jobCode = data.job;
+    var jobName = data.jobName || '';
+ 
+    // Generate PO number
+    var poNumber = getNextPONumber(jobCode);
+    Logger.log('Generated PO: ' + poNumber);
+ 
+    // Log to Submissions sheet
+    sheet.appendRow([
+      jobCode, jobName, data.name, data.notes, data.vendor, data.pm, data.super,
+      data.foreman, formattedDate, data.paint, data.sundries, data.additional, poNumber
+    ]);
+ 
+    // Pull settings
+    var templateId   = getSetting('Material Order Template');
+    var senderEmail  = getSetting('Sender Email');
+    var senderName   = getSetting('Sender Name');
+    var companyName  = getSetting('Company Name');
+    var saveToDrive  = getSetting('Save PDF To Drive').toLowerCase() === 'yes';
+    var pdfFolderName = getSetting('PDF Folder Name');
+ 
+    // Build PDF document
+    var templateFile = DriveApp.getFileById(templateId);
+    var copy = templateFile.makeCopy(jobCode + ' - ' + jobName + ' - Material Order - ' + poNumber);
+    var doc = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+ 
+    // Replace placeholders in body
+    body.replaceText('{{job}}',       jobCode);
+    body.replaceText('{{job_name}}',  jobName);
+    body.replaceText('{{po_number}}', poNumber);
+    body.replaceText('{{name}}',      data.name   || '');
+    body.replaceText('{{notes}}',     data.notes  || '');
+    body.replaceText('{{vendor}}',    data.vendor || '');
+    body.replaceText('{{pm}}',        data.pm     || '');
+    body.replaceText('{{super}}',     data.super  || '');
+    body.replaceText('{{date}}',      formattedDate);
+ 
+    // Footer
+    var footer = doc.getFooter();
+    if (!footer) {
+      footer = doc.addFooter();
+      var footerPara = footer.appendParagraph('PO# ' + poNumber + '  |  ' + jobCode + ' - ' + jobName);
+      footerPara.setAlignment(DocumentApp.HorizontalAlignment.LEFT);
+      applyTextStyle(footerPara, { fontSize: 8, foregroundColor: '#666666', fontFamily: 'Arial' });
+    } else {
+      footer.replaceText('\\{\\{po_number\\}\\}', poNumber);
+      footer.replaceText('\\{\\{job\\}\\}',       jobCode);
+      footer.replaceText('\\{\\{job_name\\}\\}',  jobName);
+    }
+ 
+    setDocumentStyle(doc);
+ 
+    // Remove items placeholder
+    var itemsPlaceholder = body.findText('{{items}}');
+    if (itemsPlaceholder) {
+      itemsPlaceholder.getElement().getParent().removeFromParent();
+    }
+ 
+    // Insert tables
+    insertItemsTable(body, 'Paint',    parsePaintData(data.paint),       ['Qty', 'Product', 'Sheen', 'Color']);
+    body.appendParagraph('').setLineSpacing(1.5);
+    insertItemsTable(body, 'Sundries', parseSundriesData(data.sundries), ['Qty', 'Product']);
+    body.appendParagraph('').setLineSpacing(1.5);
+    insertAdditionalItems(body, 'Additional Items:', data.additional.split('\n').filter(Boolean));
+ 
+    // Timestamp
+    var now = new Date();
+    var stampParagraph = body.appendParagraph(
+      'Request submitted on: ' + now.toLocaleDateString() + ' at ' + now.toLocaleTimeString()
+    );
+    applyTextStyle(stampParagraph, { italic: true, fontSize: 9, foregroundColor: '#666666', fontFamily: 'Arial' });
+    stampParagraph.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+ 
+    doc.saveAndClose();
+ 
+    var pdf = DriveApp.getFileById(copy.getId()).getAs('application/pdf');
+ 
+    // Build CC list
+    var to = data.vendorEmail;
+    var ccRecipients = [];
+    if (data.vendorEmail2  && data.vendorEmail2.trim()  !== '') ccRecipients.push(data.vendorEmail2);
+    if (data.pmEmail       && data.pmEmail.trim()       !== '') ccRecipients.push(data.pmEmail);
+    if (data.superEmail    && data.superEmail.trim()    !== '') ccRecipients.push(data.superEmail);
+    if (data.superEmail2   && data.superEmail2.trim()   !== '') ccRecipients.push(data.superEmail2);
+    if (data.foreman       && data.foreman.trim()       !== '') ccRecipients.push(data.foreman);
+    var ccString = ccRecipients.join(',');
+ 
+    // Build and send email
+    var paintItems    = parsePaintData(data.paint);
+    var sundriesItems = parseSundriesData(data.sundries);
+    var emailBody     = buildMaterialOrderEmail(data, jobCode, jobName, poNumber, formattedDate, paintItems, sundriesItems);
+ 
+    GmailApp.sendEmail(
+      to,
+      jobCode + ' - ' + jobName + ' - Material Order - PO# ' + poNumber,
+      '',
+      {
+        cc: ccString,
+        attachments: [pdf],
+        name: senderName,
+        htmlBody: emailBody
+      }
+    );
+ 
+    // Save or trash the doc
+    if (saveToDrive) {
+      var folders = DriveApp.getFoldersByName(pdfFolderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(pdfFolderName);
+      DriveApp.getFileById(copy.getId()).moveTo(folder);
+    } else {
+      DriveApp.getFileById(copy.getId()).setTrashed(true);
+    }
+ 
+    // Log PO
+    logPO(poNumber, jobCode, jobName, data.vendor, data.pm, data.super, 'Paint/Material',
+      data.paint.split('\n').filter(Boolean).join(' | '));
+ 
+    return { success: true, poNumber: poNumber, message: 'Form submitted successfully! PO# ' + poNumber };
+ 
+  } catch (error) {
+    console.error('Error in submitForm:', error);
+    return { success: false, poNumber: null, message: 'An error occurred: ' + error.toString() };
+  }
+}
+ 
+// ============================================================
+// UPDATED buildMaterialOrderEmail()
+// Now shows Job Code and Job Name separately
+// ============================================================
+ 
+function buildMaterialOrderEmail(data, jobCode, jobName, poNumber, formattedDate, paintItems, sundriesItems) {
+  var sharedStyles = `
+    body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+    table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    body { height:100% !important; margin:0 !important; padding:0 !important; width:100% !important; }
+    .order-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:13px; border:1px solid #e0e0e0; }
+    .order-table th { background-color:#f8f9fa; color:#333333; padding:4px 6px; text-align:left; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; border-bottom:2px solid #ddd; }
+    .order-table td { padding:3px 6px; border-bottom:1px solid #e0e0e0; font-family:Arial,sans-serif; font-size:13px; line-height:1.3; }
+    .order-table tr:nth-child(even) { background-color:#fafafa; }
+    .order-table tr:nth-child(odd)  { background-color:#ffffff; }
+    .section-header { font-family:Arial,sans-serif; color:#2c3e50; margin:12px 0 6px 0; font-size:15px; font-weight:bold; }
+    .po-badge { display:inline-block; background-color:#2c3e50; color:#ffffff; padding:4px 12px; border-radius:4px; font-family:Arial,sans-serif; font-size:14px; font-weight:bold; letter-spacing:1px; }
+  `;
+ 
+  var html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Material Order: ${jobCode}</title>
+      <style>${sharedStyles}</style>
+    </head>
+    <body style="background-color:#ffffff; margin:0 !important; padding:0 !important;">
+      <table border="0" cellpadding="0" cellspacing="0" width="100%">
+ 
+<tr>
+  <td align="left" style="padding:10px 10px 0 10px;">
+    <table border="0" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="vertical-align:middle;">
+          <h1 style="font-size:24px; font-weight:700; margin:0; font-family:Arial,sans-serif; color:#333333;">
+            Material Order
+          </h1>
+        </td>
+        <td style="vertical-align:middle; padding-left:12px;">
+          <span class="po-badge">PO# ${poNumber}</span>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+ 
+        <tr>
+          <td align="left" style="padding:15px 10px; font-family:Arial,sans-serif; font-size:14px; color:#555555; background-color:#e3f2fd; border-left:4px solid #2196F3;">
+            <p style="margin:0;">Order details are included in this email and attached as a PDF. Please confirm receipt.</p>
+          </td>
+        </tr>
+ 
+        <tr>
+          <td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+            <p style="margin:0 0 20px 0;">Please find attached the material order for <strong>${jobCode} - ${jobName}</strong>. Details are as follows:</p>
+            <p style="margin:0; line-height:1.8;">
+              <strong>PO Number:</strong> ${poNumber}<br>
+              <strong>Project Name:</strong> ${jobCode} - ${jobName}<br>
+              <strong>Date Needed:</strong> <span style="font-weight:700; color:#D2232A;">${formattedDate}</span><br>
+              <strong>Site Contact:</strong> ${data.name}<br>
+              <strong>Delivery Notes:</strong> ${data.notes}
+            </p>
+          </td>
+        </tr>
+  `;
+ 
+  // Paint items
+  if (paintItems.length > 0) {
+    html += `
+        <tr>
+          <td style="padding:20px 10px;">
+            <div class="section-header">Paint Items</div>
+            <table class="order-table">
+              <thead>
+                <tr>
+                  <th style="width:15%;">Qty</th>
+                  <th style="width:35%;">Product</th>
+                  <th style="width:25%;">Sheen</th>
+                  <th style="width:25%;">Color</th>
+                </tr>
+              </thead>
+              <tbody>
+    `;
+    paintItems.forEach(function(item, i) {
+      var rowStyle = i % 2 === 0 ? '' : 'background-color:#f9f9f9;';
+      html += `
+                <tr style="${rowStyle}">
+                  <td>${item[0]}</td><td>${item[1]}</td>
+                  <td>${item[2]}</td><td>${item[3]}</td>
+                </tr>
+      `;
+    });
+    html += `</tbody></table></td></tr>`;
+  }
+ 
+  // Sundries
+  if (sundriesItems.length > 0) {
+    html += `
+        <tr>
+          <td style="padding:20px 10px;">
+            <div class="section-header">Sundries</div>
+            <table class="order-table">
+              <thead>
+                <tr>
+                  <th style="width:20%;">Qty</th>
+                  <th style="width:80%;">Item</th>
+                </tr>
+              </thead>
+              <tbody>
+    `;
+    sundriesItems.forEach(function(item, i) {
+      var indent   = item[1].startsWith('----') ? 'padding-left:30px; font-style:italic;' : '';
+      var isBold   = item[1].includes('PACKOUT:');
+      var display  = item[1].replace('---- ', '');
+      var rowStyle = i % 2 === 0 ? '' : 'background-color:#f9f9f9;';
+      html += `
+                <tr style="${rowStyle}">
+                  <td>${item[0]}</td>
+                  <td style="${indent}${isBold ? 'font-weight:bold;' : ''}">${display}</td>
+                </tr>
+      `;
+    });
+    html += `</tbody></table></td></tr>`;
+  }
+ 
+  // Additional items
+  if (data.additional && data.additional.trim() !== '') {
+    var additionalItems = data.additional.split('\n').filter(Boolean);
+    if (additionalItems.length > 0) {
+      html += `
+        <tr>
+          <td style="padding:20px 10px;">
+            <div class="section-header">Additional Items</div>
+            <ul style="margin:0; padding-left:20px; font-family:Arial,sans-serif;">
+      `;
+      additionalItems.forEach(function(item) {
+        html += `<li style="margin-bottom:5px;">${item}</li>`;
+      });
+      html += `</ul></td></tr>`;
+    }
+  }
+ 
+  // Footer
+  html += `
+        <tr>
+          <td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+            <p style="margin:0;">If you have any questions or concerns, please don't hesitate to contact us.</p>
+          </td>
+        </tr>
+        <tr>
+          <td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+            <p style="margin:0;">Thank you for your prompt attention to this order.</p>
+            <p style="margin:20px 0 0 0;">
+              Sincerely,<br>
+              <strong>Purchasing Department</strong><br>
+              Ironwood Commercial Builders<br>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+ 
+  return html;
+}
+
+// Update the formatDate function to handle the timezone-adjusted date
+function formatDate(date) {
+  var inputDate = new Date(date);
+  var month = (inputDate.getMonth() + 1).toString().padStart(2, '0');
+  var day = inputDate.getDate().toString().padStart(2, '0');
+  var year = inputDate.getFullYear();
+  return month + '/' + day + '/' + year;
+}
+
+// Add a new helper function to handle date input
+function getDateInput(dateString) {
+  var date = new Date(dateString);
+  var userTimezoneOffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() + userTimezoneOffset);
+}
+
+function setDocumentStyle(doc) {
+  var body = doc.getBody();
+  body.setMarginTop(1).setMarginBottom(5).setMarginLeft(10).setMarginRight(10);
+
+}
+
+function insertItemsTable(body, title, items, headers) {
+  if (items.length === 0) return;
+
+  var titleParagraph = body.appendParagraph(title);
+  applyTextStyle(titleParagraph, {
+    bold: true,
+    fontSize: 12,
+    foregroundColor: '#000000',
+    fontFamily: 'Calibri'
+  });
+  titleParagraph.setSpacingAfter(6);
+
+  var table = body.appendTable();
+  var headerRow = table.appendTableRow();
+  headerRow.setMinimumHeight(0);  // Set minimum height for header row
+  
+  // Add '#' header for numbering column
+  var numberCell = headerRow.appendTableCell().setText('Line');
+  applyTextStyle(numberCell, {
+    bold: false,
+    fontSize: 10,
+    foregroundColor: '#FFFFFF',
+    fontFamily: 'Calibri'
+  });
+  numberCell.setBackgroundColor('#000000');
+  numberCell.setPaddingTop(0).setPaddingBottom(0).setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+
+  headers.forEach(function(header) {
+    var cell = headerRow.appendTableCell().setText(header);
+    applyTextStyle(cell, {
+      bold: true,
+      fontSize: 10,
+      foregroundColor: '#FFFFFF',
+      fontFamily: 'Calibri'
+    });
+    cell.setBackgroundColor('#000000');
+    cell.setPaddingTop(0).setPaddingBottom(0).setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+  });
+
+  items.forEach(function(item, rowIndex) {
+    var row = table.appendTableRow();
+    row.setMinimumHeight(0);  // Set minimum height for each row
+    
+    // Add numbering cell with period
+    var numberCell = row.appendTableCell().setText((rowIndex + 1) + '.');
+    applyTextStyle(numberCell, {
+      bold: false,
+      fontSize: 10,
+      foregroundColor: '#000000',
+      fontFamily: 'Calibri'
+    });
+    numberCell.setPaddingTop(0)
+      .setPaddingBottom(0)
+      .setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+
+    // Process each cell in the row
+    item.forEach(function(cellData, cellIndex) {
+      // Process different types of content
+      var formattedText = cellData;
+      var isPackoutHeader = false;
+      var isPackoutItem = false;
+      
+      if (typeof cellData === 'string') {
+        // Check for packout headers
+        if (cellData.includes('PACKOUT:')) {
+          isPackoutHeader = true;
+        } 
+        // Check for packout items (lines that start with dashes and bullets)
+        else if (cellData.startsWith("---- •")) {
+          isPackoutItem = true;
+          // Add spaces at the beginning for indentation instead of using setIndentStart
+          formattedText = "        " + cellData.replace("---- •", "•");
+        }
+      }
+      
+      // Create the cell with the possibly modified text
+      var cell = row.appendTableCell().setText(formattedText);
+      
+      // Apply styling based on cell type
+      if (isPackoutHeader) {
+        applyTextStyle(cell, {
+          bold: true,
+          fontSize: 10,
+          foregroundColor: '#2c3e50',  // Dark blue for packout headers
+          fontFamily: 'Calibri'
+        });
+      } else if (isPackoutItem) {
+        applyTextStyle(cell, {
+          italic: true,
+          fontSize: 10,
+          foregroundColor: '#333333',  // Dark gray for packout items
+          fontFamily: 'Calibri'
+        });
+      } else {
+        applyTextStyle(cell, {
+          bold: cellIndex === 0,  // Only make the first column bold for regular items
+          fontSize: 10,
+          foregroundColor: '#000000',
+          fontFamily: 'Calibri'
+        });
+      }
+      
+      // Alternating row colors
+      if (rowIndex % 2 === 1) {
+        cell.setBackgroundColor('#F0F0F0');
+      }
+      
+      // Cell padding and alignment
+      cell.setPaddingTop(0)
+        .setPaddingBottom(0)
+        .setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+    });
+  });
+
+  // Table styling
+  table.setAttributes({
+    [DocumentApp.Attribute.BORDER_WIDTH]: 0
+  });
+
+  table.setBorderWidth(0);
+
+  // Set column widths based on the table type
+  if (headers.length === 4) {  // Paint table
+    setColumnWidths(table, [30, 50, 130, 100, null]);  // [Line, Qty, Product, Sheen, Color]
+  } else if (headers.length === 2 && title === 'Rental Equipment') {  // Rental table
+    setColumnWidths(table, [30, 200, 100]);  // [Line, Item, Duration]
+  } else if (headers.length === 2) {  // Sundries or Equipment table
+    setColumnWidths(table, [30, 50, 450]);  // [Line, Qty, Item]
+  }
+
+  // Set compact row heights
+  setCompactRowHeights(table);
+
+  // Add subtle borders
+  addTableBorders(table);
+}
+
+function setColumnWidths(table, widths) {
+  for (var i = 0; i < table.getNumRows(); i++) {
+    var row = table.getRow(i);
+    for (var j = 0; j < widths.length && j < row.getNumCells(); j++) {
+      if (widths[j] !== null) {
+        row.getCell(j).setWidth(widths[j]);
+      }
+    }
+  }
+}
+
+
+function setCompactRowHeights(table) {
+  for (var i = 0; i < table.getNumRows(); i++) {
+    var row = table.getRow(i);
+    row.setMinimumHeight(1);  // Set a compact height for each row
+  }
+}
+
+function addTableBorders(table) {
+  var style = {};
+  style[DocumentApp.Attribute.BORDER_WIDTH] = 0.5;  // Thinner borders
+  style[DocumentApp.Attribute.BORDER_COLOR] = '#D0D0D0';  // Lighter gray color
+
+  for (var i = 0; i < table.getNumRows(); i++) {
+    var row = table.getRow(i);
+    for (var j = 0; j < row.getNumCells(); j++) {
+      var cell = row.getCell(j);
+      cell.setAttributes(style);
+    }
+  }
+}
+
+function insertAdditionalItems(body, sectionTitle, items) {
+  if (items.length === 0) return;
+
+  var titleParagraph = body.appendParagraph(sectionTitle);
+  applyTextStyle(titleParagraph, {
+    bold: true,
+    fontSize: 14,
+    foregroundColor: '#000000',
+    fontFamily: 'Calibri'
+  });
+  titleParagraph.setSpacingAfter(5);
+
+  items.forEach(function(item) {
+    var itemParagraph = body.appendParagraph('• ' + item);
+    applyTextStyle(itemParagraph, {
+      fontSize: 11,
+      foregroundColor: '#000000',
+      fontFamily: 'Calibri'
+    });
+    itemParagraph.setIndentFirstLine(18).setIndentStart(36);
+  });
+}
+
+function parsePaintData(paintString) {
+  return paintString.split('\n').filter(Boolean).map(function(item) {
+    var match = item.match(/(\d+(?:\.\d+)?)\s*gals\s*(.*?)\s*\((.*?),\s*(.*?)\)/);
+    return match ? [match[1] + ' gals', match[2], match[3], match[4]] : ['', item, '', ''];
+  });
+}
+
+function parseSundriesData(sundriesString) {
+  const rows = [];
+  if (!sundriesString) return rows;
+  
+  const lines = sundriesString.split('\n').filter(Boolean);
+  
+  // First pass - identify packouts and items
+  let packoutName = null;
+  let packoutItems = [];
+  let regularItems = [];
+  let packoutQty = "1"; // Default quantity
+  
+  lines.forEach(function(line) {
+    const match = line.match(/(\d+)x\s*(.*)/);
+    
+    if (match) {
+      const qty = match[1];
+      const itemText = match[2];
+      
+      // If it's a packout header
+      if (itemText.includes('PACKOUT:')) {
+        packoutName = itemText.split('PACKOUT:')[1].trim();
+        packoutQty = qty;
+      }
+      // If it's a packout item (has "Part of")
+      else if (itemText.includes('(Part of ')) {
+        // If we don't have a packout name yet, extract it from item
+        if (!packoutName) {
+          const parts = itemText.match(/\(Part of (.*?)\)/);
+          if (parts && parts[1]) {
+            packoutName = parts[1].trim();
+          }
+        }
+        
+        // Add to packout items array
+        const baseItem = itemText.split('(Part of ')[0].trim();
+        packoutItems.push([qty, baseItem]);
+      }
+      // Regular item
+      else {
+        regularItems.push([qty, itemText]);
+      }
+    }
+  });
+  
+  // Build the final ordered list
+  
+  // 1. First add the packout header if we found packout items
+  if (packoutName && packoutItems.length > 0) {
+    // Add packout header
+    rows.push([packoutQty, `PACKOUT: ${packoutName}`]);
+    
+    // Then add packout items with indentation
+    packoutItems.forEach(function(item) {
+      rows.push([item[0], `---- ${item[1]}`]);
+    });
+  }
+  
+  // 2. Then add all regular items
+  regularItems.forEach(function(item) {
+    rows.push(item);
+  });
+  
+  return rows;
+}
+
+function applyTextStyle(element, styles) {
+  var textElement = element.editAsText ? element.editAsText() : element;
+  if (styles.bold !== undefined) textElement.setBold(styles.bold);
+  if (styles.italic !== undefined) textElement.setItalic(styles.italic);
+  if (styles.fontSize !== undefined) textElement.setFontSize(styles.fontSize);
+  if (styles.fontFamily !== undefined) textElement.setFontFamily(styles.fontFamily);
+  if (styles.foregroundColor !== undefined) textElement.setForegroundColor(styles.foregroundColor);
+}
+
+
+// ============================================================
+// UPDATED submitRentalForm
+// ============================================================
+ 
+function submitRentalForm(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("RentalSubmissions");
+    if (!sheet) {
+      sheet = ss.insertSheet("RentalSubmissions");
+      sheet.appendRow(["Job", "Job Name", "Name", "Notes", "Date", "Rental Items", "Rental Rep", "Rental Rep Email"]);
+    }
+ 
+    var inputDate = new Date(data.date);
+    var userTimezoneOffset = inputDate.getTimezoneOffset() * 60000;
+    var adjustedDate = new Date(inputDate.getTime() + userTimezoneOffset);
+    var formattedDate = formatDate(adjustedDate);
+ 
+    var jobCode = data.job;
+    var jobName = data.jobName || '';
+ 
+    sheet.appendRow([jobCode, jobName, data.name, data.notes, formattedDate, data.rentalItems,
+      data.rentalRep, data.rentalRepEmail]);
+ 
+    // Pull settings
+    var templateId    = getSetting('Rental Order Template');
+    var senderName    = getSetting('Sender Name');
+    var saveToDrive   = getSetting('Save PDF To Drive').toLowerCase() === 'yes';
+    var pdfFolderName = getSetting('PDF Folder Name');
+ 
+    var templateFile = DriveApp.getFileById(templateId);
+    var copy = templateFile.makeCopy(jobCode + ' - ' + jobName + ' - Rental Order');
+    var doc = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+ 
+    body.replaceText('{{job}}',      jobCode);
+    body.replaceText('{{job_name}}', jobName);
+    body.replaceText('{{name}}',     data.name);
+    body.replaceText('{{notes}}',    data.notes);
+    body.replaceText('{{date}}',     formattedDate);
+    body.replaceText('{{vendor}}',   data.rentalRep);
+ 
+    setDocumentStyle(doc);
+ 
+    var itemsPlaceholder = body.findText('{{items}}');
+    if (itemsPlaceholder) itemsPlaceholder.getElement().getParent().removeFromParent();
+ 
+    insertItemsTable(body, 'Rental Equipment', parseRentalData(data.rentalItems), ['Qty', 'Item', 'Duration']);
+ 
+    var now = new Date();
+    var stampParagraph = body.appendParagraph('Form submitted on: ' + now.toLocaleDateString() + ' at ' + now.toLocaleTimeString());
+    applyTextStyle(stampParagraph, { italic: true, fontSize: 9, foregroundColor: '#666666', fontFamily: 'Arial' });
+    stampParagraph.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+ 
+    doc.saveAndClose();
+ 
+    var pdf = DriveApp.getFileById(copy.getId()).getAs('application/pdf');
+ 
+    var ccRecipients = [];
+    if (data.pmEmail    && data.pmEmail.trim()    !== '') ccRecipients.push(data.pmEmail);
+    if (data.superEmail && data.superEmail.trim() !== '') ccRecipients.push(data.superEmail);
+    if (data.foreman    && data.foreman.trim()    !== '') ccRecipients.push(data.foreman);
+    var ccString = ccRecipients.join(',');
+ 
+    var emailBody = buildRentalEmail(data, jobCode, jobName, formattedDate);
+ 
+    GmailApp.sendEmail(data.rentalRepEmail, jobCode + ' - ' + jobName + ' - Rental Order', '', {
+      cc: ccString, attachments: [pdf], name: senderName, htmlBody: emailBody
+    });
+ 
+    if (saveToDrive) {
+      var folders = DriveApp.getFoldersByName(pdfFolderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(pdfFolderName);
+      DriveApp.getFileById(copy.getId()).moveTo(folder);
+    } else {
+      DriveApp.getFileById(copy.getId()).setTrashed(true);
+    }
+ 
+    return 'Rental order submitted successfully!';
+  } catch (error) {
+    console.error('Error in submitRentalForm:', error);
+    return 'An error occurred: ' + error.toString();
+  }
+}
+
+// ============================================================
+// UPDATED submitEquipmentForm
+// ============================================================
+ 
+function submitEquipmentForm(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("EquipmentSubmissions");
+    if (!sheet) {
+      sheet = ss.insertSheet("EquipmentSubmissions");
+      sheet.appendRow(["Job", "Job Name", "Name", "Notes", "Date", "Equipment Items", "PM", "Super", "PM Email", "Super Email", "Status"]);
+    }
+ 
+    var inputDate = new Date(data.date);
+    var userTimezoneOffset = inputDate.getTimezoneOffset() * 60000;
+    var adjustedDate = new Date(inputDate.getTime() + userTimezoneOffset);
+    var formattedDate = formatDate(adjustedDate);
+ 
+    var jobCode = data.job;
+    var jobName = data.jobName || '';
+ 
+    sheet.appendRow([jobCode, jobName, data.name, data.notes, formattedDate, data.equipmentItems,
+      data.pm, data.super, data.pmEmail, data.superEmail]);
+ 
+    // Pull settings
+    var templateId     = getSetting('Material Order Template');
+    var senderName     = getSetting('Sender Name');
+    var warehouseEmail = getSetting('Default Warehouse Email') || getEmailByCategory("Warehouse");
+    var saveToDrive    = getSetting('Save PDF To Drive').toLowerCase() === 'yes';
+    var pdfFolderName  = getSetting('PDF Folder Name');
+ 
+    var templateFile = DriveApp.getFileById(templateId);
+    var copy = templateFile.makeCopy(jobCode + ' - ' + jobName + ' - Equipment Order');
+    var doc = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+ 
+    body.replaceText('{{job}}',      jobCode);
+    body.replaceText('{{job_name}}', jobName);
+    body.replaceText('{{name}}',     data.name);
+    body.replaceText('{{notes}}',    data.notes);
+    body.replaceText('{{date}}',     formattedDate);
+    body.replaceText('{{pm}}',       data.pm);
+    body.replaceText('{{super}}',    data.super);
+    body.replaceText('{{vendor}}',   'Equipment Order');
+ 
+    setDocumentStyle(doc);
+ 
+    var itemsPlaceholder = body.findText('{{items}}');
+    if (itemsPlaceholder) itemsPlaceholder.getElement().getParent().removeFromParent();
+ 
+    insertItemsTable(body, 'Equipment', parseEquipmentData(data.equipmentItems), ['Qty', 'Item']);
+ 
+    var now = new Date();
+    var stampParagraph = body.appendParagraph('Request submitted on: ' + now.toLocaleDateString() + ' at ' + now.toLocaleTimeString());
+    applyTextStyle(stampParagraph, { italic: true, fontSize: 9, foregroundColor: '#666666', fontFamily: 'Arial' });
+    stampParagraph.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+ 
+    doc.saveAndClose();
+ 
+    var pdf = DriveApp.getFileById(copy.getId()).getAs('application/pdf');
+ 
+    var ccRecipients = [];
+    if (data.pmEmail     && data.pmEmail.trim()     !== '') ccRecipients.push(data.pmEmail);
+    if (data.superEmail  && data.superEmail.trim()  !== '') ccRecipients.push(data.superEmail);
+    if (data.superEmail2 && data.superEmail2.trim() !== '') ccRecipients.push(data.superEmail2);
+    if (data.foreman     && data.foreman.trim()     !== '') ccRecipients.push(data.foreman);
+    var ccString = ccRecipients.join(',');
+ 
+    var emailBody = buildEquipmentEmail(data, jobCode, jobName, formattedDate);
+ 
+    GmailApp.sendEmail(warehouseEmail, jobCode + ' - ' + jobName + ' - Equipment Order', '', {
+      cc: ccString, attachments: [pdf], name: senderName, htmlBody: emailBody
+    });
+ 
+    if (saveToDrive) {
+      var folders = DriveApp.getFoldersByName(pdfFolderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(pdfFolderName);
+      DriveApp.getFileById(copy.getId()).moveTo(folder);
+    } else {
+      DriveApp.getFileById(copy.getId()).setTrashed(true);
+    }
+ 
+    return 'Equipment order submitted successfully!';
+  } catch (error) {
+    console.error('Error in submitEquipmentForm:', error);
+    return 'An error occurred: ' + error.toString();
+  }
+}
+
+// ============================================================
+// UPDATED submitHaulOffForm
+// ============================================================
+ 
+function submitHaulOffForm(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("HaulOffSubmissions");
+    if (!sheet) {
+      sheet = ss.insertSheet("HaulOffSubmissions");
+      sheet.appendRow(["Job", "Job Name", "Name", "Notes", "Date", "Image ID", "PM", "Super", "PM Email", "Super Email", "Status"]);
+    }
+ 
+    var inputDate = new Date(data.date);
+    var userTimezoneOffset = inputDate.getTimezoneOffset() * 60000;
+    var adjustedDate = new Date(inputDate.getTime() + userTimezoneOffset);
+    var formattedDate = formatDate(adjustedDate);
+ 
+    var jobCode = data.job;
+    var jobName = data.jobName || '';
+ 
+    var timeFrame = "";
+    if (data.notes) {
+      if (data.notes.indexOf('[DELIVERY]') !== -1) {
+        var tfMatch = data.notes.match(/Time Frame:\s*([^|]+)/i);
+        if (tfMatch) timeFrame = tfMatch[1].trim();
+      } else if (data.notes.indexOf('[WILL CALL]') !== -1) {
+        var ptMatch = data.notes.match(/Pick-up Time:\s*([^|]+)/i);
+        if (ptMatch) timeFrame = ptMatch[1].trim();
+      }
+    }
+ 
+    var specialInstructions = "";
+    if (data.notes) {
+      var notesMatch = data.notes.match(/Notes:\s*(.+)$/i);
+      if (notesMatch) specialInstructions = notesMatch[1].trim();
+      else if (data.haulOffNotes) specialInstructions = data.haulOffNotes;
+      else specialInstructions = data.notes;
+    }
+ 
+    var imageId = null;
+    var imageBlob = null;
+    if (data.imageData) {
+      imageId = uploadImage(data.imageData, jobCode + '_hauloff_' + new Date().getTime() + '.jpg');
+      if (imageId) imageBlob = DriveApp.getFileById(imageId).getBlob();
+    }
+ 
+    sheet.appendRow([jobCode, jobName, data.name, data.notes, formattedDate, imageId,
+      data.pm, data.super, data.pmEmail, data.superEmail]);
+ 
+    var jobDetails = getJobDetails(jobCode);
+    var deliveryAddress = jobDetails && jobDetails.address ? jobDetails.address : "";
+    if (data.notes) {
+      var addrMatch = data.notes.match(/Address:\s*([^|]+)/i);
+      if (addrMatch) deliveryAddress = addrMatch[1].trim();
+    }
+ 
+    // Pull settings
+    var templateId     = getSetting('Haul Off Template');
+    var senderName     = getSetting('Sender Name');
+    var warehouseEmail = getSetting('Default Warehouse Email') || getEmailByCategory("Warehouse");
+    var saveToDrive    = getSetting('Save PDF To Drive').toLowerCase() === 'yes';
+    var pdfFolderName  = getSetting('PDF Folder Name');
+ 
+    var templateFile = DriveApp.getFileById(templateId);
+    var copy = templateFile.makeCopy(jobCode + ' - ' + jobName + ' - Haul Off Request');
+    var doc = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+ 
+    var jobEl = body.findText("Job:.*?\\{\\{job\\}\\}");
+    if (jobEl) { var p = jobEl.getElement(); p.setText(p.getText().replace("{{job}}", jobCode)); }
+ 
+    var addrEl = body.findText("Job Address:.*?\\{\\{address\\}\\}");
+    if (addrEl) { var p = addrEl.getElement(); p.setText(p.getText().replace("{{address}}", deliveryAddress)); }
+ 
+    var dateEl = body.findText("Date Needed:.*?\\{\\{date\\}\\}");
+    if (dateEl) {
+      var p = dateEl.getElement();
+      p.setText(p.getText().replace("{{date}}", timeFrame ? formattedDate + ' at ' + timeFrame : formattedDate));
+    }
+ 
+    var nameEl = body.findText("Site Contact:.*?\\{\\{name\\}\\}");
+    if (nameEl) { var p = nameEl.getElement(); p.setText(p.getText().replace("{{name}}", data.name)); }
+ 
+    var instrEl = body.findText("Special Instructions:.*?\\{\\{special_instructions\\}\\}");
+    if (instrEl) { var p = instrEl.getElement(); p.setText(p.getText().replace("{{special_instructions}}", specialInstructions)); }
+ 
+    setDocumentStyle(doc);
+ 
+    if (imageBlob) {
+      var sitePhotoText = body.findText("Site Photo:");
+      var sitePhotoElement = sitePhotoText ? sitePhotoText.getElement().getParent() : body.appendParagraph("Site Photo:");
+      if (!sitePhotoText) applyTextStyle(sitePhotoElement, { bold: true, fontSize: 12, foregroundColor: '#000000', fontFamily: 'Arial' });
+      var photoIndex = body.getChildIndex(sitePhotoElement);
+      var imageParagraph = body.insertParagraph(photoIndex + 1, "");
+      var image = imageParagraph.appendInlineImage(imageBlob);
+      var maxWidth = 500;
+      if (image.getWidth() > maxWidth) {
+        image.setHeight(image.getHeight() * (maxWidth / image.getWidth()));
+        image.setWidth(maxWidth);
+      }
+    }
+ 
+    var now = new Date();
+    var stampParagraph = body.appendParagraph('Request submitted on: ' + now.toLocaleDateString() + ' at ' + now.toLocaleTimeString());
+    applyTextStyle(stampParagraph, { italic: true, fontSize: 9, foregroundColor: '#666666', fontFamily: 'Arial' });
+    stampParagraph.setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+ 
+    doc.saveAndClose();
+ 
+    var pdf = DriveApp.getFileById(copy.getId()).getAs('application/pdf');
+ 
+    var ccRecipients = [];
+    if (data.pmEmail     && data.pmEmail.trim()     !== '') ccRecipients.push(data.pmEmail);
+    if (data.superEmail  && data.superEmail.trim()  !== '') ccRecipients.push(data.superEmail);
+    if (data.superEmail2 && data.superEmail2.trim() !== '') ccRecipients.push(data.superEmail2);
+    if (data.foreman     && data.foreman.trim()     !== '') ccRecipients.push(data.foreman);
+    var ccString = ccRecipients.join(',');
+ 
+    var emailBody = buildHaulOffEmail(data, jobCode, jobName, formattedDate, timeFrame, deliveryAddress, specialInstructions, imageId);
+ 
+    GmailApp.sendEmail(warehouseEmail, jobCode + ' - ' + jobName + ' - Haul Off Request', '', {
+      cc: ccString, attachments: [pdf], name: senderName, htmlBody: emailBody
+    });
+ 
+    if (saveToDrive) {
+      var folders = DriveApp.getFoldersByName(pdfFolderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(pdfFolderName);
+      DriveApp.getFileById(copy.getId()).moveTo(folder);
+    } else {
+      DriveApp.getFileById(copy.getId()).setTrashed(true);
+    }
+ 
+    return 'Haul off request submitted successfully!';
+  } catch (error) {
+    console.error('Error in submitHaulOffForm:', error);
+    return 'An error occurred: ' + error.toString();
+  }
+}
+
+// ============================================================
+// EMAIL BUILDERS (extracted so company info comes from Settings)
+// ============================================================
+ 
+function getEmailFooter() {
+  var company = getSetting('Company Name');
+  var address = getSetting('Company Address');
+  var phone   = getSetting('Company Phone');
+  return `
+        <tr>
+          <td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+            <p style="margin:0;">If you have any questions or concerns, please don't hesitate to contact us.</p>
+          </td>
+        </tr>
+        <tr>
+          <td align="left" style="padding:10px 10px 20px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+            <p style="margin:0;">Thank you for your prompt attention to this order.</p>
+            <p style="margin:20px 0 0 0;">
+              Sincerely,<br>
+              <strong>Purchasing Department</strong><br>
+              ${company}<br>
+              ${address}<br>
+              ${phone}
+            </p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>`;
+}
+ 
+function getEmailStyles() {
+  return `
+    body, table, td, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+    table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    body { height:100% !important; margin:0 !important; padding:0 !important; width:100% !important; }
+    .order-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:13px; border:1px solid #e0e0e0; }
+    .order-table th { background-color:#f8f9fa; color:#333333; padding:4px 6px; text-align:left; font-family:Arial,sans-serif; font-size:13px; font-weight:bold; border-bottom:2px solid #ddd; }
+    .order-table td { padding:3px 6px; border-bottom:1px solid #e0e0e0; font-family:Arial,sans-serif; font-size:13px; line-height:1.3; }
+    .order-table tr:nth-child(even) { background-color:#fafafa; }
+    .order-table tr:nth-child(odd)  { background-color:#ffffff; }
+    .section-header { font-family:Arial,sans-serif; color:#2c3e50; margin:12px 0 6px 0; font-size:15px; font-weight:bold; }
+    .po-badge { display:inline-block; background-color:#1a3a5c; color:#ffffff; padding:4px 12px; border-radius:4px; font-family:Arial,sans-serif; font-size:14px; font-weight:bold; letter-spacing:1px; }
+  `;
+}
+ 
+function buildWallcoveringEmail(data, jobCode, jobName, formattedDate) {
+  var items = parseWallcoveringData(data.wallcoveringItems);
+  var html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>${getEmailStyles()}</style></head>
+    <body style="background-color:#ffffff; margin:0 !important; padding:0 !important;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+      <tr><td align="left" style="padding:10px 10px 0 10px;">
+        <h1 style="font-size:24px; font-weight:700; margin:0; font-family:Arial,sans-serif; color:#333333;">Wallcovering Order</h1>
+      </td></tr>
+      <tr><td align="left" style="padding:15px 10px; font-family:Arial,sans-serif; font-size:14px; color:#555555; background-color:#e3f2fd; border-left:4px solid #2196F3;">
+        <p style="margin:0;">Order details are included in this email and attached as a PDF. Please confirm receipt.</p>
+      </td></tr>
+      <tr><td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+        <p style="margin:0 0 20px 0;">Please find attached the wallcovering order for <strong>${jobCode} - ${jobName}</strong>.</p>
+        <p style="margin:0; line-height:1.8;">
+          <strong>Job Number:</strong> ${jobCode}<br>
+          <strong>Project Name:</strong> ${jobName}<br>
+          <strong>Date Needed:</strong> <span style="font-weight:700; color:#D2232A;">${formattedDate}</span><br>
+          <strong>Site Contact:</strong> ${data.name}<br>
+          <strong>Notes:</strong> ${data.notes}
+        </p>
+      </td></tr>`;
+ 
+  if (items.length > 0) {
+    html += `<tr><td style="padding:20px 10px;"><div class="section-header">Wallcovering Items</div>
+      <table class="order-table"><thead><tr><th style="width:20%;">Qty</th><th style="width:80%;">Item</th></tr></thead><tbody>`;
+    items.forEach(function(item, i) {
+      var indent = item[1].startsWith('----') ? 'padding-left:30px; font-style:italic;' : '';
+      var isBold = item[1].includes('PACKOUT:');
+      html += `<tr style="${i%2===0?'':'background-color:#f9f9f9;'}"><td>${item[0]}</td>
+        <td style="${indent}${isBold?'font-weight:bold;':''}">${item[1].replace('---- ','')}</td></tr>`;
+    });
+    html += `</tbody></table></td></tr>`;
+  }
+ 
+  return html + getEmailFooter();
+}
+ 
+function buildRentalEmail(data, jobCode, jobName, formattedDate) {
+  var items = parseRentalData(data.rentalItems);
+  var html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>${getEmailStyles()}</style></head>
+    <body style="background-color:#ffffff; margin:0 !important; padding:0 !important;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+      <tr><td align="left" style="padding:10px 10px 0 10px;">
+        <h1 style="font-size:24px; font-weight:700; margin:0; font-family:Arial,sans-serif; color:#333333;">Rental Order</h1>
+      </td></tr>
+      <tr><td align="left" style="padding:15px 10px; font-family:Arial,sans-serif; font-size:14px; color:#555555; background-color:#e3f2fd; border-left:4px solid #2196F3;">
+        <p style="margin:0;">Order details are included in this email and attached as a PDF. Please confirm receipt.</p>
+      </td></tr>
+      <tr><td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+        <p style="margin:0 0 20px 0;">Please find attached the rental order for <strong>${jobCode} - ${jobName}</strong>.</p>
+        <p style="margin:0; line-height:1.8;">
+          <strong>Job Number:</strong> ${jobCode}<br>
+          <strong>Project Name:</strong> ${jobName}<br>
+          <strong>Date Needed:</strong> <span style="font-weight:700; color:#D2232A;">${formattedDate}</span><br>
+          <strong>Site Contact:</strong> ${data.name}<br>
+          <strong>Delivery Notes:</strong> ${data.notes}
+        </p>
+      </td></tr>`;
+ 
+  if (items.length > 0) {
+    html += `<tr><td style="padding:20px 10px;"><div class="section-header">Rental Equipment</div>
+      <table class="order-table"><thead><tr><th style="width:15%;">Qty</th><th style="width:60%;">Item</th><th style="width:25%;">Duration</th></tr></thead><tbody>`;
+    items.forEach(function(item, i) {
+      html += `<tr style="${i%2===0?'':'background-color:#f9f9f9;'}"><td>${item[0]}</td><td>${item[1]}</td><td>${item[2]}</td></tr>`;
+    });
+    html += `</tbody></table></td></tr>`;
+  }
+ 
+  return html + getEmailFooter();
+}
+ 
+function buildEquipmentEmail(data, jobCode, jobName, formattedDate) {
+  var items = parseEquipmentData(data.equipmentItems);
+  var html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>${getEmailStyles()}</style></head>
+    <body style="background-color:#ffffff; margin:0 !important; padding:0 !important;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+      <tr><td align="left" style="padding:10px 10px 0 10px;">
+        <h1 style="font-size:24px; font-weight:700; margin:0; font-family:Arial,sans-serif; color:#333333;">Equipment Order</h1>
+      </td></tr>
+      <tr><td align="left" style="padding:15px 10px; font-family:Arial,sans-serif; font-size:14px; color:#555555; background-color:#e3f2fd; border-left:4px solid #2196F3;">
+        <p style="margin:0;">Order details are included in this email and attached as a PDF. Please confirm receipt.</p>
+      </td></tr>
+      <tr><td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+        <p style="margin:0 0 20px 0;">Please find attached the equipment order for <strong>${jobCode} - ${jobName}</strong>.</p>
+        <p style="margin:0; line-height:1.8;">
+          <strong>Job Number:</strong> ${jobCode}<br>
+          <strong>Project Name:</strong> ${jobName}<br>
+          <strong>Date Needed:</strong> <span style="font-weight:700; color:#D2232A;">${formattedDate}</span><br>
+          <strong>Site Contact:</strong> ${data.name}<br>
+          <strong>Notes:</strong> ${data.notes}
+        </p>
+      </td></tr>`;
+ 
+  if (items.length > 0) {
+    html += `<tr><td style="padding:20px 10px;"><div class="section-header">Equipment</div>
+      <table class="order-table"><thead><tr><th style="width:20%;">Qty</th><th style="width:80%;">Item</th></tr></thead><tbody>`;
+    items.forEach(function(item, i) {
+      html += `<tr style="${i%2===0?'':'background-color:#f9f9f9;'}"><td>${item[0]}</td><td>${item[1]}</td></tr>`;
+    });
+    html += `</tbody></table></td></tr>`;
+  }
+ 
+  return html + getEmailFooter();
+}
+ 
+function buildHaulOffEmail(data, jobCode, jobName, formattedDate, timeFrame, deliveryAddress, specialInstructions, imageId) {
+  var html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>${getEmailStyles()}</style></head>
+    <body style="background-color:#ffffff; margin:0 !important; padding:0 !important;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+      <tr><td align="left" style="padding:10px 10px 0 10px;">
+        <h1 style="font-size:24px; font-weight:700; margin:0; font-family:Arial,sans-serif; color:#333333;">Haul Off Request</h1>
+      </td></tr>
+      <tr><td align="left" style="padding:15px 10px; font-family:Arial,sans-serif; font-size:14px; color:#555555; background-color:#e3f2fd; border-left:4px solid #2196F3;">
+        <p style="margin:0;">Order details are included in this email and attached as a PDF. Please confirm receipt.</p>
+      </td></tr>
+      <tr><td align="left" style="padding:20px 10px 10px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+        <p style="margin:0 0 20px 0;">Please find attached the haul off request for <strong>${jobCode} - ${jobName}</strong>.</p>
+        <p style="margin:0; line-height:1.8;">
+          <strong>Job Number:</strong> ${jobCode}<br>
+          <strong>Project Name:</strong> ${jobName}<br>
+          <strong>Date Needed:</strong> <span style="font-weight:700; color:#D2232A;">${timeFrame ? formattedDate + ' at ' + timeFrame : formattedDate}</span><br>
+          <strong>Site Contact:</strong> ${data.name}<br>
+          ${deliveryAddress ? '<strong>Job Address:</strong> ' + deliveryAddress + '<br>' : ''}
+          ${specialInstructions ? '<strong>Special Instructions:</strong> ' + specialInstructions : ''}
+        </p>
+      </td></tr>`;
+ 
+  if (imageId) {
+    html += `<tr><td align="left" style="padding:20px 10px; font-family:Arial,sans-serif; font-size:16px; line-height:24px; color:#333333;">
+      <p style="margin:0; padding:10px; background-color:#f8f9fa; border-left:4px solid #2c3e50;">
+        <strong>Site Photo:</strong> A photo of the haul off site has been included in the attached PDF document.
+      </p></td></tr>`;
+  }
+ 
+  return html + getEmailFooter();
+}
+
+// Add this to your existing Code.gs file
+
+// Function to serve the dashboard HTML
+function doGetDashboard() {
+  return HtmlService.createHtmlOutputFromFile('Dashboard')
+      .setTitle('Material Order Dashboard')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// Create a menu item for the dashboard
+function createDashboardMenu() {
+  SpreadsheetApp.getUi()
+    .createMenu('Dashboard')
+    .addItem('Open Dashboard', 'openDashboard')
+    .addToUi();
+}
+
+// Open dashboard in a dialog
+function openDashboard() {
+  var htmlOutput = HtmlService.createHtmlOutputFromFile('Dashboard')
+      .setTitle('Material Order Dashboard')
+      .setWidth(1200)
+      .setHeight(800)
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Material Order Dashboard');
+}
+
+// Get equipment orders
+function getEquipmentOrders() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("EquipmentSubmissions");
+  if (!sheet) return [];
+  
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return []; // Only headers
+  
+  var orders = [];
+  for (var i = 1; i < data.length; i++) {
+    orders.push({
+      id: i,
+      job: data[i][0],
+      name: data[i][1],
+      notes: data[i][2],
+      date: data[i][3],
+      equipmentItems: data[i][4],
+      pm: data[i][5],
+      super: data[i][6],
+      pmEmail: data[i][7],
+      superEmail: data[i][8],
+      status: data[i][9] || 'New' // Add status column if not exists
+    });
+  }
+  
+  return orders;
+}
+
+// Get wallcovering orders
+function getWallcoveringOrders() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("WallcoveringSubmissions");
+  if (!sheet) return [];
+  
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return []; // Only headers
+  
+  var orders = [];
+  for (var i = 1; i < data.length; i++) {
+    orders.push({
+      id: i,
+      job: data[i][0],
+      name: data[i][1],
+      notes: data[i][2],
+      date: data[i][3],
+      wallcoveringItems: data[i][4],
+      pm: data[i][5],
+      super: data[i][6],
+      pmEmail: data[i][7],
+      superEmail: data[i][8],
+      status: data[i][9] || 'New' // Add status column if not exists
+    });
+  }
+  
+  return orders;
+}
+
+// Get haul off orders
+function getHauloffOrders() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("HaulOffSubmissions");
+  if (!sheet) return [];
+  
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return []; // Only headers
+  
+  var orders = [];
+  for (var i = 1; i < data.length; i++) {
+    orders.push({
+      id: i,
+      job: data[i][0],
+      name: data[i][1],
+      notes: data[i][2],
+      date: data[i][3],
+      imageId: data[i][4],
+      pm: data[i][5],
+      super: data[i][6],
+      pmEmail: data[i][7],
+      superEmail: data[i][8],
+      status: data[i][9] || 'New' // Add status column if not exists
+    });
+  }
+  
+  return orders;
+}
+
+// Get filter options (PMs and Supers)
+function getFilterOptions() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var pmsData = ss.getSheetByName("PMs").getRange("A2:B").getValues().filter(row => row[0]);
+  var supersData = ss.getSheetByName("Supers").getRange("A2:B").getValues().filter(row => row[0]);
+  
+  return {
+    pms: pmsData,
+    supers: supersData
+  };
+}
+
+// Update order status
+function updateOrderStatus(orderType, orderId, newStatus) {
+  var sheetName;
+  switch(orderType) {
+    case 'equipment':
+      sheetName = "EquipmentSubmissions";
+      break;
+    case 'wallcovering':
+      sheetName = "WallcoveringSubmissions";
+      break;
+    case 'hauloff':
+      sheetName = "HaulOffSubmissions";
+      break;
+    default:
+      throw new Error("Invalid order type");
+  }
+  
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) throw new Error("Sheet not found");
+  
+  // Ensure status column exists (column J, index 9)
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (headers.length < 10 || headers[9] !== 'Status') {
+    sheet.getRange(1, 10).setValue('Status');
+  }
+  
+  // Update the status
+  sheet.getRange(orderId + 1, 10).setValue(newStatus);
+  
+  return "Status updated successfully";
+}
+
+// Create status update menu
+function createStatusUpdateModal() {
+  var html = HtmlService.createHtmlOutputFromFile('StatusUpdate')
+      .setWidth(400)
+      .setHeight(300);
+  SpreadsheetApp.getUi()
+      .showModalDialog(html, 'Update Order Status');
+}
+
+// Initialize dashboard functionality
+function initializeDashboard() {
+  // Ensure all necessary sheets exist
+  ensureSheetExists("EquipmentSubmissions", ["Job", "Name", "Notes", "Date", "Equipment Items", "PM", "Super", "PM Email", "Super Email", "Status"]);
+  ensureSheetExists("WallcoveringSubmissions", ["Job", "Name", "Notes", "Date", "Wallcovering Items", "PM", "Super", "PM Email", "Super Email", "Status"]);
+  ensureSheetExists("HaulOffSubmissions", ["Job", "Name", "Notes", "Date", "Image ID", "PM", "Super", "PM Email", "Super Email", "Status"]);
+}
+
+// Helper function to ensure a sheet exists with proper headers
+function ensureSheetExists(sheetName, headers) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  } else {
+    // Ensure the sheet has all required headers
+    var currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (currentHeaders.length < headers.length) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    }
+  }
+}
+
+// Export orders to PDF
+function exportOrdersToPDF(orderType) {
+  var sheetName;
+  switch(orderType) {
+    case 'equipment':
+      sheetName = "EquipmentSubmissions";
+      break;
+    case 'wallcovering':
+      sheetName = "WallcoveringSubmissions";
+      break;
+    case 'hauloff':
+      sheetName = "HaulOffSubmissions";
+      break;
+    default:
+      throw new Error("Invalid order type");
+  }
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  
+  if (!sheet) throw new Error("Sheet not found");
+  
+  // Create a temporary spreadsheet for the export
+  var tempSS = SpreadsheetApp.create("Temp Export - " + sheetName);
+  var tempSheet = tempSS.getActiveSheet();
+  
+  // Copy the data
+  var range = sheet.getDataRange();
+  range.copyTo(tempSheet.getRange(1, 1));
+  
+  // Format the export
+  tempSheet.setFrozenRows(1);
+  tempSheet.autoResizeColumns(1, tempSheet.getLastColumn());
+  
+  // Convert to PDF
+  var blob = tempSS.getAs('application/pdf');
+  blob.setName(sheetName + '_Export_' + new Date().toISOString().split('T')[0] + '.pdf');
+  
+  // Delete temporary spreadsheet
+  DriveApp.getFileById(tempSS.getId()).setTrashed(true);
+  
+  return blob;
+}
+
+// Search across all order types
+function searchOrders(searchTerm) {
+  searchTerm = searchTerm.toLowerCase();
+  var results = {
+    equipment: [],
+    wallcovering: [],
+    hauloff: []
+  };
+  
+  // Search equipment orders
+  var equipmentOrders = getEquipmentOrders();
+  results.equipment = equipmentOrders.filter(order => {
+    return order.job.toLowerCase().includes(searchTerm) ||
+           order.name.toLowerCase().includes(searchTerm) ||
+           order.pm.toLowerCase().includes(searchTerm) ||
+           order.super.toLowerCase().includes(searchTerm);
+  });
+  
+  // Search wallcovering orders
+  var wallcoveringOrders = getWallcoveringOrders();
+  results.wallcovering = wallcoveringOrders.filter(order => {
+    return order.job.toLowerCase().includes(searchTerm) ||
+           order.name.toLowerCase().includes(searchTerm) ||
+           order.pm.toLowerCase().includes(searchTerm) ||
+           order.super.toLowerCase().includes(searchTerm);
+  });
+  
+  // Search haul off orders
+  var hauloffOrders = getHauloffOrders();
+  results.hauloff = hauloffOrders.filter(order => {
+    return order.job.toLowerCase().includes(searchTerm) ||
+           order.name.toLowerCase().includes(searchTerm) ||
+           order.pm.toLowerCase().includes(searchTerm) ||
+           order.super.toLowerCase().includes(searchTerm);
+  });
+  
+  return results;
+}
+
+// Get dashboard statistics
+function getDashboardStats() {
+  var stats = {
+    total: {
+      equipment: 0,
+      wallcovering: 0,
+      hauloff: 0
+    },
+    byStatus: {
+      new: { equipment: 0, wallcovering: 0, hauloff: 0 },
+      pending: { equipment: 0, wallcovering: 0, hauloff: 0 },
+      completed: { equipment: 0, wallcovering: 0, hauloff: 0 }
+    },
+    recentOrders: []
+  };
+  
+  // Get counts from each sheet
+  var equipmentOrders = getEquipmentOrders();
+  var wallcoveringOrders = getWallcoveringOrders();
+  var hauloffOrders = getHauloffOrders();
+  
+  // Calculate totals
+  stats.total.equipment = equipmentOrders.length;
+  stats.total.wallcovering = wallcoveringOrders.length;
+  stats.total.hauloff = hauloffOrders.length;
+  
+  // Calculate by status
+  equipmentOrders.forEach(order => {
+    var status = (order.status || 'new').toLowerCase();
+    if (stats.byStatus[status]) {
+      stats.byStatus[status].equipment++;
+    }
+  });
+  
+  wallcoveringOrders.forEach(order => {
+    var status = (order.status || 'new').toLowerCase();
+    if (stats.byStatus[status]) {
+      stats.byStatus[status].wallcovering++;
+    }
+  });
+  
+  hauloffOrders.forEach(order => {
+    var status = (order.status || 'new').toLowerCase();
+    if (stats.byStatus[status]) {
+      stats.byStatus[status].hauloff++;
+    }
+  });
+  
+  // Get recent orders (last 5 from each type)
+  var allOrders = [];
+  
+  equipmentOrders.slice(-5).forEach(order => {
+    order.type = 'equipment';
+    allOrders.push(order);
+  });
+  
+  wallcoveringOrders.slice(-5).forEach(order => {
+    order.type = 'wallcovering';
+    allOrders.push(order);
+  });
+  
+  hauloffOrders.slice(-5).forEach(order => {
+    order.type = 'hauloff';
+    allOrders.push(order);
+  });
+  
+  // Sort by date and get the 10 most recent
+  stats.recentOrders = allOrders
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 10);
+  
+  return stats;
+}
+
+
+
+// Add an image viewer function
+function getImageUrl(imageId) {
+  try {
+    var file = DriveApp.getFileById(imageId);
+    // Get shareable link
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getUrl();
+  } catch (error) {
+    console.error('Error getting image URL:', error);
+    return null;
+  }
+}
+
+
+
+function detectJobsSheetLayout(jobsSheet) {
+  var headerB = jobsSheet.getRange('B1').getValue().toString().toLowerCase().trim();
+  var headerC = jobsSheet.getRange('C1').getValue().toString().toLowerCase().trim();
+  if (headerB.indexOf('job name') !== -1) return 'five';
+  if (headerB === 'pm' && headerC.indexOf('super') !== -1) return 'five';
+
+  var lastRow = jobsSheet.getLastRow();
+  if (lastRow < 2) return 'empty';
+
+  var row = jobsSheet.getRange(2, 1, 1, 5).getValues()[0];
+  if (row[4] && row[4].toString().trim()) return 'five';
+
+  var b = row[1] ? row[1].toString().trim() : '';
+  var d = row[3] ? row[3].toString().trim() : '';
+  var dLooksLikeAddress = d && (/\d/.test(d) || /st|ave|rd|blvd|ste|suite|street|clay|way|dr/i.test(d));
+  if (b && dLooksLikeAddress) return 'four';
+
+  return 'unknown';
+}
+
+/**
+ * Migrates Jobs sheet from 4 columns (Job #, PM, Super, Address)
+ * to 5 columns (Job Code, Job Name, PM, Super, Address).
+ */
+function migrateJobsToFiveColumns() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var jobsSheet = ss.getSheetByName('Jobs');
+
+  if (!jobsSheet) {
+    ui.alert('Error', 'Jobs sheet not found.', ui.ButtonSet.OK);
+    return;
+  }
+
+  var layout = detectJobsSheetLayout(jobsSheet);
+  if (layout === 'five') {
+    ui.alert('Already Migrated', 'Jobs sheet already uses the 5-column layout (Job Code, Job Name, PM, Super, Address). No migration needed.', ui.ButtonSet.OK);
+    return;
+  }
+
+  if (layout === 'empty') {
+    jobsSheet.getRange(1, 1, 1, 5).setValues([['Job Code', 'Job Name', 'PM', 'Super', 'Address']]);
+    jobsSheet.getRange(1, 1, 1, 5).setFontWeight('bold');
+    ui.alert('Headers Added', 'Row 1 headers were set. Add job rows starting in row 2.', ui.ButtonSet.OK);
+    return;
+  }
+
+  var confirm = ui.alert(
+    'Migrate Jobs Sheet',
+    'This will convert your Jobs sheet to:\n\n' +
+    'A = Job Code (e.g. 1097)\n' +
+    'B = Job Name (e.g. Citi Bank)\n' +
+    'C = PM\n' +
+    'D = Super\n' +
+    'E = Address\n\n' +
+    'A backup copy of the sheet will be created first. Continue?',
+    ui.ButtonSet.YES_NO
+  );
+  if (confirm !== ui.Button.YES) return;
+
+  var lastRow = jobsSheet.getLastRow();
+  var oldData = jobsSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+
+  var backupName = 'Jobs Backup ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HHmm');
+  ss.getSheets().forEach(function(sheet) {
+    if (sheet.getName() === backupName) {
+      ss.deleteSheet(sheet);
+    }
+  });
+  jobsSheet.copyTo(ss).setName(backupName);
+
+  var newData = oldData.map(function(row) {
+    var split = splitJobCodeAndName(row[0]);
+    return [
+      split.code,
+      split.name,
+      row[1] ? row[1].toString().trim() : '',
+      row[2] ? row[2].toString().trim() : '',
+      row[3] ? row[3].toString().trim() : ''
+    ];
+  }).filter(function(row) {
+    return row[0] || row[1] || row[2] || row[3] || row[4];
+  });
+
+  jobsSheet.getRange(1, 1, 1, 5).setValues([['Job Code', 'Job Name', 'PM', 'Super', 'Address']]);
+  jobsSheet.getRange(1, 1, 1, 5).setFontWeight('bold').setBackground('#f3f4f6');
+
+  if (newData.length > 0) {
+    jobsSheet.getRange(2, 1, newData.length, 5).setValues(newData);
+  }
+
+  jobsSheet.setColumnWidth(1, 100);
+  jobsSheet.setColumnWidth(2, 200);
+  jobsSheet.setColumnWidth(3, 140);
+  jobsSheet.setColumnWidth(4, 140);
+  jobsSheet.setColumnWidth(5, 280);
+
+  ui.alert(
+    'Migration Complete',
+    'Migrated ' + newData.length + ' job rows.\n\n' +
+    'Backup: "' + backupName + '"\n\n' +
+    'Example: "1097 Citi Bank" → Code: 1097, Name: Citi Bank\n\n' +
+    'Reload the Field Request form and pick a job to verify PM/Super emails.',
+    ui.ButtonSet.OK
+  );
+}
+
+function cleanupJobsPMsAndSupers() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var cleanupCount = 0;
+  
+  // Clean Jobs sheet — 5 columns: A=Job Code, B=Job Name, C=PM, D=Super, E=Address
+  var jobsSheet = ss.getSheetByName("Jobs");
+  if (jobsSheet) {
+    var jobsLastRow = jobsSheet.getLastRow();
+    if (jobsLastRow > 1) {
+      var jobsRange = jobsSheet.getRange("A2:E" + jobsLastRow);
+      var jobsValues = jobsRange.getValues();
+      
+      var cleanedJobs = jobsValues.map(function(row) {
+        var originalCode = row[0];
+        var originalName = row[1];
+        var originalPM = row[2];
+        var originalSuper = row[3];
+        var originalAddress = row[4];
+        
+        var cleanCode = row[0];
+        if (cleanCode) {
+          cleanCode = cleanCode.toString()
+            .trim()
+            .replace(/'/g, '')
+            .replace(/'/g, '')
+            .replace(/`/g, '');
+        }
+        
+        var cleanName = row[1] ? row[1].toString().trim() : '';
+        var cleanPM = row[2] ? row[2].toString().trim() : '';
+        var cleanSuper = row[3] ? row[3].toString().trim() : '';
+        var cleanAddress = row[4] ? row[4].toString().trim() : '';
+        
+        if (originalCode !== cleanCode || originalName !== cleanName ||
+            originalPM !== cleanPM || originalSuper !== cleanSuper ||
+            originalAddress !== cleanAddress) {
+          cleanupCount++;
+        }
+        
+        return [cleanCode || '', cleanName || '', cleanPM || '', cleanSuper || '', cleanAddress || ''];
+      });
+      
+      jobsRange.setValues(cleanedJobs);
+    }
+  }
+  
+  // Clean PMs sheet - just the names
+  var pmSheet = ss.getSheetByName("PMs");
+  if (pmSheet) {
+    var pmLastRow = pmSheet.getLastRow();
+    if (pmLastRow > 1) {
+      var pmRange = pmSheet.getRange("A2:A" + pmLastRow);
+      var pmValues = pmRange.getValues();
+      
+      var cleanedPMs = pmValues.map(function(row) {
+        var originalName = row[0];
+        var cleanName = row[0];
+        
+        if (cleanName) {
+          cleanName = cleanName.toString().trim();
+        }
+        
+        if (originalName !== cleanName) {
+          cleanupCount++;
+        }
+        
+        return [cleanName || ''];
+      });
+      
+      pmRange.setValues(cleanedPMs);
+    }
+  }
+  
+  // Clean Supers sheet - just the names
+  var superSheet = ss.getSheetByName("Supers");
+  if (superSheet) {
+    var superLastRow = superSheet.getLastRow();
+    if (superLastRow > 1) {
+      var superRange = superSheet.getRange("A2:A" + superLastRow);
+      var superValues = superRange.getValues();
+      
+      var cleanedSupers = superValues.map(function(row) {
+        var originalName = row[0];
+        var cleanName = row[0];
+        
+        if (cleanName) {
+          cleanName = cleanName.toString().trim();
+        }
+        
+        if (originalName !== cleanName) {
+          cleanupCount++;
+        }
+        
+        return [cleanName || ''];
+      });
+      
+      superRange.setValues(cleanedSupers);
+    }
+  }
+  
+  // Show summary
+  ui.alert('Cleanup Complete!', 
+           'Cleaned ' + cleanupCount + ' entries:\n\n' +
+           '• Trimmed Job Code, Job Name, PM, Super, and Address\n' +
+           '• Removed apostrophes from Job Code\n' +
+           '• Trimmed PM and Super names on PMs/Supers sheets', 
+           ui.ButtonSet.OK);
+}
+
+// Optional: Add a preview function to see what will be changed
+function previewCleanup() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ui = SpreadsheetApp.getUi();
+  var issues = [];
+  
+  // Check Jobs sheet (5-column layout)
+  var jobsSheet = ss.getSheetByName("Jobs");
+  if (jobsSheet) {
+    var jobsLastRow = jobsSheet.getLastRow();
+    if (jobsLastRow > 1) {
+      var layout = detectJobsSheetLayout(jobsSheet);
+      if (layout === 'four') {
+        issues.push('Jobs sheet still uses the old 4-column layout. Run Data Cleanup → Migrate Jobs to 5 Columns.');
+      }
+      var jobsData = jobsSheet.getRange("A2:E" + jobsLastRow).getValues();
+      jobsData.forEach(function(row, index) {
+        var rowNum = index + 2;
+
+        if (row[0]) {
+          var jobCode = row[0].toString();
+          if (jobCode !== jobCode.trim() || jobCode.includes("'") || jobCode.includes("'") || jobCode.includes('`')) {
+            issues.push('Row ' + rowNum + ' - Job Code: "' + jobCode + '" has spaces or apostrophes');
+          }
+        }
+
+        if (row[2] && row[2].toString() !== row[2].toString().trim()) {
+          issues.push('Row ' + rowNum + ' - PM: "' + row[2] + '" has extra spaces');
+        }
+
+        if (row[3] && row[3].toString() !== row[3].toString().trim()) {
+          issues.push('Row ' + rowNum + ' - Super: "' + row[3] + '" has extra spaces');
+        }
+      });
+    }
+  }
+  
+  if (issues.length > 0) {
+    var message = issues.slice(0, 15).join('\n');
+    if (issues.length > 15) {
+      message += '\n\n... and ' + (issues.length - 15) + ' more issues';
+    }
+    ui.alert('Issues Found', message, ui.ButtonSet.OK);
+  } else {
+    ui.alert('No Issues Found', 'All Job Numbers, PM names, and Super names are clean!', ui.ButtonSet.OK);
+  }
+}
+
+
+// Function to open the brushout form
+function openBrushoutForm() {
+  var html = HtmlService.createHtmlOutputFromFile('BrushoutForm')
+      .setWidth(550)
+      .setHeight(600);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Add Brushout Colors');
+}
+
+// Get job numbers for the dropdown
+function getJobNumbers() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var jobsSheet = ss.getSheetByName('Jobs');
+  
+  if (!jobsSheet) {
+    return [];
+  }
+  
+  var data = jobsSheet.getRange('A2:A' + jobsSheet.getLastRow()).getValues();
+  var jobs = [];
+  
+  data.forEach(function(row) {
+    if (row[0] && row[0].toString().trim() !== '') {
+      jobs.push(row[0].toString().trim());
+    }
+  });
+  
+  return jobs;
+}
+
+// Get paint vendors for the dropdown
+function getPaintVendors() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var vendorsSheet = ss.getSheetByName('Vendors');
+  
+  if (!vendorsSheet) {
+    return [];
+  }
+  
+  var data = vendorsSheet.getRange('A2:E' + vendorsSheet.getLastRow()).getValues();
+  var paintVendors = [];
+  
+  data.forEach(function(row) {
+    // Column E (index 4) contains the Sub/Category
+    if (row[4] && row[4].toString().trim() === 'Paint') {
+      var vendorName = row[0].toString().trim();
+      if (vendorName !== '' && paintVendors.indexOf(vendorName) === -1) {
+        paintVendors.push(vendorName);
+      }
+    }
+  });
+  
+  return paintVendors.sort();
+}
+
+// Save brushout data from the spreadsheet BrushoutForm dialog (merge mode).
+function saveBrushout(data) {
+  var colors = (data.colors || []).map(function(c) {
+    return c ? c.toString().trim() : '';
+  }).filter(function(c) { return c; });
+
+  if (!colors.length) {
+    throw new Error('No colors to save.');
+  }
+
+  var result = handleBrushoutsData({
+    job_number: data.jobNumber,
+    paint_vendor: data.paintVendor,
+    paint_items: colors,
+    mode: 'merge'
+  });
+  var parsed = JSON.parse(result.getContent());
+  if (!parsed.success) {
+    throw new Error(parsed.error || 'Failed to save brushout.');
+  }
+  return 'Success';
+}
+
+// =============================================================================
+// BrushOuts merge handler — JobFlow POST ?sheet=brushouts + spreadsheet dialogs
+// =============================================================================
+
+function getBrushoutSheet_(ss) {
+  var sheet = ss.getSheetByName('BrushOuts');
+  if (!sheet) {
+    sheet = ss.getSheetByName('Brush Outs');
+  }
+  if (!sheet) {
+    sheet = ss.insertSheet('BrushOuts');
+    writeBrushoutHeaders_(sheet, BRUSHOUT_MAX_COLORS, false);
+  } else {
+    ensureBrushoutColorHeaders_(sheet, BRUSHOUT_MAX_COLORS);
+  }
+  return sheet;
+}
+
+function buildColorHeaderLabels_(count) {
+  var headers = [];
+  for (var i = 1; i <= count; i++) {
+    headers.push('Color ' + i);
+  }
+  return headers;
+}
+
+/** Field Request Order default: Job Number | Paint | Color 1… */
+function writeBrushoutHeaders_(sheet, colorCount, withApproved) {
+  var colorHeaders = buildColorHeaderLabels_(colorCount);
+  var headers;
+  if (withApproved) {
+    headers = ['Job Number and Name', 'Approved', 'Paint'].concat(colorHeaders);
+  } else {
+    headers = ['Job Number', 'Paint'].concat(colorHeaders);
+  }
+  writeSheetRow_(sheet, 1, headers);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+}
+
+function detectBrushoutLayout_(headerRow) {
+  var h2 = (headerRow[1] || '').toString().toLowerCase();
+
+  if (h2 === 'approved' || h2.indexOf('approv') >= 0) {
+    return { paintCol: 3, colorStartCol: 4, hasApproved: true, jobCol: 1 };
+  }
+  if (h2 === 'paint' || h2.indexOf('vendor') >= 0 || h2.indexOf('paint') >= 0) {
+    return { paintCol: 2, colorStartCol: 3, hasApproved: false, jobCol: 1 };
+  }
+  var h3 = (headerRow[2] || '').toString().toLowerCase();
+  if (h3 === 'paint' || h3.indexOf('paint') >= 0) {
+    return { paintCol: 3, colorStartCol: 4, hasApproved: true, jobCol: 1 };
+  }
+  return { paintCol: 2, colorStartCol: 3, hasApproved: false, jobCol: 1 };
+}
+
+function ensureBrushoutColorHeaders_(sheet, minColors) {
+  var lastCol = Math.max(sheet.getLastColumn(), 2);
+  var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var layout = detectBrushoutLayout_(headerRow);
+  var existingColorCols = Math.max(0, lastCol - layout.colorStartCol + 1);
+
+  if (existingColorCols < minColors) {
+    var newHeaders = [];
+    for (var i = existingColorCols + 1; i <= minColors; i++) {
+      newHeaders.push('Color ' + i);
+    }
+    if (newHeaders.length) {
+      var startCol = layout.colorStartCol + existingColorCols;
+      writeSheetRow_(sheet, 1, newHeaders, startCol);
+      sheet.getRange(1, startCol, 1, startCol + newHeaders.length - 1).setFontWeight('bold');
+    }
+  }
+  return layout;
+}
+
+/** Write one row — always matches range width to data length. */
+function writeSheetRow_(sheet, row, values, startCol) {
+  startCol = startCol || 1;
+  if (!values || !values.length) return;
+  sheet.getRange(row, startCol, 1, values.length).setValues([values]);
+}
+
+/**
+ * Merge key from "Label - FL - Color" (label + floor; color changes = same slot).
+ */
+function brushoutMergeKey_(line) {
+  var s = (line || '').toString().trim();
+  if (!s) return '';
+  var parts = s.split(' - ').map(function(p) { return p.trim(); }).filter(function(p) { return p; });
+  if (parts.length >= 3) {
+    return (parts[0] + '|' + parts[1]).toLowerCase();
+  }
+  if (parts.length === 2) {
+    return parts[0].toLowerCase();
+  }
+  return s.toLowerCase();
+}
+
+function readColorCells_(rowValues, colorStartCol, maxColors) {
+  var colors = [];
+  for (var c = 0; c < maxColors; c++) {
+    var val = rowValues[colorStartCol - 1 + c];
+    colors.push(val ? val.toString().trim() : '');
+  }
+  while (colors.length && !colors[colors.length - 1]) {
+    colors.pop();
+  }
+  return colors;
+}
+
+function mergeBrushoutColors_(existingColors, incomingItems, maxColors) {
+  var colorCols = existingColors.slice();
+  var keyToIndex = {};
+
+  for (var i = 0; i < colorCols.length; i++) {
+    var existingKey = brushoutMergeKey_(colorCols[i]);
+    if (existingKey) {
+      keyToIndex[existingKey] = i;
+    }
+  }
+
+  for (var j = 0; j < incomingItems.length; j++) {
+    var line = (incomingItems[j] || '').toString().trim();
+    if (!line) continue;
+    var key = brushoutMergeKey_(line);
+    if (!key) continue;
+
+    if (Object.prototype.hasOwnProperty.call(keyToIndex, key)) {
+      colorCols[keyToIndex[key]] = line;
+    } else {
+      var placed = false;
+      for (var k = 0; k < colorCols.length; k++) {
+        if (!colorCols[k]) {
+          colorCols[k] = line;
+          keyToIndex[key] = k;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        if (colorCols.length >= maxColors) {
+          throw new Error('BrushOuts limit reached (' + maxColors + ' colors per job).');
+        }
+        keyToIndex[key] = colorCols.length;
+        colorCols.push(line);
+      }
+    }
+  }
+
+  return colorCols;
+}
+
+function buildBrushoutRowData_(layout, jobKey, vendor, mergedColors) {
+  var totalCols = layout.colorStartCol - 1 + mergedColors.length;
+  var rowData = [];
+  for (var c = 0; c < totalCols; c++) {
+    rowData.push('');
+  }
+  rowData[layout.jobCol - 1] = jobKey;
+  rowData[layout.paintCol - 1] = vendor;
+  for (var ci = 0; ci < mergedColors.length; ci++) {
+    rowData[layout.colorStartCol - 1 + ci] = mergedColors[ci];
+  }
+  return rowData;
+}
+
+function jsonResponse_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Handle BrushOuts data from JobFlow / desktop.
+ *
+ * Body:
+ *   job_number   — full "123 Job Name" string
+ *   paint_vendor — PPG, etc.
+ *   paint_items  — ["Label - FL - SW7004", ...]
+ *   mode         — "merge" (default) or "replace"
+ */
+function handleBrushoutsData(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var brushoutSheet = getBrushoutSheet_(ss);
+    var layout = ensureBrushoutColorHeaders_(brushoutSheet, BRUSHOUT_MAX_COLORS);
+
+    if (!data.job_number || !data.paint_vendor || !data.paint_items || !Array.isArray(data.paint_items)) {
+      return jsonResponse_({
+        success: false,
+        error: 'Missing required data: job_number, paint_vendor, and paint_items array'
+      });
+    }
+
+    var mode = (data.mode || 'merge').toString().toLowerCase();
+    if (mode !== 'merge' && mode !== 'replace') {
+      mode = 'merge';
+    }
+
+    var incoming = data.paint_items
+      .map(function(item) { return (item || '').toString().trim(); })
+      .filter(function(item) { return item; });
+
+    if (!incoming.length) {
+      return jsonResponse_({
+        success: false,
+        error: 'No paint_items to save.'
+      });
+    }
+
+    if (mode === 'replace' && incoming.length > BRUSHOUT_MAX_COLORS) {
+      incoming = incoming.slice(0, BRUSHOUT_MAX_COLORS);
+    }
+
+    var existingData = brushoutSheet.getDataRange().getValues();
+    var rowToUpdate = -1;
+    var jobKey = data.job_number.toString().trim();
+
+    for (var i = 1; i < existingData.length; i++) {
+      if (existingData[i][layout.jobCol - 1].toString().trim() === jobKey) {
+        rowToUpdate = i + 1;
+        break;
+      }
+    }
+
+    var mergedColors;
+    if (mode === 'replace' || rowToUpdate <= 0) {
+      mergedColors = incoming.slice(0, BRUSHOUT_MAX_COLORS);
+    } else {
+      var existingRow = existingData[rowToUpdate - 1];
+      var existingColors = readColorCells_(existingRow, layout.colorStartCol, BRUSHOUT_MAX_COLORS);
+      mergedColors = mergeBrushoutColors_(existingColors, incoming, BRUSHOUT_MAX_COLORS);
+    }
+
+    if (mergedColors.length > BRUSHOUT_MAX_COLORS) {
+      mergedColors = mergedColors.slice(0, BRUSHOUT_MAX_COLORS);
+    }
+
+    var rowData = buildBrushoutRowData_(layout, jobKey, data.paint_vendor, mergedColors);
+    var targetRow;
+
+    if (rowToUpdate > 0) {
+      writeSheetRow_(brushoutSheet, rowToUpdate, rowData);
+      targetRow = rowToUpdate;
+      Logger.log('Merged brushout row for job: ' + jobKey + ' (' + incoming.length + ' incoming, ' + mergedColors.length + ' total)');
+    } else {
+      targetRow = brushoutSheet.getLastRow() + 1;
+      writeSheetRow_(brushoutSheet, targetRow, rowData);
+      Logger.log('Added brushout row for job: ' + jobKey);
+    }
+
+    if (layout.hasApproved) {
+      brushoutSheet.getRange(targetRow, 2).insertCheckboxes();
+    }
+
+    return jsonResponse_({
+      success: true,
+      message: mode === 'merge'
+        ? 'BrushOuts merged successfully (' + incoming.length + ' line(s), ' + mergedColors.length + ' on sheet).'
+        : 'BrushOuts saved successfully.',
+      job_number: jobKey,
+      paint_vendor: data.paint_vendor,
+      mode: mode,
+      colors_added: incoming.length,
+      colors_on_sheet: mergedColors.length,
+      row_updated: targetRow
+    });
+
+  } catch (error) {
+    Logger.log('Error in handleBrushoutsData: ' + error.toString());
+    return jsonResponse_({
+      success: false,
+      error: 'Failed to save BrushOuts data: ' + error.toString()
+    });
+  }
+}
+
+/** Field order form — read all color columns for a job. */
+function getBrushoutColors(jobNumber) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var brushoutSheet = ss.getSheetByName('BrushOuts') || ss.getSheetByName('Brush Outs');
+    if (!brushoutSheet) {
+      return { colors: [], vendor: '' };
+    }
+
+    var data = brushoutSheet.getDataRange().getValues();
+    if (data.length < 2) {
+      return { colors: [], vendor: '' };
+    }
+
+    var layout = detectBrushoutLayout_(data[0]);
+    var jobKey = jobNumber.toString().trim();
+
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      if ((row[layout.jobCol - 1] || '').toString().trim() !== jobKey) {
+        continue;
+      }
+      return {
+        colors: readColorCells_(row, layout.colorStartCol, BRUSHOUT_MAX_COLORS),
+        vendor: (row[layout.paintCol - 1] || '').toString().trim()
+      };
+    }
+
+    return { colors: [], vendor: '' };
+  } catch (error) {
+    Logger.log('Error in getBrushoutColors: ' + error.toString());
+    return { colors: [], vendor: '' };
+  }
+}
+
+function testBrushoutsFunction() {
+  var testData = {
+    job_number: 'TEST-123 Test Job',
+    paint_vendor: 'PPG Paints',
+    mode: 'merge',
+    paint_items: [
+      'A - FL - SW7004 Snowbound',
+      'B - FL - SW7670 Gray Shingle',
+      'C - FL - SW9178 In the Navy'
+    ]
+  };
+
+  var result = handleBrushoutsData(testData);
+  Logger.log('Test result: ' + result.getContent());
+}

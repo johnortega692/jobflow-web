@@ -135,6 +135,7 @@ const TRADE_DATA_ACTIVITY_PRIORITY: (keyof ProjectTradeData)[] = [
   "frp_submittal",
   "track_submittal",
   "transmittal",
+  "transmittal_history",
   "sds_packet",
   "budget_maker",
   "paint_submittal_history",
@@ -156,6 +157,7 @@ const TRADE_DATA_ACTIVITY: Record<
   frp_submittal: { action: "frp_submittal_saved", summary: "FRP submittal saved" },
   track_submittal: { action: "track_submittal_saved", summary: "Track submittal saved" },
   transmittal: { action: "transmittal_saved", summary: "Transmittal saved" },
+  transmittal_history: { action: "transmittal_saved", summary: "Transmittal history updated" },
   sds_packet: { action: "sds_packet_saved", summary: "SDS packet saved" },
   budget_maker: { action: "budget_saved", summary: "Budget saved" },
   paint_submittal_history: {
