@@ -113,12 +113,14 @@ export function FrpSubmittalsPage() {
   }
 
   function updateDraft(updater: (d: FrpSubmittalData) => FrpSubmittalData) {
-    const next = applySubmittalEdit(draft, history, updater);
-    if (!next) return;
-    if (next.revision_number !== draft.revision_number) {
-      setStatus(`Now editing Rev ${next.revision_number} (draft).`);
-    }
-    setDraft(next);
+    setDraft((current) => {
+      const next = applySubmittalEdit(current, history, updater);
+      if (!next) return current;
+      if (next.revision_number !== current.revision_number) {
+        setStatus(`Now editing Rev ${next.revision_number} (draft).`);
+      }
+      return next;
+    });
   }
 
   function patchItem(index: number, patch: Partial<FrpItem>) {

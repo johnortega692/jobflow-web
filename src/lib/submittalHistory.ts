@@ -2,16 +2,17 @@ import type {
   FrpItem,
   PaintItem,
   SubmittalHistoryEntry,
-  SubmittalIssueStatus,
   SubmittalPackageCategory,
   TradeSubmittalType,
   WallcoveringItem,
 } from "../types/tradeDocuments";
 import {
+  defaultPackageForScope,
   formatToday,
   normalizePackageCategory,
   normalizeRevisionNumber,
   normalizeSubmittalIssueStatus,
+  type SubmittalIssueStatus,
 } from "../types/tradeDocuments";
 
 export type SubmittalScope = "paint" | "wallcovering" | "frp";
@@ -27,8 +28,78 @@ export function historyEntryKey(submittalNumber: number, revisionNumber: number)
   return `${submittalNumber}:${revisionNumber}`;
 }
 
+/** Statuses where package content is locked until a new revision is created. */
+export const LOCKED_PACKAGE_STATUSES: SubmittalIssueStatus[] = [
+  "issued",
+  "approved",
+  "approved_as_noted",
+  "revise_resubmit",
+  "closed",
+];
+
+export function isLockedPackageStatus(status: SubmittalIssueStatus | undefined): boolean {
+  return Boolean(status && LOCKED_PACKAGE_STATUSES.includes(status));
+}
+
+/** @deprecated Use isLockedPackageStatus — kept for history entry normalization. */
 export function isIssuedStatus(status: SubmittalIssueStatus | undefined): boolean {
-  return Boolean(status && status !== "draft");
+  return isLockedPackageStatus(status);
+}
+
+/** Latest issued/locked revision in history for a submittal package number. */
+export function latestIssuedHistoryEntryForPackage(
+  history: SubmittalHistoryEntry[],
+  submittalNumber: number,
+): SubmittalHistoryEntry | undefined {
+  let best: SubmittalHistoryEntry | undefined;
+  for (const entry of history) {
+    if (entry.submittal_number !== submittalNumber) continue;
+    const normalized = normalizeHistoryEntry(entry);
+    if (!isLockedPackageStatus(normalized.issue_status)) continue;
+    if (
+      !best ||
+      normalizeRevisionNumber(entry.revision_number) > normalizeRevisionNumber(best.revision_number)
+    ) {
+      best = entry;
+    }
+  }
+  return best;
+}
+
+/** Latest revision saved in history for a submittal package number (any status). */
+export function latestHistoryEntryForPackage(
+  history: SubmittalHistoryEntry[],
+  submittalNumber: number,
+): SubmittalHistoryEntry | undefined {
+  let best: SubmittalHistoryEntry | undefined;
+  for (const entry of history) {
+    if (entry.submittal_number !== submittalNumber) continue;
+    if (
+      !best ||
+      normalizeRevisionNumber(entry.revision_number) > normalizeRevisionNumber(best.revision_number)
+    ) {
+      best = entry;
+    }
+  }
+  return best;
+}
+
+type DraftRevisionCheck = {
+  submittal_number: number;
+  revision_number: number;
+  issue_status: SubmittalIssueStatus;
+};
+
+/** True when this package already has an unissued draft revision (Rev > 0, status draft). */
+export function packageHasOpenDraftRevision(
+  submittalNumber: number,
+  currentDraft: DraftRevisionCheck,
+): boolean {
+  if (currentDraft.submittal_number !== submittalNumber) return false;
+  return (
+    currentDraft.issue_status === "draft" &&
+    normalizeRevisionNumber(currentDraft.revision_number) > 0
+  );
 }
 
 export function normalizeHistoryEntry(raw: SubmittalHistoryEntry): SubmittalHistoryEntry {
@@ -38,7 +109,7 @@ export function normalizeHistoryEntry(raw: SubmittalHistoryEntry): SubmittalHist
     ...raw,
     revision_number,
     issue_status,
-    locked: raw.locked ?? isIssuedStatus(issue_status),
+    locked: raw.locked ?? isLockedPackageStatus(issue_status),
     revision_note: raw.revision_note?.trim() || undefined,
   };
 }
@@ -100,9 +171,8 @@ export function addSubmittalToHistory(
     return row.color?.trim() || row.product?.trim() || row.label?.trim() || row.manufacturer?.trim();
   });
   const issueStatus = normalizeSubmittalIssueStatus(options?.issueStatus ?? "issued");
-  const locked = options?.locked ?? isIssuedStatus(issueStatus);
-  const defaultPackage: SubmittalPackageCategory =
-    scope === "frp" ? "Product Data" : "Color Samples";
+  const locked = options?.locked ?? isLockedPackageStatus(issueStatus);
+  const defaultPackage = defaultPackageForScope(scope);
   const entry: SubmittalHistoryEntry = normalizeHistoryEntry({
     submittal_number: submittalNumber,
     revision_number: revisionNumber,
@@ -115,7 +185,7 @@ export function addSubmittalToHistory(
           : (filtered as FrpItem[]).map((i) => ({ ...i })),
     scope,
     submittal_type: submittalType,
-    package_type: normalizePackageCategory(options?.packageType, defaultPackage),
+    package_type: normalizePackageCategory(options?.packageType, defaultPackage, scope),
     revision_note: options?.revisionNote?.trim() || undefined,
     issue_status: issueStatus,
     locked,
@@ -162,24 +232,46 @@ export function nextSubmittalNumber(history: SubmittalHistoryEntry[]): number {
 }
 
 /** Next revision for an existing submittal package (after Rev 0, Rev 1, …). */
-export function nextRevisionNumber(history: SubmittalHistoryEntry[], submittalNumber: number): number {
+export function nextRevisionNumber(
+  history: SubmittalHistoryEntry[],
+  submittalNumber: number,
+  currentDraft?: DraftRevisionCheck,
+): number {
   const revs = history
     .filter((h) => h.submittal_number === submittalNumber)
     .map((h) => normalizeRevisionNumber(h.revision_number));
-  return revs.length ? Math.max(...revs) + 1 : 0;
+  let maxRev = revs.length ? Math.max(...revs) : -1;
+  if (
+    currentDraft &&
+    currentDraft.submittal_number === submittalNumber &&
+    currentDraft.issue_status === "draft"
+  ) {
+    maxRev = Math.max(maxRev, normalizeRevisionNumber(currentDraft.revision_number));
+  }
+  return maxRev + 1;
 }
 
 export function createNextRevisionDraft<
-  T extends {
-    submittal_number: number;
-    revision_number: number;
-    issue_status: SubmittalIssueStatus;
+  T extends DraftRevisionCheck & {
     date: string;
     items: unknown[];
     revision_note?: string;
   },
 >(draft: T, history: SubmittalHistoryEntry[]): T {
-  const revision_number = nextRevisionNumber(history, draft.submittal_number);
+  if (draft.issue_status === "draft") {
+    return draft;
+  }
+  if (packageHasOpenDraftRevision(draft.submittal_number, draft)) {
+    return draft;
+  }
+  if (!isLockedPackageStatus(draft.issue_status)) {
+    return draft;
+  }
+  const revision_number = normalizeRevisionNumber(draft.revision_number) + 1;
+  const maxAllowed = nextRevisionNumber(history, draft.submittal_number, draft);
+  if (revision_number > maxAllowed) {
+    return draft;
+  }
   return {
     ...draft,
     revision_number,

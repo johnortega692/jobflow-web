@@ -155,12 +155,14 @@ export function PaintSubmittalsPage() {
   }
 
   function updateDraft(updater: (d: PaintSubmittalData) => PaintSubmittalData) {
-    const next = applySubmittalEdit(draft, history, updater);
-    if (!next) return;
-    if (next.revision_number !== draft.revision_number) {
-      setStatus(`Now editing Rev ${next.revision_number} (draft).`);
-    }
-    setDraft(next);
+    setDraft((current) => {
+      const next = applySubmittalEdit(current, history, updater);
+      if (!next) return current;
+      if (next.revision_number !== current.revision_number) {
+        setStatus(`Now editing Rev ${next.revision_number} (draft).`);
+      }
+      return next;
+    });
   }
 
   function setType(t: TradeSubmittalType) {

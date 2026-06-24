@@ -104,12 +104,14 @@ export function WallcoveringSubmittalsPage() {
   }
 
   function updateDraft(updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) {
-    const next = applySubmittalEdit(draft, history, updater);
-    if (!next) return;
-    if (next.revision_number !== draft.revision_number) {
-      setStatus(`Now editing Rev ${next.revision_number} (draft).`);
-    }
-    setDraft({ ...next, got_track: detectGotTrack(next.items) });
+    setDraft((current) => {
+      const next = applySubmittalEdit(current, history, updater);
+      if (!next) return current;
+      if (next.revision_number !== current.revision_number) {
+        setStatus(`Now editing Rev ${next.revision_number} (draft).`);
+      }
+      return { ...next, got_track: detectGotTrack(next.items) };
+    });
   }
 
   function setType(t: TradeSubmittalType) {

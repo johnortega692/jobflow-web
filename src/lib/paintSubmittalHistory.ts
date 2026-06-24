@@ -5,9 +5,12 @@ export {
   filterHistoryByScope,
   formatSubmittalHistoryLabel,
   isIssuedStatus,
+  isLockedPackageStatus,
+  latestIssuedHistoryEntryForPackage,
   mapHistoryItemsForRevisedLoad,
   nextRevisionNumber,
   nextSubmittalNumber,
+  packageHasOpenDraftRevision,
   removeSubmittalFromHistory,
   type SubmittalScope,
 } from "./submittalHistory";

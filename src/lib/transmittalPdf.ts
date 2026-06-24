@@ -37,12 +37,11 @@ function itemRows(data: TransmittalData) {
     }));
 }
 
-export async function downloadTransmittalPdf(
+export async function buildTransmittalPdfBytes(
   project: ProjectInfo,
   data: TransmittalData,
   branding: PrintBranding,
-  filename: string,
-): Promise<void> {
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const { font, bold } = await createLetterPdfFonts(doc);
   const logo = await embedLogoImage(doc, branding.logoUrl);
@@ -300,5 +299,14 @@ export async function downloadTransmittalPdf(
     );
   }
 
-  downloadPdfBytes(await doc.save(), filename);
+  return doc.save();
+}
+
+export async function downloadTransmittalPdf(
+  project: ProjectInfo,
+  data: TransmittalData,
+  branding: PrintBranding,
+  filename: string,
+): Promise<void> {
+  downloadPdfBytes(await buildTransmittalPdfBytes(project, data, branding), filename);
 }

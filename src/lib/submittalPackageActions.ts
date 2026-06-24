@@ -1,7 +1,8 @@
 import {
   addSubmittalToHistory,
   createNextRevisionDraft,
-  isIssuedStatus,
+  isLockedPackageStatus,
+  packageHasOpenDraftRevision,
   type SubmittalScope,
 } from "./submittalHistory";
 import type {
@@ -14,7 +15,7 @@ import type {
 type SubmittalDraft = PaintSubmittalData | WallcoveringSubmittalData | FrpSubmittalData;
 
 export function submittalDraftIsLocked(draft: SubmittalDraft): boolean {
-  return isIssuedStatus(draft.issue_status);
+  return isLockedPackageStatus(draft.issue_status);
 }
 
 export function issueSubmittalDraft(
@@ -63,15 +64,34 @@ export function startNextRevision(
 ): WallcoveringSubmittalData;
 export function startNextRevision(draft: FrpSubmittalData, history: SubmittalHistoryEntry[]): FrpSubmittalData;
 export function startNextRevision(draft: SubmittalDraft, history: SubmittalHistoryEntry[]): SubmittalDraft {
-  if (!submittalDraftIsLocked(draft)) return draft;
+  if (draft.issue_status === "draft") {
+    window.alert("Already editing a draft revision.");
+    return draft;
+  }
+  if (!submittalDraftIsLocked(draft)) {
+    return draft;
+  }
+  if (packageHasOpenDraftRevision(draft.submittal_number, draft)) {
+    window.alert(
+      `Submittal #${String(draft.submittal_number).padStart(3, "0")} already has a draft revision. Issue it before creating another.`,
+    );
+    return draft;
+  }
+  const nextRevision = draft.revision_number + 1;
   if (
     !window.confirm(
-      `Create revision ${draft.revision_number + 1} of submittal #${String(draft.submittal_number).padStart(3, "0")}? The current revision will be locked from editing.`,
+      `Create revision ${nextRevision} of submittal #${String(draft.submittal_number).padStart(3, "0")}? The current revision will stay locked.`,
     )
   ) {
     return draft;
   }
-  return createNextRevisionDraft(draft, history);
+  const next = createNextRevisionDraft(draft, history);
+  if (next === draft) {
+    window.alert(
+      `Submittal #${String(draft.submittal_number).padStart(3, "0")} already has a draft revision. Issue it before creating another.`,
+    );
+  }
+  return next;
 }
 
 export function historyEntryForDraft(

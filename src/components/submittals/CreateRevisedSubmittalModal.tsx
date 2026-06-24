@@ -20,6 +20,7 @@ import {
 } from "../../lib/jobInfo";
 import type { PaintColorsDb, PaintProduct } from "../../lib/paintCatalog";
 import {
+  defaultPackageForScope,
   emptyPaintItem,
   emptyWallcoveringItem,
   formatToday,
@@ -136,7 +137,7 @@ export function CreateRevisedSubmittalModal({
   function buildDraft(): PaintSubmittalData | WallcoveringSubmittalData {
     const submittal_number = targetSubmittalNum;
     const revision_number = targetRevisionNum;
-    const package_type = baseEntry?.package_type ?? "Color Samples";
+    const package_type = baseEntry?.package_type ?? defaultPackageForScope(scope === "frp" ? "frp" : scope);
     const subject =
       scope === "paint"
         ? paintSubjectForPackage(package_type, submittalType)

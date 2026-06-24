@@ -62,7 +62,7 @@ function frpRows(items: FrpItem[]): string {
     .join("");
 }
 
-function frpSubmittalSections(data: FrpSubmittalData): SubmittalPdfFloorSection[] {
+export function buildFrpSubmittalSections(data: FrpSubmittalData): SubmittalPdfFloorSection[] {
   const items = frpSubmittalItems(data.items);
   if (!items.length) return [];
   return [
@@ -95,7 +95,7 @@ export async function downloadFrpSubmittal(
     submittalNumber: data.submittal_number,
     revisionNumber: data.revision_number,
     revisionNote: data.revision_note,
-    sections: frpSubmittalSections(data),
+    sections: buildFrpSubmittalSections(data),
   });
 }
 

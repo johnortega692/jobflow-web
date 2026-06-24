@@ -45,9 +45,10 @@ export type TradeSubmittalPdfOptions = {
   sections: SubmittalPdfFloorSection[];
 };
 
-export async function downloadTradeSubmittalPdf(options: TradeSubmittalPdfOptions): Promise<void> {
-  const { filename, project, branding, date, subject, submittalNumber, revisionNumber, revisionNote, sections } =
-    options;
+export async function buildTradeSubmittalPdfBytes(
+  options: Omit<TradeSubmittalPdfOptions, "filename">,
+): Promise<Uint8Array> {
+  const { project, branding, date, subject, submittalNumber, revisionNumber, revisionNote, sections } = options;
   const doc = await PDFDocument.create();
   const { font, bold } = await createLetterPdfFonts(doc);
   const logo = await embedLogoImage(doc, branding.logoUrl);
@@ -202,5 +203,10 @@ export async function downloadTradeSubmittalPdf(options: TradeSubmittalPdfOption
 
   drawBrandingSignatureFooter(state.page, pageWidth, state.font, state.bold, branding);
 
-  downloadPdfBytes(await doc.save(), filename);
+  return doc.save();
+}
+
+export async function downloadTradeSubmittalPdf(options: TradeSubmittalPdfOptions): Promise<void> {
+  const { filename, ...rest } = options;
+  downloadPdfBytes(await buildTradeSubmittalPdfBytes(rest), filename);
 }

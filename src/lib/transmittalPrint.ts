@@ -1,7 +1,12 @@
 import { esc, logoBlock, pdfSignerDisplayName, type PrintBranding } from "./printCore";
 import { pdfTitleFromFilename, transmittalFilename } from "./pdfFilenames";
-import type { TransmittalData } from "../types/tradeDocuments";
-import { downloadTransmittalPdf } from "./transmittalPdf";
+import { downloadPdfBytes } from "./pdfDownload";
+import type { ProjectTradeData, TransmittalData } from "../types/tradeDocuments";
+import type { ProjectForm } from "../types/database";
+import { buildTransmittalDownloadPdf, type TransmittalDownloadResult } from "./transmittalCombine";
+import { buildTransmittalPdfBytes } from "./transmittalPdf";
+
+export type { TransmittalDownloadResult };
 
 const CSS = `
 @page { size: letter; margin: 0.15in 0.4in 0.4in 0.4in; }
@@ -171,9 +176,33 @@ export async function downloadTransmittal(
   project: ProjectInfo,
   data: TransmittalData,
   branding: PrintBranding,
-): Promise<void> {
-  const filename = transmittalFilename(project.job_name, project.job_number, data.transmittal_number);
-  await downloadTransmittalPdf(project, data, branding, filename);
+  options?: {
+    projectForm: Pick<ProjectForm, "job_number" | "job_name" | "job_address" | "job_address2" | "jobInfo">;
+    tradeData: ProjectTradeData;
+  },
+): Promise<TransmittalDownloadResult> {
+  const baseFilename = transmittalFilename(project.job_name, project.job_number, data.transmittal_number);
+  const result = options
+    ? await buildTransmittalDownloadPdf({
+        transmittalProject: project,
+        project: options.projectForm,
+        data,
+        branding,
+        tradeData: options.tradeData,
+      })
+    : {
+        bytes: await buildTransmittalPdfBytes(project, data, branding),
+        combined: false,
+        appendedSheets: 0,
+        missing: [],
+        enclosureMergeSkipped: false,
+      };
+
+  const filename = result.combined
+    ? baseFilename.replace(/\.pdf$/i, "_Combined.pdf")
+    : baseFilename;
+  downloadPdfBytes(result.bytes, filename);
+  return result;
 }
 
 export function buildTransmittalHtml(

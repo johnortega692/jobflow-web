@@ -43,46 +43,101 @@ export type SubmittalIssueStatus =
 
 /** Log / transmittal package category (matches submittal log). */
 export type SubmittalPackageCategory =
-  | "Product Data"
-  | "Color Samples"
-  | "Shop Drawings"
-  | "Substitution"
+  | "Paint Product Data"
+  | "Paint Brush-Outs / Color Samples"
+  | "Wallcovering Product Data"
+  | "Wallcovering Samples"
+  | "FRP Product Data"
+  | "FRP Samples"
+  | "SDS/TDS Packet"
   | "Other";
 
 export const SUBMITTAL_PACKAGE_CATEGORIES: SubmittalPackageCategory[] = [
-  "Product Data",
-  "Color Samples",
-  "Shop Drawings",
-  "Substitution",
+  "Paint Product Data",
+  "Paint Brush-Outs / Color Samples",
+  "Wallcovering Product Data",
+  "Wallcovering Samples",
+  "FRP Product Data",
+  "FRP Samples",
+  "SDS/TDS Packet",
   "Other",
 ];
 
 export const PAINT_PACKAGE_TYPE_OPTIONS: { id: SubmittalPackageCategory; label: string }[] = [
-  { id: "Color Samples", label: "Color Selections / Brush-Outs" },
-  { id: "Product Data", label: "Paint Product Data" },
-  { id: "Shop Drawings", label: "Shop Drawings" },
-  { id: "Substitution", label: "Substitution" },
+  { id: "Paint Brush-Outs / Color Samples", label: "Paint Brush-Outs / Color Samples" },
+  { id: "Paint Product Data", label: "Paint Product Data" },
   { id: "Other", label: "Other" },
 ];
 
 export const WALLCOVERING_PACKAGE_TYPE_OPTIONS: { id: SubmittalPackageCategory; label: string }[] = [
-  { id: "Color Samples", label: "Wallcovering Samples" },
-  { id: "Product Data", label: "Wallcovering Product Data" },
-  { id: "Shop Drawings", label: "Shop Drawings" },
-  { id: "Substitution", label: "Substitution" },
+  { id: "Wallcovering Samples", label: "Wallcovering Samples" },
+  { id: "Wallcovering Product Data", label: "Wallcovering Product Data" },
   { id: "Other", label: "Other" },
 ];
 
 export const FRP_PACKAGE_TYPE_OPTIONS: { id: SubmittalPackageCategory; label: string }[] = [
-  { id: "Product Data", label: "FRP Product Data" },
-  { id: "Shop Drawings", label: "Shop Drawings" },
-  { id: "Substitution", label: "Substitution" },
+  { id: "FRP Product Data", label: "FRP Product Data" },
+  { id: "FRP Samples", label: "FRP Samples" },
   { id: "Other", label: "Other" },
 ];
 
-export function normalizePackageCategory(value: unknown, fallback: SubmittalPackageCategory): SubmittalPackageCategory {
-  const raw = String(value ?? fallback).trim() as SubmittalPackageCategory;
-  return SUBMITTAL_PACKAGE_CATEGORIES.includes(raw) ? raw : fallback;
+export type SubmittalPackageScope = "paint" | "wallcovering" | "frp";
+
+export function defaultPackageForScope(scope: SubmittalPackageScope): SubmittalPackageCategory {
+  if (scope === "wallcovering") return "Wallcovering Samples";
+  if (scope === "frp") return "FRP Product Data";
+  return "Paint Brush-Outs / Color Samples";
+}
+
+const LEGACY_PACKAGE_BY_SCOPE: Record<SubmittalPackageScope, Record<string, SubmittalPackageCategory>> = {
+  paint: {
+    "Product Data": "Paint Product Data",
+    "Color Samples": "Paint Brush-Outs / Color Samples",
+    "Shop Drawings": "Other",
+    Substitution: "Other",
+  },
+  wallcovering: {
+    "Product Data": "Wallcovering Product Data",
+    "Color Samples": "Wallcovering Samples",
+    "Shop Drawings": "Other",
+    Substitution: "Other",
+  },
+  frp: {
+    "Product Data": "FRP Product Data",
+    "Color Samples": "FRP Samples",
+    "Shop Drawings": "Other",
+    Substitution: "Other",
+  },
+};
+
+export function normalizePackageCategory(
+  value: unknown,
+  fallback: SubmittalPackageCategory,
+  scope?: SubmittalPackageScope,
+): SubmittalPackageCategory {
+  const raw = String(value ?? "").trim();
+  if (SUBMITTAL_PACKAGE_CATEGORIES.includes(raw as SubmittalPackageCategory)) {
+    return raw as SubmittalPackageCategory;
+  }
+  if (scope && LEGACY_PACKAGE_BY_SCOPE[scope][raw]) {
+    return LEGACY_PACKAGE_BY_SCOPE[scope][raw];
+  }
+  if (raw === "Product Data") {
+    return fallback.includes("Wallcovering")
+      ? "Wallcovering Product Data"
+      : fallback.includes("FRP")
+        ? "FRP Product Data"
+        : "Paint Product Data";
+  }
+  if (raw === "Color Samples") {
+    return fallback.includes("Wallcovering")
+      ? "Wallcovering Samples"
+      : fallback.includes("FRP")
+        ? "FRP Samples"
+        : "Paint Brush-Outs / Color Samples";
+  }
+  if (raw === "Shop Drawings" || raw === "Substitution") return "Other";
+  return fallback;
 }
 
 export const SUBMITTAL_ISSUE_STATUSES: { id: SubmittalIssueStatus; label: string }[] = [
@@ -538,8 +593,7 @@ export function paintSubjectForPackage(
   packageType: SubmittalPackageCategory,
   submittalType: TradeSubmittalType,
 ): string {
-  if (packageType === "Product Data") return "Paint Product Data";
-  if (packageType === "Shop Drawings") return "Paint Shop Drawings";
+  if (packageType === "Paint Product Data") return "Paint Product Data";
   return paintSubjectForType(submittalType);
 }
 
@@ -547,14 +601,12 @@ export function wcSubjectForPackage(
   packageType: SubmittalPackageCategory,
   submittalType: TradeSubmittalType,
 ): string {
-  if (packageType === "Product Data") return "Wallcovering Product Data";
-  if (packageType === "Shop Drawings") return "Wallcovering Shop Drawings";
+  if (packageType === "Wallcovering Product Data") return "Wallcovering Product Data";
   return wcSubjectForType(submittalType);
 }
 
 export function frpSubjectForPackage(packageType: SubmittalPackageCategory): string {
-  if (packageType === "Shop Drawings") return "FRP Shop Drawings";
-  if (packageType === "Substitution") return "FRP Material Substitution";
+  if (packageType === "FRP Samples") return "FRP Samples";
   return "FRP Product Data";
 }
 
@@ -662,7 +714,7 @@ export function defaultPaintSubmittal(): PaintSubmittalData {
     submittal_number: 1,
     revision_number: 0,
     issue_status: "draft",
-    package_type: "Color Samples",
+    package_type: "Paint Brush-Outs / Color Samples",
     submittal_type: "new",
     subject: paintSubjectForType("new"),
     date: formatToday(),
@@ -685,7 +737,7 @@ export function defaultWallcoveringSubmittal(): WallcoveringSubmittalData {
     submittal_number: 1,
     revision_number: 0,
     issue_status: "draft",
-    package_type: "Color Samples",
+    package_type: "Paint Brush-Outs / Color Samples",
     submittal_type: "new",
     subject: wcSubjectForType("new"),
     date: formatToday(),
@@ -702,7 +754,7 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyPaintItem(), ...i })),
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
-    package_type: normalizePackageCategory(raw.package_type, "Color Samples"),
+    package_type: normalizePackageCategory(raw.package_type, "Paint Brush-Outs / Color Samples", "paint"),
     revision_note: raw.revision_note?.trim() || undefined,
   };
 }
@@ -718,7 +770,7 @@ export function normalizeWallcoveringSubmittal(
     items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyWallcoveringItem(), ...i })),
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
-    package_type: normalizePackageCategory(raw.package_type, "Color Samples"),
+    package_type: normalizePackageCategory(raw.package_type, "Wallcovering Samples", "wallcovering"),
     revision_note: raw.revision_note?.trim() || undefined,
   };
 }
@@ -732,8 +784,8 @@ export function normalizeFrpSubmittal(raw: Partial<FrpSubmittalData> | null | un
     items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyFrpItem(), ...i, order: i.order ?? false })),
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
-    package_type: normalizePackageCategory(raw.package_type, "Product Data"),
-    subject: raw.subject?.trim() || frpSubjectForPackage(normalizePackageCategory(raw.package_type, "Product Data")),
+    package_type: normalizePackageCategory(raw.package_type, "FRP Product Data", "frp"),
+    subject: raw.subject?.trim() || frpSubjectForPackage(normalizePackageCategory(raw.package_type, "FRP Product Data", "frp")),
     date: raw.date?.trim() || formatToday(),
     revision_note: raw.revision_note?.trim() || undefined,
   };
@@ -744,8 +796,8 @@ export function defaultFrpSubmittal(): FrpSubmittalData {
     submittal_number: 1,
     revision_number: 0,
     issue_status: "draft",
-    package_type: "Product Data",
-    subject: frpSubjectForPackage("Product Data"),
+    package_type: "FRP Product Data",
+    subject: frpSubjectForPackage("FRP Product Data"),
     date: formatToday(),
     items: [emptyFrpItem()],
   };

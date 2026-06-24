@@ -208,8 +208,12 @@ export function TransmittalPage() {
   async function onGenerate() {
     const ok = await persistTransmittal(draft);
     if (!ok) return;
+    let pdfResult;
     try {
-      await downloadTransmittal(transmittalJob, draft, branding);
+      pdfResult = await downloadTransmittal(transmittalJob, draft, branding, {
+        projectForm: project,
+        tradeData,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF download failed");
       return;
@@ -243,12 +247,22 @@ export function TransmittalPage() {
     await persistTransmittal(nextDraft);
 
     const parts = [`Transmittal downloaded as ${outputFilename}.`];
+    if (pdfResult.combined) {
+      parts.push(
+        `Combined PDF includes the cover sheet plus ${pdfResult.appendedSheets} trade submittal sheet(s).`,
+      );
+    }
+    if (pdfResult.missing.length) {
+      parts.push(pdfResult.missing.join(" "));
+    }
+    if (pdfResult.enclosureMergeSkipped) {
+      parts.push(
+        "Enclosure PDF merge is not available in the browser yet — attach SDS/TDS files separately if needed.",
+      );
+    }
     if (stamped) parts.push(`Stamped ${stamped} submittal log row(s) as Submitted.`);
     else if (logIds.length === 0) {
       parts.push("No submittal log rows stamped — link enclosures to log rows before generating.");
-    }
-    if (draft.combine_enclosures) {
-      parts.push("Combine into one PDF: merge enclosure PDFs locally after download.");
     }
     setStatus(parts.join(" "));
     setError(null);
