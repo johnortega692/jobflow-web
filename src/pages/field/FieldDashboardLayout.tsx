@@ -11,6 +11,7 @@ import {
   type FieldPaintRow,
   type FieldWcItemRow,
 } from "../../lib/fieldTrackerProject";
+import { resolveDisplayCompanyName } from "../../lib/displayCompanyName";
 import {
   readFieldDarkMode,
   readFieldMobileView,
@@ -141,8 +142,8 @@ export function FieldDashboardLayout() {
   const wcRows = useMemo(() => projects.flatMap((p) => buildFieldWcRows(p)), [projects]);
 
   const companyName = user
-    ? branding.companyName.trim() || "Ironwood Commercial Builders"
-    : publicCompanyName.trim() || "Ironwood Commercial Builders";
+    ? resolveDisplayCompanyName(branding.companyName.trim() || "Ironwood Commercial Builders")
+    : resolveDisplayCompanyName(publicCompanyName.trim() || "Ironwood Commercial Builders");
   const pageTitle = location.pathname.includes("/paint")
     ? "Paint Dashboard"
     : location.pathname.includes("/calendar")

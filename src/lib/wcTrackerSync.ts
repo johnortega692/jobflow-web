@@ -1,5 +1,5 @@
 import { googleSheetsGet, googleSheetsPost } from "./googleSheetsApi";
-import { wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
+import { icbiSuperintendent, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
 import { paintTrackerBaseUrl } from "./paintTrackerSync";
 import type { ProjectForm } from "../types/database";
 
@@ -164,7 +164,7 @@ export function wcRowWithProjectFields(row: WcTrackerRow, project: ProjectForm):
     jobName: wcTrackerJobName(project),
     gcName: project.contractor.trim(),
     startDate: j.start_date.trim(),
-    super: j.gc_superintendent.trim(),
+    super: icbiSuperintendent(j),
   };
 }
 

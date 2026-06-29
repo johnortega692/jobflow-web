@@ -1,7 +1,7 @@
 import type { Database, Json } from "./database.generated";
 export type { Database, Json };
 import type { JobInfoData } from "./jobInfo";
-import { normalizeJobInfo, type TransmittalContract } from "../lib/jobInfo";
+import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
 
 export type RfiAttachedFile = {
   id: string;
@@ -103,6 +103,12 @@ export function normalizeRfiAttachedFiles(raw: unknown): RfiAttachedFile[] {
       return { id, filename, storage_path };
     })
     .filter((f): f is RfiAttachedFile => Boolean(f));
+}
+
+export function rfiContractFromData(raw: unknown): TransmittalContract {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "paint";
+  const contract = (raw as Partial<RfiFormData>).contract;
+  return normalizeTransmittalContract(contract);
 }
 
 export type Project = Database["public"]["Tables"]["projects"]["Row"];

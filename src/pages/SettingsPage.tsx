@@ -1,10 +1,12 @@
 import { FormEvent, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { CompletedProjectsSettingsSection } from "../components/settings/CompletedProjectsSettingsSection";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
 import { ManpowerCalSettingsSection } from "../components/settings/ManpowerCalSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
 import { PaintEmailSettingsSection } from "../components/settings/PaintEmailSettingsSection";
+import { ProjectStaffSettingsSection } from "../components/settings/ProjectStaffSettingsSection";
 import { PdfFieldRow } from "../components/settings/PdfFieldRow";
 import type { SettingsSectionActions } from "../components/settings/settingsSectionTypes";
 import { UnsavedChangesDialog } from "../components/UnsavedChangesDialog";
@@ -21,6 +23,8 @@ import type { LetterheadPdfVisibility } from "../types/letterheadSettings";
 const SETTINGS_TABS = [
   { id: "profile", label: "Profile & letterhead" },
   { id: "users", label: "User approvals", adminOnly: true as const },
+  { id: "completed-projects", label: "Completed projects", adminOnly: true as const },
+  { id: "project-staff", label: "Project staff", adminOnly: true as const },
   { id: "vendors", label: "Vendors & architects" },
   { id: "delivery", label: "Delivery" },
   { id: "google", label: "Google Sheets", adminOnly: true as const },
@@ -43,6 +47,7 @@ function tabLabel(tabId: SettingsTabId): string {
 
 export function SettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAdmin, roleLoading } = useAuth();
   const { profile, settings, branding, loading, saving, error, setSettings, setProfile, save, reload } =
     useLetterhead();
@@ -75,6 +80,10 @@ export function SettingsPage() {
     [setTabDirty],
   );
   const onPaintEmailDirty = useCallback((dirty: boolean) => setTabDirty("paint-email", dirty), [setTabDirty]);
+  const onProjectStaffDirty = useCallback(
+    (dirty: boolean) => setTabDirty("project-staff", dirty),
+    [setTabDirty],
+  );
   const onWorkOrdersDirty = useCallback((dirty: boolean) => setTabDirty("work-orders", dirty), [setTabDirty]);
 
   const profileReady = !loading && Boolean(user);
@@ -111,10 +120,24 @@ export function SettingsPage() {
     if (!roleLoading && activeTab === "users" && !isAdmin) {
       setActiveTab("profile");
     }
+    if (!roleLoading && activeTab === "completed-projects" && !isAdmin) {
+      setActiveTab("profile");
+    }
+    if (!roleLoading && activeTab === "project-staff" && !isAdmin) {
+      setActiveTab("profile");
+    }
     if (!roleLoading && activeTab === "google" && !isAdmin) {
       setActiveTab("profile");
     }
   }, [activeTab, isAdmin, roleLoading]);
+
+  useEffect(() => {
+    if (roleLoading) return;
+    const tab = (location.state as { tab?: SettingsTabId } | null)?.tab;
+    if (!tab) return;
+    if (("adminOnly" in (SETTINGS_TABS.find((t) => t.id === tab) ?? {})) && !isAdmin) return;
+    if (SETTINGS_TABS.some((t) => t.id === tab)) setActiveTab(tab);
+  }, [roleLoading, isAdmin, location.state]);
 
   function isActiveTabDirty(): boolean {
     return sectionActionsRef.current[activeTab]?.getIsDirty() ?? Boolean(dirtyTabs[activeTab]);
@@ -550,6 +573,24 @@ export function SettingsPage() {
         aria-hidden={activeTab !== "users"}
       >
         <UserApprovalsSettingsSection />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "completed-projects" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "completed-projects"}
+      >
+        <CompletedProjectsSettingsSection />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "project-staff" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "project-staff"}
+      >
+        <ProjectStaffSettingsSection
+          readOnly={sharedSettingsReadOnly}
+          onDirtyChange={sharedSettingsReadOnly ? undefined : onProjectStaffDirty}
+          onBindActions={(actions) => bindSectionActions("project-staff", actions)}
+        />
       </div>
 
       <div

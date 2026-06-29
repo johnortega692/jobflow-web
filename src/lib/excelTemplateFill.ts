@@ -56,10 +56,11 @@ export function filledTemplateFilename(
   uploadedName: string,
   project: ProjectForm,
   rename?: { enabled?: boolean; find?: string; replace_field?: string },
+  extras: ExcelPasteExtras = {},
 ): string {
   let name = uploadedName.replace(/\.(xlsx|xlsm|xls)$/i, "");
   if (rename?.enabled && rename.find) {
-    const replacement = resolveExcelFieldValue(rename.replace_field ?? "job_number", project, {});
+    const replacement = resolveExcelFieldValue(rename.replace_field ?? "job_number", project, extras);
     if (replacement) name = name.replace(rename.find, replacement);
   }
   const ext = uploadedName.match(/\.(xlsx|xlsm|xls)$/i)?.[0] ?? ".xlsx";

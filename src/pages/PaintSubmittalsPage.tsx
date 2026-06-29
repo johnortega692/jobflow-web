@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { EmailVendorModal } from "../components/paint/EmailVendorModal";
@@ -20,10 +20,10 @@ import {
   type PaintProduct,
 } from "../lib/paintCatalog";
 import type { ExtractedPaintRow } from "../lib/paintImageImport";
-import { applyTransmittalContractIfDistinct, projectPrintInfo } from "../lib/jobInfo";
+import { applyTransmittalContractIfDistinct, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
-import { patchPaintTrackerSubmittalOrdered } from "../lib/fieldTrackerProject";
+import { patchPaintTrackerSubmittalOrdered, reloadProject } from "../lib/fieldTrackerProject";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
@@ -51,7 +51,7 @@ import {
   type TradeSubmittalType,
 } from "../types/tradeDocuments";
 
-type Ctx = { project: ProjectForm; projectId: string };
+type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectForm) => void };
 
 function moveItem<T>(items: T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return items;
@@ -68,7 +68,7 @@ function paintItemHasContent(item: PaintItem): boolean {
 export function PaintSubmittalsPage() {
   const { user } = useAuth();
   const { branding } = useLetterhead();
-  const { project, projectId } = useOutletContext<Ctx>();
+  const { project, projectId, setProject } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
   const [draft, setDraft] = useState<PaintSubmittalData>(defaultPaintSubmittal());
   const [history, setHistory] = useState<SubmittalHistoryEntry[]>([]);
@@ -309,9 +309,11 @@ export function PaintSubmittalsPage() {
     const trackerErr = await patchPaintTrackerSubmittalOrdered(projectId, checked);
     if (trackerErr) {
       setStatus(`Saved submittal. Paint tracker update failed: ${trackerErr}`);
-    } else {
-      setStatus(checked ? "Submittal marked ordered." : "Submittal ordered cleared.");
+      return;
     }
+    const updated = await reloadProject(projectId);
+    if (updated) setProject(updated);
+    setStatus(checked ? "Submittal marked ordered." : "Submittal ordered cleared.");
   }
 
   async function onIssueSubmittal() {
@@ -443,6 +445,9 @@ export function PaintSubmittalsPage() {
         <button type="button" className="btn btn-secondary" onClick={() => setPrepOpen(true)}>
           Import Prep List
         </button>
+        <Link className="btn btn-secondary" to={`/projects/${projectId}/approved-brushouts`}>
+          Approved brush-outs
+        </Link>
         <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
           History
         </button>
@@ -453,8 +458,6 @@ export function PaintSubmittalsPage() {
           </span>
         )}
       </section>
-
-      <PaintImageImport onImported={onImported} layout="row" />
 
       <PaintSubmittalMetaPanel
         draft={draft}
@@ -475,6 +478,8 @@ export function PaintSubmittalsPage() {
         onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
         onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
       />
+
+      <PaintImageImport onImported={onImported} layout="row" />
 
       <section className="card stack paint-items-section">
         <div className="row-between paint-items-toolbar">
@@ -608,7 +613,7 @@ export function PaintSubmittalsPage() {
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          jobSuper={project.jobInfo?.gc_superintendent}
+          jobSuper={icbiSuperintendent(project.jobInfo)}
           foremanName={project.jobInfo?.icbi_foreman}
           foremanEmail={project.jobInfo?.icbi_foreman_email}
           composeEmailMethod={userSettings.compose_email_method}

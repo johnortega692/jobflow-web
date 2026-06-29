@@ -138,6 +138,10 @@ export function normalizeScanBoxes(raw: unknown, pageWidth = 612, pageHeight = 7
   };
 }
 
+export function isWorkOrderScanSetupComplete(boxes: WorkOrderScanBoxes): boolean {
+  return Boolean(boxes.ewo && boxes.date);
+}
+
 export function isDefaultScanEnhance(s: ScanEnhanceSettings): boolean {
   return (
     s.ink === DEFAULT_SCAN_ENHANCE.ink &&

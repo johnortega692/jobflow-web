@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
 import { Link, useOutletContext } from "react-router-dom";
+import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import {
   downloadFilledTemplate,
@@ -13,6 +14,7 @@ import {
   templateDisplayName,
   type ExcelTemplateFile,
 } from "../lib/excelPasteHelper";
+import { hasTransmittalContractSwitch, type TransmittalContract } from "../lib/jobInfo";
 import type { ProjectForm } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string };
@@ -39,10 +41,16 @@ export function ExcelPasteHelperPage() {
   const [dragOver, setDragOver] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [contract, setContract] = useState<TransmittalContract>("paint");
+
+  const showContractSwitch = hasTransmittalContractSwitch(project);
 
   const extras = useMemo(
-    () => ({ signaturePrintName: branding.signerName }),
-    [branding.signerName],
+    () => ({
+      signaturePrintName: branding.signerName,
+      contract: showContractSwitch ? contract : undefined,
+    }),
+    [branding.signerName, contract, showContractSwitch],
   );
 
   const selectedConfig = useMemo(
@@ -125,6 +133,7 @@ export function ExcelPasteHelperPage() {
         uploadedName,
         project,
         selectedConfig.rename_on_fill,
+        extras,
       );
       downloadFilledTemplate(result.bytes, filename);
       setStatus(
@@ -172,6 +181,15 @@ export function ExcelPasteHelperPage() {
             ))}
           </select>
         </label>
+
+        {showContractSwitch && (
+          <TradeContractTabs
+            project={project}
+            value={contract}
+            onChange={setContract}
+            showJobLabel
+          />
+        )}
 
         <div
           className={`excel-drop-zone${dragOver ? " excel-drop-zone-dragover" : ""}${uploadedName ? " excel-drop-zone-has-file" : ""}`}

@@ -1,4 +1,4 @@
-import type { PaintTrackerState, WcTrackerLineState } from "../types/fieldTracker";
+import type { PaintTrackerState, WcTrackerLineState, WcTrackerState } from "../types/fieldTracker";
 
 export type PaintFieldStatus =
   | "Not Started"
@@ -13,6 +13,7 @@ export type WcFieldStatus =
   | "Not Started"
   | "Submittal Ordered"
   | "Submitted for Approval"
+  | "Needs Revision"
   | "Approved"
   | "Material Ordered"
   | "Delivered";
@@ -27,12 +28,13 @@ export function paintFieldStatus(tracker: PaintTrackerState): PaintFieldStatus {
   return "Not Started";
 }
 
-export function wcFieldStatus(line: WcTrackerLineState): WcFieldStatus {
+export function wcFieldStatus(line: WcTrackerLineState, tracker: WcTrackerState): WcFieldStatus {
   if (line.delivered) return "Delivered";
   if (line.materialOrder) return "Material Ordered";
-  if (line.approved) return "Approved";
-  if (line.sentForApproval) return "Submitted for Approval";
-  if (line.ordered) return "Submittal Ordered";
+  if (tracker.revision && !tracker.approved) return "Needs Revision";
+  if (tracker.approved) return "Approved";
+  if (tracker.submittedForApproval) return "Submitted for Approval";
+  if (tracker.submittalOrdered) return "Submittal Ordered";
   return "Not Started";
 }
 
@@ -73,6 +75,8 @@ export function wcPillClass(status: WcFieldStatus): string {
       return "pill-material-ordered";
     case "Approved":
       return "pill-approved";
+    case "Needs Revision":
+      return "pill-revision";
     case "Submitted for Approval":
       return "pill-submitted";
     case "Submittal Ordered":
@@ -90,6 +94,8 @@ export function wcDotClass(status: WcFieldStatus): string {
       return "dot-material-ordered";
     case "Approved":
       return "dot-approved";
+    case "Needs Revision":
+      return "dot-revision";
     case "Submitted for Approval":
       return "dot-submitted";
     case "Submittal Ordered":

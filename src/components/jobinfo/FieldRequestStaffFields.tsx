@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
-import { fetchFieldRequestStaffLists, fieldRequestOrderUrl } from "../../lib/fieldRequestOrderSync";
-import { loadPaintUserSettings } from "../../lib/paintUserSettings";
+import { loadFieldToolsStaffForJobflow } from "../../lib/fieldToolsStaff";
+import { loadProjectStaffSettings, staffContactNames } from "../../lib/projectStaffSettings";
 import type { JobInfoData } from "../../types/jobInfo";
 
 type Props = {
@@ -12,7 +11,6 @@ type Props = {
 };
 
 export function FieldRequestStaffFields({ jobInfo, onChange }: Props) {
-  const { user } = useAuth();
   const { profile } = useLetterhead();
   const [pms, setPms] = useState<string[]>([]);
   const [supers, setSupers] = useState<string[]>([]);
@@ -30,28 +28,29 @@ export function FieldRequestStaffFields({ jobInfo, onChange }: Props) {
   }, [jobInfo.field_request_pm, onChange, profileName]);
 
   useEffect(() => {
-    if (!user?.id) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void loadPaintUserSettings(user.id).then(async (settings) => {
-      const url = fieldRequestOrderUrl(settings.google_urls);
-      const result = await fetchFieldRequestStaffLists(url);
-      if (cancelled) return;
-      setLoading(false);
-      if (result.error) {
-        setError(result.error);
+    void Promise.all([loadFieldToolsStaffForJobflow(), loadProjectStaffSettings()])
+      .then(([fieldStaff, officeStaff]) => {
+        if (cancelled) return;
+        setSupers(fieldStaff.lists.supers.map((c) => c.name));
+        setPms(staffContactNames(officeStaff.project_staff_pms));
+        if (fieldStaff.error) setError(fieldStaff.error);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Could not load staff lists.");
         setPms([]);
         setSupers([]);
-        return;
-      }
-      setPms(result.lists.pms);
-      setSupers(result.lists.supers);
-    });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, []);
 
   const pmSuggestions = [...new Set([profileName, ...pms].filter(Boolean))];
   const superValue = jobInfo.field_request_super;
@@ -59,23 +58,33 @@ export function FieldRequestStaffFields({ jobInfo, onChange }: Props) {
   return (
     <JobSectionInner title="Field Request Order">
       <p className="muted small">
-        PM defaults from your profile name (Settings → Your profile) — edit if needed. Names must
-        match the Field Request spreadsheet exactly. For two supers use <code>Name, Name</code>.
+        PM defaults from your profile name (Settings → Your profile) — edit if needed. PM names come from{" "}
+        <Link to="/settings" state={{ tab: "project-staff" }}>Settings → Project staff</Link>. Super names
+        come from{" "}
+        <Link to="/field" target="_blank" rel="noopener noreferrer">
+          Field Tools
+        </Link>
+        . Field Tools and Manpower use these values with Supabase. For two supers use{" "}
+        <code>Name, Name</code>.
       </p>
       {loading && <p className="muted small">Loading PM / Super lists…</p>}
-      {error && (
-        <p className="banner banner-warn">
-          {error}{" "}
-          <Link to="/settings">Configure Field Request URL</Link>
+      {error && <p className="banner banner-warn">{error}</p>}
+      {!loading && !error && !supers.length ? (
+        <p className="muted small">
+          Add supers in{" "}
+          <Link to="/field" target="_blank" rel="noopener noreferrer">
+            Field Tools
+          </Link>{" "}
+          to populate the super dropdown.
         </p>
-      )}
+      ) : null}
       <div className="grid-2">
         <label>
           Field Request PM
           <input
             list="field-request-pm-options"
             value={jobInfo.field_request_pm}
-            placeholder={profileName || "PM name from PMs sheet"}
+            placeholder={profileName || "PM from Settings → Project staff"}
             onChange={(e) => onChange({ field_request_pm: e.target.value })}
           />
           {pmSuggestions.length > 0 && (
@@ -100,13 +109,13 @@ export function FieldRequestStaffFields({ jobInfo, onChange }: Props) {
                 </option>
               ))}
               {superValue && !supers.includes(superValue) && (
-                <option value={superValue}>{superValue} (not on sheet)</option>
+                <option value={superValue}>{superValue} (not in Field Tools)</option>
               )}
             </select>
           ) : (
             <input
               value={jobInfo.field_request_super}
-              placeholder="Must match Supers sheet"
+              placeholder="Super from Field Tools"
               onChange={(e) => onChange({ field_request_super: e.target.value })}
             />
           )}

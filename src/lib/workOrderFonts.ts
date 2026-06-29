@@ -31,12 +31,16 @@ export function applyFontSettingsToOverlays(
   }));
 }
 
-export const FONT_SETTING_FIELDS: { key: keyof WorkOrderFontSettings; label: string }[] = [
-  { key: "material", label: "Material lines" },
-  { key: "labor", label: "Labor lines" },
-  { key: "material_total1", label: "Material Total 1" },
-  { key: "material_total2", label: "Material Total 2" },
-  { key: "labor_total", label: "Labor Total" },
-  { key: "labor_total2", label: "Labor Total 2" },
-  { key: "grand_total", label: "Grand Total" },
+export const FONT_SETTING_FIELDS: {
+  key: keyof WorkOrderFontSettings;
+  label: string;
+  shortLabel: string;
+}[] = [
+  { key: "material", label: "Material lines", shortLabel: "Mat" },
+  { key: "labor", label: "Labor lines", shortLabel: "Labor" },
+  { key: "material_total1", label: "Material Total 1", shortLabel: "Mat T1" },
+  { key: "material_total2", label: "Material Total 2", shortLabel: "Mat T2" },
+  { key: "labor_total", label: "Labor Total", shortLabel: "Lab T1" },
+  { key: "labor_total2", label: "Labor Total 2", shortLabel: "Lab T2" },
+  { key: "grand_total", label: "Grand Total", shortLabel: "Grand" },
 ];

@@ -1,5 +1,11 @@
 import templateConfig from "../config/excelTemplateMappings.json";
-import { jobFullAddressOneLine } from "./jobInfo";
+import {
+  contractAmountForTrade,
+  jobFullAddressOneLine,
+  normalizeTransmittalContract,
+  transmittalPrintInfo,
+  type TransmittalContract,
+} from "./jobInfo";
 import type { ProjectForm } from "../types/database";
 import type { JobInfoData } from "../types/jobInfo";
 
@@ -22,6 +28,8 @@ export type ExcelTemplateFile = {
 
 export type ExcelPasteExtras = {
   signaturePrintName?: string;
+  /** When set, job #, job name, and contract amount use this contract identity. */
+  contract?: TransmittalContract;
 };
 
 export const EXCEL_FIELD_LABELS: Record<string, string> = {
@@ -36,6 +44,9 @@ export const EXCEL_FIELD_LABELS: Record<string, string> = {
   job_type: "Job type",
   job_cost_type: "Cost type",
   contract_amount: "Contract amount",
+  wc_contract_amount: "Wallcovering contract amount",
+  frp_contract_amount: "FRP contract amount",
+  track_contract_amount: "Track contract amount",
   start_date: "Start date",
   end_date: "End date",
   scope_of_out_work: "Scope of our work",
@@ -128,12 +139,15 @@ export function resolveExcelFieldValue(
   extras: ExcelPasteExtras = {},
 ): string {
   const j = project.jobInfo;
+  const contract = normalizeTransmittalContract(extras.contract);
 
   switch (fieldKey) {
     case "job_number":
-      return project.job_number.trim();
+      return transmittalPrintInfo(project, contract).job_number;
     case "job_name":
-      return project.job_name.trim();
+      return transmittalPrintInfo(project, contract).job_name;
+    case "contract_amount":
+      return contractAmountForTrade(j, contract);
     case "job_address":
       return jobFullAddressOneLine(project, j);
     case "job_street_only":

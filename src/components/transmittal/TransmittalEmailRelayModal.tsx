@@ -6,6 +6,8 @@ import {
   openEmailRelayMailto,
   type EmailRelayDetails,
 } from "../../lib/transmittalHelpers";
+import type { EmailSignatureSettings } from "../../lib/emailSignature";
+import { resolveEmailSignatureLogoUrl } from "../../lib/emailSignature";
 import type { ComposeEmailMethod } from "../../lib/paintUserSettings";
 import { composeEmailButtonLabel } from "../../lib/paintUserSettings";
 import type { TransmittalData } from "../../types/tradeDocuments";
@@ -14,6 +16,8 @@ type Props = {
   project: { job_number: string; job_name: string };
   transmittal: TransmittalData;
   composeEmailMethod?: ComposeEmailMethod;
+  signature: EmailSignatureSettings;
+  logoUrl?: string;
   onClose: () => void;
   onDone?: (message: string) => void;
 };
@@ -22,16 +26,22 @@ export function TransmittalEmailRelayModal({
   project,
   transmittal,
   composeEmailMethod = "gmail",
+  signature,
+  logoUrl = "",
   onClose,
   onDone,
 }: Props) {
   const isHand = transmittal.delivery_method === "Hand Delivered";
   const [details, setDetails] = useState<EmailRelayDetails>(() => defaultEmailRelayDetails(transmittal));
+  const [includeSignature, setIncludeSignature] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const effectiveLogoUrl = resolveEmailSignatureLogoUrl(signature, logoUrl);
+  const activeSignature = includeSignature ? signature : undefined;
+
   const preview = useMemo(
-    () => buildEmailRelayPlainBody(project, transmittal, details),
-    [project, transmittal, details],
+    () => buildEmailRelayPlainBody(project, transmittal, details, activeSignature),
+    [project, transmittal, details, activeSignature],
   );
 
   function patch(partial: EmailRelayDetails) {
@@ -41,7 +51,14 @@ export function TransmittalEmailRelayModal({
   function onOpenMailto(e: FormEvent) {
     e.preventDefault();
     void (async () => {
-      const result = await openEmailRelayMailto(project, transmittal, details, composeEmailMethod);
+      const result = await openEmailRelayMailto(
+        project,
+        transmittal,
+        details,
+        composeEmailMethod,
+        activeSignature,
+        effectiveLogoUrl,
+      );
       const msg =
         result.warning ??
         "Compose opened (empty body) — press Ctrl+V to paste formatted HTML, then attach transmittal PDF(s).";
@@ -51,7 +68,7 @@ export function TransmittalEmailRelayModal({
   }
 
   async function onCopyHtml() {
-    await copyEmailRelayHtml(project, transmittal, details);
+    await copyEmailRelayHtml(project, transmittal, details, activeSignature, effectiveLogoUrl);
     setMessage("Formatted HTML copied — paste with Ctrl+V in the empty compose body, then attach PDFs.");
   }
 
@@ -66,6 +83,15 @@ export function TransmittalEmailRelayModal({
         <h3 id="transmittal-email-relay-title">Email Relay – Delivery Details</h3>
 
         <form className="stack" onSubmit={onOpenMailto}>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={includeSignature}
+              onChange={(e) => setIncludeSignature(e.target.checked)}
+            />
+            Include signature
+          </label>
+
           <section className="stack">
             <h4 className="transmittal-relay-section-title">Delivery details</h4>
             {isHand ? (

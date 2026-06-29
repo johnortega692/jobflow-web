@@ -1,20 +1,35 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ContractListFilter, type ContractListFilterValue } from "../jobinfo/ContractListFilter";
 import {
   formatTransmittalHistoryDetail,
   formatTransmittalHistoryLabel,
 } from "../../lib/transmittalSendHistory";
+import { hasTransmittalContractSwitch } from "../../lib/jobInfo";
 import { normalizeTransmittal, type TransmittalHistoryEntry } from "../../types/tradeDocuments";
+import type { ProjectForm } from "../../types/database";
 
 type Props = {
+  project: Pick<ProjectForm, "job_number" | "job_name" | "jobInfo">;
   history: TransmittalHistoryEntry[];
   onLoadSnapshot: (entry: TransmittalHistoryEntry) => void;
   onClose: () => void;
 };
 
-export function TransmittalSentHistoryModal({ history, onLoadSnapshot, onClose }: Props) {
-  const [selectedId, setSelectedId] = useState(history[0]?.id ?? "");
+export function TransmittalSentHistoryModal({ project, history, onLoadSnapshot, onClose }: Props) {
+  const showContract = hasTransmittalContractSwitch(project);
+  const [contractFilter, setContractFilter] = useState<ContractListFilterValue>("all");
+  const filteredHistory = useMemo(() => {
+    if (contractFilter === "all") return history;
+    return history.filter((entry) => (entry.contract ?? "paint") === contractFilter);
+  }, [contractFilter, history]);
 
-  const selected = history.find((h) => h.id === selectedId);
+  const [selectedId, setSelectedId] = useState(filteredHistory[0]?.id ?? "");
+
+  useEffect(() => {
+    setSelectedId(filteredHistory[0]?.id ?? "");
+  }, [filteredHistory]);
+
+  const selected = filteredHistory.find((h) => h.id === selectedId);
 
   function onLoad() {
     if (!selected) return;
@@ -35,12 +50,17 @@ export function TransmittalSentHistoryModal({ history, onLoadSnapshot, onClose }
         <p className="muted small">
           Past transmittals downloaded from this project. Select one to review details or reload into the draft.
         </p>
+
+        <ContractListFilter project={project} value={contractFilter} onChange={setContractFilter} />
+
         {!history.length ? (
           <p className="muted">No transmittals generated yet.</p>
+        ) : filteredHistory.length === 0 ? (
+          <p className="muted">No transmittals for this contract yet.</p>
         ) : (
           <div className="transmittal-sent-history-body">
             <ul className="transmittal-sent-history-list" role="listbox">
-              {history.map((entry) => (
+              {filteredHistory.map((entry) => (
                 <li key={entry.id}>
                   <button
                     type="button"
@@ -49,14 +69,16 @@ export function TransmittalSentHistoryModal({ history, onLoadSnapshot, onClose }
                     className={`transmittal-sent-history-item${entry.id === selectedId ? " selected" : ""}`}
                     onClick={() => setSelectedId(entry.id)}
                   >
-                    {formatTransmittalHistoryLabel(entry)}
+                    {formatTransmittalHistoryLabel(entry, { showContract: showContract })}
                   </button>
                 </li>
               ))}
             </ul>
             {selected && (
               <div className="transmittal-sent-history-detail muted small">
-                <pre className="transmittal-sent-history-pre">{formatTransmittalHistoryDetail(selected)}</pre>
+                <pre className="transmittal-sent-history-pre">
+                  {formatTransmittalHistoryDetail(selected, { showContract: showContract })}
+                </pre>
                 <p>
                   <strong>Remarks:</strong> {selected.snapshot.remarks.trim() || "—"}
                 </p>

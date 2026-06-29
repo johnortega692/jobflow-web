@@ -154,12 +154,12 @@ export function buildPrepEmailHtmlBody(
   gc: string,
   items: PaintItem[],
   defaultQty: number,
-  signature: EmailSignatureSettings,
+  signature?: EmailSignatureSettings,
   logoUrl = "",
 ): string {
   const intro = introPrepHtml(vendor.name, siteLocation, gc, defaultQty);
   const tables = buildTablesHtml(items, "original");
-  const sig = buildEmailSignatureHtml(signature, logoUrl);
+  const sig = signature ? buildEmailSignatureHtml(signature, logoUrl) : "";
   const fragment = `${intro}${tables}${sig}`;
   return `<html><body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">${fragment}</body></html>`;
 }
@@ -538,12 +538,12 @@ export function buildAtticStockEmailHtmlFragment(
   jobName: string,
   paintItems: AtticStockPaintItem[],
   customItems: AtticStockCustomItem[],
-  signature: EmailSignatureSettings,
+  signature?: EmailSignatureSettings,
   logoUrl = "",
 ): string {
   const intro = introAtticStockHtml(vendor.name, jobNumber, jobName);
   const table = buildAtticStockTableHtml(paintItems, customItems);
-  const sig = buildEmailSignatureHtml(signature, logoUrl);
+  const sig = signature ? buildEmailSignatureHtml(signature, logoUrl) : "";
   return `${intro}${table}${sig}`;
 }
 
@@ -553,7 +553,7 @@ export function buildAtticStockEmailHtmlBody(
   jobName: string,
   paintItems: AtticStockPaintItem[],
   customItems: AtticStockCustomItem[],
-  signature: EmailSignatureSettings,
+  signature?: EmailSignatureSettings,
   logoUrl = "",
 ): string {
   const fragment = buildAtticStockEmailHtmlFragment(
@@ -597,12 +597,12 @@ export function buildVendorEmailHtmlFragment(
   items: PaintItem[],
   submittalType: TradeSubmittalType,
   defaultQty: number,
-  signature: EmailSignatureSettings,
+  signature?: EmailSignatureSettings,
   logoUrl = "",
 ): string {
   const intro = introHtml(vendor.name, jobNumber, jobName, submittalType, defaultQty);
   const tables = buildTablesHtml(items, submittalType);
-  const sig = buildEmailSignatureHtml(signature, logoUrl);
+  const sig = signature ? buildEmailSignatureHtml(signature, logoUrl) : "";
   return `${intro}${tables}${sig}`;
 }
 
@@ -613,7 +613,7 @@ export function buildVendorEmailHtmlBody(
   items: PaintItem[],
   submittalType: TradeSubmittalType,
   defaultQty: number,
-  signature: EmailSignatureSettings,
+  signature?: EmailSignatureSettings,
   logoUrl = "",
 ): string {
   const fragment = buildVendorEmailHtmlFragment(

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
+import { ContractListFilter, type ContractListFilterValue } from "../components/jobinfo/ContractListFilter";
 import { SubmittalLogRowEditor } from "../components/submittals/SubmittalLogRowEditor";
 import { exportSubmittalLogExcel } from "../lib/submittalLogExport";
 import {
   buildRevisionRow,
+  filterSubmittalLogByContract,
   rowEnclosureDescription,
+  scopeToContract,
   suggestNextLineNumber,
 } from "../lib/submittalLogHelpers";
 import {
@@ -15,6 +18,13 @@ import {
   updateSubmittalLogRow,
 } from "../lib/submittalLogService";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
+import {
+  applyTransmittalContractIfDistinct,
+  hasTransmittalContractSwitch,
+  transmittalPrintInfo,
+  TRANSMITTAL_CONTRACT_LABELS,
+  type TransmittalContract,
+} from "../lib/jobInfo";
 import type { ProjectForm } from "../types/database";
 import { defaultTransmittal, emptyEnclosure } from "../types/tradeDocuments";
 import { emptySubmittalLogRow, type SubmittalLogRow } from "../types/submittalLog";
@@ -38,6 +48,23 @@ export function SubmittalsPage() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [transPromptOpen, setTransPromptOpen] = useState(false);
   const [transNumber, setTransNumber] = useState("");
+  const [viewContract, setViewContract] = useState<ContractListFilterValue>("all");
+
+  const showContractSwitch = hasTransmittalContractSwitch(project);
+
+  const visibleRows = useMemo(
+    () => filterSubmittalLogByContract(rows, viewContract),
+    [rows, viewContract],
+  );
+
+  useEffect(() => {
+    setViewContract("all");
+    setSelected(new Set());
+  }, [projectId]);
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [viewContract]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -71,7 +98,7 @@ export function SubmittalsPage() {
   }
 
   function toggleAll(on: boolean) {
-    setSelected(on ? new Set(rows.map((r) => r.id)) : new Set());
+    setSelected(on ? new Set(visibleRows.map((r) => r.id)) : new Set());
   }
 
   async function onAddSave(row: SubmittalLogRow) {
@@ -137,16 +164,28 @@ export function SubmittalsPage() {
       if (st.includes("product data")) cb_sds_safety = true;
       cb_submittal = true;
     }
+    let nextTransmittal = {
+      ...transmittal,
+      cb_product_data,
+      cb_samples,
+      cb_sds_safety,
+      cb_submittal,
+      enclosures: [...existing, ...additions],
+    };
+    const inferredContracts = new Set(
+      selectedRows
+        .map((row) => scopeToContract(row.scope))
+        .filter((c): c is TransmittalContract => c != null),
+    );
+    if (inferredContracts.size === 1) {
+      const [contract] = [...inferredContracts];
+      if (contract) {
+        nextTransmittal = applyTransmittalContractIfDistinct(project, nextTransmittal, contract);
+      }
+    }
     const ok = await save({
       ...tradeData,
-      transmittal: {
-        ...transmittal,
-        cb_product_data,
-        cb_samples,
-        cb_sds_safety,
-        cb_submittal,
-        enclosures: [...existing, ...additions],
-      },
+      transmittal: nextTransmittal,
     });
     if (ok) {
       setStatus(`Added ${selectedRows.length} enclosure line(s) to Transmittal tab.`);
@@ -155,15 +194,26 @@ export function SubmittalsPage() {
   }
 
   function onExport() {
-    if (!project.job_number.trim() || !project.job_name.trim()) {
+    const printContract = viewContract === "all" ? "paint" : viewContract;
+    const printInfo = transmittalPrintInfo(project, printContract);
+    if (!printInfo.job_number.trim() || !printInfo.job_name.trim()) {
       setError("Job number and job name are required for export.");
       return;
     }
-    if (!rows.length) {
-      setError("No rows to export.");
+    const exportRows = filterSubmittalLogByContract(rows, viewContract);
+    if (!exportRows.length) {
+      setError(
+        viewContract === "all"
+          ? "No rows to export."
+          : `No ${TRANSMITTAL_CONTRACT_LABELS[viewContract]} submittal log rows to export.`,
+      );
       return;
     }
-    exportSubmittalLogExcel(rows, project.job_number, project.job_name);
+    exportSubmittalLogExcel(exportRows, printInfo.job_number, printInfo.job_name, {
+      includeContractColumn: showContractSwitch && viewContract === "all",
+      exportLabel:
+        viewContract === "all" ? "All contracts" : TRANSMITTAL_CONTRACT_LABELS[viewContract],
+    });
     setStatus("Submittal log exported to Excel.");
     setError(null);
   }
@@ -235,6 +285,8 @@ export function SubmittalsPage() {
         </button>
       </div>
 
+      <ContractListFilter project={project} value={viewContract} onChange={setViewContract} />
+
       <p className="muted small">
         Log rows are added when you build PDFs (submittal packages, paint, wallcovering, FRP).
         Generate
@@ -246,6 +298,13 @@ export function SubmittalsPage() {
 
       {loading ? (
         <p className="muted">Loading submittal log…</p>
+      ) : rows.length === 0 ? (
+        <p className="muted">No log rows yet. Build a PDF or click Add row.</p>
+      ) : visibleRows.length === 0 ? (
+        <p className="muted">
+          No log rows for{" "}
+          {viewContract === "all" ? "this job" : TRANSMITTAL_CONTRACT_LABELS[viewContract]}.
+        </p>
       ) : (
         <div className="table-wrap submittal-log-table-wrap">
           <table className="data-table submittal-log-table">
@@ -255,7 +314,10 @@ export function SubmittalsPage() {
                   <input
                     type="checkbox"
                     aria-label="Select all rows"
-                    checked={rows.length > 0 && selected.size === rows.length}
+                    checked={
+                      visibleRows.length > 0 &&
+                      visibleRows.every((row) => selected.has(row.id))
+                    }
                     onChange={(e) => toggleAll(e.target.checked)}
                   />
                 </th>
@@ -274,14 +336,7 @@ export function SubmittalsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={13} className="muted small">
-                    No log rows yet. Build a PDF or click Add row.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
+              {visibleRows.map((row) => (
                   <tr key={row.id} className={selected.has(row.id) ? "selected" : undefined}>
                     <td className="submittal-log-check">
                       <input
@@ -310,8 +365,7 @@ export function SubmittalsPage() {
                     </td>
                     <td>{row.notes}</td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>

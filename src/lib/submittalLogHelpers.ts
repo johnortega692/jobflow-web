@@ -1,4 +1,5 @@
 import type { Submittal } from "../types/database";
+import type { TransmittalContract } from "./jobInfo";
 import {
   emptySubmittalLogRow,
   newLogRowId,
@@ -285,5 +286,37 @@ export function wallcoveringLogRowFromSubmittal(submittalNumber: number): Submit
     notes: `Wallcovering submittal #${submittalNumber}`,
     trade_submittal_number: String(submittalNumber),
     status: "Ready",
+  });
+}
+
+export function scopeToContract(scope: string): TransmittalContract | null {
+  const s = scope.trim().toLowerCase();
+  if (s.includes("wallcover")) return "wallcovering";
+  if (s.includes("frp")) return "frp";
+  if (s.includes("track") || s.includes("fabric")) return "track";
+  if (
+    s.includes("paint") ||
+    s.includes("finish") ||
+    s.includes("ceiling") ||
+    s.includes("floor") ||
+    s.includes("sealant") ||
+    s.includes("fireproof")
+  ) {
+    return "paint";
+  }
+  return null;
+}
+
+export type SubmittalLogExportContract = TransmittalContract | "all";
+
+export function filterSubmittalLogByContract(
+  rows: SubmittalLogRow[],
+  contract: SubmittalLogExportContract,
+): SubmittalLogRow[] {
+  if (contract === "all") return rows;
+  return rows.filter((row) => {
+    const mapped = scopeToContract(row.scope);
+    if (mapped === contract) return true;
+    return mapped == null && contract === "paint";
   });
 }

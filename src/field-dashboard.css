@@ -1325,12 +1325,16 @@
   margin-top: 12px;
 }
 
-.field-dashboard.field-dashboard--mobile .field-mobile-thumb {
-  margin-top: 10px;
-  width: 100%;
-  max-width: 200px;
-  height: auto;
-  aspect-ratio: 1;
+.field-dashboard .field-revision-notes-cell,
+.field-dashboard .field-revision-notes dd {
+  max-width: 280px;
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  color: var(--fd-text-secondary, #cbd5e1);
+}
+
+.field-dashboard .field-revision-notes {
+  grid-column: 1 / -1;
 }
 
 .field-dashboard.field-dashboard--mobile .group-header {

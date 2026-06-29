@@ -55,6 +55,13 @@ export function formatDateDisplay(d: Date): string {
   return `${mm}/${dd}/${yyyy}`;
 }
 
+/** MM/DD/YYYY — N calendar days from today (local time). */
+export function addDaysToTodayDisplay(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return formatDateDisplay(d);
+}
+
 export function toIsoDateValue(text: string): string {
   const d = parseFlexibleDate(text);
   if (!d) return "";

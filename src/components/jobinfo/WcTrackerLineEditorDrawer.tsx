@@ -71,9 +71,6 @@ export function WcTrackerLineEditorDrawer({
 
         <div className="stack job-info-drawer-body wc-tracker-editor-body">
           <div className="job-status-pills" aria-label="Line item status">
-            <StatusPill label="Ordered" on={line.ordered} />
-            <StatusPill label="Sent for approval" on={line.sentForApproval} />
-            <StatusPill label="Approved" on={line.approved} />
             <StatusPill label="Field measure" on={line.fieldMeasurement} />
             <StatusPill label="Shops" on={line.shops} />
             <StatusPill label="Material order" on={line.materialOrder} />
@@ -144,13 +141,6 @@ export function WcTrackerLineEditorDrawer({
 
           <div className="paint-tracker-flags">
             <TrackerCheckbox label="Panels" checked={line.panels} onChange={(v) => patch({ panels: v })} />
-            <TrackerCheckbox label="Ordered" checked={line.ordered} onChange={(v) => patch({ ordered: v })} />
-            <TrackerCheckbox
-              label="Sent for approval"
-              checked={line.sentForApproval}
-              onChange={(v) => patch({ sentForApproval: v })}
-            />
-            <TrackerCheckbox label="Approved" checked={line.approved} onChange={(v) => patch({ approved: v })} />
             <TrackerCheckbox
               label="Field measurement"
               checked={line.fieldMeasurement}

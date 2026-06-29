@@ -153,7 +153,27 @@ export function collectWallcoveringDigestAlerts(projects: ProjectForm[]): Wallco
 
   for (const project of projects) {
     if (!projectHasWallcovering(project.jobInfo)) continue;
-    for (const row of buildFieldWcRows(project)) {
+    const rows = buildFieldWcRows(project);
+    if (!rows.length) continue;
+    const tracker = rows[0]!.tracker;
+
+    const jobItem: DigestJobItem = {
+      job: rows[0]!.jobNumber,
+      name: rows[0]!.jobName,
+      revisionNotes: tracker.revisionNotes.trim() || undefined,
+    };
+
+    if (tracker.revision && !tracker.approved) {
+      alerts.overdueApproval.push({ ...jobItem, status: "Needs revision" });
+    } else if (tracker.submittedForApproval && !tracker.approved) {
+      alerts.overdueApproval.push({ ...jobItem, status: "Awaiting approval" });
+    } else if (tracker.submittalOrdered && !tracker.approved) {
+      alerts.awaitingApproval.push({ ...jobItem, status: "Samples ordered" });
+    } else if (!tracker.submittalOrdered) {
+      alerts.needsOrdering.push(jobItem);
+    }
+
+    for (const row of rows) {
       const line = row.line;
       const item: DigestJobItem = {
         job: row.jobNumber,
@@ -162,14 +182,8 @@ export function collectWallcoveringDigestAlerts(projects: ProjectForm[]): Wallco
         label: row.label,
       };
 
-      if (line.approved && !line.materialOrder && !line.delivered) {
+      if (tracker.approved && !line.materialOrder && !line.delivered) {
         alerts.approvedNotOrdered.push({ ...item, status: wcApprovedStatus(line) });
-      } else if (!line.ordered && !line.delivered) {
-        alerts.needsOrdering.push(item);
-      } else if (line.ordered && !line.sentForApproval && !line.approved) {
-        alerts.awaitingApproval.push({ ...item, status: "Samples ordered" });
-      } else if (line.sentForApproval && !line.approved) {
-        alerts.overdueApproval.push({ ...item, status: "Awaiting approval" });
       }
 
       const until = daysUntil(line.installDate);

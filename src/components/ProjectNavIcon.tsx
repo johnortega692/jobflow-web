@@ -107,6 +107,14 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
         </svg>
       );
+    case "po":
+      return (
+        <svg {...common}>
+          <rect x="5" y="4" width="14" height="16" rx="2" />
+          <path d="M8 8h8M8 12h5" />
+          <path d="M9 16h6" strokeWidth="2" />
+        </svg>
+      );
     case "budget":
       return (
         <svg {...common}>

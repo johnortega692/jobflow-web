@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { DateInput } from "../DateInput";
+import { addDaysToTodayDisplay } from "../../lib/dateInputUtils";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
 import {
@@ -16,6 +16,10 @@ import {
   sendPaintTrackerNotifications,
   type PaintTrackerNotificationKind,
 } from "../../lib/trackerNotificationEmail";
+import {
+  applyPaintTrackerRevisionPatch,
+  validatePaintTrackerRevisionSave,
+} from "../../lib/paintTrackerRevision";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
 import type { PaintTrackerState } from "../../types/fieldTracker";
 import type { PaintVendorLabel } from "../../lib/googleSheetsConfig";
@@ -26,9 +30,9 @@ type Props = {
   projectId: string;
   onOpenJobSetup?: () => void;
   onProjectUpdate?: (project: ProjectForm) => void;
-  /** Parent renders Save in the panel header (Job Tracker). */
-  onSaveControlChange?: (control: { save: () => void; saving: boolean; visible: boolean } | null) => void;
 };
+
+const AUTO_SAVE_MS = 700;
 
 function StatusPill({ label, on }: { label: string; on: boolean }) {
   return (
@@ -40,21 +44,23 @@ function TrackerCheckbox({
   label,
   checked,
   onChange,
+  disabled,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="checkbox-row paint-tracker-flag">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
   );
 }
 
 function notificationStatusLabel(sent: PaintTrackerNotificationKind[]): string {
-  if (!sent.length) return "Paint tracker saved.";
+  if (!sent.length) return "Saved.";
   const labels: Record<PaintTrackerNotificationKind, string> = {
     approval: "Approval",
     revision: "Revision",
@@ -64,12 +70,15 @@ function notificationStatusLabel(sent: PaintTrackerNotificationKind[]): string {
   return `Notifications sent: ${sent.map((k) => labels[k]).join(", ")}.`;
 }
 
+function trackerSnapshot(tracker: PaintTrackerState): string {
+  return JSON.stringify(tracker);
+}
+
 export function PaintTrackerStatusSection({
   project,
   projectId,
   onOpenJobSetup,
   onProjectUpdate,
-  onSaveControlChange,
 }: Props) {
   const { user } = useAuth();
   const { settings: letterhead, branding, profile } = useLetterhead();
@@ -82,8 +91,12 @@ export function PaintTrackerStatusSection({
   const [notificationPrimaryEmail, setNotificationPrimaryEmail] = useState("");
   const [notificationPrimaryName, setNotificationPrimaryName] = useState("");
   const [superEmails, setSuperEmails] = useState<{ name: string; email: string }[]>([]);
+  const [sendRevisionEmailChecked, setSendRevisionEmailChecked] = useState(false);
 
   const lastSavedRef = useRef<PaintTrackerState | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+  const trackerRef = useRef<PaintTrackerState | null>(null);
+  const revisionNotesRef = useRef<HTMLTextAreaElement | null>(null);
 
   const jobNumber = project.job_number.trim();
 
@@ -95,8 +108,13 @@ export function PaintTrackerStatusSection({
   useEffect(() => {
     setTracker(resolvedTracker);
     lastSavedRef.current = resolvedTracker;
+    trackerRef.current = resolvedTracker;
     setLoading(false);
   }, [resolvedTracker]);
+
+  useEffect(() => {
+    trackerRef.current = tracker;
+  }, [tracker]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -113,7 +131,6 @@ export function PaintTrackerStatusSection({
     async (next: PaintTrackerState) => {
       setSaving(true);
       setError(null);
-      setStatus(null);
       const cloudErr = await savePaintTrackerState(projectId, next);
       setSaving(false);
       if (cloudErr) {
@@ -128,32 +145,38 @@ export function PaintTrackerStatusSection({
     [onProjectUpdate, projectId],
   );
 
-  function patchTracker(patch: Partial<PaintTrackerState>) {
-    setTracker((t) => (t ? { ...t, ...patch } : t));
-  }
-
-  const onSave = useCallback(async () => {
-    if (!tracker) return;
+  const flushSave = useCallback(async () => {
+    const current = trackerRef.current;
+    if (!current) return;
     const prev = lastSavedRef.current ?? resolvedTracker;
-    const kinds = detectPaintTrackerNotificationKinds(prev, tracker);
-    const ok = await persistTracker(tracker);
+    if (trackerSnapshot(prev) === trackerSnapshot(current)) return;
+
+    const revisionError = validatePaintTrackerRevisionSave(current, prev);
+    if (revisionError) {
+      setError(revisionError);
+      revisionNotesRef.current?.focus();
+      return;
+    }
+
+    const kinds = detectPaintTrackerNotificationKinds(prev, current);
+    const ok = await persistTracker(current);
     if (!ok) return;
 
-    lastSavedRef.current = tracker;
+    lastSavedRef.current = current;
 
     if (!kinds.length) {
-      setStatus("Paint tracker saved.");
+      setStatus("Saved.");
       return;
     }
 
     if (!gasUrl) {
-      setStatus("Paint tracker saved. Set Dashboard Web App URL in Settings to send notification emails.");
+      setStatus("Saved. Set Dashboard Web App URL in Settings to send notification emails.");
       return;
     }
 
     if (!notificationPrimaryEmail.trim()) {
       setStatus(
-        "Paint tracker saved. Set primary notification email in Settings → Profile or Paint & email to send notifications.",
+        "Saved. Set primary notification email in Settings → Profile or Paint & email to send notifications.",
       );
       return;
     }
@@ -167,7 +190,7 @@ export function PaintTrackerStatusSection({
       const sent = await sendPaintTrackerNotifications({
         kinds,
         project,
-        tracker,
+        tracker: current,
         primaryEmail: notify.notification_primary_email,
         primaryName: notify.notification_primary_name,
         superEmails,
@@ -183,7 +206,6 @@ export function PaintTrackerStatusSection({
       setError(`Saved, but notification email failed: ${msg}`);
     }
   }, [
-    tracker,
     resolvedTracker,
     persistTracker,
     gasUrl,
@@ -199,24 +221,144 @@ export function PaintTrackerStatusSection({
     profile,
   ]);
 
-  const canSave = Boolean(jobNumber && tracker && !loading);
+  const scheduleSave = useCallback(() => {
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      void flushSave();
+    }, AUTO_SAVE_MS);
+  }, [flushSave]);
 
-  useEffect(() => {
-    if (!onSaveControlChange) return;
-    if (!canSave) {
-      onSaveControlChange(null);
+  const sendRevisionEmailNotification = useCallback(async () => {
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    const current = trackerRef.current;
+    if (!current?.revisionNotes.trim()) {
+      setError("Enter revision notes before sending the notification email.");
+      setSendRevisionEmailChecked(false);
+      revisionNotesRef.current?.focus();
       return;
     }
-    onSaveControlChange({
-      save: () => void onSave(),
-      saving,
-      visible: true,
+
+    const prev = lastSavedRef.current ?? resolvedTracker;
+    const next = { ...current, revision: true };
+    setTracker(next);
+    trackerRef.current = next;
+
+    const revisionError = validatePaintTrackerRevisionSave(next, prev);
+    if (revisionError) {
+      setError(revisionError);
+      setSendRevisionEmailChecked(false);
+      return;
+    }
+
+    setError(null);
+    const ok = await persistTracker(next);
+    if (!ok) {
+      setSendRevisionEmailChecked(false);
+      return;
+    }
+
+    lastSavedRef.current = next;
+
+    if (!gasUrl) {
+      setStatus("Saved. Set Dashboard Web App URL in Settings to send notification emails.");
+      setSendRevisionEmailChecked(false);
+      return;
+    }
+
+    if (!notificationPrimaryEmail.trim()) {
+      setStatus(
+        "Saved. Set primary notification email in Settings → Profile or Paint & email to send notifications.",
+      );
+      setSendRevisionEmailChecked(false);
+      return;
+    }
+
+    const notify = resolvePaintNotificationFromProfile(profile, {
+      notification_primary_email: notificationPrimaryEmail,
+      notification_primary_name: notificationPrimaryName,
     });
-  }, [canSave, onSave, onSaveControlChange, saving]);
+
+    try {
+      const sent = await sendPaintTrackerNotifications({
+        kinds: ["revision"],
+        project,
+        tracker: next,
+        primaryEmail: notify.notification_primary_email,
+        primaryName: notify.notification_primary_name,
+        superEmails,
+        companyName: branding.companyName || letterhead.company_name,
+        companyAddress: letterhead.company_address,
+        fromName: `${branding.companyName || letterhead.company_name || "JobFlow"} Dashboard`.trim(),
+        gasUrl,
+        logoUrl: letterhead.logo_url || branding.logoUrl,
+      });
+      setStatus(notificationStatusLabel(sent));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Email send failed.";
+      setError(`Saved, but notification email failed: ${msg}`);
+    } finally {
+      setSendRevisionEmailChecked(false);
+    }
+  }, [
+    resolvedTracker,
+    persistTracker,
+    gasUrl,
+    notificationPrimaryEmail,
+    notificationPrimaryName,
+    superEmails,
+    project,
+    branding.companyName,
+    branding.logoUrl,
+    letterhead.company_name,
+    letterhead.company_address,
+    letterhead.logo_url,
+    profile,
+  ]);
 
   useEffect(() => {
-    return () => onSaveControlChange?.(null);
-  }, [onSaveControlChange]);
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
+  function patchTracker(patch: Partial<PaintTrackerState>) {
+    const lastSaved = lastSavedRef.current ?? resolvedTracker;
+    const hasRevisionPatch = "revisionNotes" in patch || "revision" in patch;
+
+    if (hasRevisionPatch && trackerRef.current) {
+      const { next, validationError, scheduleSave: shouldSave } = applyPaintTrackerRevisionPatch(
+        trackerRef.current,
+        patch,
+        lastSaved,
+      );
+      setTracker(next);
+      trackerRef.current = next;
+      if (validationError) {
+        setError(validationError);
+        if ("revision" in patch && patch.revision) {
+          revisionNotesRef.current?.focus();
+        }
+      } else {
+        setError(null);
+      }
+      if (shouldSave) scheduleSave();
+      return;
+    }
+
+    setTracker((t) => {
+      if (!t) return t;
+      const next = { ...t, ...patch };
+      trackerRef.current = next;
+      return next;
+    });
+    setError(null);
+    scheduleSave();
+  }
 
   let body: ReactNode;
   if (!jobNumber) {
@@ -244,7 +386,6 @@ export function PaintTrackerStatusSection({
           <StatusPill label="Approved" on={tracker.approved} />
           <StatusPill label="Revision" on={tracker.revision} />
           <StatusPill label="Nights" on={tracker.nightsWeekends} />
-          <StatusPill label="FSI" on={tracker.fsi} />
           <StatusPill label="Match existing" on={tracker.matchExisting} />
         </div>
 
@@ -253,6 +394,7 @@ export function PaintTrackerStatusSection({
             Paint vendor
             <select
               value={tracker.paintVendor}
+              disabled={saving}
               onChange={(e) => patchTracker({ paintVendor: e.target.value as PaintVendorLabel })}
             >
               {PAINT_VENDOR_OPTIONS.map((v) => (
@@ -267,16 +409,21 @@ export function PaintTrackerStatusSection({
             <DateInput value={tracker.followUp} onChange={(v) => patchTracker({ followUp: v })} />
           </label>
           <label>
-            Creative team
+            Team
             <input
               value={tracker.creativeTeam}
+              disabled={saving}
               onChange={(e) => patchTracker({ creativeTeam: e.target.value })}
             />
           </label>
           <label className="grid-span-2">
             Revision notes
-            <input
+            <textarea
+              ref={revisionNotesRef}
+              rows={3}
               value={tracker.revisionNotes}
+              disabled={saving}
+              placeholder="Describe what needs revision — required before sending notification"
               onChange={(e) => patchTracker({ revisionNotes: e.target.value })}
             />
           </label>
@@ -284,45 +431,71 @@ export function PaintTrackerStatusSection({
 
         <div className="paint-tracker-flags">
           <TrackerCheckbox
+            label="Send revision notification email"
+            checked={sendRevisionEmailChecked}
+            disabled={saving || !tracker.revisionNotes.trim()}
+            onChange={(v) => {
+              setSendRevisionEmailChecked(v);
+              if (v) void sendRevisionEmailNotification();
+            }}
+          />
+        </div>
+
+        <div className="paint-tracker-flags">
+          <TrackerCheckbox
             label="Match existing"
             checked={tracker.matchExisting}
+            disabled={saving}
             onChange={(v) => patchTracker({ matchExisting: v })}
           />
           <TrackerCheckbox
             label="Nights / weekends"
             checked={tracker.nightsWeekends}
+            disabled={saving}
             onChange={(v) => patchTracker({ nightsWeekends: v })}
           />
-          <TrackerCheckbox label="FSI" checked={tracker.fsi} onChange={(v) => patchTracker({ fsi: v })} />
-          <TrackerCheckbox label="No paint" checked={tracker.noPaint} onChange={(v) => patchTracker({ noPaint: v })} />
+          <TrackerCheckbox label="No paint" checked={tracker.noPaint} disabled={saving} onChange={(v) => patchTracker({ noPaint: v })} />
         </div>
 
-        <p className="muted small paint-tracker-subsection">Brush outs status</p>
+        <p className="muted small paint-tracker-subsection">Submittal status</p>
         <div className="paint-tracker-flags">
+          <TrackerCheckbox
+            label="Submittal ordered"
+            checked={tracker.submittalOrdered}
+            disabled={saving}
+            onChange={(v) => patchTracker({ submittalOrdered: v })}
+          />
           <TrackerCheckbox
             label="Submitted for approval"
             checked={tracker.submittedForApproval}
-            onChange={(v) => patchTracker({ submittedForApproval: v })}
+            disabled={saving}
+            onChange={(v) =>
+              patchTracker(
+                v
+                  ? { submittedForApproval: true, followUp: addDaysToTodayDisplay(14) }
+                  : { submittedForApproval: false },
+              )
+            }
           />
           <TrackerCheckbox
             label="Revision"
             checked={tracker.revision}
+            disabled={saving}
             onChange={(v) => patchTracker({ revision: v })}
           />
           <TrackerCheckbox
             label="Approved"
             checked={tracker.approved}
+            disabled={saving}
             onChange={(v) => patchTracker({ approved: v })}
           />
         </div>
 
         <p className="muted small">
-          Submittal ordered: <strong>{tracker.submittalOrdered ? "Yes" : "No"}</strong> — toggle on the{" "}
-          <Link to={`/projects/${projectId}/paint`}>Paint</Link> submittals tab or when you email the vendor.
-        </p>
-        <p className="muted small">
-          Saving <strong>Approved</strong>, <strong>Revision</strong>, or <strong>Match existing</strong> sends a
-          notification email via Gmail when Settings are configured.
+          Enter revision notes first, then check <strong>Send revision notification email</strong> when ready.
+          Checking <strong>Revision</strong> marks the job for Field View without sending email. Other changes save
+          automatically.
+          {saving ? " Saving…" : status ? ` ${status}` : ""}
         </p>
       </>
     );
@@ -330,9 +503,7 @@ export function PaintTrackerStatusSection({
 
   return (
     <div className="stack paint-tracker-section paint-tracker-section--dashboard">
-      {(error || status) && (
-        <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? status}</div>
-      )}
+      {error && <div className="banner banner-error">{error}</div>}
       {body}
     </div>
   );

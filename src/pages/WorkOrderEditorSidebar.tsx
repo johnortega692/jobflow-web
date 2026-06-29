@@ -14,7 +14,7 @@ import {
 } from "../lib/workOrderOverlayLayout";
 import { isPlaceholderEwoNumber } from "../lib/workOrderEwoDetect";
 
-export type EwoEditorTab = "controls" | "materials" | "settings" | "other";
+export type EwoEditorTab = "controls" | "setup" | "materials" | "other";
 
 type Props = {
   activeTab: EwoEditorTab;
@@ -45,6 +45,10 @@ type Props = {
   onResetDateArea: () => void;
   onClearScanBoxes: () => void;
   onFinishScanSetup: () => void;
+  onOpenSetupFields: () => void;
+  onCloseSetupFields: () => void;
+  scanSetupComplete: boolean;
+  showSetupTab: boolean;
   onAutoDetectFields: () => void;
   form: WorkOrderFormData;
   onFieldChange: <K extends keyof WorkOrderFormData>(key: K, value: WorkOrderFormData[K]) => void;
@@ -92,11 +96,13 @@ export function WorkOrderEditorSidebar(props: Props) {
 
   return (
     <aside className="ewo-controls card">
-      <nav className="ewo-editor-tabs" aria-label="Work order editor sections">
+      <nav className="ewo-editor-tabs" role="tablist" aria-label="Work order editor sections">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             className={`ewo-editor-tab${activeTab === tab.id ? " ewo-editor-tab--active" : ""}`}
             onClick={() => onTabChange(tab.id)}
           >
@@ -106,10 +112,160 @@ export function WorkOrderEditorSidebar(props: Props) {
       </nav>
 
       {activeTab === "controls" && <ControlsPanel {...props} />}
+      {activeTab === "setup" && <SetupPanel {...props} />}
       {activeTab === "materials" && <MaterialsPanel {...props} />}
-      {activeTab === "settings" && <SettingsPanel {...props} />}
       {activeTab === "other" && <OtherPanel {...props} />}
     </aside>
+  );
+}
+
+function ScanSetupFields(p: Props) {
+  if (!p.hasDocument) {
+    return (
+      <section className="stack">
+        <h3 className="small">Setup Fields</h3>
+        <p className="muted small">
+          Upload a work order with <strong>Upload work order</strong> at the top of this page, then define scan areas
+          below and run <strong>Auto-Detect Fields</strong>.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="ewo-scan-setup stack">
+      <h3 className="small">Setup Fields</h3>
+      <p className="muted small">
+        Define where OCR reads the EWO #, date, and job number on your form. Saved once to your account and reused
+        for every upload with the same layout.
+      </p>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={p.showScanBoxes}
+          onChange={(e) => p.onShowScanBoxesChange(e.target.checked)}
+        />
+        Show scan regions on document
+      </label>
+
+      <div className={`ewo-scan-area-card${p.scanSetupMode === "ewo" ? " active" : ""}`}>
+        <div className="row-between wrap">
+          <strong className="small">EWO number area</strong>
+          <span className={`ewo-scan-status${p.scanBoxes.ewo ? " ok" : ""}`}>
+            {p.scanBoxes.ewo ? "Set" : "Not set"}
+          </span>
+        </div>
+        <div className="row-gap wrap">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onSelectEwoArea}>
+            Select area
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onDrawNewEwoArea}>
+            Draw new area
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={!p.scanBoxes.ewo}
+            onClick={p.onResetEwoArea}
+          >
+            Reset position
+          </button>
+        </div>
+      </div>
+
+      <div className={`ewo-scan-area-card${p.scanSetupMode === "job" ? " active" : ""}`}>
+        <div className="row-between wrap">
+          <strong className="small">Job number area</strong>
+          <span className={`ewo-scan-status${p.scanBoxes.job ? " ok" : ""}`}>
+            {p.scanBoxes.job ? "Set" : "Not set"}
+          </span>
+        </div>
+        <div className="row-gap wrap">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onSelectJobArea}>
+            Select area
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onDrawNewJobArea}>
+            Draw new area
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={!p.scanBoxes.job}
+            onClick={p.onResetJobArea}
+          >
+            Reset position
+          </button>
+        </div>
+      </div>
+
+      <div className={`ewo-scan-area-card${p.scanSetupMode === "date" ? " active" : ""}`}>
+        <div className="row-between wrap">
+          <strong className="small">EWO date area</strong>
+          <span className={`ewo-scan-status${p.scanBoxes.date ? " ok" : ""}`}>
+            {p.scanBoxes.date ? "Set" : "Not set"}
+          </span>
+        </div>
+        <div className="row-gap wrap">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onSelectDateArea}>
+            Select area
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onDrawNewDateArea}>
+            Draw new area
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={!p.scanBoxes.date}
+            onClick={p.onResetDateArea}
+          >
+            Reset position
+          </button>
+        </div>
+      </div>
+
+      {p.scanSetupMode && (
+        <button type="button" className="btn btn-primary btn-sm" onClick={p.onFinishScanSetup}>
+          Done adjusting scan area
+        </button>
+      )}
+
+      <div className="row-gap wrap">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={p.onClearScanBoxes}>
+          Clear all areas
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SetupPanel(p: Props) {
+  return (
+    <div className="ewo-editor-tab-panel stack">
+      {p.scanSetupComplete && (
+        <div className="row-between wrap">
+          <p className="muted small" style={{ margin: 0 }}>
+            Scan areas are saved to your account and reused for every work order upload.
+          </p>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onCloseSetupFields}>
+            Done
+          </button>
+        </div>
+      )}
+
+      <ScanSetupFields {...p} />
+
+      {p.hasDocument && p.showSetupTab && (
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={p.ocrBusy || !p.backgroundUrl}
+          onClick={() => void p.onAutoDetectFields()}
+        >
+          {p.ocrBusy ? "Detecting…" : "Auto-Detect Fields"}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -118,6 +274,33 @@ function ControlsPanel(p: Props) {
 
   return (
     <div className="ewo-editor-tab-panel stack">
+      {p.hasDocument && (
+        <div className="row-gap wrap">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={p.ocrBusy || !p.backgroundUrl}
+            onClick={() => void p.onAutoDetectFields()}
+          >
+            {p.ocrBusy ? "Detecting…" : "Auto-Detect Fields"}
+          </button>
+          {p.scanSetupComplete && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={p.onOpenSetupFields}>
+              Adjust scan areas…
+            </button>
+          )}
+        </div>
+      )}
+
+      {!p.scanSetupComplete && p.hasDocument && (
+        <p className="muted small">
+          One-time setup: define where OCR reads EWO # and date on your form template.{" "}
+          <button type="button" className="link-btn" onClick={p.onOpenSetupFields}>
+            Open setup
+          </button>
+        </p>
+      )}
+
       {p.pdfPages > 1 && (
         <label>
           PDF page
@@ -151,33 +334,26 @@ function ControlsPanel(p: Props) {
           EWO date
           <DateInput value={p.ewoDate} onChange={p.onEwoDateChange} />
         </label>
-        <label className="check" style={{ alignSelf: "end" }}>
-          <input type="checkbox" checked={p.delivered} onChange={(e) => p.onDeliveredChange(e.target.checked)} />
-          Delivered to GC
-        </label>
-      </div>
-
-      <div className="grid-2">
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={p.form.gc_checked}
-            onChange={(e) => p.onFieldChange("gc_checked", e.target.checked)}
-          />
-          GC approved
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={p.form.fsi_checked}
-            onChange={(e) => p.onFieldChange("fsi_checked", e.target.checked)}
-          />
-          FSI approved
-        </label>
+        <div className="stack ewo-gc-check-stack" style={{ alignSelf: "end" }}>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={p.form.fsi_checked}
+              onChange={(e) => p.onFieldChange("fsi_checked", e.target.checked)}
+            />
+            Added FSI
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={p.delivered} onChange={(e) => p.onDeliveredChange(e.target.checked)} />
+            Delivered to GC
+          </label>
+        </div>
       </div>
 
       {p.hasDocument && isPlaceholderEwoNumber(p.ewoNumber) && !p.ocrBusy && (
-        <p className="muted small">Use Auto-Detect Fields below to read EWO # from the uploaded form.</p>
+        <p className="muted small">
+          Use <strong>Auto-Detect Fields</strong> above to read EWO # from the uploaded form.
+        </p>
       )}
 
       <div className="budget-metrics-bar">
@@ -224,83 +400,34 @@ function ControlsPanel(p: Props) {
         <textarea rows={4} value={p.form.notes} onChange={(e) => p.onFieldChange("notes", e.target.value)} />
       </label>
 
-      {p.hasDocument && (
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={p.ocrBusy || !p.backgroundUrl}
-          onClick={() => void p.onAutoDetectFields()}
-        >
-          {p.ocrBusy ? "Detecting…" : "Auto-Detect Fields"}
-        </button>
-      )}
-
-      {p.hasDocument && !p.ocrBusy && (
-        <p className="muted small">Reads EWO #, date, and job number (when scan areas are set) from the form.</p>
-      )}
-
-      {p.hasDocument && (
-        <details className="job-section">
-          <summary className="job-section-summary">
-            <h3>Enhance scan</h3>
-          </summary>
-          <div className="stack">
-            {(
-              [
-                ["ink", "Ink (darken)"],
-                ["paper", "Paper (lighten)"],
-                ["contrast", "Contrast"],
-                ["sharpness", "Sharpness"],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={p.form.scan_enhance[key]}
-                  onChange={(e) =>
-                    p.onFieldChange("scan_enhance", {
-                      ...p.form.scan_enhance,
-                      [key]: Number(e.target.value),
-                    })
-                  }
-                />
-                <span className="muted small">{p.form.scan_enhance[key]}</span>
-              </label>
-            ))}
-            <button type="button" className="btn btn-ghost btn-sm" onClick={p.onResetScanEnhance}>
-              Reset scan enhance
+      <details className="job-section">
+        <summary className="job-section-summary">
+          <h3 className="small">All overlays</h3>
+        </summary>
+        <div className="stack">
+          <div className="row-gap wrap">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={p.onInitializeTotals}>
+              Place total fields
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={!p.selectedOverlayId}
+              onClick={p.onRemoveSelectedOverlay}
+            >
+              Remove selected
             </button>
           </div>
-        </details>
-      )}
 
-      <h3 className="small">All overlays</h3>
-      <div className="row-gap wrap">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={p.onInitializeTotals}>
-          Place total fields
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled={!p.selectedOverlayId}
-          onClick={p.onRemoveSelectedOverlay}
-        >
-          Remove selected
-        </button>
-      </div>
-
-      {p.form.overlays.length > 0 && (
-        <ul className="ewo-overlay-list">
-          {p.form.overlays.map((o: WorkOrderOverlay) => (
-            <li key={o.id}>
-              <button
-                type="button"
-                className={`ewo-overlay-list-item${p.selectedOverlayId === o.id ? " active" : ""}`}
-                onClick={() => p.onSelectOverlay(o.id)}
-              >
+          {p.form.overlays.length > 0 && (
+            <ul className="ewo-overlay-list">
+              {p.form.overlays.map((o: WorkOrderOverlay) => (
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    className={`ewo-overlay-list-item${p.selectedOverlayId === o.id ? " active" : ""}`}
+                    onClick={() => p.onSelectOverlay(o.id)}
+                  >
                     <span className="muted small">{o.section}</span>
                     {o.section === "total" ? (
                       <>
@@ -309,11 +436,13 @@ function ControlsPanel(p: Props) {
                     ) : (
                       overlayDisplayText(o, p.form.display)
                     )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
@@ -388,7 +517,12 @@ function MaterialsPanel(p: Props) {
           Parking $
           <input value={p.parkingAmount} onChange={(e) => p.onParkingAmountChange(e.target.value)} />
         </label>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={p.onAddParkingToCanvas}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          style={{ alignSelf: "end" }}
+          onClick={p.onAddParkingToCanvas}
+        >
           Add parking
         </button>
       </div>
@@ -409,267 +543,49 @@ function MaterialsPanel(p: Props) {
   );
 }
 
-function SettingsPanel(p: Props) {
-  return (
-    <div className="ewo-editor-tab-panel stack">
-      {p.hasDocument ? (
-        <section className="ewo-scan-setup stack">
-          <h3 className="small">Setup Fields</h3>
-          <p className="muted small">
-            Define where OCR reads the EWO #, date, and job number on your form. Areas are saved to your account.
-          </p>
-
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.showScanBoxes}
-              onChange={(e) => p.onShowScanBoxesChange(e.target.checked)}
-            />
-            Show scan regions on document
-          </label>
-
-          <div className={`ewo-scan-area-card${p.scanSetupMode === "ewo" ? " active" : ""}`}>
-            <div className="row-between wrap">
-              <strong className="small">EWO number area</strong>
-              <span className={`ewo-scan-status${p.scanBoxes.ewo ? " ok" : ""}`}>
-                {p.scanBoxes.ewo ? "Set" : "Not set"}
-              </span>
-            </div>
-            <div className="row-gap wrap">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={p.onSelectEwoArea}>
-                Select area
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={p.onDrawNewEwoArea}>
-                Draw new area
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={!p.scanBoxes.ewo}
-                onClick={p.onResetEwoArea}
-              >
-                Reset position
-              </button>
-            </div>
-          </div>
-
-          <div className={`ewo-scan-area-card${p.scanSetupMode === "job" ? " active" : ""}`}>
-            <div className="row-between wrap">
-              <strong className="small">Job number area</strong>
-              <span className={`ewo-scan-status${p.scanBoxes.job ? " ok" : ""}`}>
-                {p.scanBoxes.job ? "Set" : "Not set"}
-              </span>
-            </div>
-            <div className="row-gap wrap">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={p.onSelectJobArea}>
-                Select area
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={p.onDrawNewJobArea}>
-                Draw new area
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={!p.scanBoxes.job}
-                onClick={p.onResetJobArea}
-              >
-                Reset position
-              </button>
-            </div>
-          </div>
-
-          <div className={`ewo-scan-area-card${p.scanSetupMode === "date" ? " active" : ""}`}>
-            <div className="row-between wrap">
-              <strong className="small">EWO date area</strong>
-              <span className={`ewo-scan-status${p.scanBoxes.date ? " ok" : ""}`}>
-                {p.scanBoxes.date ? "Set" : "Not set"}
-              </span>
-            </div>
-            <div className="row-gap wrap">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={p.onSelectDateArea}>
-                Select area
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={p.onDrawNewDateArea}>
-                Draw new area
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={!p.scanBoxes.date}
-                onClick={p.onResetDateArea}
-              >
-                Reset position
-              </button>
-            </div>
-          </div>
-
-          {p.scanSetupMode && (
-            <button type="button" className="btn btn-primary btn-sm" onClick={p.onFinishScanSetup}>
-              Done adjusting scan area
-            </button>
-          )}
-
-          <div className="row-gap wrap">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={p.onClearScanBoxes}>
-              Clear all areas
-            </button>
-          </div>
-        </section>
-      ) : (
-        <section className="stack">
-          <h3 className="small">Setup Fields</h3>
-          <p className="muted small">Upload a work order on the Controls tab to configure EWO, date, and job scan areas.</p>
-        </section>
-      )}
-
-      <section className="stack">
-        <h3 className="small">Text on document</h3>
-        <div className="stack">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_material_names}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, show_material_names: e.target.checked })
-              }
-            />
-            Show material names
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_material_quantity}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, show_material_quantity: e.target.checked })
-              }
-            />
-            Show material quantity
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_labor_names}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, show_labor_names: e.target.checked })
-              }
-            />
-            Show labor rate names
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_hours}
-              onChange={(e) => p.onFieldChange("display", { ...p.form.display, show_hours: e.target.checked })}
-            />
-            Show labor hours
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_supervision_hours}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, show_supervision_hours: e.target.checked })
-              }
-            />
-            Show supervision hours
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_total_labels}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, show_total_labels: e.target.checked })
-              }
-            />
-            Show total labels on canvas
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.export_totals}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, export_totals: e.target.checked })
-              }
-            />
-            Include total labels on PDF export
-          </label>
-        </div>
-      </section>
-
-      <section className="stack">
-        <h3 className="small">Totals on document</h3>
-        <p className="muted small">
-          Total fields appear on the canvas when you upload a form. Drag them to align with your template, then save
-          the layout as your default.
-        </p>
-        <div className="row-gap wrap">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={p.onInitializeTotals}>
-            Place / refresh totals
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={!p.hasTotalOverlays}
-            onClick={() => void p.onSaveTotalPositionsDefault()}
-          >
-            Save layout as default
-          </button>
-        </div>
-        <div className="row-gap wrap">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={!p.hasTotalOverlays}
-            onClick={p.onRestoreTotalPositions}
-          >
-            Restore saved layout
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={!p.hasTotalOverlays}
-            onClick={p.onResetFactoryTotalPositions}
-          >
-            Reset to factory defaults
-          </button>
-        </div>
-        <div className="stack">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_material_total_1}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, show_material_total_1: e.target.checked })
-              }
-            />
-            Show Material Total 1
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={p.form.display.show_labor_total}
-              onChange={(e) =>
-                p.onFieldChange("display", { ...p.form.display, show_labor_total: e.target.checked })
-              }
-            />
-            Show Labor Total 1
-          </label>
-        </div>
-        <p className="muted small">
-          Material Total 2, Labor Total 2, and Grand Total always export dollar amounts. Inline totals above can be
-          hidden with the toggles above.
-        </p>
-      </section>
-    </div>
-  );
-}
-
 function OtherPanel(p: Props) {
   return (
     <div className="ewo-editor-tab-panel stack">
+      {p.hasDocument && (
+        <details className="job-section">
+          <summary className="job-section-summary">
+            <h3>Enhance scan</h3>
+          </summary>
+          <div className="stack">
+            {(
+              [
+                ["ink", "Ink (darken)"],
+                ["paper", "Paper (lighten)"],
+                ["contrast", "Contrast"],
+                ["sharpness", "Sharpness"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key}>
+                {label}
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={p.form.scan_enhance[key]}
+                  onChange={(e) =>
+                    p.onFieldChange("scan_enhance", {
+                      ...p.form.scan_enhance,
+                      [key]: Number(e.target.value),
+                    })
+                  }
+                />
+                <span className="muted small">{p.form.scan_enhance[key]}</span>
+              </label>
+            ))}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={p.onResetScanEnhance}>
+              Reset scan enhance
+            </button>
+          </div>
+        </details>
+      )}
+
       <section className="stack">
         <h3 className="small">Line spacing</h3>
-        <p className="muted small">Horizontal gap between name, hours, rate, and amount on each row (10–200).</p>
         <label>
           Material spacing
           <input
@@ -705,10 +621,10 @@ function OtherPanel(p: Props) {
       </section>
 
       <h3 className="small">Text appearance</h3>
-      <div className="stack">
-        {FONT_SETTING_FIELDS.map(({ key, label }) => (
-          <label key={key}>
-            {label} (pt)
+      <div className="grid-3">
+        {FONT_SETTING_FIELDS.map(({ key, label, shortLabel }) => (
+          <label key={key} title={`${label} (pt)`}>
+            {shortLabel} pt
             <input
               type="number"
               min={8}
@@ -726,6 +642,8 @@ function OtherPanel(p: Props) {
             onChange={(e) => p.onFontsChange({ ...p.fonts, overlay_color: e.target.value })}
           />
         </label>
+      </div>
+      <div className="stack">
         <button type="button" className="btn btn-secondary btn-sm" onClick={p.onApplyFontsToAll}>
           Apply font settings
         </button>

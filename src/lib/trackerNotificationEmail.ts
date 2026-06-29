@@ -1,7 +1,7 @@
 import type { ProjectForm } from "../types/database";
 import type { PaintTrackerState } from "../types/fieldTracker";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import { projectForemanEmail } from "./jobInfo";
+import { icbiSuperintendent, projectForemanEmail } from "./jobInfo";
 import type { SuperEmail } from "./paintUserSettings";
 import { sendVendorEmail } from "./sendVendorEmail";
 
@@ -68,7 +68,7 @@ export function projectToPaintNotificationJobData(
     jobName: project.job_name.trim(),
     address,
     gcName: project.contractor.trim(),
-    gcSuper: j.gc_superintendent.trim(),
+    gcSuper: icbiSuperintendent(j),
     startDate: j.start_date.trim(),
     paintVendor: tracker.paintVendor,
     creativeTeam: tracker.creativeTeam.trim(),
@@ -102,7 +102,6 @@ export function detectPaintTrackerNotificationKinds(
 ): PaintTrackerNotificationKind[] {
   const kinds: PaintTrackerNotificationKind[] = [];
   if (!prev.approved && next.approved) kinds.push("approval");
-  if (!prev.revision && next.revision) kinds.push("revision");
   if (!prev.matchExisting && next.matchExisting) kinds.push("match_existing");
   return kinds;
 }
@@ -208,7 +207,7 @@ export function buildPaintApprovalEmailHtml(
                         <td style="color: #333; font-weight: bold;">${escHtml(jobData.paintVendor || "N/A")}</td>
                       </tr>
                       <tr>
-                        <td style="font-weight: bold; color: #666;">Creative Team:</td>
+                        <td style="font-weight: bold; color: #666;">Team:</td>
                         <td style="color: #333;">${escHtml(jobData.creativeTeam || "N/A")}</td>
                       </tr>
                       ${nightsRow}
@@ -334,7 +333,7 @@ export function buildPaintMatchExistingEmailHtml(
                         <td style="color: #333; font-weight: bold; font-family: Arial, Helvetica, sans-serif; font-size: 13px; padding: 10px;">${escHtml(jobData.paintVendor || "N/A")}</td>
                       </tr>
                       <tr>
-                        <td style="font-weight: bold; color: #666; font-family: Arial, Helvetica, sans-serif; font-size: 13px; vertical-align: top; padding: 10px;">Creative Team:</td>
+                        <td style="font-weight: bold; color: #666; font-family: Arial, Helvetica, sans-serif; font-size: 13px; vertical-align: top; padding: 10px;">Team:</td>
                         <td style="color: #333; font-family: Arial, Helvetica, sans-serif; font-size: 13px; padding: 10px;">${escHtml(jobData.creativeTeam || "N/A")}</td>
                       </tr>
                       ${nightsRow}
@@ -482,7 +481,7 @@ export function buildPaintRevisionEmailHtml(
                         <td style="color: #333; font-family: Arial, Helvetica, sans-serif; font-size: 13px; padding: 10px;">${escHtml(jobData.paintVendor || "N/A")}</td>
                       </tr>
                       <tr>
-                        <td style="font-weight: bold; color: #666; font-family: Arial, Helvetica, sans-serif; font-size: 13px; vertical-align: top; padding: 10px;">Creative Team:</td>
+                        <td style="font-weight: bold; color: #666; font-family: Arial, Helvetica, sans-serif; font-size: 13px; vertical-align: top; padding: 10px;">Team:</td>
                         <td style="color: #333; font-family: Arial, Helvetica, sans-serif; font-size: 13px; padding: 10px;">${escHtml(jobData.creativeTeam || "N/A")}</td>
                       </tr>
                     </table>

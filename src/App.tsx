@@ -20,7 +20,9 @@ import { BudgetPage } from "./pages/BudgetPage";
 import { ProjectWorkOrdersPage } from "./pages/ProjectWorkOrdersPage";
 import { WorkOrderEditorPage } from "./pages/WorkOrderEditorPage";
 import { FrpSubmittalsPage } from "./pages/FrpSubmittalsPage";
+import { ApprovedBrushoutsPage } from "./pages/ApprovedBrushoutsPage";
 import { ProjectOrdersPage } from "./pages/ProjectOrdersPage";
+import { ProjectPoPage } from "./pages/ProjectPoPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BrushOutRequestPage } from "./pages/BrushOutRequestPage";
 import { FieldDashboardLayout } from "./pages/field/FieldDashboardLayout";
@@ -56,9 +58,11 @@ export default function App() {
               <Route path="google-sheets" element={<GoogleSheetsPage />} />
               <Route path="excel-paste" element={<ExcelPasteHelperPage />} />
               <Route path="paint" element={<PaintSubmittalsPage />} />
+              <Route path="approved-brushouts" element={<ApprovedBrushoutsPage />} />
               <Route path="wallcovering" element={<WallcoveringSubmittalsPage />} />
               <Route path="frp" element={<FrpSubmittalsPage />} />
               <Route path="track" element={<Navigate to="../orders" replace />} />
+              <Route path="po" element={<ProjectPoPage />} />
               <Route path="orders" element={<ProjectOrdersPage />} />
               <Route path="sds" element={<SdsPacketPage />} />
               <Route path="budget" element={<BudgetPage />} />

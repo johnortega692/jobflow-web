@@ -1,8 +1,8 @@
 import type { Json } from "./database";
 import type { BudgetMakerData } from "./budgetMaker";
-import type { PaintTrackerState, WcTrackerLineState } from "./fieldTracker";
+import type { PaintTrackerState, WcTrackerLineState, WcTrackerState } from "./fieldTracker";
 import { normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
-import { normalizeTransmittalNumber as normalizeTransmittalNumberField } from "../lib/transmittalNumber";
+import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract";
 import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks";
 import { normalizeSdsSection as normalizeSdsSectionRow } from "../lib/sdsSectionModel";
 
@@ -212,6 +212,7 @@ export type WallcoveringSubmittalData = {
   items: WallcoveringItem[];
   revision_note?: string;
   got_track?: boolean;
+  submittal_ordered?: boolean;
 };
 
 export type FrpItem = {
@@ -280,8 +281,10 @@ export type PendingSubmittalItem = {
 };
 
 export type TransmittalData = {
-  /** Formatted transmittal id, e.g. TR-001 */
+  /** Formatted transmittal id, e.g. TR-001 (active contract tab) */
   transmittal_number: string;
+  /** Per-contract transmittal sequences when job has distinct trade contracts */
+  transmittal_numbers?: Partial<Record<TransmittalContract, string>>;
   date: string;
   subject: string;
   to_name: string;
@@ -366,6 +369,7 @@ export type ProjectTradeData = {
   sds_packet?: SdsPacketData;
   budget_maker?: BudgetMakerData;
   paint_tracker?: PaintTrackerState;
+  wc_tracker?: WcTrackerState;
   wc_tracker_lines?: WcTrackerLineState[];
 };
 
@@ -724,17 +728,20 @@ export function normalizePendingItem(raw: Partial<PendingSubmittalItem> | null |
 export function normalizeTransmittal(raw: Partial<TransmittalData> | null | undefined): TransmittalData {
   const base = defaultTransmittal();
   if (!raw) return base;
+  const contract = normalizeTransmittalContract(raw.contract);
+  const { transmittal_number, transmittal_numbers } = normalizeTransmittalNumbersOnRead(raw, contract);
   return {
     ...base,
     ...raw,
-    transmittal_number: normalizeTransmittalNumberField(raw.transmittal_number),
+    transmittal_number,
+    transmittal_numbers,
     subject: raw.subject?.trim() ?? base.subject,
     enclosures: (raw.enclosures?.length ? raw.enclosures : base.enclosures).map(normalizeEnclosure),
     pending_submittal_queue: (raw.pending_submittal_queue ?? []).map(normalizePendingItem),
     paint_submittal_nums: [...(raw.paint_submittal_nums ?? [])],
     wc_submittal_nums: [...(raw.wc_submittal_nums ?? [])],
     frp_submittal_nums: [...(raw.frp_submittal_nums ?? [])],
-    contract: normalizeTransmittalContract(raw.contract),
+    contract,
   };
 }
 
@@ -772,6 +779,7 @@ export function defaultWallcoveringSubmittal(): WallcoveringSubmittalData {
     subject: wcSubjectForType("new"),
     date: formatToday(),
     items: [emptyWallcoveringItem()],
+    submittal_ordered: false,
   };
 }
 

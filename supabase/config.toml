@@ -1,0 +1,3 @@
+# Supabase local config (edge functions)
+[functions.field-tools-submit-order]
+verify_jwt = false

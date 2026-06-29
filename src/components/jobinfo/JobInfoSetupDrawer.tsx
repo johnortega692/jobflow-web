@@ -8,7 +8,9 @@ import {
   parseStartupChecklist,
   startupChecklistForJobInfo,
 } from "../../lib/projectStartupChecklist";
+import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSync";
 import { FieldRequestStaffFields } from "./FieldRequestStaffFields";
+import { TradeAppsSyncSection } from "./TradeAppsSyncSection";
 import type { ProjectForm } from "../../types/database";
 import { JOB_COST_TYPES, JOB_TYPES, type JobInfoData } from "../../types/jobInfo";
 
@@ -41,6 +43,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const proposalInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,6 +87,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setSyncStatus(null);
 
     const { data: row, error: loadErr } = await supabase
       .from("projects")
@@ -120,14 +124,48 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
       },
     });
 
-    setSaving(false);
     if (errMsg) {
+      setSaving(false);
       setError(errMsg);
       return;
     }
+
     const next = { ...project, job_address2: cityLine || project.job_address2 };
-    setProject(next);
-    onSaved(next);
+    let savedProject = next;
+
+    if (fieldAppsSyncReady(next)) {
+      const sync = await syncProjectTradeApps(next, projectId);
+      if (sync.messages.length) setSyncStatus(`Synced: ${sync.messages.join(" · ")}`);
+      if (sync.errors.length) {
+        setError(sync.errors.join(" "));
+      } else if (sync.ok && !startupChecklist.field_request_app) {
+        const syncedChecklist = { ...startupChecklist, field_request_app: true };
+        const checklistErr = await commitProjectUpdate({
+          projectId,
+          mergeData: { startup_checklist: syncedChecklist },
+          activity: {
+            action: "job_info_saved",
+            summary: "Field Tools & Manpower synced from job setup",
+          },
+        });
+        if (checklistErr) {
+          setError(checklistErr);
+        } else {
+          savedProject = {
+            ...next,
+            data: {
+              ...baseData,
+              job_info: project.jobInfo,
+              startup_checklist: syncedChecklist,
+            },
+          };
+        }
+      }
+    }
+
+    setSaving(false);
+    setProject(savedProject);
+    onSaved(savedProject);
     setSavedAt(new Date().toLocaleTimeString());
   }
 
@@ -151,8 +189,10 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
           </button>
         </header>
 
-        {(error || importSuccess) && (
-          <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? importSuccess}</div>
+        {(error || importSuccess || syncStatus) && (
+          <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>
+            {error ?? syncStatus ?? importSuccess}
+          </div>
         )}
 
         <form className="stack job-info-form job-info-drawer-body" onSubmit={saveProject}>
@@ -212,7 +252,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                 <input value={j.job_county} onChange={(e) => setJobInfo({ job_county: e.target.value })} />
               </label>
               <label>
-                Contract amount
+                Paint contract amount
                 <input value={j.contract_amount} onChange={(e) => setJobInfo({ contract_amount: e.target.value })} />
               </label>
               <label>
@@ -270,6 +310,14 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                     onChange={(e) => setJobInfo({ wc_job_name: e.target.value })}
                   />
                 </label>
+                <label>
+                  Wallcovering contract amount
+                  <input
+                    value={j.wc_contract_amount}
+                    placeholder={j.contract_amount || "Same as paint contract amount"}
+                    onChange={(e) => setJobInfo({ wc_contract_amount: e.target.value })}
+                  />
+                </label>
               </div>
             )}
             <label className="checkbox-row job-info-wc-toggle">
@@ -298,6 +346,14 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                     onChange={(e) => setJobInfo({ frp_job_name: e.target.value })}
                   />
                 </label>
+                <label>
+                  FRP contract amount
+                  <input
+                    value={j.frp_contract_amount}
+                    placeholder={j.contract_amount || "Same as paint contract amount"}
+                    onChange={(e) => setJobInfo({ frp_contract_amount: e.target.value })}
+                  />
+                </label>
               </div>
             )}
             <label className="checkbox-row job-info-wc-toggle">
@@ -324,6 +380,14 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                     value={j.track_job_name}
                     placeholder={project.job_name || "Same as paint job name"}
                     onChange={(e) => setJobInfo({ track_job_name: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Track contract amount
+                  <input
+                    value={j.track_contract_amount}
+                    placeholder={j.contract_amount || "Same as paint contract amount"}
+                    onChange={(e) => setJobInfo({ track_contract_amount: e.target.value })}
                   />
                 </label>
               </div>
@@ -387,14 +451,14 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                 />
               </label>
               <label>
-                Superintendent
+                GC superintendent
                 <input
                   value={j.gc_superintendent}
                   onChange={(e) => setJobInfo({ gc_superintendent: e.target.value })}
                 />
               </label>
               <label>
-                Super phone
+                GC super phone
                 <input
                   type="tel"
                   value={j.gc_super_phone}
@@ -402,7 +466,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                 />
               </label>
               <label>
-                Super email
+                GC super email
                 <input
                   type="email"
                   value={j.gc_super_email}
@@ -513,10 +577,28 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                   onChange={(e) => setJobInfo({ icbi_foreman_email: e.target.value })}
                 />
               </label>
+              <label>
+                Super
+                <input
+                  value={j.field_request_super}
+                  placeholder="ICBI super — Field Tools / field orders"
+                  onChange={(e) => setJobInfo({ field_request_super: e.target.value })}
+                />
+              </label>
+              <label>
+                Super email
+                <input
+                  type="email"
+                  value={j.icbi_super_email}
+                  onChange={(e) => setJobInfo({ icbi_super_email: e.target.value })}
+                />
+              </label>
             </div>
           </JobSection>
 
           <FieldRequestStaffFields key={projectId} jobInfo={j} onChange={setJobInfo} />
+
+          <TradeAppsSyncSection project={project} projectId={projectId} />
 
           <footer className="job-info-drawer-footer row-gap wrap">
             <button type="submit" className="btn btn-primary" disabled={saving}>

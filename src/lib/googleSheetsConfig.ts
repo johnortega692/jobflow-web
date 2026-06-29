@@ -11,13 +11,13 @@ export const GOOGLE_URL_FIELDS: { key: GoogleUrlKey; title: string; hint: string
   },
   {
     key: "brushouts_tracker",
-    title: "BrushOuts Tracker URL",
-    hint: "Legacy brush-out push from the Paint tab (optional if Field Request URL is set).",
+    title: "BrushOuts Tracker URL (legacy)",
+    hint: "Deprecated — approved brush-outs and PM/Super staff lists live in Supabase (Settings → Project staff).",
   },
   {
     key: "field_request_order",
-    title: "Field Request Order URL",
-    hint: "Web app for the Field Request Order spreadsheet — Jobs tab + BrushOuts tab (startup checklist).",
+    title: "Field Request Order URL (legacy)",
+    hint: "Deprecated — PM/Super lists come from Settings → Project staff (Supabase). GAS is only needed for paint vendor email if configured.",
   },
 ];
 

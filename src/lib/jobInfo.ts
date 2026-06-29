@@ -1,6 +1,10 @@
 import type { Project } from "../types/database";
 import type { ProjectForm } from "../types/database";
 import { defaultJobInfo, type JobInfoData } from "../types/jobInfo";
+import {
+  applyTransmittalContractNumber,
+  mergeActiveTransmittalNumber,
+} from "./transmittalPerContract";
 import type { TransmittalData } from "../types/tradeDocuments";
 
 function str(v: unknown): string {
@@ -51,17 +55,24 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     icbi_engineer: str(o.icbi_engineer),
     icbi_foreman: str(o.icbi_foreman),
     icbi_foreman_email: str(o.icbi_foreman_email),
+    icbi_super_email: str(o.icbi_super_email),
     field_request_pm: str(o.field_request_pm),
     field_request_super: str(o.field_request_super),
+    staff_super_id: str(o.staff_super_id),
+    staff_foreman_id: str(o.staff_foreman_id),
+    staff_pm_id: str(o.staff_pm_id),
     has_wallcovering: Boolean(o.has_wallcovering),
     wc_job_number: str(o.wc_job_number),
     wc_job_name: str(o.wc_job_name),
+    wc_contract_amount: str(o.wc_contract_amount),
     has_frp: Boolean(o.has_frp),
     frp_job_number: str(o.frp_job_number),
     frp_job_name: str(o.frp_job_name),
+    frp_contract_amount: str(o.frp_contract_amount),
     has_track: Boolean(o.has_track),
     track_job_number: str(o.track_job_number),
     track_job_name: str(o.track_job_name),
+    track_contract_amount: str(o.track_contract_amount),
   };
 
   if (!info.job_city && !info.job_zip && project.job_address2?.trim()) {
@@ -119,6 +130,26 @@ export function projectHasWallcovering(info: JobInfoData): boolean {
 /** Per-project foreman notification CC (Job setup → ICBI foreman email). */
 export function projectForemanEmail(info: JobInfoData | undefined): string {
   return info?.icbi_foreman_email?.trim() ?? "";
+}
+
+/** ICBI / Field Tools superintendent — not the GC's superintendent in GC Info. */
+export function icbiSuperintendent(info: JobInfoData | undefined): string {
+  if (!info) return "";
+  const field = info.field_request_super.trim();
+  if (field) return field;
+  // Legacy: roster super used to copy into gc_superintendent
+  if (info.staff_super_id.trim() && info.gc_superintendent.trim() !== "TBD") {
+    return info.gc_superintendent.trim();
+  }
+  return "";
+}
+
+export function icbiSuperEmail(info: JobInfoData | undefined): string {
+  if (!info) return "";
+  const email = info.icbi_super_email.trim();
+  if (email) return email;
+  if (info.staff_super_id.trim()) return info.gc_super_email.trim();
+  return "";
 }
 
 /** Unique foreman CC addresses across projects (weekly digests, follow-up reminders). */
@@ -183,6 +214,67 @@ export function projectHasTrack(info: JobInfoData): boolean {
 function tradeJobLabel(num: string, name: string): string {
   if (num && name) return `${num} · ${name}`;
   return num || name || "—";
+}
+
+/** Manpower Cal job row label: `job_number job_name` (space-separated). */
+export function manpowerJobDisplayName(jobNumber: string, jobName: string): string {
+  return [jobNumber.trim(), jobName.trim()].filter(Boolean).join(" ").trim();
+}
+
+export type TradeJobIdentity = {
+  contract: TransmittalContract;
+  contractLabel: string;
+  jobNumber: string;
+  jobName: string;
+  manpowerName: string;
+};
+
+function tradeIdentity(
+  project: Pick<ProjectForm, "job_number" | "job_name" | "jobInfo">,
+  contract: TransmittalContract,
+): TradeJobIdentity | null {
+  const ids = transmittalPrintInfo(project, contract);
+  const jobNumber = ids.job_number.trim();
+  const jobName = ids.job_name.trim();
+  if (!jobNumber && !jobName) return null;
+  return {
+    contract,
+    contractLabel: TRANSMITTAL_CONTRACT_LABELS[contract],
+    jobNumber,
+    jobName,
+    manpowerName: manpowerJobDisplayName(jobNumber, jobName),
+  };
+}
+
+/** Distinct trade job identities for Field Tools, Manpower, and PO lookup (deduped by job #). */
+export function projectTradeJobIdentities(
+  project: Pick<ProjectForm, "job_number" | "job_name" | "jobInfo">,
+): TradeJobIdentity[] {
+  const candidates: TradeJobIdentity[] = [];
+  const paint = tradeIdentity(project, "paint");
+  if (paint) candidates.push(paint);
+  if (projectHasWallcovering(project.jobInfo)) {
+    const wc = tradeIdentity(project, "wallcovering");
+    if (wc) candidates.push(wc);
+  }
+  if (projectHasFrp(project.jobInfo)) {
+    const frp = tradeIdentity(project, "frp");
+    if (frp) candidates.push(frp);
+  }
+  if (projectHasTrack(project.jobInfo)) {
+    const track = tradeIdentity(project, "track");
+    if (track) candidates.push(track);
+  }
+
+  const seen = new Set<string>();
+  const out: TradeJobIdentity[] = [];
+  for (const item of candidates) {
+    const key = item.jobNumber.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 export function frpJobLabel(project: Pick<ProjectForm, "job_number" | "job_name" | "jobInfo">): string {
@@ -277,7 +369,8 @@ export function applyTransmittalContractIfDistinct(
 ): TransmittalData {
   if (!hasTransmittalContractSwitch(project)) return transmittal;
   if (!availableTransmittalContracts(project).includes(contract)) return transmittal;
-  return { ...transmittal, contract };
+  const stored = mergeActiveTransmittalNumber(transmittal);
+  return applyTransmittalContractNumber(stored, contract);
 }
 
 function tradePrintInfo(
@@ -343,6 +436,24 @@ export function transmittalPrintInfo(
   }
 }
 
+/** Contract amount for a trade (falls back to primary paint contract_amount). */
+export function contractAmountForTrade(
+  info: JobInfoData,
+  contract: TransmittalContract,
+): string {
+  const primary = info.contract_amount.trim();
+  switch (contract) {
+    case "wallcovering":
+      return info.wc_contract_amount.trim() || primary;
+    case "frp":
+      return info.frp_contract_amount.trim() || primary;
+    case "track":
+      return info.track_contract_amount.trim() || primary;
+    default:
+      return primary;
+  }
+}
+
 /** Job name and contract amount for Budget Maker (from Dashboard / Job setup). */
 export function budgetProfileValues(
   project: Pick<ProjectForm, "job_number" | "job_name" | "jobInfo">,
@@ -351,7 +462,7 @@ export function budgetProfileValues(
   const ids = transmittalPrintInfo(project, contract);
   return {
     jobName: ids.job_name || ids.job_number,
-    grandTotal: project.jobInfo.contract_amount.trim(),
+    grandTotal: contractAmountForTrade(project.jobInfo, contract),
   };
 }
 

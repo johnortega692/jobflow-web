@@ -13,6 +13,7 @@ export const ORG_SETTINGS_KEYS = [
   "paint_sheens",
   "vendors",
   "super_emails",
+  "project_staff_pms",
   "notification_primary_email",
   "notification_primary_name",
   "default_brushout_qty",

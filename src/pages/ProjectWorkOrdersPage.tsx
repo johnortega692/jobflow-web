@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
+import { ContractListFilter, type ContractListFilterValue } from "../components/jobinfo/ContractListFilter";
+import {
+  hasTransmittalContractSwitch,
+  TRANSMITTAL_CONTRACT_LABELS,
+} from "../lib/jobInfo";
 import { logProjectActivityEvent } from "../lib/projectActivity";
 import { supabase } from "../lib/supabase";
 import {
@@ -35,13 +40,16 @@ function buildRowView(order: WorkOrderRow): RowView {
 }
 
 export function ProjectWorkOrdersPage() {
-  const { projectId } = useOutletContext<Ctx>();
+  const { project, projectId } = useOutletContext<Ctx>();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<WorkOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [contractFilter, setContractFilter] = useState<ContractListFilterValue>("all");
+
+  const showContractColumn = hasTransmittalContractSwitch(project);
 
   async function load() {
     setLoading(true);
@@ -61,17 +69,24 @@ export function ProjectWorkOrdersPage() {
 
   const rows = useMemo(() => orders.map(buildRowView), [orders]);
 
+  const filteredRows = useMemo(() => {
+    if (contractFilter === "all") return rows;
+    return rows.filter((row) => row.parsed.contract === contractFilter);
+  }, [contractFilter, rows]);
+
   const summary = useMemo(() => {
     let totalAmount = 0;
-    let pendingGc = 0;
     let pendingFsi = 0;
-    for (const row of rows) {
+    for (const row of filteredRows) {
       totalAmount += Number(row.total_amount);
-      if (!row.parsed.gc_checked) pendingGc += 1;
       if (!row.parsed.fsi_checked) pendingFsi += 1;
     }
-    return { totalAmount, pendingGc, pendingFsi };
-  }, [rows]);
+    return { totalAmount, pendingFsi, count: filteredRows.length };
+  }, [filteredRows]);
+
+  useEffect(() => {
+    setContractFilter("all");
+  }, [projectId]);
 
   async function createWorkOrder() {
     const nextNum = nextEwoNumber(orders.map((o) => o.ewo_number));
@@ -123,11 +138,11 @@ export function ProjectWorkOrdersPage() {
     }
   }
 
-  async function onToggleFlag(order: WorkOrderRow, flag: "gc_checked" | "fsi_checked", value: boolean) {
+  async function onToggleFsi(order: WorkOrderRow, value: boolean) {
     setTogglingId(order.id);
     setError(null);
     const parsed = parseWorkOrderData(order.data);
-    const updated = { ...parsed, [flag]: value };
+    const updated = { ...parsed, fsi_checked: value };
     const { error: err } = await supabase
       .from("work_orders")
       .update({ data: updated as unknown as Json })
@@ -137,11 +152,10 @@ export function ProjectWorkOrdersPage() {
       setError(err.message);
       return;
     }
-    const flagLabel = flag === "gc_checked" ? "GC" : "FSI";
     await logProjectActivityEvent({
       projectId,
       action: "work_order_updated",
-      summary: `EWO #${order.ewo_number} — ${flagLabel} ${value ? "checked" : "unchecked"}`,
+      summary: `EWO #${order.ewo_number} — Added FSI ${value ? "checked" : "unchecked"}`,
     });
     setOrders((prev) =>
       prev.map((o) => (o.id === order.id ? { ...o, data: updated as unknown as Json } : o)),
@@ -164,27 +178,30 @@ export function ProjectWorkOrdersPage() {
 
       {error && <div className="banner banner-error">{error}</div>}
 
+      <ContractListFilter project={project} value={contractFilter} onChange={setContractFilter} />
+
       {loading ? (
         <p className="muted">Loading work orders…</p>
       ) : orders.length === 0 ? (
         <p className="muted">No work orders yet. Create an EWO to enter labor, material, and totals.</p>
+      ) : filteredRows.length === 0 ? (
+        <p className="muted">
+          No work orders for{" "}
+          {contractFilter === "all" ? "this job" : TRANSMITTAL_CONTRACT_LABELS[contractFilter]}.
+        </p>
       ) : (
         <>
           <div className="budget-metrics-bar work-orders-summary">
             <div className="budget-metric">
               <span className="muted small">Total EWOs</span>
-              <strong>{rows.length}</strong>
+              <strong>{summary.count}</strong>
             </div>
             <div className="budget-metric ok">
               <span className="muted small">Total amount</span>
               <strong>{formatMoney(summary.totalAmount)}</strong>
             </div>
             <div className="budget-metric">
-              <span className="muted small">Pending GC</span>
-              <strong>{summary.pendingGc}</strong>
-            </div>
-            <div className="budget-metric">
-              <span className="muted small">Pending FSI</span>
+              <span className="muted small">Not added FSI</span>
               <strong>{summary.pendingFsi}</strong>
             </div>
           </div>
@@ -194,6 +211,7 @@ export function ProjectWorkOrdersPage() {
               <thead>
                 <tr>
                   <th>EWO #</th>
+                  {showContractColumn && <th>Contract</th>}
                   <th>Date</th>
                   <th className="num">Hrs</th>
                   <th className="num">Total</th>
@@ -201,17 +219,21 @@ export function ProjectWorkOrdersPage() {
                   <th className="num">Indirects</th>
                   <th className="num">Raw Lab</th>
                   <th className="num">Budget</th>
-                  <th>GC</th>
-                  <th>FSI</th>
+                  <th>Added FSI</th>
                   <th>Delivered</th>
                   <th>Updated</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((o) => (
+                {filteredRows.map((o) => (
                   <tr key={o.id}>
                     <td>{o.ewo_number}</td>
+                    {showContractColumn && (
+                      <td className="muted small">
+                        {TRANSMITTAL_CONTRACT_LABELS[o.parsed.contract]}
+                      </td>
+                    )}
                     <td>{o.ewo_date || "—"}</td>
                     <td className="num">
                       {o.parsed.hours > 0 ? o.parsed.hours.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}
@@ -224,19 +246,10 @@ export function ProjectWorkOrdersPage() {
                     <td className="work-orders-flag">
                       <input
                         type="checkbox"
-                        aria-label={`GC approved for EWO ${o.ewo_number}`}
-                        checked={o.parsed.gc_checked}
-                        disabled={togglingId === o.id}
-                        onChange={(e) => void onToggleFlag(o, "gc_checked", e.target.checked)}
-                      />
-                    </td>
-                    <td className="work-orders-flag">
-                      <input
-                        type="checkbox"
-                        aria-label={`FSI approved for EWO ${o.ewo_number}`}
+                        aria-label={`Added FSI for EWO ${o.ewo_number}`}
                         checked={o.parsed.fsi_checked}
                         disabled={togglingId === o.id}
-                        onChange={(e) => void onToggleFlag(o, "fsi_checked", e.target.checked)}
+                        onChange={(e) => void onToggleFsi(o, e.target.checked)}
                       />
                     </td>
                     <td>{o.delivered ? "Yes" : "—"}</td>

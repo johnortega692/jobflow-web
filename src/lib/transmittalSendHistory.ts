@@ -1,5 +1,6 @@
 import type { TransmittalData, TransmittalHistoryEntry } from "../types/tradeDocuments";
 import type { TransmittalDownloadResult } from "./transmittalCombine";
+import { TRANSMITTAL_CONTRACT_LABELS } from "./jobInfo";
 import { paintSheetLabel } from "./transmittalHelpers";
 
 export function buildTransmittalHistoryEntry(
@@ -39,7 +40,10 @@ export function addTransmittalHistoryEntry(
   return [entry, ...history].sort((a, b) => b.generated_at.localeCompare(a.generated_at));
 }
 
-export function formatTransmittalHistoryLabel(entry: TransmittalHistoryEntry): string {
+export function formatTransmittalHistoryLabel(
+  entry: TransmittalHistoryEntry,
+  options?: { showContract?: boolean },
+): string {
   const when = new Date(entry.generated_at).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -47,6 +51,10 @@ export function formatTransmittalHistoryLabel(entry: TransmittalHistoryEntry): s
     hour: "numeric",
     minute: "2-digit",
   });
+  const contractPart =
+    options?.showContract && (entry.contract ?? "paint")
+      ? `${TRANSMITTAL_CONTRACT_LABELS[entry.contract ?? "paint"]} · `
+      : "";
   const sheets: string[] = [];
   if (entry.include_paint_sheet && entry.paint_submittal_nums.length) {
     sheets.push(`Paint ${paintSheetLabel(entry.paint_submittal_nums)}`);
@@ -59,11 +67,17 @@ export function formatTransmittalHistoryLabel(entry: TransmittalHistoryEntry): s
   }
   const sheetPart = sheets.length ? ` · ${sheets.join(", ")}` : "";
   const combinedPart = entry.combined ? " · Combined PDF" : "";
-  return `${entry.transmittal_number} · ${when}${sheetPart}${combinedPart}`;
+  return `${contractPart}${entry.transmittal_number} · ${when}${sheetPart}${combinedPart}`;
 }
 
-export function formatTransmittalHistoryDetail(entry: TransmittalHistoryEntry): string {
+export function formatTransmittalHistoryDetail(
+  entry: TransmittalHistoryEntry,
+  options?: { showContract?: boolean },
+): string {
   const lines = [
+    ...(options?.showContract && (entry.contract ?? "paint")
+      ? [`Contract: ${TRANSMITTAL_CONTRACT_LABELS[entry.contract ?? "paint"]}`]
+      : []),
     `Subject: ${entry.subject || "—"}`,
     `Job: ${entry.job_number} — ${entry.job_name}`,
     `Enclosures: ${entry.enclosure_count}`,

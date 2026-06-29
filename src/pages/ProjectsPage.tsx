@@ -1,5 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { StaffContactSelect } from "../components/projects/StaffContactSelect";
+import { useAuth } from "../contexts/AuthContext";
+import { defaultJobInfo } from "../types/jobInfo";
+import { loadFieldToolsStaffForJobflow } from "../lib/fieldToolsStaff";
+import {
+  findStaffContact,
+  jobInfoPatchFromStaffSelection,
+  loadProjectStaffSettings,
+} from "../lib/projectStaffSettings";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
 import { formatDateTime } from "../lib/strings";
@@ -12,12 +21,21 @@ function projectSearchText(p: Project): string {
 }
 
 export function ProjectsPage() {
+  const { isAdmin } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [jobNumber, setJobNumber] = useState("");
   const [jobName, setJobName] = useState("");
+  const [superId, setSuperId] = useState("");
+  const [foremanId, setForemanId] = useState("");
+  const [pmId, setPmId] = useState("");
+  const [staffSupers, setStaffSupers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [staffForemen, setStaffForemen] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [staffPms, setStaffPms] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [fieldStaffError, setFieldStaffError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -47,12 +65,47 @@ export function ProjectsPage() {
     void loadProjects();
   }, []);
 
+  useEffect(() => {
+    if (!showForm) return;
+    setStaffLoading(true);
+    setFieldStaffError(null);
+    void Promise.all([loadFieldToolsStaffForJobflow(), loadProjectStaffSettings()])
+      .then(([fieldStaff, officeStaff]) => {
+        setStaffSupers(fieldStaff.lists.supers);
+        setStaffForemen(fieldStaff.lists.foremen);
+        setStaffPms(officeStaff.project_staff_pms);
+        setFieldStaffError(fieldStaff.error);
+      })
+      .catch(() => {
+        setStaffSupers([]);
+        setStaffForemen([]);
+        setStaffPms([]);
+        setFieldStaffError("Could not load Field Tools staff.");
+      })
+      .finally(() => setStaffLoading(false));
+  }, [showForm]);
+
+  function resetCreateForm() {
+    setJobNumber("");
+    setJobName("");
+    setSuperId("");
+    setForemanId("");
+    setPmId("");
+  }
+
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id ?? null;
+    const superContact = findStaffContact(staffSupers, superId);
+    const foremanContact = findStaffContact(staffForemen, foremanId);
+    const pmContact = findStaffContact(staffPms, pmId);
+    const jobInfo = {
+      ...defaultJobInfo(),
+      ...jobInfoPatchFromStaffSelection(superContact, foremanContact, pmContact),
+    };
     const { data: inserted, error: err } = await supabase
       .from("projects")
       .insert({
@@ -60,6 +113,7 @@ export function ProjectsPage() {
         job_name: jobName.trim(),
         created_by: userId,
         updated_by: userId,
+        data: { job_info: jobInfo },
       })
       .select("id")
       .single();
@@ -77,8 +131,7 @@ export function ProjectsPage() {
         user: actor,
       });
     }
-    setJobNumber("");
-    setJobName("");
+    resetCreateForm();
     setShowForm(false);
     await loadProjects();
   }
@@ -89,7 +142,10 @@ export function ProjectsPage() {
         <div>
           <h1>Projects</h1>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>
+        <button type="button" className="btn btn-primary" onClick={() => {
+          if (showForm) resetCreateForm();
+          setShowForm((v) => !v);
+        }}>
           {showForm ? "Cancel" : "New project"}
         </button>
       </div>
@@ -119,6 +175,59 @@ export function ProjectsPage() {
               />
             </label>
           </div>
+          <div className="grid-3">
+            <StaffContactSelect
+              label="PM"
+              contacts={staffPms}
+              value={pmId}
+              onChange={setPmId}
+              emptyHint={
+                staffLoading
+                  ? "Loading staff list…"
+                  : isAdmin
+                    ? "Add PMs in Settings → Project staff."
+                    : "Ask an admin to add PMs in Settings."
+              }
+            />
+            <StaffContactSelect
+              label="Super"
+              contacts={staffSupers}
+              value={superId}
+              onChange={setSuperId}
+              emptyHint={
+                staffLoading
+                  ? "Loading staff list…"
+                  : "Add supers in Field Tools admin (Field app)."
+              }
+            />
+            <StaffContactSelect
+              label="Foreman"
+              contacts={staffForemen}
+              value={foremanId}
+              onChange={setForemanId}
+              emptyHint={
+                staffLoading
+                  ? "Loading staff list…"
+                  : "Add foremen in Field Tools admin (Field app)."
+              }
+            />
+          </div>
+          {fieldStaffError && (
+            <p className="banner banner-warn">{fieldStaffError}</p>
+          )}
+          {isAdmin && !staffLoading && !staffPms.length ? (
+            <p className="muted small">
+              PMs:{" "}
+              <Link to="/settings" state={{ tab: "project-staff" }}>
+                Settings → Project staff
+              </Link>
+              . Supers &amp; foremen:{" "}
+              <Link to="/field" target="_blank" rel="noopener noreferrer">
+                Field Tools
+              </Link>
+              .
+            </p>
+          ) : null}
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? "Saving…" : "Create project"}
           </button>

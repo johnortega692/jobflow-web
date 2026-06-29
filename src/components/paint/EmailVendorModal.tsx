@@ -75,6 +75,7 @@ export function EmailVendorModal({
     return buildVendorEmailSubject(jobNumber, jobName, submittalType);
   });
   const [ccSelected, setCcSelected] = useState<Record<string, boolean>>({});
+  const [includeSignature, setIncludeSignature] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [openingGmail, setOpeningGmail] = useState(false);
 
@@ -101,6 +102,7 @@ export function EmailVendorModal({
   }, [superEmails, jobSuper, foremanEmail]);
 
   const vendor = vendors[vendorIdx];
+  const activeSignature = includeSignature ? signature : undefined;
   const ccList = useMemo(() => {
     const list = superEmails.filter((s) => ccSelected[s.email]).map((s) => s.email);
     const foreman = foremanEmail.trim();
@@ -118,7 +120,7 @@ export function EmailVendorModal({
           jobName,
           atticPaintItems,
           atticCustomItems,
-          signature,
+          activeSignature,
         );
       }
       if (isPrep) {
@@ -128,7 +130,7 @@ export function EmailVendorModal({
           prepGc,
           items as PaintItem[],
           defaultQty,
-          signature,
+          activeSignature,
         );
       }
       return buildVendorEmailPlainBody(
@@ -138,7 +140,7 @@ export function EmailVendorModal({
         items as PaintItem[],
         submittalType,
         defaultQty,
-        signature,
+        activeSignature,
       );
     },
     [
@@ -152,7 +154,7 @@ export function EmailVendorModal({
       atticCustomItems,
       submittalType,
       defaultQty,
-      signature,
+      activeSignature,
       prepSite,
       prepGc,
     ],
@@ -168,7 +170,7 @@ export function EmailVendorModal({
           jobName,
           atticPaintItems,
           atticCustomItems,
-          signature,
+          activeSignature,
           effectiveLogoUrl,
         );
       }
@@ -179,7 +181,7 @@ export function EmailVendorModal({
           prepGc,
           items as PaintItem[],
           defaultQty,
-          signature,
+          activeSignature,
           effectiveLogoUrl,
         );
       }
@@ -190,7 +192,7 @@ export function EmailVendorModal({
         items as PaintItem[],
         submittalType,
         defaultQty,
-        signature,
+        activeSignature,
         effectiveLogoUrl,
       );
     },
@@ -205,7 +207,7 @@ export function EmailVendorModal({
       atticCustomItems,
       submittalType,
       defaultQty,
-      signature,
+      activeSignature,
       effectiveLogoUrl,
       prepSite,
       prepGc,
@@ -229,7 +231,7 @@ export function EmailVendorModal({
         htmlBody,
         plainFallback: plainBody,
         logoUrl: effectiveLogoUrl,
-        logoMaxWidthPx: signature.logo_max_width_px,
+        logoMaxWidthPx: activeSignature ? signature.logo_max_width_px : undefined,
         method: composeEmailMethod,
       });
       if (!result.ok) {
@@ -290,6 +292,15 @@ export function EmailVendorModal({
           <input value={subject} onChange={(e) => setSubject(e.target.value)} />
         </label>
 
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={includeSignature}
+            onChange={(e) => setIncludeSignature(e.target.checked)}
+          />
+          Include signature
+        </label>
+
         {(superEmails.length > 0 || foremanEmail.trim()) && (
           <fieldset className="stack">
             <legend className="paint-col-head">CC recipients</legend>
@@ -323,7 +334,8 @@ export function EmailVendorModal({
           />
           <p className="muted small">
             Formatted HTML is copied automatically — compose opens <strong>empty</strong>. Click in the body and press{" "}
-            <strong>Ctrl+V</strong> for tables and signature. Use <strong>Copy HTML</strong> to copy again.
+            <strong>Ctrl+V</strong> for tables{includeSignature ? " and signature" : ""}. Use <strong>Copy HTML</strong>{" "}
+            to copy again.
           </p>
         </div>
 

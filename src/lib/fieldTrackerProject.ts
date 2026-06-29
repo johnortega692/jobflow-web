@@ -1,6 +1,7 @@
-import { jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
+import { icbiSuperintendent, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
 import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus";
 import { normalizePaintVendor } from "./paintTrackerSync";
+import { resolveDisplayCompanyName } from "./displayCompanyName";
 import { loadOrgSettingsBlob } from "./orgSettings";
 import { commitProjectUpdate } from "./projectActivity";
 import { supabase } from "./supabase";
@@ -8,12 +9,22 @@ import type { ProjectForm, Json } from "../types/database";
 import { normalizeProject } from "../types/database";
 import {
   defaultWcTrackerLineFields,
+  defaultWcTrackerState,
   normalizePaintTrackerState,
   normalizeWcTrackerLines,
+  normalizeWcTrackerState,
   type PaintTrackerState,
   type WcTrackerLineState,
+  type WcTrackerState,
 } from "../types/fieldTracker";
-import { parseProjectTradeData, type ProjectTradeData, type WallcoveringItem } from "../types/tradeDocuments";
+import {
+  normalizePaintSubmittal,
+  normalizeWallcoveringSubmittal,
+  parseProjectTradeData,
+  type ProjectTradeData,
+  type WallcoveringItem,
+} from "../types/tradeDocuments";
+import { harmonizeTrackerRevision } from "./paintTrackerRevision";
 
 export type FieldPaintRow = {
   projectId: string;
@@ -27,6 +38,7 @@ export type FieldPaintRow = {
   status: PaintFieldStatus;
   division: string;
   pm: string;
+  revisionNotes: string;
   tracker: PaintTrackerState;
   nightsWeekends: boolean;
 };
@@ -45,7 +57,9 @@ export type FieldWcItemRow = {
   dropbox: string;
   imageUrl: string;
   panels: boolean;
+  revisionNotes: string;
   line: WcTrackerLineState;
+  tracker: WcTrackerState;
 };
 
 function wcNameFromItem(item: WallcoveringItem): string {
@@ -73,10 +87,37 @@ export function resolvePaintTracker(trade: ProjectTradeData): PaintTrackerState 
   const stored = normalizePaintTrackerState(trade.paint_tracker);
   const vendor = trade.paint_submittal?.paint_vendor?.trim();
   if (vendor) stored.paintVendor = normalizePaintVendor(vendor);
-  if (trade.paint_submittal?.submittal_ordered && !stored.submittalOrdered) {
+  if (trade.paint_submittal && "submittal_ordered" in trade.paint_submittal) {
+    stored.submittalOrdered = Boolean(trade.paint_submittal.submittal_ordered);
+  } else if (trade.paint_submittal?.submittal_ordered) {
     stored.submittalOrdered = true;
   }
-  return stored;
+  return harmonizeTrackerRevision(stored);
+}
+
+function wcTrackerFromLegacyLines(lines: WcTrackerLineState[]): Partial<WcTrackerState> {
+  if (!lines.length) return {};
+  return {
+    submittalOrdered: lines.some((l) => l.ordered),
+    submittedForApproval: lines.some((l) => l.sentForApproval),
+    approved: lines.some((l) => l.approved),
+  };
+}
+
+export function resolveWcTracker(trade: ProjectTradeData): WcTrackerState {
+  if (trade.wc_tracker) {
+    return harmonizeTrackerRevision(normalizeWcTrackerState(trade.wc_tracker));
+  }
+
+  const base = defaultWcTrackerState();
+  const legacy = wcTrackerFromLegacyLines(normalizeWcTrackerLines(trade.wc_tracker_lines));
+  const wcSubmittal = normalizeWallcoveringSubmittal(trade.wallcovering_submittal);
+  const merged: WcTrackerState = {
+    ...base,
+    ...legacy,
+    submittalOrdered: legacy.submittalOrdered || Boolean(wcSubmittal.submittal_ordered),
+  };
+  return harmonizeTrackerRevision(merged);
 }
 
 export function resolveWcTrackerLines(trade: ProjectTradeData): WcTrackerLineState[] {
@@ -95,12 +136,13 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
     jobName: project.job_name.trim(),
     jobAddress: jobFullAddressOneLine(project, j),
     gcName: project.contractor.trim(),
-    gcSuper: j.gc_superintendent.trim(),
+    gcSuper: icbiSuperintendent(j),
     startDate: j.start_date.trim(),
     paintVendor: tracker.paintVendor,
     status: paintFieldStatus(tracker),
     division: tracker.creativeTeam.trim() || j.icbi_foreman.trim(),
     pm: j.icbi_pm.trim(),
+    revisionNotes: tracker.revisionNotes.trim(),
     tracker,
     nightsWeekends: tracker.nightsWeekends,
   };
@@ -109,6 +151,7 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
 export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
   if (!projectHasWallcovering(project.jobInfo)) return [];
   const trade = parseProjectTradeData(project.data as Json);
+  const tracker = resolveWcTracker(trade);
   const lines = resolveWcTrackerLines(trade);
   const j = project.jobInfo;
   const jobNumber = wcTrackerJobNumber(project);
@@ -122,12 +165,14 @@ export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
     pm: j.icbi_pm.trim(),
     wallcoveringName: line.wallcoveringName,
     label: line.label,
-    status: wcFieldStatus(line),
+    status: wcFieldStatus(line, tracker),
     installDate: line.installDate,
     dropbox: line.dropbox,
     imageUrl: line.imageUrl,
     panels: line.panels,
+    revisionNotes: tracker.revisionNotes.trim(),
     line,
+    tracker,
   }));
 }
 
@@ -136,11 +181,13 @@ export async function loadFieldViewCompanyName(): Promise<string> {
   try {
     const org = await loadOrgSettingsBlob();
     const name = typeof org.company_name === "string" ? org.company_name.trim() : "";
-    if (name) return name;
+    if (name) return resolveDisplayCompanyName(name);
   } catch {
     /* fall through */
   }
-  return import.meta.env.VITE_COMPANY_NAME?.trim() || "Ironwood Commercial Builders";
+  return resolveDisplayCompanyName(
+    import.meta.env.VITE_COMPANY_NAME?.trim() || "Ironwood Commercial Builders",
+  );
 }
 
 export async function loadAllProjectsForField(): Promise<{ projects: ProjectForm[]; error: string | null }> {
@@ -180,6 +227,42 @@ export async function saveWcTrackerLines(
   );
 }
 
+export async function saveWcTrackerState(
+  projectId: string,
+  tracker: WcTrackerState,
+  summary = "Wallcovering tracker saved",
+): Promise<string | null> {
+  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
+  if (error) return error.message;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const wcSubmittal = normalizeWallcoveringSubmittal(trade.wallcovering_submittal);
+  const mergeData: Record<string, unknown> = { wc_tracker: tracker };
+  if (Boolean(wcSubmittal.submittal_ordered) !== tracker.submittalOrdered) {
+    mergeData.wallcovering_submittal = { ...wcSubmittal, submittal_ordered: tracker.submittalOrdered };
+  }
+  return patchProjectData(projectId, mergeData, { action: "wc_tracker_saved", summary });
+}
+
+/** Keep wallcovering tab Ordered checkbox and wc_tracker in one write. */
+export async function syncWcSubmittalOrdered(
+  projectId: string,
+  submittalOrdered: boolean,
+): Promise<string | null> {
+  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
+  if (error) return error.message;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const tracker = { ...resolveWcTracker(trade), submittalOrdered };
+  const wcSubmittal = { ...normalizeWallcoveringSubmittal(trade.wallcovering_submittal), submittal_ordered: submittalOrdered };
+  return patchProjectData(
+    projectId,
+    { wc_tracker: tracker, wallcovering_submittal: wcSubmittal },
+    {
+      action: "wc_tracker_saved",
+      summary: submittalOrdered ? "Submittal marked ordered" : "Submittal ordered cleared",
+    },
+  );
+}
+
 export async function reloadProject(projectId: string): Promise<ProjectForm | null> {
   const { data, error } = await supabase.from("projects").select("*").eq("id", projectId).single();
   if (error || !data) return null;
@@ -191,22 +274,43 @@ export async function savePaintTrackerState(
   tracker: PaintTrackerState,
   summary = "Paint tracker saved",
 ): Promise<string | null> {
-  return patchProjectData(
-    projectId,
-    { paint_tracker: tracker },
-    { action: "paint_tracker_saved", summary },
-  );
+  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
+  if (error) return error.message;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const paintSubmittal = normalizePaintSubmittal(trade.paint_submittal);
+  const mergeData: Record<string, unknown> = { paint_tracker: tracker };
+  if (Boolean(paintSubmittal.submittal_ordered) !== tracker.submittalOrdered) {
+    mergeData.paint_submittal = { ...paintSubmittal, submittal_ordered: tracker.submittalOrdered };
+  }
+  return patchProjectData(projectId, mergeData, { action: "paint_tracker_saved", summary });
 }
 
-export async function patchPaintTrackerSubmittalOrdered(
+/** Keep paint tab Ordered checkbox and paint_tracker in one write. */
+export async function syncPaintSubmittalOrdered(
   projectId: string,
   submittalOrdered: boolean,
 ): Promise<string | null> {
   const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
   if (error) return error.message;
   const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
-  const tracker = resolvePaintTracker(trade);
-  return savePaintTrackerState(projectId, { ...tracker, submittalOrdered });
+  const tracker = { ...resolvePaintTracker(trade), submittalOrdered };
+  const paintSubmittal = { ...normalizePaintSubmittal(trade.paint_submittal), submittal_ordered: submittalOrdered };
+  return patchProjectData(
+    projectId,
+    { paint_tracker: tracker, paint_submittal: paintSubmittal },
+    {
+      action: "paint_tracker_saved",
+      summary: submittalOrdered ? "Submittal marked ordered" : "Submittal ordered cleared",
+    },
+  );
+}
+
+/** @deprecated Use syncPaintSubmittalOrdered */
+export async function patchPaintTrackerSubmittalOrdered(
+  projectId: string,
+  submittalOrdered: boolean,
+): Promise<string | null> {
+  return syncPaintSubmittalOrdered(projectId, submittalOrdered);
 }
 
 export async function saveProjectStartDate(projectId: string, startDate: string): Promise<string | null> {

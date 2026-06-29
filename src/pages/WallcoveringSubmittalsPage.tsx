@@ -19,7 +19,7 @@ import {
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { queuePendingItem } from "../lib/transmittalHelpers";
-import { buildWcTrackerLinesFromSubmittal, saveWcTrackerLines } from "../lib/fieldTrackerProject";
+import { buildWcTrackerLinesFromSubmittal, saveWcTrackerLines, syncWcSubmittalOrdered } from "../lib/fieldTrackerProject";
 import { applyGotTrackToggle, detectGotTrack } from "../lib/wcTrackInfill";
 import {
   applyTransmittalContractIfDistinct,
@@ -243,6 +243,19 @@ export function WallcoveringSubmittalsPage() {
     }
   }
 
+  async function onSubmittalOrderedChange(checked: boolean) {
+    const next = { ...draft, submittal_ordered: checked };
+    setDraft(next);
+    const ok = await persist(next, history);
+    if (!ok) return;
+    const trackerErr = await syncWcSubmittalOrdered(projectId, checked);
+    if (trackerErr) {
+      setStatus(`Saved submittal. Wallcovering tracker update failed: ${trackerErr}`);
+      return;
+    }
+    setStatus(checked ? "Submittal marked ordered." : "Submittal ordered cleared.");
+  }
+
   async function onCopyToTracker() {
     setTrackerBusy(true);
     setError(null);
@@ -389,6 +402,14 @@ export function WallcoveringSubmittalsPage() {
           <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
             Submittal history…
           </button>
+          <label className="check paint-action-check">
+            <input
+              type="checkbox"
+              checked={Boolean(draft.submittal_ordered)}
+              onChange={(e) => void onSubmittalOrderedChange(e.target.checked)}
+            />
+            Ordered
+          </label>
           <button
             type="button"
             className="btn btn-secondary"

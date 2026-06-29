@@ -39,24 +39,38 @@ export type JobInfoData = {
   icbi_foreman: string;
   /** Foreman email — CC on tracker notifications and vendor emails for this project */
   icbi_foreman_email: string;
-  /** PM name exactly as listed on Field Request Order → PMs sheet */
+  /** ICBI / Field Tools super email (from Field Tools profile on new project) */
+  icbi_super_email: string;
+  /** PM name for Field Tools / Manpower sync */
   field_request_pm: string;
-  /** Super name exactly as listed on Field Request Order → Supers sheet */
+  /** Super name for Field Tools / Manpower sync */
   field_request_super: string;
+  /** Field Tools profile id (`field_tools_profiles.id`) for the project super */
+  staff_super_id: string;
+  /** Field Tools profile id (`field_tools_profiles.id`) for the project foreman */
+  staff_foreman_id: string;
+  /** Roster id from Settings → Project staff (office PMs) */
+  staff_pm_id: string;
   /** Project includes a wallcovering contract / scope */
   has_wallcovering: boolean;
   /** Separate job number for Wallcovering Tracker (falls back to primary job #) */
   wc_job_number: string;
   /** Separate job name for Wallcovering Tracker (falls back to primary job name) */
   wc_job_name: string;
+  /** Wallcovering contract amount (falls back to contract_amount) */
+  wc_contract_amount: string;
   /** Project includes FRP scope / contract */
   has_frp: boolean;
   frp_job_number: string;
   frp_job_name: string;
+  /** FRP contract amount (falls back to contract_amount) */
+  frp_contract_amount: string;
   /** Project includes track scope / contract */
   has_track: boolean;
   track_job_number: string;
   track_job_name: string;
+  /** Track contract amount (falls back to contract_amount) */
+  track_contract_amount: string;
 };
 
 export const JOB_TYPES = ["Commercial", "Residential"] as const;
@@ -101,16 +115,23 @@ export function defaultJobInfo(): JobInfoData {
     icbi_engineer: "",
     icbi_foreman: "",
     icbi_foreman_email: "",
+    icbi_super_email: "",
     field_request_pm: "",
     field_request_super: "",
+    staff_super_id: "",
+    staff_foreman_id: "",
+    staff_pm_id: "",
     has_wallcovering: false,
     wc_job_number: "",
     wc_job_name: "",
+    wc_contract_amount: "",
     has_frp: false,
     frp_job_number: "",
     frp_job_name: "",
+    frp_contract_amount: "",
     has_track: false,
     track_job_number: "",
     track_job_name: "",
+    track_contract_amount: "",
   };
 }

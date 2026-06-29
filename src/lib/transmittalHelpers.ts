@@ -12,6 +12,8 @@ import {
   type WallcoveringItem,
 } from "../types/tradeDocuments";
 import { esc, formatLongDate } from "./printCore";
+import type { EmailSignatureSettings } from "./emailSignature";
+import { buildEmailSignatureHtml, buildEmailSignaturePlain } from "./emailSignature";
 import {
   openGmailComposeWithHtml,
   copyHtmlToClipboard,
@@ -353,6 +355,7 @@ export function buildEmailRelayPlainBody(
   project: { job_number: string; job_name: string },
   transmittal: TransmittalData,
   details: EmailRelayDetails = {},
+  signature?: EmailSignatureSettings,
 ): string {
   const submittalNo = transmittal.transmittal_number.trim() || "TR-001";
   const enclosures = includedEnclosureDescriptions(transmittal);
@@ -360,7 +363,7 @@ export function buildEmailRelayPlainBody(
     ? enclosures.map((line) => `• ${line}`).join("\n")
     : "(See transmittal for full enclosure list)";
 
-  return [
+  const parts = [
     emailRelayGreeting(transmittal),
     "",
     `Submittal No. ${submittalNo} for ${project.job_name} has been ${emailRelayActionWord(transmittal)}.`,
@@ -376,7 +379,9 @@ export function buildEmailRelayPlainBody(
     "",
     "Thank you,",
     "",
-  ].join("\n");
+  ];
+  if (signature) parts.push(buildEmailSignaturePlain(signature));
+  return parts.join("\n");
 }
 
 /** HTML body for relay copy — matches desktop Outlook relay formatting. */
@@ -384,6 +389,8 @@ export function buildEmailRelayHtmlBody(
   project: { job_number: string; job_name: string },
   transmittal: TransmittalData,
   details: EmailRelayDetails = {},
+  signature?: EmailSignatureSettings,
+  logoUrl = "",
 ): string {
   const submittalNo = transmittal.transmittal_number.trim() || "TR-001";
   const enclosures = includedEnclosureDescriptions(transmittal);
@@ -395,7 +402,7 @@ export function buildEmailRelayHtmlBody(
   const pTight = 'style="font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:0 0 6px 0;"';
   const pDelivery = 'style="font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:12px 0 12px 0;"';
 
-  return [
+  const html = [
     `<p ${p}>${esc(emailRelayGreeting(transmittal))}</p>`,
     `<p ${p}>Submittal No. ${esc(submittalNo)} for ${esc(project.job_name)} has been <strong>${esc(emailRelayActionWord(transmittal))}</strong>.</p>`,
     `<p ${p}>The transmittal and submittal package are attached for your review.</p>`,
@@ -406,6 +413,8 @@ export function buildEmailRelayHtmlBody(
     `<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt;margin:0 0 0 0;">Thank you,</p>`,
     "<br>",
   ].join("");
+  const sig = signature ? buildEmailSignatureHtml(signature, logoUrl) : "";
+  return html + sig;
 }
 
 export function defaultEmailRelayDetails(transmittal: TransmittalData): EmailRelayDetails {
@@ -420,10 +429,12 @@ export async function openEmailRelayMailto(
   transmittal: TransmittalData,
   details: EmailRelayDetails,
   method: ComposeEmailMethod = "gmail",
+  signature?: EmailSignatureSettings,
+  logoUrl = "",
 ): Promise<OpenMailtoResult> {
   const subject = buildEmailRelaySubject(project, transmittal);
-  const plainBody = buildEmailRelayPlainBody(project, transmittal, details);
-  const htmlBody = `<html><body>${buildEmailRelayHtmlBody(project, transmittal, details)}</body></html>`;
+  const plainBody = buildEmailRelayPlainBody(project, transmittal, details, signature);
+  const htmlBody = `<html><body>${buildEmailRelayHtmlBody(project, transmittal, details, signature, logoUrl)}</body></html>`;
   return openGmailComposeWithHtml({
     to: [],
     cc: [],
@@ -438,9 +449,11 @@ export async function copyEmailRelayHtml(
   project: { job_number: string; job_name: string },
   transmittal: TransmittalData,
   details: EmailRelayDetails,
+  signature?: EmailSignatureSettings,
+  logoUrl = "",
 ): Promise<void> {
-  const plainBody = buildEmailRelayPlainBody(project, transmittal, details);
-  const htmlBody = `<html><body>${buildEmailRelayHtmlBody(project, transmittal, details)}</body></html>`;
+  const plainBody = buildEmailRelayPlainBody(project, transmittal, details, signature);
+  const htmlBody = `<html><body>${buildEmailRelayHtmlBody(project, transmittal, details, signature, logoUrl)}</body></html>`;
   await copyHtmlToClipboard(htmlBody, plainBody);
 }
 

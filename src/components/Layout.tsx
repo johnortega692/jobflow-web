@@ -5,7 +5,7 @@ import { UserHeaderIdentity } from "./UserHeaderIdentity";
 import { PendingApprovalPage } from "../pages/PendingApprovalPage";
 
 export function Layout() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin, roleLoading } = useAuth();
   const { profile } = useLetterhead();
 
   return (
@@ -28,6 +28,7 @@ export function Layout() {
         </nav>
         <div className="topbar-right">
           <UserHeaderIdentity profile={profile} email={user?.email} />
+          {!roleLoading && isAdmin && <span className="topbar-admin-badge">Admin</span>}
           <button type="button" className="btn btn-ghost" onClick={() => signOut()}>
             Sign out
           </button>

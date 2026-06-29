@@ -17,8 +17,18 @@ import {
   coerceTransmittalContract,
   budgetProfileValues,
   hasTransmittalContractSwitch,
+  TRANSMITTAL_CONTRACT_LABELS,
   transmittalPrintInfo,
 } from "../lib/jobInfo";
+import {
+  contractManpowerAlreadyPushed,
+  manpowerPushForContract,
+  patchManpowerPushForContract,
+} from "../lib/budgetManpowerPush";
+import {
+  applyBudgetContractSlice,
+  mergeActiveBudgetContractSlice,
+} from "../lib/budgetPerContract";
 import { loadBudgetLibrary, downloadBudgetExcel, saveBudgetLibrary } from "../lib/budgetLibrary";
 import { downloadBudgetPdf, downloadHoursPdf } from "../lib/budgetExportPdf";
 import { budgetHoursPdfFilename, budgetPdfFilename } from "../lib/pdfFilenames";
@@ -94,10 +104,11 @@ export function BudgetPage() {
     if (!loading) {
       const raw = tradeData.budget_maker ?? (tradeData as { budget?: unknown }).budget;
       const base = normalizeBudgetMaker(raw, project.job_name);
-      setDraft({
-        ...base,
-        contract: coerceTransmittalContract(project, base.contract),
-      });
+      const contract = coerceTransmittalContract(project, base.contract);
+      const profile = budgetProfileValues(project, contract);
+      setDraft(
+        applyBudgetContractSlice(base, contract, profile.jobName, profile.grandTotal),
+      );
     }
   }, [loading, tradeData.budget_maker, tradeData, project.job_name, project]);
 
@@ -107,7 +118,7 @@ export function BudgetPage() {
     const tplPatch = defaultTemplateDraftPatch(library);
     if (!tplPatch) return;
     setDraft((d) => ({ ...d, ...tplPatch }));
-  }, [library, loading, draft.buckets.length]);
+  }, [library, loading, draft.contract, draft.buckets.length]);
 
   const contractJob = useMemo(
     () => transmittalPrintInfo(project, draft.contract),
@@ -228,23 +239,25 @@ export function BudgetPage() {
   }
 
   async function handleSave() {
-    const next = {
+    const profile = budgetProfileValues(project, draft.contract);
+    const merged = mergeActiveBudgetContractSlice({
       ...draft,
-      job_name: profileBudget.jobName,
-      grand_total: profileBudget.grandTotal,
+      job_name: profile.jobName,
+      grand_total: profile.grandTotal,
       saved_at: new Date().toLocaleString(),
-    };
+    });
     const { budget_maker: _saved, ...rest } = tradeData;
-    const ok = await save({ ...rest, budget_maker: next });
+    const ok = await save({ ...rest, budget_maker: merged });
     if (ok) {
-      setDraft(next);
-      setSavedAt(next.saved_at ?? null);
+      setDraft(applyBudgetContractSlice(merged, merged.contract, profile.jobName, profile.grandTotal));
+      setSavedAt(merged.saved_at ?? null);
     }
     return ok;
   }
 
   async function handlePushToManpower() {
-    if (draft.manpower_budget_pushed_at) return;
+    const activeContract = draft.contract;
+    if (contractManpowerAlreadyPushed(draft, activeContract)) return;
 
     const { pushHours, supervisionHours } = manpowerHours;
     if (!pushHours || pushHours <= 0) {
@@ -256,7 +269,8 @@ export function BudgetPage() {
       return;
     }
 
-    const jobLabel = [project.job_number, project.job_name].filter(Boolean).join(" ").trim();
+    const jobLabel = [contractJob.job_number, contractJob.job_name].filter(Boolean).join(" ").trim();
+    const contractLabel = TRANSMITTAL_CONTRACT_LABELS[activeContract];
     const supervisionNote =
       includeSupervisionInManpowerPush && supervisionHours > 0
         ? `\nIncludes ${supervisionHours.toFixed(1)} supervision hrs (990).`
@@ -264,7 +278,7 @@ export function BudgetPage() {
           ? `\nSupervision (${supervisionHours.toFixed(1)} hrs) is excluded.`
           : "";
     const confirmed = window.confirm(
-      `Push ${pushHours.toFixed(1)} budget hours to Manpower for "${jobLabel || "this job"}"?${supervisionNote}\n\nThis can only be done once and cannot be undone from JobFlow.`,
+      `Push ${pushHours.toFixed(1)} budget hours to Manpower for the ${contractLabel} contract (${jobLabel || "this job"})?${supervisionNote}\n\nThis can only be done once per contract and cannot be undone from JobFlow.`,
     );
     if (!confirmed) return;
 
@@ -278,6 +292,7 @@ export function BudgetPage() {
         projectId,
         pushHours,
         includeSupervisionInManpowerPush,
+        activeContract,
       );
       if (pushErr) {
         setError(pushErr);
@@ -286,12 +301,14 @@ export function BudgetPage() {
 
       await load();
       if (data?.pushed_at) {
-        setDraft((d) => ({
-          ...d,
-          manpower_budget_pushed_at: data.pushed_at,
-          manpower_budget_hours: data.budgeted_hours,
-          manpower_budget_include_supervision: includeSupervisionInManpowerPush,
-        }));
+        setDraft((d) =>
+          patchManpowerPushForContract(d, activeContract, {
+            pushed_at: data.pushed_at,
+            hours: data.budgeted_hours,
+            include_supervision: includeSupervisionInManpowerPush,
+            manpower_job_name: data.job_name,
+          }),
+        );
       }
     } finally {
       setPushingManpower(false);
@@ -299,24 +316,26 @@ export function BudgetPage() {
   }
 
   function manpowerPushControl() {
-    if (draft.manpower_budget_pushed_at) {
-      const incl = draft.manpower_budget_include_supervision;
+    const activeContract = draft.contract;
+    const priorPush = manpowerPushForContract(draft, activeContract);
+    if (priorPush?.pushed_at) {
+      const incl = priorPush.include_supervision;
+      const contractLabel = TRANSMITTAL_CONTRACT_LABELS[activeContract];
       return (
         <span
           className="budget-manpower-push-locked muted small"
-          title="Budget hours were sent to Manpower Cal (one-time push)"
+          title={`${contractLabel} budget hours were sent to Manpower Cal (one-time push per contract)`}
         >
-          Manpower pushed{" "}
-          {new Date(draft.manpower_budget_pushed_at).toLocaleString()}
-          {draft.manpower_budget_hours != null
-            ? ` · ${draft.manpower_budget_hours.toFixed(1)} hrs`
-            : ""}
+          {contractLabel} Manpower pushed{" "}
+          {new Date(priorPush.pushed_at).toLocaleString()}
+          {priorPush.hours != null ? ` · ${priorPush.hours.toFixed(1)} hrs` : ""}
           {incl != null ? (incl ? " · incl. supervision" : " · field only") : ""}
         </span>
       );
     }
 
     const pushHours = manpowerHours.pushHours;
+    const contractLabel = TRANSMITTAL_CONTRACT_LABELS[activeContract];
 
     return (
       <>
@@ -335,13 +354,13 @@ export function BudgetPage() {
           onClick={() => void handlePushToManpower()}
           title={
             pushHours
-              ? "Send budget man-hours to Manpower Cal (one time only)"
+              ? `Send ${contractLabel} budget man-hours to Manpower Cal (one time per contract)`
               : "Add man hours to the budget first"
           }
         >
           {pushingManpower
             ? "Pushing to Manpower…"
-            : `Push ${pushHours ? pushHours.toFixed(1) : "0"} hrs to Manpower`}
+            : `Push ${pushHours ? pushHours.toFixed(1) : "0"} hrs (${contractLabel})`}
         </button>
       </>
     );
@@ -524,10 +543,20 @@ export function BudgetPage() {
   const splitLine = splitLineId ? draft.lines.find((l) => l.id === splitLineId) : null;
 
   function onContractChange(contract: typeof draft.contract) {
-    patch({ contract });
+    if (contract === draft.contract) return;
+    setDraft((current) => {
+      const stored = mergeActiveBudgetContractSlice(current);
+      const profile = budgetProfileValues(project, contract);
+      return applyBudgetContractSlice(stored, contract, profile.jobName, profile.grandTotal);
+    });
+    setSelectedLineIds(new Set());
+    setTargetBucket(0);
+    setSplitLineId(null);
+    setError(null);
   }
 
   const hiddenCount = draft.lines.filter((l) => l.Hidden).length;
+  const showContractSwitch = hasTransmittalContractSwitch(project);
 
   return (
     <>
@@ -622,13 +651,19 @@ export function BudgetPage() {
         </section>
 
         <section className="card stack">
-          {hasTransmittalContractSwitch(project) && (
-            <TradeContractTabs
-              project={project}
-              value={draft.contract}
-              onChange={onContractChange}
-              showJobLabel
-            />
+          {showContractSwitch && (
+            <>
+              <TradeContractTabs
+                project={project}
+                value={draft.contract}
+                onChange={onContractChange}
+                showJobLabel
+              />
+              <p className="muted small">
+                Each contract has its own budget lines and buckets. Switch tabs to edit paint vs
+                wallcovering separately; save keeps all contracts.
+              </p>
+            </>
           )}
           <div className="row-gap wrap budget-summary-inputs">
               <label className="budget-inline-label">

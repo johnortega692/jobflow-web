@@ -223,6 +223,12 @@ export function FieldPaintDashboardPage() {
                         <dt>PM</dt>
                         <dd>{row.pm || "—"}</dd>
                       </div>
+                      {row.revisionNotes ? (
+                        <div className="field-revision-notes">
+                          <dt>Revision notes</dt>
+                          <dd>{row.revisionNotes}</dd>
+                        </div>
+                      ) : null}
                     </dl>
                     <div className="field-mobile-actions">
                       <CopyActions row={row} />
@@ -248,6 +254,7 @@ export function FieldPaintDashboardPage() {
                 <th>Start Date</th>
                 <th>Paint</th>
                 <th>Status</th>
+                <th>Revision notes</th>
                 <th>Division</th>
                 <th>PM</th>
               </tr>
@@ -284,6 +291,7 @@ export function FieldPaintDashboardPage() {
                       className={paintPillClass(row.status)}
                     />
                   </td>
+                  <td className="field-revision-notes-cell">{row.revisionNotes || "—"}</td>
                   <td>{row.division}</td>
                   <td>{row.pm}</td>
                 </tr>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { WorkOrderCanvas } from "../components/workorders/WorkOrderCanvas";
+import { WorkOrderOptionsModal } from "../components/workorders/WorkOrderOptionsModal";
 import { WorkOrderEditorSidebar } from "./WorkOrderEditorSidebar";
 import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { useAuth } from "../contexts/AuthContext";
@@ -62,6 +63,7 @@ import {
   DEFAULT_SCAN_ENHANCE,
   type ScanBBox,
   type ScanBoxKind,
+  isWorkOrderScanSetupComplete,
   type WorkOrderScanBoxes,
 } from "../types/workOrderScan";
 import {
@@ -115,15 +117,24 @@ export function WorkOrderEditorPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"controls" | "materials" | "settings" | "other">("controls");
+  const [activeTab, setActiveTab] = useState<"controls" | "setup" | "materials" | "other">("controls");
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [scanSetupMode, setScanSetupMode] = useState<ScanBoxKind | null>(null);
+  const [adjustScanSetup, setAdjustScanSetup] = useState(false);
 
   const EWO_EDITOR_TABS = [
     { id: "controls" as const, label: "Controls" },
-    { id: "materials" as const, label: "Material & Labor" },
-    { id: "settings" as const, label: "Settings" },
+    { id: "setup" as const, label: "Setup Fields" },
+    { id: "materials" as const, label: "Mat & Labor" },
     { id: "other" as const, label: "Other" },
   ];
+
+  const scanSetupComplete = useMemo(() => isWorkOrderScanSetupComplete(scanBoxes), [scanBoxes]);
+  const showSetupTab = !scanSetupComplete || adjustScanSetup;
+  const visibleTabs = useMemo(
+    () => (showSetupTab ? EWO_EDITOR_TABS : EWO_EDITOR_TABS.filter((tab) => tab.id !== "setup")),
+    [showSetupTab],
+  );
 
   const totals = useMemo(() => computeWorkOrderTotals(form), [form]);
 
@@ -326,6 +337,12 @@ export function WorkOrderEditorPage() {
     if (!pristine) return;
     void applyEnhanceToBackground(pristine, form.scan_enhance);
   }, [form.scan_enhance]);
+
+  useEffect(() => {
+    if (!showSetupTab && activeTab === "setup") {
+      setActiveTab("controls");
+    }
+  }, [showSetupTab, activeTab]);
 
   function setField<K extends keyof WorkOrderFormData>(key: K, value: WorkOrderFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -537,7 +554,7 @@ export function WorkOrderEditorPage() {
     setSelectedScanBox("ewo");
     setScanSetupMode("ewo");
     setSelectedOverlayId(null);
-    setActiveTab("settings");
+    setActiveTab("setup");
   }
 
   function onDrawNewEwoArea() {
@@ -550,7 +567,7 @@ export function WorkOrderEditorPage() {
     setSelectedScanBox("ewo");
     setScanSetupMode("ewo");
     setSelectedOverlayId(null);
-    setActiveTab("settings");
+    setActiveTab("setup");
     setNotice("Drag the red box on the document to the EWO number, then resize with the corner handles.");
   }
 
@@ -564,7 +581,7 @@ export function WorkOrderEditorPage() {
     setShowScanBoxes(true);
     setSelectedScanBox("ewo");
     setScanSetupMode("ewo");
-    setActiveTab("settings");
+    setActiveTab("setup");
   }
 
   function onSelectJobArea() {
@@ -577,7 +594,7 @@ export function WorkOrderEditorPage() {
     setSelectedScanBox("job");
     setScanSetupMode("job");
     setSelectedOverlayId(null);
-    setActiveTab("settings");
+    setActiveTab("setup");
   }
 
   function onDrawNewJobArea() {
@@ -590,7 +607,7 @@ export function WorkOrderEditorPage() {
     setSelectedScanBox("job");
     setScanSetupMode("job");
     setSelectedOverlayId(null);
-    setActiveTab("settings");
+    setActiveTab("setup");
     setNotice("Drag the blue box on the document to the Job number, then resize with the corner handles.");
   }
 
@@ -604,7 +621,7 @@ export function WorkOrderEditorPage() {
     setShowScanBoxes(true);
     setSelectedScanBox("job");
     setScanSetupMode("job");
-    setActiveTab("settings");
+    setActiveTab("setup");
   }
 
   function onSelectDateArea() {
@@ -617,7 +634,7 @@ export function WorkOrderEditorPage() {
     setSelectedScanBox("date");
     setScanSetupMode("date");
     setSelectedOverlayId(null);
-    setActiveTab("settings");
+    setActiveTab("setup");
   }
 
   function onDrawNewDateArea() {
@@ -630,7 +647,7 @@ export function WorkOrderEditorPage() {
     setSelectedScanBox("date");
     setScanSetupMode("date");
     setSelectedOverlayId(null);
-    setActiveTab("settings");
+    setActiveTab("setup");
     setNotice("Drag the green box on the document to the EWO date, then resize with the corner handles.");
   }
 
@@ -644,7 +661,20 @@ export function WorkOrderEditorPage() {
     setShowScanBoxes(true);
     setSelectedScanBox("date");
     setScanSetupMode("date");
-    setActiveTab("settings");
+    setActiveTab("setup");
+  }
+
+  function onOpenSetupFields() {
+    setAdjustScanSetup(true);
+    setActiveTab("setup");
+    setShowScanBoxes(true);
+  }
+
+  function onCloseSetupFields() {
+    setAdjustScanSetup(false);
+    setScanSetupMode(null);
+    setSelectedScanBox(null);
+    setActiveTab("controls");
   }
 
   function onFinishScanSetup() {
@@ -666,10 +696,9 @@ export function WorkOrderEditorPage() {
   async function onAutoDetectFields() {
     if (!backgroundUrl) {
       setError("Upload a work order document first.");
-      setActiveTab("controls");
+      if (!scanSetupComplete) onOpenSetupFields();
       return;
     }
-    setActiveTab("controls");
     await onOcrEwo();
     if (scanBoxes.job) {
       setOcrBusy(true);
@@ -830,7 +859,6 @@ export function WorkOrderEditorPage() {
             <Link to={`/projects/${projectId}/work-orders`}>{contractJob.job_number || project.job_number}</Link> / EWO {ewoNumber}
           </p>
           <h1>EWO {ewoNumber}</h1>
-          <p className="muted">{contractJob.job_name || project.job_name}</p>
           {hasTransmittalContractSwitch(project) && (
             <TradeContractTabs
               project={project}
@@ -863,6 +891,9 @@ export function WorkOrderEditorPage() {
                 ? "Replace work order"
                 : "Upload work order"}
           </button>
+          <button type="button" className="btn btn-secondary" onClick={() => setOptionsOpen(true)}>
+            Options
+          </button>
           <button
             type="button"
             className="btn btn-secondary"
@@ -892,7 +923,7 @@ export function WorkOrderEditorPage() {
         <WorkOrderEditorSidebar
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          tabs={EWO_EDITOR_TABS}
+          tabs={visibleTabs}
           hasDocument={Boolean(form.source_storage_path)}
           pdfPages={pdfPages}
           sourcePdfPage={form.source_pdf_page}
@@ -918,6 +949,10 @@ export function WorkOrderEditorPage() {
           onResetDateArea={onResetDateArea}
           onClearScanBoxes={onClearScanBoxes}
           onFinishScanSetup={onFinishScanSetup}
+          onOpenSetupFields={onOpenSetupFields}
+          onCloseSetupFields={onCloseSetupFields}
+          scanSetupComplete={scanSetupComplete}
+          showSetupTab={showSetupTab}
           onAutoDetectFields={() => void onAutoDetectFields()}
           form={form}
           onFieldChange={setField}
@@ -980,6 +1015,18 @@ export function WorkOrderEditorPage() {
           />
         </div>
       </div>
+
+      <WorkOrderOptionsModal
+        open={optionsOpen}
+        onClose={() => setOptionsOpen(false)}
+        form={form}
+        hasTotalOverlays={hasTotalOverlays}
+        onFieldChange={setField}
+        onInitializeTotals={onInitializeTotals}
+        onSaveTotalPositionsDefault={() => void onSaveTotalPositionsDefault()}
+        onRestoreTotalPositions={onRestoreTotalPositions}
+        onResetFactoryTotalPositions={onResetFactoryTotalPositions}
+      />
     </div>
   );
 }

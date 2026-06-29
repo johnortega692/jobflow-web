@@ -9,6 +9,7 @@ import {
 } from "../types/letterheadSettings";
 import type { PrintBranding } from "./printCore";
 import { buildCompanyContactLine, normalizeLogoUrl } from "./printCore";
+import { resolveDisplayCompanyName } from "./displayCompanyName";
 
 const STORAGE_KEY = "jobflow-letterhead-v1";
 
@@ -94,7 +95,7 @@ function applyPdfVisibility(
 
 export function letterheadToPrintBranding(settings: LetterheadSettings): PrintBranding {
   const show = settings.pdf_show ?? defaultLetterheadPdfVisibility();
-  const companyName = settings.company_name.trim() || "Plan B Apps";
+  const companyName = resolveDisplayCompanyName(settings.company_name.trim() || "Plan B Apps");
   const companyAddress = settings.company_address.trim();
   const companyPhone = settings.company_phone.trim();
   const companyLicense = settings.company_license.trim();

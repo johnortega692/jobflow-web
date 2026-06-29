@@ -17,6 +17,7 @@ const STATUS_OPTIONS: { value: WcFieldStatus; label: string }[] = [
   { value: "Not Started", label: "Not Started" },
   { value: "Submittal Ordered", label: "Submittal Ordered" },
   { value: "Submitted for Approval", label: "Sent for Approval" },
+  { value: "Needs Revision", label: "Needs Revision" },
   { value: "Approved", label: "Approved" },
   { value: "Material Ordered", label: "Material Ordered" },
   { value: "Delivered", label: "Delivered" },
@@ -247,11 +248,6 @@ export function FieldWallcoveringDashboardPage() {
                             </div>
                             <div className="field-mobile-actions">
                               <InstallDateCell row={item} onSaved={() => void reload()} />
-                              {item.dropbox ? (
-                                <a href={item.dropbox} target="_blank" rel="noreferrer" className="update-btn">
-                                  Dropbox
-                                </a>
-                              ) : null}
                             </div>
                             {item.imageUrl ? (
                               <img
@@ -276,8 +272,8 @@ export function FieldWallcoveringDashboardPage() {
                           <th>Label</th>
                           <th>Wallcovering</th>
                           <th>Status</th>
+                          <th>Revision notes</th>
                           <th>Install Date</th>
-                          <th>Dropbox</th>
                           <th>Image</th>
                         </tr>
                       </thead>
@@ -295,17 +291,9 @@ export function FieldWallcoveringDashboardPage() {
                                 className={wcPillClass(item.status)}
                               />
                             </td>
+                            <td className="field-revision-notes-cell">{item.revisionNotes || "—"}</td>
                             <td>
                               <InstallDateCell row={item} onSaved={() => void reload()} />
-                            </td>
-                            <td>
-                              {item.dropbox ? (
-                                <a href={item.dropbox} target="_blank" rel="noreferrer" className="update-btn">
-                                  Dropbox
-                                </a>
-                              ) : (
-                                <span className="muted small">—</span>
-                              )}
                             </td>
                             <td>
                               {item.imageUrl ? (

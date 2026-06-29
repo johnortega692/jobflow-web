@@ -1,7 +1,7 @@
 /** Manual startup steps — order matches the dashboard stepper left → right. */
 export const PROJECT_STARTUP_ACTIONS = {
-  field_request_job: "field_request_job",
-  field_request_brushouts: "field_request_brushouts",
+  open_job_setup: "open_job_setup",
+  open_approved_brushouts: "open_approved_brushouts",
 } as const;
 
 export type ProjectStartupAction = (typeof PROJECT_STARTUP_ACTIONS)[keyof typeof PROJECT_STARTUP_ACTIONS];
@@ -9,9 +9,9 @@ export type ProjectStartupAction = (typeof PROJECT_STARTUP_ACTIONS)[keyof typeof
 export const PROJECT_STARTUP_STEPS = [
   {
     id: "field_request_app",
-    label: "Add job to Field Request sheet",
+    label: "Field Tools & Manpower synced (PM, super, address in job setup)",
     shortLabel: "Field app",
-    action: PROJECT_STARTUP_ACTIONS.field_request_job,
+    action: PROJECT_STARTUP_ACTIONS.open_job_setup,
   },
   {
     id: "wc_samples_ordered",
@@ -22,9 +22,9 @@ export const PROJECT_STARTUP_STEPS = [
   },
   {
     id: "brushouts_ordered",
-    label: "Push approved brush-outs to Field Request",
+    label: "Approve brush-outs for Field Tools",
     shortLabel: "Brush outs",
-    action: PROJECT_STARTUP_ACTIONS.field_request_brushouts,
+    action: PROJECT_STARTUP_ACTIONS.open_approved_brushouts,
     modulePath: "paint",
   },
   {

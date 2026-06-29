@@ -15,6 +15,16 @@ export type PaintTrackerState = {
   followUp: string;
 };
 
+export type WcTrackerState = {
+  submittalOrdered: boolean;
+  submittedForApproval: boolean;
+  revision: boolean;
+  revisionNotes: string;
+  approved: boolean;
+  creativeTeam: string;
+  followUp: string;
+};
+
 export type WcTrackerLineState = {
   id: string;
   label: string;
@@ -40,6 +50,16 @@ export type WcTrackerLineState = {
   dropbox: string;
   imageUrl: string;
 };
+
+export const defaultWcTrackerState = (): WcTrackerState => ({
+  submittalOrdered: false,
+  submittedForApproval: false,
+  revision: false,
+  revisionNotes: "",
+  approved: false,
+  creativeTeam: "",
+  followUp: "",
+});
 
 export const defaultWcTrackerLineFields = (): Omit<WcTrackerLineState, "id" | "label" | "wallcoveringName"> => ({
   panels: false,
@@ -131,6 +151,22 @@ export function normalizeWcTrackerLine(raw: unknown, fallbackId: string): WcTrac
     notesDelivered: String(o.notesDelivered ?? defaults.notesDelivered),
     dropbox: String(o.dropbox ?? defaults.dropbox),
     imageUrl: String(o.imageUrl ?? defaults.imageUrl),
+  };
+}
+
+export function normalizeWcTrackerState(raw: unknown): WcTrackerState {
+  const base = defaultWcTrackerState();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
+  const o = raw as Partial<WcTrackerState>;
+  return {
+    ...base,
+    submittalOrdered: Boolean(o.submittalOrdered),
+    submittedForApproval: Boolean(o.submittedForApproval),
+    revision: Boolean(o.revision),
+    revisionNotes: String(o.revisionNotes ?? ""),
+    approved: Boolean(o.approved),
+    creativeTeam: String(o.creativeTeam ?? ""),
+    followUp: String(o.followUp ?? ""),
   };
 }
 

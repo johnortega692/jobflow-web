@@ -462,8 +462,8 @@ export function FrpSubmittalsPage() {
       {historyOpen && (
         <SubmittalHistoryModal
           scope="frp"
-          jobNumber={project.job_number}
-          jobName={project.job_name}
+          jobNumber={frpNum}
+          jobName={frpName}
           history={history}
           onLoadFrp={loadHistoryItems}
           onDelete={(n, r) => void onDeleteHistory(n, r)}

@@ -1,19 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   JOB_INFO_STARTUP_STEP,
   PROJECT_STARTUP_ACTIONS,
   type ProjectStartupAction,
   type ProjectStartupStepId,
 } from "../../config/projectStartupChecklist";
-import { BrushoutsSendModal } from "../paint/BrushoutsSendModal";
-import {
-  copySheetsRowToClipboard,
-  loadGoogleSheetsActionContext,
-  runAddJobToFieldRequest,
-  runPushFieldRequestBrushOutsSelected,
-  type GoogleSheetsActionContext,
-} from "../../lib/googleSheetsProjectActions";
 import { parseProjectDataBlob, projectHasWallcovering } from "../../lib/jobInfo";
 import { commitProjectUpdate } from "../../lib/projectActivity";
 import {
@@ -25,9 +17,6 @@ import {
   type StartupChecklistState,
 } from "../../lib/projectStartupChecklist";
 import { supabase } from "../../lib/supabase";
-import { normalizePaintSubmittal, parseProjectTradeData, type PaintSubmittalData } from "../../types/tradeDocuments";
-import type { Json } from "../../types/database";
-import { useAuth } from "../../contexts/AuthContext";
 import type { ProjectForm } from "../../types/database";
 
 type Props = {
@@ -58,19 +47,12 @@ export function ProjectStartupChecklist({
   onOpenJobSetup,
   onActivity,
 }: Props) {
-  const { user } = useAuth();
+  const navigate = useNavigate();
   const [checklist, setChecklist] = useState<StartupChecklistState>(() => defaultStartupChecklist());
-  const [sheetCtx, setSheetCtx] = useState<GoogleSheetsActionContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [runningAction, setRunningAction] = useState<ProjectStartupAction | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [clipboardBusy, setClipboardBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [brushoutsSendOpen, setBrushoutsSendOpen] = useState(false);
-  const [brushoutsBusy, setBrushoutsBusy] = useState(false);
-  const [brushoutsPaint, setBrushoutsPaint] = useState<PaintSubmittalData | null>(null);
 
   const hasWallcovering = projectHasWallcovering(project.jobInfo);
   const progress = startupChecklistProgress(checklist, jobInfoComplete, project.jobInfo);
@@ -127,16 +109,13 @@ export function ProjectStartupChecklist({
         const blob = parseProjectDataBlob(data?.data);
         const parsed = parseStartupChecklist(blob.startup_checklist);
         setChecklist(startupChecklistForJobInfo(parsed, project.jobInfo));
-        if (user?.id) {
-          setSheetCtx(await loadGoogleSheetsActionContext(user.id, projectId));
-        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load startup checklist");
       } finally {
         setLoading(false);
       }
     })();
-  }, [projectId, user?.id]);
+  }, [projectId]);
 
   async function persist(next: StartupChecklistState) {
     const err = await commitProjectUpdate({
@@ -164,138 +143,51 @@ export function ProjectStartupChecklist({
     setSavingId(null);
   }
 
-  async function openBrushoutsPicker(step: StepperStep) {
-    if (!step.manualId || !sheetCtx) return;
-    setError(null);
-    setActionMessage(null);
-    try {
-      const { data, error: loadErr } = await supabase
-        .from("projects")
-        .select("data")
-        .eq("id", projectId)
-        .single();
-      if (loadErr) throw new Error(loadErr.message);
-      const blob = parseProjectDataBlob(data?.data);
-      const trade = parseProjectTradeData(blob as Json);
-      const paintSubmittal = normalizePaintSubmittal(trade.paint_submittal);
-      const hasColors = paintSubmittal.items.some((item) => item.color.trim());
-      if (!hasColors) {
-        setError("Add paint colors on the Paint tab before pushing brush-outs.");
-        return;
-      }
-      setBrushoutsPaint(paintSubmittal);
-      setBrushoutsSendOpen(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load paint submittal.");
-    }
-  }
+  function runStartupAction(step: StepperStep) {
+    if (!step.manualId || !step.action) return;
 
-  async function onBrushoutsConfirm(vendor: string, selectedIndices: number[]) {
-    if (!sheetCtx || !brushoutsPaint) return;
-    setBrushoutsBusy(true);
-    setError(null);
-    setActionMessage(null);
-    try {
-      const result = await runPushFieldRequestBrushOutsSelected(
-        project,
-        sheetCtx,
-        projectId,
-        vendor,
-        selectedIndices,
-      );
-      if (result.ok) {
-        setActionMessage(result.message);
-        const next = { ...checklist, brushouts_ordered: true };
-        setChecklist(next);
-        await persist(next);
-        setBrushoutsSendOpen(false);
-        setBrushoutsPaint(null);
-      } else {
-        setError(result.message);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "BrushOuts push failed.");
-    } finally {
-      setBrushoutsBusy(false);
-    }
-  }
-
-  async function runSheetAction(step: StepperStep) {
-    if (!step.manualId || !step.action || !sheetCtx) return;
-    if (step.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts) {
-      await openBrushoutsPicker(step);
+    if (step.action === PROJECT_STARTUP_ACTIONS.open_approved_brushouts) {
+      navigate(`/projects/${projectId}/approved-brushouts`);
       return;
     }
-    setRunningAction(step.action);
-    setActionMessage(null);
-    setError(null);
-    try {
-      const result =
-        step.action === PROJECT_STARTUP_ACTIONS.field_request_job
-          ? await runAddJobToFieldRequest(project, sheetCtx)
-          : { ok: false, message: "Unknown sheet action." };
-      if (result.ok) {
-        setActionMessage(result.message);
-        const next = { ...checklist, [step.manualId]: true };
-        setChecklist(next);
-        await persist(next);
-      } else {
-        setActionMessage(null);
-        setError(result.message);
+
+    if (step.action === PROJECT_STARTUP_ACTIONS.open_job_setup) {
+      if (!step.done && !jobInfoComplete) {
+        onOpenJobSetup();
+        return;
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Sheet action failed");
-    } finally {
-      setRunningAction(null);
+      void onToggle(step.manualId, !step.done);
     }
   }
 
   function onStepClick(step: StepperStep) {
     setActiveKey(step.key);
-    setActionMessage(null);
     if (step.auto) {
       if (!step.done) onOpenJobSetup();
       return;
     }
-    if (!step.manualId || loading || savingId === step.manualId || runningAction) return;
+    if (!step.manualId || loading || savingId === step.manualId) return;
 
     if (step.oneTime && step.done) return;
 
     if (step.action) {
-      const canRepeatWhenDone = step.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts;
+      const canRepeatWhenDone = step.action === PROJECT_STARTUP_ACTIONS.open_approved_brushouts;
       if (step.done && !canRepeatWhenDone) {
         void onToggle(step.manualId, false);
         return;
       }
-      void runSheetAction(step);
+      runStartupAction(step);
       return;
     }
 
     void onToggle(step.manualId, !step.done);
   }
 
-  async function onCopyClipboard() {
-    setClipboardBusy(true);
-    setError(null);
-    try {
-      await copySheetsRowToClipboard(project);
-      setActionMessage("Row copied — paste into your Google Sheet.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Copy failed");
-    } finally {
-      setClipboardBusy(false);
-    }
-  }
-
   const activeStep = steps.find((s) => s.key === activeKey) ?? steps.find((s) => !s.done) ?? steps[0];
-  const activeBusy =
-    brushoutsBusy ||
-    (activeStep?.action && runningAction === activeStep.action
-      ? true
-      : Boolean(activeStep?.manualId && savingId === activeStep.manualId));
+  const activeBusy = Boolean(activeStep?.manualId && savingId === activeStep.manualId);
 
   return (
-    <section className="card job-startup-checklist" id="google-sheets">
+    <section className="card job-startup-checklist" id="startup-checklist">
       <div className="job-startup-stepper-header">
         <h3 className="job-startup-stepper-title">Startup checklist</h3>
         <span className="job-startup-stepper-count muted small">
@@ -304,9 +196,6 @@ export function ProjectStartupChecklist({
       </div>
 
       {error && <div className="banner banner-error job-startup-banner">{error}</div>}
-      {actionMessage && !error && (
-        <div className="banner banner-ok job-startup-banner">{actionMessage}</div>
-      )}
 
       <div className="job-startup-stepper" role="list" aria-label="Job startup progress">
         {steps.map((step, index) => (
@@ -316,14 +205,7 @@ export function ProjectStartupChecklist({
               role="listitem"
               className={`job-startup-step${step.done ? " job-startup-step--done" : ""}${step.oneTime && step.done ? " job-startup-step--locked" : ""}${activeKey === step.key ? " job-startup-step--active" : ""}`}
               title={step.fullLabel}
-              disabled={Boolean(
-                step.manualId &&
-                  (loading ||
-                    savingId === step.manualId ||
-                    brushoutsBusy ||
-                    (step.action && runningAction === step.action) ||
-                    (step.action && !sheetCtx)),
-              )}
+              disabled={Boolean(step.manualId && (loading || savingId === step.manualId))}
               onClick={() => onStepClick(step)}
             >
               <span className="job-startup-step-node" aria-hidden>
@@ -338,8 +220,6 @@ export function ProjectStartupChecklist({
                       strokeLinejoin="round"
                     />
                   </svg>
-                ) : step.action && runningAction === step.action ? (
-                  "…"
                 ) : (
                   step.stepNumber
                 )}
@@ -365,8 +245,8 @@ export function ProjectStartupChecklist({
               · Done
               {activeStep.oneTime
                 ? " · Locked — one-time step"
-                : activeStep.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
-                  ? " · Click to push again"
+                : activeStep.action === PROJECT_STARTUP_ACTIONS.open_approved_brushouts
+                  ? " · Click to open again"
                   : activeStep.action
                     ? " · Click to uncheck"
                     : ""}
@@ -383,19 +263,12 @@ export function ProjectStartupChecklist({
             <>
               {" "}
               · Click to{" "}
-              {activeStep.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
-                ? "push brush-outs"
-                : "run"}
+              {activeStep.action === PROJECT_STARTUP_ACTIONS.open_approved_brushouts
+                ? "open approved brush-outs"
+                : jobInfoComplete
+                  ? "mark done"
+                  : "open job setup"}
               {activeBusy ? "…" : ""}
-              {!sheetCtx && !loading ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <Link to="/settings" className="job-startup-detail-link">
-                    Configure sheet URLs in Settings
-                  </Link>
-                </>
-              ) : null}
               {activeStep.modulePath ? (
                 <>
                   {" "}
@@ -404,7 +277,7 @@ export function ProjectStartupChecklist({
                     to={`/projects/${projectId}/${activeStep.modulePath}`}
                     className="job-startup-detail-link"
                   >
-                    {activeStep.action === PROJECT_STARTUP_ACTIONS.field_request_brushouts
+                    {activeStep.action === PROJECT_STARTUP_ACTIONS.open_approved_brushouts
                       ? "Add colors on Paint tab"
                       : `Open ${activeStep.modulePath} tab`}
                   </Link>
@@ -425,34 +298,6 @@ export function ProjectStartupChecklist({
             <span className="job-startup-detail-status"> · Click step to mark done</span>
           )}
         </div>
-      )}
-
-      <div className="job-startup-clipboard-row">
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled={clipboardBusy}
-          onClick={() => void onCopyClipboard()}
-        >
-          {clipboardBusy ? "Copying…" : "Copy row to clipboard"}
-        </button>
-        <span className="muted small">Backup — tab-separated job row from job info</span>
-      </div>
-
-      {brushoutsSendOpen && brushoutsPaint && sheetCtx && (
-        <BrushoutsSendModal
-          items={brushoutsPaint.items}
-          pushed={brushoutsPaint.brushout_pushed}
-          initialVendor={brushoutsPaint.paint_vendor ?? sheetCtx.paintVendor}
-          busy={brushoutsBusy}
-          onConfirm={(vendor, indices) => void onBrushoutsConfirm(vendor, indices)}
-          onClose={() => {
-            if (!brushoutsBusy) {
-              setBrushoutsSendOpen(false);
-              setBrushoutsPaint(null);
-            }
-          }}
-        />
       )}
     </section>
   );

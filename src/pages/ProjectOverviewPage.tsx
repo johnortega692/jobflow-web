@@ -11,6 +11,8 @@ import {
   hasDistinctFrpContract,
   hasDistinctTrackContract,
   hasDistinctWcContract,
+  icbiSuperEmail,
+  icbiSuperintendent,
   trackJobLabel,
   wcTrackerJobLabel,
 } from "../lib/jobInfo";
@@ -70,10 +72,18 @@ export function ProjectOverviewPage() {
           />
           <GcContactLine
             label="GC Super"
-            name={j.gc_superintendent.trim()}
+            name={j.gc_superintendent.trim() !== "TBD" ? j.gc_superintendent.trim() : ""}
             phone={j.gc_super_phone.trim()}
             email={j.gc_super_email.trim()}
           />
+          {(icbiSuperintendent(j) || icbiSuperEmail(j)) && (
+            <GcContactLine
+              label="ICBI Super"
+              name={icbiSuperintendent(j)}
+              phone=""
+              email={icbiSuperEmail(j)}
+            />
+          )}
           {(j.icbi_foreman.trim() || j.icbi_foreman_email.trim()) && (
             <GcContactLine
               label="Foreman"

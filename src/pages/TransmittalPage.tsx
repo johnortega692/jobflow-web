@@ -16,6 +16,7 @@ import {
   applyTransmittalContractIfDistinct,
   coerceTransmittalContract,
   hasTransmittalContractSwitch,
+  icbiSuperintendent,
   transmittalPrintInfo,
 } from "../lib/jobInfo";
 import { loadPaintUserSettings } from "../lib/paintUserSettings";
@@ -26,9 +27,13 @@ import {
 import { applyTransmittalProfileDefaults } from "../lib/userProfile";
 import {
   nextTransmittalNumber,
-  normalizeTransmittalNumber,
   transmittalFilename,
 } from "../lib/transmittalNumber";
+import {
+  applyTransmittalContractNumber,
+  bumpTransmittalNumberForContract,
+  mergeActiveTransmittalNumber,
+} from "../lib/transmittalPerContract";
 import { remarkTemplateGroups } from "../lib/transmittalRemarks";
 import { downloadTransmittal } from "../lib/transmittalPrint";
 import {
@@ -187,6 +192,21 @@ export function TransmittalPage() {
     setDraft((d) => ({ ...d, ...patch }));
   }
 
+  function onContractChange(contract: TransmittalData["contract"]) {
+    setDraft((current) => {
+      const stored = mergeActiveTransmittalNumber(current);
+      return applyTransmittalContractNumber(stored, contract);
+    });
+  }
+
+  function patchTransmittalNumber(value: string) {
+    setDraft((d) => ({ ...d, transmittal_number: value }));
+  }
+
+  function normalizeActiveTransmittalNumber() {
+    setDraft((d) => mergeActiveTransmittalNumber(d));
+  }
+
   function patchIncludePaintSheet(checked: boolean) {
     const next: Partial<TransmittalData> = { include_paint_sheet: checked };
     if (checked && !draft.paint_submittal_nums.length) {
@@ -278,16 +298,17 @@ export function TransmittalPage() {
   }
 
   async function onSave() {
-    const ok = await persistTransmittal(draft);
+    const ok = await persistTransmittal(mergeActiveTransmittalNumber(draft));
     if (ok) setStatus("Transmittal saved.");
   }
 
   async function onGenerate() {
-    const ok = await persistTransmittal(draft);
+    const mergedDraft = mergeActiveTransmittalNumber(draft);
+    const ok = await persistTransmittal(mergedDraft);
     if (!ok) return;
     let pdfResult;
     try {
-      pdfResult = await downloadTransmittal(transmittalJob, draft, branding, {
+      pdfResult = await downloadTransmittal(transmittalJob, mergedDraft, branding, {
         projectForm: project,
         tradeData,
       });
@@ -296,14 +317,14 @@ export function TransmittalPage() {
       return;
     }
 
-    const logIds = includedLogRowIds(draft);
+    const logIds = includedLogRowIds(mergedDraft);
     let stamped = 0;
     if (logIds.length) {
       try {
         const rows = await loadSubmittalLogRows(projectId);
         const toMark = rows.filter((r) => logIds.includes(r.id));
         if (toMark.length) {
-          await markRowsSubmitted(projectId, toMark, draft.transmittal_number);
+          await markRowsSubmitted(projectId, toMark, mergedDraft.transmittal_number);
           stamped = toMark.length;
         }
       } catch {
@@ -312,12 +333,12 @@ export function TransmittalPage() {
     }
 
     const consumedPending = new Set(
-      draft.enclosures.filter((e) => e.included && e.pending_id).map((e) => e.pending_id!),
+      mergedDraft.enclosures.filter((e) => e.included && e.pending_id).map((e) => e.pending_id!),
     );
-    const nextQueue = (draft.pending_submittal_queue ?? []).filter((p) => !consumedPending.has(p.id));
-    const nextNumber = nextTransmittalNumber(draft.transmittal_number);
+    const nextQueue = (mergedDraft.pending_submittal_queue ?? []).filter((p) => !consumedPending.has(p.id));
+    const nextNumber = nextTransmittalNumber(mergedDraft.transmittal_number);
     const historyEntry = buildTransmittalHistoryEntry(
-      draft,
+      mergedDraft,
       transmittalJob.job_number,
       transmittalJob.job_name,
       pdfResult,
@@ -326,11 +347,10 @@ export function TransmittalPage() {
       tradeData.transmittal_history ?? [],
       historyEntry,
     );
-    const nextDraft: TransmittalData = {
-      ...draft,
-      transmittal_number: nextNumber,
-      pending_submittal_queue: nextQueue,
-    };
+    const nextDraft = bumpTransmittalNumberForContract(
+      { ...mergedDraft, pending_submittal_queue: nextQueue },
+      nextNumber,
+    );
     const okAfter = await save({
       ...tradeData,
       transmittal: nextDraft,
@@ -350,7 +370,7 @@ export function TransmittalPage() {
     if (pdfResult.missing.length) {
       parts.push(pdfResult.missing.join(" "));
     } else if (
-      (draft.include_paint_sheet || draft.include_wc_sheet || draft.include_frp_sheet) &&
+      (mergedDraft.include_paint_sheet || mergedDraft.include_wc_sheet || mergedDraft.include_frp_sheet) &&
       !pdfResult.combined
     ) {
       parts.push("No trade submittal sheets were appended — check Include sheet options and Paint tab data.");
@@ -368,8 +388,8 @@ export function TransmittalPage() {
   }
 
   function onOrderAtticStock() {
-    const jobNumber = project.job_number.trim();
-    const jobName = project.job_name.trim();
+    const jobNumber = transmittalJob.job_number.trim();
+    const jobName = transmittalJob.job_name.trim();
     if (!jobNumber || !jobName) {
       setError("Please fill in Job Number and Job Name (Job Info tab).");
       setStatus(null);
@@ -537,7 +557,7 @@ export function TransmittalPage() {
               <TradeContractTabs
                 project={project}
                 value={draft.contract}
-                onChange={(contract) => patch({ contract })}
+                onChange={onContractChange}
               />
             )}
             <div className="transmittal-meta-row">
@@ -553,10 +573,8 @@ export function TransmittalPage() {
                 Transmittal #:
                 <input
                   value={draft.transmittal_number}
-                  onChange={(e) => patch({ transmittal_number: e.target.value })}
-                  onBlur={() =>
-                    patch({ transmittal_number: normalizeTransmittalNumber(draft.transmittal_number) })
-                  }
+                  onChange={(e) => patchTransmittalNumber(e.target.value)}
+                  onBlur={normalizeActiveTransmittalNumber}
                   placeholder="TR-001"
                 />
               </label>
@@ -897,6 +915,7 @@ export function TransmittalPage() {
 
       {sentHistoryOpen && (
         <TransmittalSentHistoryModal
+          project={project}
           history={transmittalHistory}
           onLoadSnapshot={(entry) => {
             const loaded = transmittalFromHistoryEntry(entry);
@@ -935,11 +954,13 @@ export function TransmittalPage() {
         />
       )}
 
-      {emailRelayOpen && (
+      {emailRelayOpen && userSettings && (
         <TransmittalEmailRelayModal
-          project={{ job_number: project.job_number, job_name: project.job_name }}
+          project={transmittalJob}
           transmittal={draft}
-          composeEmailMethod={userSettings?.compose_email_method ?? "gmail"}
+          composeEmailMethod={userSettings.compose_email_method}
+          signature={userSettings.signature}
+          logoUrl={branding.logoUrl}
           onClose={() => setEmailRelayOpen(false)}
           onDone={(msg) => {
             setStatus(msg);
@@ -951,8 +972,8 @@ export function TransmittalPage() {
       {atticStockOpen && userSettings && atticStockData && (
         <EmailVendorModal
           mode="attic_stock"
-          jobNumber={project.job_number}
-          jobName={project.job_name}
+          jobNumber={transmittalJob.job_number}
+          jobName={transmittalJob.job_name}
           items={atticStockData.paintItems}
           atticCustomItems={atticStockData.customItems}
           submittalType="revised"
@@ -961,7 +982,7 @@ export function TransmittalPage() {
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          jobSuper={project.jobInfo?.gc_superintendent}
+          jobSuper={icbiSuperintendent(project.jobInfo)}
           foremanName={project.jobInfo?.icbi_foreman}
           foremanEmail={project.jobInfo?.icbi_foreman_email}
           composeEmailMethod={userSettings.compose_email_method}

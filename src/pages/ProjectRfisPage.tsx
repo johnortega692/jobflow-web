@@ -1,11 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
+import { ContractListFilter, type ContractListFilterValue } from "../components/jobinfo/ContractListFilter";
 import { RfiStatusBadge } from "../components/rfi/RfiStatusBadge";
+import {
+  hasTransmittalContractSwitch,
+  TRANSMITTAL_CONTRACT_LABELS,
+} from "../lib/jobInfo";
 import { logProjectActivityEvent } from "../lib/projectActivity";
 import { supabase } from "../lib/supabase";
 import { RFI_STATUS_CLOSED, RFI_STATUS_OPEN, normalizeRfiStatus, rfiStatusCounts } from "../lib/rfiStatus";
 import { formatDateTime } from "../lib/strings";
 import type { ProjectForm, Rfi } from "../types/database";
+import { rfiContractFromData } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
@@ -18,15 +24,27 @@ function nextRfiNumber(numbers: string[]): string {
 }
 
 export function ProjectRfisPage() {
-  const { projectId } = useOutletContext<Ctx>();
+  const { project, projectId } = useOutletContext<Ctx>();
   const navigate = useNavigate();
   const [rfis, setRfis] = useState<Rfi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
+  const [contractFilter, setContractFilter] = useState<ContractListFilterValue>("all");
+
+  const showContractColumn = hasTransmittalContractSwitch(project);
+
+  const filteredRfis = useMemo(() => {
+    if (contractFilter === "all") return rfis;
+    return rfis.filter((rfi) => rfiContractFromData(rfi.data) === contractFilter);
+  }, [contractFilter, rfis]);
 
   const statusSummary = rfiStatusCounts(rfis);
+
+  useEffect(() => {
+    setContractFilter("all");
+  }, [projectId]);
 
   async function load() {
     setLoading(true);
@@ -109,7 +127,7 @@ export function ProjectRfisPage() {
   }
 
   return (
-    <section className="card">
+    <section className="card stack">
       <div className="row-between" style={{ marginBottom: "1rem" }}>
         <div>
           <h2>RFIs</h2>
@@ -123,17 +141,26 @@ export function ProjectRfisPage() {
           New RFI
         </button>
       </div>
+
+      <ContractListFilter project={project} value={contractFilter} onChange={setContractFilter} />
+
       {error && <div className="banner banner-error">{error}</div>}
       {loading ? (
         <p className="muted">Loading RFIs…</p>
       ) : rfis.length === 0 ? (
         <p className="muted">No RFIs yet.</p>
+      ) : filteredRfis.length === 0 ? (
+        <p className="muted">
+          No RFIs for{" "}
+          {contractFilter === "all" ? "this job" : TRANSMITTAL_CONTRACT_LABELS[contractFilter]}.
+        </p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>#</th>
+                {showContractColumn && <th>Contract</th>}
                 <th>Subject</th>
                 <th>Status</th>
                 <th>Updated</th>
@@ -141,9 +168,14 @@ export function ProjectRfisPage() {
               </tr>
             </thead>
             <tbody>
-              {rfis.map((r) => (
+              {filteredRfis.map((r) => (
                 <tr key={r.id}>
                   <td>{r.rfi_number}</td>
+                  {showContractColumn && (
+                    <td className="muted small">
+                      {TRANSMITTAL_CONTRACT_LABELS[rfiContractFromData(r.data)]}
+                    </td>
+                  )}
                   <td>{r.subject}</td>
                   <td>
                     <RfiStatusBadge status={r.status} />
