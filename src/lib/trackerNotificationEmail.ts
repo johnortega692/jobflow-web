@@ -1,8 +1,7 @@
 import type { ProjectForm } from "../types/database";
 import type { PaintTrackerState } from "../types/fieldTracker";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import { icbiSuperintendent, projectForemanEmail } from "./jobInfo";
-import type { SuperEmail } from "./paintUserSettings";
+import { icbiSuperintendent } from "./jobInfo";
 import { sendVendorEmail } from "./sendVendorEmail";
 
 export type PaintNotificationJobData = {
@@ -79,19 +78,14 @@ export function projectToPaintNotificationJobData(
 
 export function resolveTrackerNotificationRecipients(
   primaryEmail: string,
-  superEmails: SuperEmail[],
   extraCc: string[] = [],
 ): TrackerNotificationRecipients | null {
   const to = primaryEmail.trim();
   if (!to) return null;
   const ccSet = new Set<string>();
-  for (const s of superEmails) {
-    const email = s.email.trim();
-    if (email) ccSet.add(email);
-  }
   for (const email of extraCc) {
     const trimmed = email.trim();
-    if (trimmed) ccSet.add(trimmed);
+    if (trimmed && trimmed.toLowerCase() !== to.toLowerCase()) ccSet.add(trimmed);
   }
   return { to: [to], cc: [...ccSet] };
 }
@@ -525,7 +519,7 @@ export async function sendPaintTrackerNotifications(options: {
   tracker: PaintTrackerState;
   primaryEmail: string;
   primaryName: string;
-  superEmails: SuperEmail[];
+  cc: string[];
   companyName: string;
   companyAddress: string;
   fromName: string;
@@ -538,7 +532,7 @@ export async function sendPaintTrackerNotifications(options: {
     tracker,
     primaryEmail,
     primaryName,
-    superEmails,
+    cc,
     companyName,
     companyAddress,
     fromName,
@@ -549,11 +543,9 @@ export async function sendPaintTrackerNotifications(options: {
   const jobNumber = project.job_number.trim();
   if (!jobNumber || !kinds.length) return [];
 
-  const recipients = resolveTrackerNotificationRecipients(primaryEmail, superEmails, [
-    projectForemanEmail(project.jobInfo),
-  ]);
+  const recipients = resolveTrackerNotificationRecipients(primaryEmail, cc);
   if (!recipients) {
-    throw new Error("Set a notification primary email in Settings → Paint & email.");
+    throw new Error("Set PM email in Job setup → ICBI Info (or email on your Profile).");
   }
 
   const jobData = projectToPaintNotificationJobData(project, tracker);

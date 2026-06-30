@@ -52,6 +52,7 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     drawings: str(o.drawings),
     icbi_estimator: str(o.icbi_estimator),
     icbi_pm: str(o.icbi_pm),
+    icbi_pm_email: str(o.icbi_pm_email),
     icbi_engineer: str(o.icbi_engineer),
     icbi_foreman: str(o.icbi_foreman),
     icbi_foreman_email: str(o.icbi_foreman_email),
@@ -79,7 +80,34 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     info.job_city = project.job_address2.trim();
   }
 
+  if (!info.icbi_pm.trim() && info.field_request_pm.trim()) {
+    info.icbi_pm = info.field_request_pm.trim();
+  }
+
   return info;
+}
+
+/** ICBI PM — Job setup → ICBI Info (Field Tools orders, field dashboard). */
+export function icbiProjectManager(info: JobInfoData | undefined): string {
+  if (!info) return "";
+  return info.icbi_pm.trim() || info.field_request_pm.trim();
+}
+
+/** ICBI PM email for Field Tools order CC. */
+export function icbiPmEmail(info: JobInfoData | undefined): string {
+  return info?.icbi_pm_email?.trim() ?? "";
+}
+
+/** Copy ICBI fields into legacy field_request_* keys before persisting. */
+export function syncLegacyFieldOrderFields(info: JobInfoData): JobInfoData {
+  const pm = icbiProjectManager(info);
+  const superName = icbiSuperintendent(info);
+  return {
+    ...info,
+    icbi_pm: pm,
+    field_request_pm: pm,
+    field_request_super: superName,
+  };
 }
 
 export function jobCityZipCountyLine(info: JobInfoData): string {
@@ -134,32 +162,50 @@ export function projectForemanEmail(info: JobInfoData | undefined): string {
 
 /** ICBI / Field Tools superintendent — not the GC's superintendent in GC Info. */
 export function icbiSuperintendent(info: JobInfoData | undefined): string {
-  if (!info) return "";
-  const field = info.field_request_super.trim();
-  if (field) return field;
-  // Legacy: roster super used to copy into gc_superintendent
-  if (info.staff_super_id.trim() && info.gc_superintendent.trim() !== "TBD") {
-    return info.gc_superintendent.trim();
-  }
-  return "";
+  return info?.field_request_super?.trim() ?? "";
 }
 
 export function icbiSuperEmail(info: JobInfoData | undefined): string {
-  if (!info) return "";
-  const email = info.icbi_super_email.trim();
-  if (email) return email;
-  if (info.staff_super_id.trim()) return info.gc_super_email.trim();
-  return "";
+  return info?.icbi_super_email?.trim() ?? "";
 }
 
-/** Unique foreman CC addresses across projects (weekly digests, follow-up reminders). */
-export function collectProjectForemanCc(projects: Pick<ProjectForm, "jobInfo">[]): string[] {
+/** Unique ICBI super + foreman CC addresses across projects (digests, reminders). */
+export function collectProjectIcbiStaffCc(projects: Pick<ProjectForm, "jobInfo">[]): string[] {
   const emails = new Set<string>();
   for (const project of projects) {
-    const email = projectForemanEmail(project.jobInfo);
-    if (email) emails.add(email);
+    const superEmail = icbiSuperEmail(project.jobInfo);
+    const foremanEmail = projectForemanEmail(project.jobInfo);
+    if (superEmail) emails.add(superEmail);
+    if (foremanEmail) emails.add(foremanEmail);
   }
   return [...emails];
+}
+
+/** @deprecated Use collectProjectIcbiStaffCc */
+export function collectProjectForemanCc(projects: Pick<ProjectForm, "jobInfo">[]): string[] {
+  return collectProjectIcbiStaffCc(projects);
+}
+
+export type ProjectPaintNotificationRecipients = {
+  primaryEmail: string;
+  primaryName: string;
+  cc: string[];
+};
+
+/** Paint tracker / vendor emails: PM from job setup, CC super + foreman on that job. */
+export function resolveProjectPaintNotificationRecipients(
+  project: Pick<ProjectForm, "jobInfo">,
+  profileFallback?: { email?: string; name?: string },
+): ProjectPaintNotificationRecipients | null {
+  const primaryEmail = icbiPmEmail(project.jobInfo) || profileFallback?.email?.trim() || "";
+  if (!primaryEmail) return null;
+  const primaryName =
+    icbiProjectManager(project.jobInfo) || profileFallback?.name?.trim() || "PM";
+  return {
+    primaryEmail,
+    primaryName,
+    cc: collectProjectIcbiStaffCc([project]),
+  };
 }
 
 export type TransmittalContract = "paint" | "wallcovering" | "frp" | "track";

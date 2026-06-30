@@ -9,8 +9,8 @@ import {
   savePaintTrackerState,
 } from "../../lib/fieldTrackerProject";
 import { PAINT_VENDOR_OPTIONS } from "../../lib/googleSheetsConfig";
+import { resolveProjectPaintNotificationRecipients } from "../../lib/jobInfo";
 import { loadPaintUserSettings } from "../../lib/paintUserSettings";
-import { resolvePaintNotificationFromProfile } from "../../lib/paintProfileDefaults";
 import {
   detectPaintTrackerNotificationKinds,
   sendPaintTrackerNotifications,
@@ -88,9 +88,6 @@ export function PaintTrackerStatusSection({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gasUrl, setGasUrl] = useState("");
-  const [notificationPrimaryEmail, setNotificationPrimaryEmail] = useState("");
-  const [notificationPrimaryName, setNotificationPrimaryName] = useState("");
-  const [superEmails, setSuperEmails] = useState<{ name: string; email: string }[]>([]);
   const [sendRevisionEmailChecked, setSendRevisionEmailChecked] = useState(false);
 
   const lastSavedRef = useRef<PaintTrackerState | null>(null);
@@ -120,12 +117,8 @@ export function PaintTrackerStatusSection({
     if (!user?.id) return;
     void loadPaintUserSettings(user.id).then((s) => {
       setGasUrl((s.google_urls.paint_tracker ?? "").trim());
-      const resolved = resolvePaintNotificationFromProfile(profile, s);
-      setNotificationPrimaryEmail(resolved.notification_primary_email);
-      setNotificationPrimaryName(resolved.notification_primary_name);
-      setSuperEmails(s.super_emails);
     });
-  }, [user?.id, profile.name, profile.email]);
+  }, [user?.id]);
 
   const persistTracker = useCallback(
     async (next: PaintTrackerState) => {
@@ -174,26 +167,20 @@ export function PaintTrackerStatusSection({
       return;
     }
 
-    if (!notificationPrimaryEmail.trim()) {
-      setStatus(
-        "Saved. Set primary notification email in Settings → Profile or Paint & email to send notifications.",
-      );
+    const notify = resolveProjectPaintNotificationRecipients(project, profile);
+    if (!notify) {
+      setStatus("Saved. Set PM email in Job setup → ICBI Info (or email on your Profile) to send notifications.");
       return;
     }
-
-    const notify = resolvePaintNotificationFromProfile(profile, {
-      notification_primary_email: notificationPrimaryEmail,
-      notification_primary_name: notificationPrimaryName,
-    });
 
     try {
       const sent = await sendPaintTrackerNotifications({
         kinds,
         project,
         tracker: current,
-        primaryEmail: notify.notification_primary_email,
-        primaryName: notify.notification_primary_name,
-        superEmails,
+        primaryEmail: notify.primaryEmail,
+        primaryName: notify.primaryName,
+        cc: notify.cc,
         companyName: branding.companyName || letterhead.company_name,
         companyAddress: letterhead.company_address,
         fromName: `${branding.companyName || letterhead.company_name || "JobFlow"} Dashboard`.trim(),
@@ -209,9 +196,6 @@ export function PaintTrackerStatusSection({
     resolvedTracker,
     persistTracker,
     gasUrl,
-    notificationPrimaryEmail,
-    notificationPrimaryName,
-    superEmails,
     project,
     branding.companyName,
     branding.logoUrl,
@@ -270,27 +254,23 @@ export function PaintTrackerStatusSection({
       return;
     }
 
-    if (!notificationPrimaryEmail.trim()) {
+    const notify = resolveProjectPaintNotificationRecipients(project, profile);
+    if (!notify) {
       setStatus(
-        "Saved. Set primary notification email in Settings → Profile or Paint & email to send notifications.",
+        "Saved. Set PM email in Job setup → ICBI Info (or email on your Profile) to send notifications.",
       );
       setSendRevisionEmailChecked(false);
       return;
     }
-
-    const notify = resolvePaintNotificationFromProfile(profile, {
-      notification_primary_email: notificationPrimaryEmail,
-      notification_primary_name: notificationPrimaryName,
-    });
 
     try {
       const sent = await sendPaintTrackerNotifications({
         kinds: ["revision"],
         project,
         tracker: next,
-        primaryEmail: notify.notification_primary_email,
-        primaryName: notify.notification_primary_name,
-        superEmails,
+        primaryEmail: notify.primaryEmail,
+        primaryName: notify.primaryName,
+        cc: notify.cc,
         companyName: branding.companyName || letterhead.company_name,
         companyAddress: letterhead.company_address,
         fromName: `${branding.companyName || letterhead.company_name || "JobFlow"} Dashboard`.trim(),
@@ -308,9 +288,6 @@ export function PaintTrackerStatusSection({
     resolvedTracker,
     persistTracker,
     gasUrl,
-    notificationPrimaryEmail,
-    notificationPrimaryName,
-    superEmails,
     project,
     branding.companyName,
     branding.logoUrl,

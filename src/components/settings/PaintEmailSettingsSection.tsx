@@ -5,11 +5,10 @@ import { patchOrgSettings, patchUserSettings } from "../../lib/budgetLibrary";
 import { buildEmailSignatureHtml, SIGNATURE_FONT_SIZE_OPTIONS, SIGNATURE_LINE_COUNT } from "../../lib/emailSignature";
 import { uploadEmailSignatureLogo } from "../../lib/letterheadSettings";
 import type { SignatureLineStyle } from "../../lib/emailSignature";
-import { applyProfilePaintDefaults, resolvePaintNotificationFromProfile } from "../../lib/paintProfileDefaults";
+import { mergeProfileIntoEmailSignature } from "../../lib/paintProfileDefaults";
 import {
   loadPaintUserSettings,
   type PaintUserSettings,
-  type SuperEmail,
 } from "../../lib/paintUserSettings";
 import type { PaintVendor } from "../../lib/paintVendorEmail";
 import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
@@ -38,10 +37,6 @@ function emptyVendor(): PaintVendor {
   return { name: "", brand: "PPG", vendor_email: "", store_email: "" };
 }
 
-function emptySuper(): SuperEmail {
-  return { name: "", email: "" };
-}
-
 function WeeklyDigestSection({
   data,
   letterhead,
@@ -56,8 +51,8 @@ function WeeklyDigestSection({
   const [digestError, setDigestError] = useState<string | null>(null);
 
   const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
-  const notify = resolvePaintNotificationFromProfile(profileFromSettings(letterhead), data);
-  const primaryEmail = notify.notification_primary_email.trim();
+  const profile = profileFromSettings(letterhead);
+  const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
   async function sendDigest(kind: WeeklyDigestKind) {
@@ -71,7 +66,7 @@ function WeeklyDigestSection({
       return;
     }
     if (!primaryEmail) {
-      setDigestError("Set primary notification email above.");
+      setDigestError("Set email on your Profile (Settings → Profile & letterhead).");
       setDigestSending(null);
       return;
     }
@@ -83,8 +78,7 @@ function WeeklyDigestSection({
         kind,
         projects,
         primaryEmail,
-        primaryName: notify.notification_primary_name,
-        superEmails: data.super_emails,
+        primaryName: profile.name.trim() || "PM",
         companyName,
         companyAddress: letterhead.company_address,
         fromName: `${companyName} Dashboard`.trim(),
@@ -107,8 +101,8 @@ function WeeklyDigestSection({
     <section className="stack">
       <h2>Weekly digests</h2>
       <p className="muted small">
-        Build a status email from all jobs in JobFlow and send now via Gmail. Same recipients as tracker
-        notifications (primary To, supers CC, plus foreman emails from job setup).
+        Build a status email from all jobs in JobFlow and send now via Gmail. To: your Profile email. CC: ICBI
+        super and foreman emails from each job&apos;s setup.
       </p>
       {(digestError || digestMessage) && (
         <div className={`banner ${digestError ? "banner-error" : "banner-ok"}`}>
@@ -151,8 +145,8 @@ function FollowUpRemindersSection({
   const [statusError, setStatusError] = useState<string | null>(null);
 
   const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
-  const notify = resolvePaintNotificationFromProfile(profileFromSettings(letterhead), data);
-  const primaryEmail = notify.notification_primary_email.trim();
+  const profile = profileFromSettings(letterhead);
+  const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
   async function sendReminder(kind: FollowUpReminderKind) {
@@ -166,7 +160,7 @@ function FollowUpRemindersSection({
       return;
     }
     if (!primaryEmail) {
-      setStatusError("Set primary notification email above.");
+      setStatusError("Set email on your Profile (Settings → Profile & letterhead).");
       setSending(null);
       return;
     }
@@ -178,8 +172,7 @@ function FollowUpRemindersSection({
         kind,
         projects,
         primaryEmail,
-        primaryName: notify.notification_primary_name,
-        superEmails: data.super_emails,
+        primaryName: profile.name.trim() || "PM",
         companyName,
         companyAddress: letterhead.company_address,
         fromName: `${companyName} Dashboard`.trim(),
@@ -204,7 +197,8 @@ function FollowUpRemindersSection({
       <h2>Follow-up &amp; install reminders</h2>
       <p className="muted small">
         Daily-style reminders from follow-up dates on paint tracker and wallcovering lines, plus upcoming
-        install dates (next 14 days). Sends only when there is something due or upcoming.
+        install dates (next 14 days). To: your Profile email. CC: ICBI super and foreman from each job&apos;s
+        setup. Sends only when there is something due or upcoming.
       </p>
       {(statusError || status) && (
         <div className={`banner ${statusError ? "banner-error" : "banner-ok"}`}>
@@ -386,7 +380,12 @@ export function PaintEmailSettingsSection({
     setLoading(true);
     const profile = profileFromSettings(letterhead);
     void loadPaintUserSettings(user.id)
-      .then((loaded) => setData(applyProfilePaintDefaults(loaded, profile)))
+      .then((loaded) =>
+        setData({
+          ...loaded,
+          signature: mergeProfileIntoEmailSignature(loaded.signature, profile),
+        }),
+      )
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load paint settings"))
       .finally(() => setLoading(false));
   }, [user?.id, letterhead.signer_name, letterhead.signer_title, letterhead.signer_phone, letterhead.signer_email]);
@@ -414,9 +413,6 @@ export function PaintEmailSettingsSection({
 
     const errOrg = await patchOrgSettings(user.id, {
       vendors: data.vendors.filter((v) => v.vendor_email.trim()),
-      super_emails: data.super_emails.filter((s) => s.email.trim()),
-      notification_primary_email: data.notification_primary_email.trim(),
-      notification_primary_name: data.notification_primary_name.trim(),
       default_brushout_qty: data.default_brushout_qty,
       tracker_email_schedule: data.tracker_email_schedule,
     });
@@ -454,7 +450,6 @@ export function PaintEmailSettingsSection({
   if (loading) return <p className="muted">Loading paint &amp; email settings…</p>;
   if (!data || !user?.id) return null;
 
-  const profile = profileFromSettings(letterhead);
   const signaturePreview = buildEmailSignatureHtml(data.signature, letterhead.logo_url);
 
   async function onSave(e: FormEvent) {
@@ -468,15 +463,6 @@ export function PaintEmailSettingsSection({
       const vendors = [...d.vendors];
       vendors[i] = { ...vendors[i]!, ...patch };
       return { ...d, vendors };
-    });
-  }
-
-  function setSuper(i: number, patch: Partial<SuperEmail>) {
-    setData((d) => {
-      if (!d) return d;
-      const super_emails = [...d.super_emails];
-      super_emails[i] = { ...super_emails[i]!, ...patch };
-      return { ...d, super_emails };
     });
   }
 
@@ -620,35 +606,12 @@ export function PaintEmailSettingsSection({
       </section>
 
       <section className="stack">
-        <h2>Paint tracker notifications</h2>
+        <h2>Tracker &amp; vendor recipients</h2>
         <p className="muted small">
-          When you save <strong>Approved</strong>, <strong>Revision</strong>, or <strong>Match existing</strong> on
-          a job&apos;s paint tracker, JobFlow sends a notification email via Gmail (Dashboard web app). Supers below
-          are CC&apos;d. Primary To and PM name default from your Profile when left blank.
+          Per-job paint tracker notifications and vendor CC use <strong>Job setup → ICBI Info</strong>: PM email
+          (To), super email, and foreman email (CC). Weekly digests and scheduled reminders go To your Profile
+          email and CC ICBI staff from each job&apos;s setup.
         </p>
-        <div className="grid-2">
-          <label>
-            Primary notification email (To)
-            <input
-              type="email"
-              value={data.notification_primary_email}
-              onChange={(e) =>
-                setData((d) => (d ? { ...d, notification_primary_email: e.target.value } : d))
-              }
-              placeholder={profile.email || "PM / office inbox"}
-            />
-          </label>
-          <label>
-            PM name (subject line)
-            <input
-              value={data.notification_primary_name}
-              onChange={(e) =>
-                setData((d) => (d ? { ...d, notification_primary_name: e.target.value } : d))
-              }
-              placeholder={profile.name || "Project manager name"}
-            />
-          </label>
-        </div>
       </section>
       </fieldset>
 
@@ -671,66 +634,6 @@ export function PaintEmailSettingsSection({
           setData((d) => (d ? { ...d, tracker_email_schedule } : d))
         }
       />
-
-      <section className="stack">
-        <h2>Super email list (CC)</h2>
-        <p className="muted small">
-          CC on vendor emails and paint tracker notifications. Job superintendent names are auto-selected
-          when emailing vendors. Per-project foreman emails (Job setup → ICBI) are always CC&apos;d for that
-          job.
-        </p>
-        <div className="paint-settings-table-wrap">
-          <table className="paint-settings-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.super_emails.map((s, i) => (
-                <tr key={`super-${i}`}>
-                  <td>
-                    <input value={s.name} onChange={(e) => setSuper(i, { name: e.target.value })} />
-                  </td>
-                  <td>
-                    <input
-                      type="email"
-                      value={s.email}
-                      onChange={(e) => setSuper(i, { email: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() =>
-                        setData((d) =>
-                          d
-                            ? { ...d, super_emails: d.super_emails.filter((_, j) => j !== i) }
-                            : d,
-                        )
-                      }
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() =>
-            setData((d) => (d ? { ...d, super_emails: [...d.super_emails, emptySuper()] } : d))
-          }
-        >
-          Add super email
-        </button>
-      </section>
 
       <section className="stack">
         <h2>Brush-out defaults</h2>

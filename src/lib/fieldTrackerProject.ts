@@ -1,4 +1,4 @@
-import { icbiSuperintendent, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
+import { icbiProjectManager, icbiSuperintendent, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
 import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus";
 import { normalizePaintVendor } from "./paintTrackerSync";
 import { resolveDisplayCompanyName } from "./displayCompanyName";
@@ -141,7 +141,7 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
     paintVendor: tracker.paintVendor,
     status: paintFieldStatus(tracker),
     division: tracker.creativeTeam.trim() || j.icbi_foreman.trim(),
-    pm: j.icbi_pm.trim(),
+    pm: icbiProjectManager(j),
     revisionNotes: tracker.revisionNotes.trim(),
     tracker,
     nightsWeekends: tracker.nightsWeekends,
@@ -162,7 +162,7 @@ export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
     jobNumber,
     jobName,
     gcName: project.contractor.trim(),
-    pm: j.icbi_pm.trim(),
+    pm: icbiProjectManager(j),
     wallcoveringName: line.wallcoveringName,
     label: line.label,
     status: wcFieldStatus(line, tracker),

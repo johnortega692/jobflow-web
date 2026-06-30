@@ -35,15 +35,17 @@ export type JobInfoData = {
   drawings: string;
   icbi_estimator: string;
   icbi_pm: string;
+  /** ICBI PM email — CC on Field Tools material orders */
+  icbi_pm_email: string;
   icbi_engineer: string;
   icbi_foreman: string;
   /** Foreman email — CC on tracker notifications and vendor emails for this project */
   icbi_foreman_email: string;
   /** ICBI / Field Tools super email (from Field Tools profile on new project) */
   icbi_super_email: string;
-  /** PM name for Field Tools / Manpower sync */
+  /** @deprecated Legacy alias — synced from icbi_pm on save */
   field_request_pm: string;
-  /** Super name for Field Tools / Manpower sync */
+  /** ICBI super — Field Tools orders and Manpower sync */
   field_request_super: string;
   /** Field Tools profile id (`field_tools_profiles.id`) for the project super */
   staff_super_id: string;
@@ -112,6 +114,7 @@ export function defaultJobInfo(): JobInfoData {
     drawings: "",
     icbi_estimator: "",
     icbi_pm: "",
+    icbi_pm_email: "",
     icbi_engineer: "",
     icbi_foreman: "",
     icbi_foreman_email: "",

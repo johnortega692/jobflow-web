@@ -19,6 +19,7 @@ interface AuthContextValue {
   roleLoading: boolean;
   isAdmin: boolean;
   isApproved: boolean;
+  jobRole: string;
   refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
@@ -32,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [appRole, setAppRole] = useState<AppRole | null>(null);
   const [isApproved, setIsApproved] = useState(false);
+  const [jobRole, setJobRole] = useState("");
   const [roleLoading, setRoleLoading] = useState(false);
 
   const refreshProfile = useCallback(async () => {
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       setAppRole(null);
       setIsApproved(false);
+      setJobRole("");
       setRoleLoading(false);
       return;
     }
@@ -46,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const profile = await loadUserProfileAuth(userId);
     setAppRole(profile.appRole);
     setIsApproved(profile.isApproved);
+    setJobRole(profile.jobRole);
     setRoleLoading(false);
   }, [session?.user?.id]);
 
@@ -97,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setAppRole(null);
     setIsApproved(false);
+    setJobRole("");
   }, []);
 
   const value = useMemo(
@@ -108,12 +113,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roleLoading,
       isAdmin: isAppAdmin(appRole),
       isApproved,
+      jobRole,
       refreshProfile,
       signIn,
       signUp,
       signOut,
     }),
-    [session, loading, appRole, roleLoading, isApproved, refreshProfile, signIn, signUp, signOut],
+    [session, loading, appRole, roleLoading, isApproved, jobRole, refreshProfile, signIn, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

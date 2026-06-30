@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { PaintItem, TradeSubmittalType } from "../../types/tradeDocuments";
 import type { EmailSignatureSettings } from "../../lib/emailSignature";
 import { resolveEmailSignatureLogoUrl } from "../../lib/emailSignature";
-import type { SuperEmail, ComposeEmailMethod } from "../../lib/paintUserSettings";
+import type { ComposeEmailMethod } from "../../lib/paintUserSettings";
 import { composeEmailButtonLabel } from "../../lib/paintUserSettings";
 import { useLetterhead } from "../../contexts/LetterheadContext";
 import {
@@ -29,11 +29,11 @@ type Props = {
   items: PaintItem[] | AtticStockPaintItem[];
   submittalType: TradeSubmittalType;
   vendors: PaintVendor[];
-  superEmails: SuperEmail[];
   defaultQty: number;
   signature: EmailSignatureSettings;
   logoUrl?: string;
-  jobSuper?: string;
+  superName?: string;
+  superEmail?: string;
   foremanName?: string;
   foremanEmail?: string;
   composeEmailMethod?: ComposeEmailMethod;
@@ -50,11 +50,11 @@ export function EmailVendorModal({
   items,
   submittalType,
   vendors = [],
-  superEmails,
   defaultQty,
   signature,
   logoUrl = "",
-  jobSuper,
+  superName = "",
+  superEmail = "",
   foremanName = "",
   foremanEmail = "",
   composeEmailMethod = "gmail",
@@ -74,7 +74,7 @@ export function EmailVendorModal({
     if (isPrep) return buildPrepEmailSubject(prepSite);
     return buildVendorEmailSubject(jobNumber, jobName, submittalType);
   });
-  const [ccSelected, setCcSelected] = useState<Record<string, boolean>>({});
+  const [includeSuperCc, setIncludeSuperCc] = useState(Boolean(superEmail.trim()));
   const [includeSignature, setIncludeSignature] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [openingGmail, setOpeningGmail] = useState(false);
@@ -88,27 +88,19 @@ export function EmailVendorModal({
   );
 
   useEffect(() => {
-    const supers = (jobSuper || "")
-      .split(/[,;]/)
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-    const init: Record<string, boolean> = {};
-    for (const s of superEmails) {
-      init[s.email] = supers.length ? supers.includes(s.name.trim().toLowerCase()) : false;
-    }
-    const foreman = foremanEmail.trim();
-    if (foreman) init[foreman] = true;
-    setCcSelected(init);
-  }, [superEmails, jobSuper, foremanEmail]);
+    setIncludeSuperCc(Boolean(superEmail.trim()));
+  }, [superEmail]);
 
   const vendor = vendors[vendorIdx];
   const activeSignature = includeSignature ? signature : undefined;
   const ccList = useMemo(() => {
-    const list = superEmails.filter((s) => ccSelected[s.email]).map((s) => s.email);
+    const list: string[] = [];
     const foreman = foremanEmail.trim();
-    if (foreman && !list.includes(foreman)) list.push(foreman);
+    if (foreman) list.push(foreman);
+    const superAddr = superEmail.trim();
+    if (includeSuperCc && superAddr && !list.includes(superAddr)) list.push(superAddr);
     return list;
-  }, [superEmails, ccSelected, foremanEmail]);
+  }, [foremanEmail, includeSuperCc, superEmail]);
 
   const plainBody = useMemo(
     () => {
@@ -149,14 +141,14 @@ export function EmailVendorModal({
       isPrep,
       jobNumber,
       jobName,
-      items,
       atticPaintItems,
       atticCustomItems,
+      prepSite,
+      prepGc,
+      items,
       submittalType,
       defaultQty,
       activeSignature,
-      prepSite,
-      prepGc,
     ],
   );
 
@@ -202,62 +194,48 @@ export function EmailVendorModal({
       isPrep,
       jobNumber,
       jobName,
-      items,
       atticPaintItems,
       atticCustomItems,
+      prepSite,
+      prepGc,
+      items,
       submittalType,
       defaultQty,
       activeSignature,
       effectiveLogoUrl,
-      prepSite,
-      prepGc,
     ],
   );
 
   async function copyHtml() {
-    await copyHtmlToClipboard(htmlBody, "");
-    setMessage("Formatted HTML copied — click in compose and press Ctrl+V (not plain text).");
+    if (!vendor) return;
+    await copyHtmlToClipboard(htmlBody, plainBody);
+    setMessage("HTML copied — paste into your email body.");
   }
 
   async function openCompose() {
-    if (!vendor || openingGmail) return;
+    if (!vendor) return;
     setOpeningGmail(true);
     setMessage(null);
     try {
-      const result = await openGmailComposeWithHtml({
-        to: vendorRecipientEmails(vendor),
+      const to = vendorRecipientEmails(vendor);
+      await openGmailComposeWithHtml({
+        to,
         cc: ccList,
         subject,
         htmlBody,
         plainFallback: plainBody,
-        logoUrl: effectiveLogoUrl,
-        logoMaxWidthPx: activeSignature ? signature.logo_max_width_px : undefined,
         method: composeEmailMethod,
       });
-      if (!result.ok) {
-        setMessage(result.warning ?? "Could not open compose.");
-        return;
-      }
-      setMessage(result.warning ?? "Compose opened — press Ctrl+V in the empty body to paste formatted HTML only.");
+      setMessage(
+        composeEmailMethod === "mailto"
+          ? "Opened in your mail app — paste HTML into the body if needed."
+          : "Gmail opened — paste HTML into the body (Ctrl+V).",
+      );
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Could not open compose.");
     } finally {
       setOpeningGmail(false);
     }
-  }
-
-  if (!vendors.length) {
-    return (
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
-          <h3>{isAtticStock ? "Order Attic Stock" : isPrep ? "Send brush-out request (no job # yet)" : "Email vendor"}</h3>
-          <p className="banner banner-error">
-            No vendors configured. Add vendors under Settings → Paint &amp; email.
-          </p>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -268,15 +246,13 @@ export function EmailVendorModal({
         aria-labelledby="email-vendor-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id="email-vendor-title">
-          {isAtticStock ? "Order Attic Stock" : isPrep ? "Send brush-out request (no job # yet)" : "Email vendor"}
-        </h3>
+        <h2 id="email-vendor-title">Email vendor</h2>
 
         <label>
-          Select vendor
+          Vendor
           <select
-            className="paint-field-select"
             value={vendorIdx}
+            disabled={!vendors.length}
             onChange={(e) => setVendorIdx(Number(e.target.value))}
           >
             {vendors.map((v, i) => (
@@ -301,9 +277,9 @@ export function EmailVendorModal({
           Include signature
         </label>
 
-        {(superEmails.length > 0 || foremanEmail.trim()) && (
+        {(superEmail.trim() || foremanEmail.trim()) && (
           <fieldset className="stack">
-            <legend className="paint-col-head">CC recipients</legend>
+            <legend className="paint-col-head">CC recipients (Job setup → ICBI)</legend>
             {foremanEmail.trim() ? (
               <label className="check">
                 <input type="checkbox" checked disabled readOnly />
@@ -313,16 +289,19 @@ export function EmailVendorModal({
                 — foreman
               </label>
             ) : null}
-            {superEmails.map((s) => (
-              <label key={s.email} className="check">
+            {superEmail.trim() ? (
+              <label className="check">
                 <input
                   type="checkbox"
-                  checked={Boolean(ccSelected[s.email])}
-                  onChange={(e) => setCcSelected((m) => ({ ...m, [s.email]: e.target.checked }))}
+                  checked={includeSuperCc}
+                  onChange={(e) => setIncludeSuperCc(e.target.checked)}
                 />
-                {s.name ? `${s.name} (${s.email})` : s.email}
+                {superName.trim()
+                  ? `${superName.trim()} (${superEmail.trim()})`
+                  : superEmail.trim()}{" "}
+                — super
               </label>
-            ))}
+            ) : null}
           </fieldset>
         )}
 

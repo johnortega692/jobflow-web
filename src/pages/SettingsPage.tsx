@@ -18,6 +18,7 @@ import { useLetterhead } from "../contexts/LetterheadContext";
 import { uploadLetterheadLogo } from "../lib/letterheadSettings";
 import { pdfSignerDisplayName } from "../lib/printCore";
 import { useSettingsDirtyTracker } from "../lib/useSettingsDirtyTracker";
+import { jobRoleLabel } from "../types/jobRoles";
 import type { LetterheadPdfVisibility } from "../types/letterheadSettings";
 
 const SETTINGS_TABS = [
@@ -48,7 +49,7 @@ function tabLabel(tabId: SettingsTabId): string {
 export function SettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAdmin, roleLoading } = useAuth();
+  const { user, isAdmin, roleLoading, jobRole } = useAuth();
   const { profile, settings, branding, loading, saving, error, setSettings, setProfile, save, reload } =
     useLetterhead();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -343,6 +344,19 @@ export function SettingsPage() {
                   autoComplete="organization-title"
                 />
               </PdfFieldRow>
+              <div className="field">
+                <label htmlFor="profile-job-role">Role</label>
+                <input
+                  id="profile-job-role"
+                  value={jobRoleLabel(jobRole)}
+                  readOnly
+                  disabled
+                  aria-describedby="profile-job-role-help"
+                />
+                <p id="profile-job-role-help" className="muted small">
+                  Informational only. Contact an admin to change your office role.
+                </p>
+              </div>
               <PdfFieldRow
                 label="Phone"
                 showInPdf={settings.pdf_show.signer_phone}

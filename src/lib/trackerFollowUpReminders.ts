@@ -1,12 +1,11 @@
 import type { ProjectForm } from "../types/database";
-import { collectProjectForemanCc, icbiSuperintendent, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo";
+import { collectProjectIcbiStaffCc, icbiSuperintendent, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
   loadAllProjectsForField,
 } from "./fieldTrackerProject";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import type { SuperEmail } from "./paintUserSettings";
 import {
   resolveTrackerNotificationRecipients,
   type TrackerNotificationBranding,
@@ -435,7 +434,6 @@ export async function sendFollowUpReminder(options: {
   projects: ProjectForm[];
   primaryEmail: string;
   primaryName: string;
-  superEmails: SuperEmail[];
   companyName: string;
   companyAddress: string;
   fromName: string;
@@ -450,11 +448,10 @@ export async function sendFollowUpReminder(options: {
 
   const recipients = resolveTrackerNotificationRecipients(
     options.primaryEmail,
-    options.superEmails,
-    collectProjectForemanCc(options.projects),
+    collectProjectIcbiStaffCc(options.projects),
   );
   if (!recipients) {
-    throw new Error("Set a notification primary email in Settings → Paint & email.");
+    throw new Error("Set email on your Profile (Settings → Profile & letterhead).");
   }
 
   const branding: TrackerNotificationBranding = {

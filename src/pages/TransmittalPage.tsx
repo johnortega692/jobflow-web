@@ -16,6 +16,7 @@ import {
   applyTransmittalContractIfDistinct,
   coerceTransmittalContract,
   hasTransmittalContractSwitch,
+  icbiSuperEmail,
   icbiSuperintendent,
   transmittalPrintInfo,
 } from "../lib/jobInfo";
@@ -978,11 +979,11 @@ export function TransmittalPage() {
           atticCustomItems={atticStockData.customItems}
           submittalType="revised"
           vendors={userSettings.vendors}
-          superEmails={userSettings.super_emails}
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          jobSuper={icbiSuperintendent(project.jobInfo)}
+          superName={icbiSuperintendent(project.jobInfo)}
+          superEmail={icbiSuperEmail(project.jobInfo)}
           foremanName={project.jobInfo?.icbi_foreman}
           foremanEmail={project.jobInfo?.icbi_foreman_email}
           composeEmailMethod={userSettings.compose_email_method}

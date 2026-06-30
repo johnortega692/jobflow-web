@@ -1,7 +1,6 @@
 import { normalizeLetterheadSettings } from "../types/letterheadSettings";
 import { loadAllProjectsAdmin } from "./loadAllProjectsAdmin";
 import { loadEffectiveUserSettingsAdmin } from "./orgSettingsAdmin";
-import { resolvePaintNotificationFromProfile } from "./paintProfileDefaults";
 import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad";
 import { profileFromSettings } from "./userProfile";
 import { sendFollowUpReminderViaGasDirect, followUpReminderHasContent } from "./trackerFollowUpReminders";
@@ -54,14 +53,13 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
 
       const gasUrl = (paint.google_urls.paint_tracker ?? "").trim();
       const profile = profileFromSettings(normalizeLetterheadSettings(raw));
-      const notify = resolvePaintNotificationFromProfile(profile, paint);
-      const primaryEmail = notify.notification_primary_email.trim();
+      const primaryEmail = profile.email.trim();
       if (!gasUrl) {
         result.skipped.push(`${userId}: missing Dashboard Web App URL`);
         continue;
       }
       if (!primaryEmail) {
-        result.skipped.push(`${userId}: missing notification primary email`);
+        result.skipped.push(`${userId}: missing profile email`);
         continue;
       }
 
@@ -71,8 +69,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
       const sendBase = {
         projects,
         primaryEmail,
-        primaryName: notify.notification_primary_name,
-        superEmails: paint.super_emails,
+        primaryName: profile.name.trim() || "PM",
         companyName,
         companyAddress: letterhead.company_address,
         fromName: `${companyName} Dashboard`.trim(),

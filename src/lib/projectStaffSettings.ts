@@ -85,7 +85,7 @@ export function jobInfoPatchFromStaffSelection(
   if (pmContact) {
     patch.staff_pm_id = pmContact.id;
     patch.icbi_pm = pmContact.name.trim();
-    patch.field_request_pm = pmContact.name.trim();
+    patch.icbi_pm_email = pmContact.email.trim();
   }
   return patch;
 }

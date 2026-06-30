@@ -1,5 +1,5 @@
 import { syncProjectTradeJobsToFieldTools, type FieldToolsJobSyncRow } from "./fieldToolsJobSync";
-import { projectTradeJobIdentities } from "./jobInfo";
+import { icbiProjectManager, icbiSuperintendent, projectTradeJobIdentities } from "./jobInfo";
 import { registerProjectTradeJobsInManpower, type ManpowerRegisterRow } from "./registerProjectTradeJobs";
 import type { ProjectForm } from "../types/database";
 
@@ -17,8 +17,8 @@ export function fieldAppsSyncReady(project: ProjectForm): boolean {
   return Boolean(
     project.job_number.trim() &&
       project.job_address.trim() &&
-      j.field_request_pm.trim() &&
-      j.field_request_super.trim(),
+      icbiProjectManager(j).trim() &&
+      icbiSuperintendent(j).trim(),
   );
 }
 

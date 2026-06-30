@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
 import { supabase } from "../../lib/supabase";
-import { jobCityZipCountyLine, parseProjectDataBlob } from "../../lib/jobInfo";
+import { jobCityZipCountyLine, parseProjectDataBlob, syncLegacyFieldOrderFields } from "../../lib/jobInfo";
 import { applyProposalImportPatch, importJobInfoFromProposalPdf } from "../../lib/proposalPdfImport";
 import { commitProjectUpdate } from "../../lib/projectActivity";
 import {
@@ -9,7 +9,7 @@ import {
   startupChecklistForJobInfo,
 } from "../../lib/projectStartupChecklist";
 import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSync";
-import { FieldRequestStaffFields } from "./FieldRequestStaffFields";
+import { IcbiInfoSection } from "./IcbiInfoSection";
 import { TradeAppsSyncSection } from "./TradeAppsSyncSection";
 import type { ProjectForm } from "../../types/database";
 import { JOB_COST_TYPES, JOB_TYPES, type JobInfoData } from "../../types/jobInfo";
@@ -102,9 +102,10 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
 
     const cityLine = jobCityZipCountyLine(project.jobInfo);
     const baseData = parseProjectDataBlob(row?.data);
+    const jobInfo = syncLegacyFieldOrderFields(project.jobInfo);
     const startupChecklist = startupChecklistForJobInfo(
       parseStartupChecklist(baseData.startup_checklist),
-      project.jobInfo,
+      jobInfo,
     );
     const errMsg = await commitProjectUpdate({
       projectId,
@@ -116,7 +117,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
         contractor: project.contractor,
         architect: project.architect,
         owner: project.owner,
-        data: { ...baseData, job_info: project.jobInfo, startup_checklist: startupChecklist },
+        data: { ...baseData, job_info: jobInfo, startup_checklist: startupChecklist },
       },
       activity: {
         action: "job_info_saved",
@@ -130,7 +131,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
       return;
     }
 
-    const next = { ...project, job_address2: cityLine || project.job_address2 };
+    const next = { ...project, jobInfo, job_address2: cityLine || project.job_address2 };
     let savedProject = next;
 
     if (fieldAppsSyncReady(next)) {
@@ -155,7 +156,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             ...next,
             data: {
               ...baseData,
-              job_info: project.jobInfo,
+              job_info: jobInfo,
               startup_checklist: syncedChecklist,
             },
           };
@@ -550,53 +551,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             </div>
           </JobSection>
 
-          <JobSection title="ICBI Info">
-            <div className="grid-2">
-              <label>
-                Estimator
-                <input value={j.icbi_estimator} onChange={(e) => setJobInfo({ icbi_estimator: e.target.value })} />
-              </label>
-              <label>
-                PM
-                <input value={j.icbi_pm} onChange={(e) => setJobInfo({ icbi_pm: e.target.value })} />
-              </label>
-              <label>
-                PE
-                <input value={j.icbi_engineer} onChange={(e) => setJobInfo({ icbi_engineer: e.target.value })} />
-              </label>
-              <label>
-                Foreman
-                <input value={j.icbi_foreman} onChange={(e) => setJobInfo({ icbi_foreman: e.target.value })} />
-              </label>
-              <label>
-                Foreman email
-                <input
-                  type="email"
-                  value={j.icbi_foreman_email}
-                  placeholder="CC on paint tracker & vendor emails"
-                  onChange={(e) => setJobInfo({ icbi_foreman_email: e.target.value })}
-                />
-              </label>
-              <label>
-                Super
-                <input
-                  value={j.field_request_super}
-                  placeholder="ICBI super — Field Tools / field orders"
-                  onChange={(e) => setJobInfo({ field_request_super: e.target.value })}
-                />
-              </label>
-              <label>
-                Super email
-                <input
-                  type="email"
-                  value={j.icbi_super_email}
-                  onChange={(e) => setJobInfo({ icbi_super_email: e.target.value })}
-                />
-              </label>
-            </div>
-          </JobSection>
-
-          <FieldRequestStaffFields key={projectId} jobInfo={j} onChange={setJobInfo} />
+          <IcbiInfoSection key={projectId} jobInfo={j} onChange={setJobInfo} />
 
           <TradeAppsSyncSection project={project} projectId={projectId} />
 

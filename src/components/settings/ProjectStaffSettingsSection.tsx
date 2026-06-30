@@ -171,7 +171,7 @@ export function ProjectStaffSettingsSection({
 
       <StaffContactTable
         title="Project managers"
-        description="ICBI PMs — optional on new projects; fills Job setup ICBI PM and Field Request PM."
+        description="ICBI PMs — optional on new projects; fills Job setup ICBI PM. Users with a PM job title or a matching roster name default to their profile."
         contacts={trackData.project_staff_pms}
         readOnly={readOnly}
         addLabel="Add PM"

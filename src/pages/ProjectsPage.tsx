@@ -1,7 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { StaffContactSelect } from "../components/projects/StaffContactSelect";
 import { useAuth } from "../contexts/AuthContext";
+import { useLetterhead } from "../contexts/LetterheadContext";
 import { defaultJobInfo } from "../types/jobInfo";
 import { loadFieldToolsStaffForJobflow } from "../lib/fieldToolsStaff";
 import {
@@ -9,6 +10,11 @@ import {
   jobInfoPatchFromStaffSelection,
   loadProjectStaffSettings,
 } from "../lib/projectStaffSettings";
+import {
+  findStaffContactByName,
+  jobInfoPatchFromProfilePm,
+  shouldDefaultPmFromProfile,
+} from "../lib/icbiPmDefaults";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
 import { formatDateTime } from "../lib/strings";
@@ -21,7 +27,8 @@ function projectSearchText(p: Project): string {
 }
 
 export function ProjectsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, jobRole } = useAuth();
+  const { profile } = useLetterhead();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +45,7 @@ export function ProjectsPage() {
   const [fieldStaffError, setFieldStaffError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const pmDefaultedRef = useRef(false);
 
   const recentProjects = useMemo(() => projects.slice(0, 3), [projects]);
 
@@ -85,12 +93,23 @@ export function ProjectsPage() {
       .finally(() => setStaffLoading(false));
   }, [showForm]);
 
+  useEffect(() => {
+    if (!showForm || staffLoading || pmId || pmDefaultedRef.current) return;
+    if (!shouldDefaultPmFromProfile(profile, staffPms, jobRole)) return;
+    const match = findStaffContactByName(staffPms, profile.name);
+    if (match) {
+      pmDefaultedRef.current = true;
+      setPmId(match.id);
+    }
+  }, [showForm, staffLoading, pmId, profile, staffPms, jobRole]);
+
   function resetCreateForm() {
     setJobNumber("");
     setJobName("");
     setSuperId("");
     setForemanId("");
     setPmId("");
+    pmDefaultedRef.current = false;
   }
 
   async function onCreate(e: FormEvent) {
@@ -105,6 +124,7 @@ export function ProjectsPage() {
     const jobInfo = {
       ...defaultJobInfo(),
       ...jobInfoPatchFromStaffSelection(superContact, foremanContact, pmContact),
+      ...(!pmContact ? jobInfoPatchFromProfilePm(profile, staffPms, jobRole) : {}),
     };
     const { data: inserted, error: err } = await supabase
       .from("projects")

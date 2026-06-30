@@ -20,7 +20,7 @@ import {
   type PaintProduct,
 } from "../lib/paintCatalog";
 import type { ExtractedPaintRow } from "../lib/paintImageImport";
-import { applyTransmittalContractIfDistinct, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
+import { applyTransmittalContractIfDistinct, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
 import { patchPaintTrackerSubmittalOrdered, reloadProject } from "../lib/fieldTrackerProject";
@@ -609,11 +609,11 @@ export function PaintSubmittalsPage() {
           items={(emailDraft ?? draft).items}
           submittalType={(emailDraft ?? draft).submittal_type}
           vendors={userSettings.vendors}
-          superEmails={userSettings.super_emails}
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          jobSuper={icbiSuperintendent(project.jobInfo)}
+          superName={icbiSuperintendent(project.jobInfo)}
+          superEmail={icbiSuperEmail(project.jobInfo)}
           foremanName={project.jobInfo?.icbi_foreman}
           foremanEmail={project.jobInfo?.icbi_foreman_email}
           composeEmailMethod={userSettings.compose_email_method}

@@ -49,6 +49,50 @@ type SubmitBody = {
 
 type VendorInfo = { name: string; email: string; email2?: string };
 
+type IcbiOrderContacts = {
+  pm: string;
+  pmEmail: string;
+  super: string;
+  superEmail: string;
+  foremanEmail: string;
+};
+
+function strField(v: unknown): string {
+  return typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
+}
+
+function jobInfoFromProjectData(data: unknown): Record<string, unknown> {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+  const blob = data as Record<string, unknown>;
+  const nested = blob.job_info;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return nested as Record<string, unknown>;
+  }
+  return {};
+}
+
+/** ICBI staff from JobFlow job setup — never GC Info fields. */
+async function loadIcbiOrderContacts(
+  supabase: ReturnType<typeof createClient>,
+  jobCode: string,
+): Promise<IcbiOrderContacts | null> {
+  const { data } = await supabase
+    .from("projects")
+    .select("data")
+    .ilike("job_number", jobCode)
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const ji = jobInfoFromProjectData(data.data);
+  return {
+    pm: strField(ji.icbi_pm) || strField(ji.field_request_pm),
+    pmEmail: strField(ji.icbi_pm_email),
+    super: strField(ji.field_request_super),
+    superEmail: strField(ji.icbi_super_email),
+    foremanEmail: strField(ji.icbi_foreman_email),
+  };
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -206,11 +250,14 @@ Deno.serve(async (req) => {
     const vendorName = typeof paintVendor === "string" ? paintVendor : paintVendor?.name ?? "";
     const rentalVendor = payload.rentalVendor as VendorInfo | undefined;
 
-    const pm = String(payload.pm ?? "");
-    const pmEmail = String(payload.pmEmail ?? "");
-    const superName = String(payload.super ?? "");
-    const superEmail = String(payload.superEmail ?? "");
-    const foreman = String(payload.foreman ?? o.submitted_by_email ?? "");
+    const icbi = await loadIcbiOrderContacts(supabase, jobCode);
+    const pm = icbi?.pm || String(payload.pm ?? "");
+    const pmEmail = icbi ? icbi.pmEmail : String(payload.pmEmail ?? "");
+    const superName = icbi?.super || String(payload.super ?? "");
+    const superEmail = icbi ? icbi.superEmail : String(payload.superEmail ?? "");
+    const foreman = icbi
+      ? icbi.foremanEmail || String(o.submitted_by_email ?? "")
+      : String(payload.foreman ?? o.submitted_by_email ?? "");
 
     const lists = payload.lists as Record<string, unknown> | undefined;
     const sections = payload.sections as Record<string, unknown> | undefined;

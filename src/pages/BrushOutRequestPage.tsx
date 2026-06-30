@@ -453,7 +453,6 @@ export function BrushOutRequestPage() {
           items={emailItems}
           submittalType="original"
           vendors={userSettings.vendors}
-          superEmails={userSettings.super_emails}
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
