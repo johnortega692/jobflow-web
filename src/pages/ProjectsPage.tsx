@@ -1,10 +1,23 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { ProjectMiniPipeline } from "../components/projects/ProjectMiniPipeline";
+import { ProjectStatusBadge } from "../components/projects/ProjectStatusBadge";
+import { SubmittalStagePill } from "../components/projects/SubmittalStagePill";
 import { StaffContactSelect } from "../components/projects/StaffContactSelect";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import { defaultJobInfo } from "../types/jobInfo";
+import { defaultProjectBilling } from "../types/projectBilling";
+import { loadCompanyLaborRates } from "../lib/companyLaborRates";
+import { resolveDashboardPaintTracker } from "../lib/projectDashboardSnapshot";
 import { loadFieldToolsStaffForJobflow } from "../lib/fieldToolsStaff";
+import {
+  compareProjectsForListSort,
+  computeProjectListSummaries,
+  loadProjectsListSort,
+  saveProjectsListSort,
+  type ProjectsListSort,
+} from "../lib/projectListSummary";
 import {
   findStaffContact,
   jobInfoPatchFromStaffSelection,
@@ -18,7 +31,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
 import { formatDateTime } from "../lib/strings";
-import type { Project } from "../types/database";
+import { normalizeProject, type Project } from "../types/database";
 
 function projectSearchText(p: Project): string {
   return [p.job_number, p.job_name, p.contractor, p.architect, p.owner, p.job_address, p.job_address2]
@@ -45,15 +58,23 @@ export function ProjectsPage() {
   const [fieldStaffError, setFieldStaffError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [listSort, setListSort] = useState<ProjectsListSort>(() => loadProjectsListSort());
   const pmDefaultedRef = useRef(false);
+
+  const summaries = useMemo(() => computeProjectListSummaries(projects), [projects]);
 
   const recentProjects = useMemo(() => projects.slice(0, 3), [projects]);
 
   const filteredProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((p) => projectSearchText(p).includes(q));
-  }, [projects, search]);
+    const base = q ? projects.filter((p) => projectSearchText(p).includes(q)) : projects;
+    return [...base].sort((a, b) => compareProjectsForListSort(a, b, summaries, listSort));
+  }, [projects, search, summaries, listSort]);
+
+  function onListSortChange(sort: ProjectsListSort) {
+    setListSort(sort);
+    saveProjectsListSort(sort);
+  }
 
   async function loadProjects() {
     setLoading(true);
@@ -126,6 +147,8 @@ export function ProjectsPage() {
       ...jobInfoPatchFromStaffSelection(superContact, foremanContact, pmContact),
       ...(!pmContact ? jobInfoPatchFromProfilePm(profile, staffPms, jobRole) : {}),
     };
+    const companyRates = await loadCompanyLaborRates();
+    const billing = defaultProjectBilling(companyRates);
     const { data: inserted, error: err } = await supabase
       .from("projects")
       .insert({
@@ -133,7 +156,7 @@ export function ProjectsPage() {
         job_name: jobName.trim(),
         created_by: userId,
         updated_by: userId,
-        data: { job_info: jobInfo },
+        data: { job_info: jobInfo, billing },
       })
       .select("id")
       .single();
@@ -266,18 +289,24 @@ export function ProjectsPage() {
             <section className="projects-recent-section">
               <h2 className="projects-recent-heading">Recently updated</h2>
               <div className="projects-recent-grid">
-                {recentProjects.map((p) => (
-                  <Link key={p.id} className="projects-recent-card card" to={`/projects/${p.id}`}>
-                    <div className="projects-recent-job">{p.job_number}</div>
-                    <div className="projects-recent-name">{p.job_name || "Untitled job"}</div>
-                    {p.contractor?.trim() && (
-                      <div className="projects-recent-meta muted small">{p.contractor}</div>
-                    )}
-                    <div className="projects-recent-meta muted small">
-                      {formatDateTime(p.updated_at)}
-                    </div>
-                  </Link>
-                ))}
+                {recentProjects.map((p) => {
+                  const summary = summaries.get(p.id)!;
+                  const tracker = resolveDashboardPaintTracker(normalizeProject(p));
+                  return (
+                    <Link key={p.id} className="projects-recent-card card" to={`/projects/${p.id}`}>
+                      <div className="projects-recent-card-top">
+                        <div className="projects-recent-job">{p.job_number}</div>
+                        <ProjectStatusBadge summary={summary} />
+                      </div>
+                      <div className="projects-recent-name">{p.job_name || "Untitled job"}</div>
+                      {p.contractor?.trim() && (
+                        <div className="projects-recent-meta muted small">{p.contractor}</div>
+                      )}
+                      <ProjectMiniPipeline tracker={tracker} stage={summary.submittalStage} />
+                      <div className="projects-recent-meta muted small">{formatDateTime(p.updated_at)}</div>
+                    </Link>
+                  );
+                })}
               </div>
             </section>
           )}
@@ -302,32 +331,65 @@ export function ProjectsPage() {
               <p>No projects match &ldquo;{search.trim()}&rdquo;.</p>
             </div>
           ) : (
-            <div className="table-wrap card">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Job #</th>
-                    <th>Name</th>
-                    <th>Updated</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProjects.map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.job_number}</td>
-                      <td>{p.job_name}</td>
-                      <td className="muted">{formatDateTime(p.updated_at)}</td>
-                      <td>
-                        <Link className="btn btn-small" to={`/projects/${p.id}`}>
-                          Open
-                        </Link>
-                      </td>
+            <>
+              <div className="projects-list-sort" role="group" aria-label="Sort projects">
+                <span className="projects-list-sort-label muted small">Sort</span>
+                <button
+                  type="button"
+                  className={`projects-list-sort-btn${listSort === "updated" ? " projects-list-sort-btn--active" : ""}`}
+                  onClick={() => onListSortChange("updated")}
+                >
+                  Recently updated
+                </button>
+                <button
+                  type="button"
+                  className={`projects-list-sort-btn${listSort === "attention" ? " projects-list-sort-btn--active" : ""}`}
+                  onClick={() => onListSortChange("attention")}
+                >
+                  Needs attention
+                </button>
+              </div>
+
+              <div className="table-wrap card projects-table-wrap">
+                <table className="projects-table">
+                  <thead>
+                    <tr>
+                      <th>Job #</th>
+                      <th>Name</th>
+                      <th>Submittal</th>
+                      <th>Attention</th>
+                      <th>Updated</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredProjects.map((p) => {
+                      const summary = summaries.get(p.id)!;
+                      return (
+                        <tr key={p.id}>
+                          <td>{p.job_number}</td>
+                          <td className="projects-table-name" title={p.job_name ?? undefined}>
+                            {p.job_name}
+                          </td>
+                          <td>
+                            <SubmittalStagePill stage={summary.submittalStage} />
+                          </td>
+                          <td>
+                            <ProjectStatusBadge summary={summary} tableMode />
+                          </td>
+                          <td className="muted">{formatDateTime(p.updated_at)}</td>
+                          <td>
+                            <Link className="btn btn-small" to={`/projects/${p.id}`}>
+                              Open
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </>
       )}

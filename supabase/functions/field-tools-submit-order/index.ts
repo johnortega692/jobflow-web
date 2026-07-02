@@ -269,11 +269,14 @@ Deno.serve(async (req) => {
     const equipmentItems = asLineItems(lists?.equipment ?? []);
     const wcItems = asLineItems(lists?.wallcovering ?? []);
 
+    const siteContactLabel = o.delivery_type === "willCall" ? "Pick up person" : "Site contact";
+
     const baseMeta = {
       branding,
       jobCode,
       jobName,
       siteContact: o.site_contact,
+      siteContactLabel,
       dateNeeded: o.date_needed ?? "",
       notes: o.notes,
       pm,
@@ -446,6 +449,7 @@ Deno.serve(async (req) => {
         jobName,
         poNumber: poNumber || undefined,
         siteContact: o.site_contact,
+        siteContactLabel,
         dateNeeded: o.date_needed ?? "",
         notes: o.notes,
         vendorLabel: vendorLabel || undefined,

@@ -8,6 +8,8 @@ const CORE_FIELDS: { label: string; filled: (p: ProjectForm) => boolean }[] = [
   { label: "Start date", filled: (p) => Boolean(p.jobInfo.start_date.trim()) },
 ];
 
+export const CORE_JOB_SETUP_FIELD_COUNT = CORE_FIELDS.length;
+
 export function jobSetupStatus(project: ProjectForm): { complete: boolean; missing: string[] } {
   const missing = CORE_FIELDS.filter((f) => !f.filled(project)).map((f) => f.label);
   return { complete: missing.length === 0, missing };

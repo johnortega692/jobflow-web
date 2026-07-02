@@ -4,6 +4,7 @@ import { SubmittalIssueStatusPill } from "../submittals/SubmittalIssueStatusPill
 import { SubmittalPackageTypeSelect } from "../submittals/SubmittalPackageTypeSelect";
 import {
   PAINT_SUBMITTAL_TYPES,
+  PAINT_VENDOR_OPTIONS,
   type PaintSubmittalData,
   type SubmittalIssueStatus,
   type SubmittalPackageCategory,
@@ -23,6 +24,7 @@ type Props = {
   onTypeChange: (value: TradeSubmittalType) => void;
   onSubjectChange: (value: string) => void;
   onRevisionNoteChange: (value: string) => void;
+  onPaintVendorChange: (value: string) => void;
   onCreateNextRevision?: () => void;
 };
 
@@ -41,6 +43,7 @@ export function PaintSubmittalMetaPanel({
   onTypeChange,
   onSubjectChange,
   onRevisionNoteChange,
+  onPaintVendorChange,
   onCreateNextRevision,
 }: Props) {
   return (
@@ -97,6 +100,16 @@ export function PaintSubmittalMetaPanel({
       </div>
 
       <div className="grid-3 paint-submittal-meta-fields-row">
+        <label>
+          Paint vendor
+          <select value={draft.paint_vendor ?? "PPG"} onChange={(e) => onPaintVendorChange(e.target.value)}>
+            {PAINT_VENDOR_OPTIONS.map((vendor) => (
+              <option key={vendor} value={vendor}>
+                {vendor}
+              </option>
+            ))}
+          </select>
+        </label>
         <SubmittalPackageTypeSelect
           value={draft.package_type}
           options={packageTypeOptions}

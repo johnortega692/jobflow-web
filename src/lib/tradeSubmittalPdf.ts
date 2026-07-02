@@ -17,6 +17,7 @@ import {
   truncate,
   wrapLines,
 } from "./pdfDrawCore";
+import { formatSubmittalDisplayDate } from "./dateInputUtils";
 import type { ProjectPrintInfo } from "./jobInfo";
 import {
   formatRevisionNumberDisplay,
@@ -98,7 +99,7 @@ export async function buildTradeSubmittalPdfBytes(
   const detailLineHeight = 13;
 
   const dateLines: string[] = [];
-  if (date.trim()) dateLines.push(`Date: ${date.trim()}`);
+  if (date.trim()) dateLines.push(`Date: ${formatSubmittalDisplayDate(date)}`);
   if (submittalNumber !== undefined && submittalNumber !== null && String(submittalNumber).trim() !== "") {
     dateLines.push(`Submittal No: ${formatSubmittalNumberDisplay(submittalNumber)}`);
     if (isSubmittalRevision(revisionNumber)) {

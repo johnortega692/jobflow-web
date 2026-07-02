@@ -14,6 +14,7 @@ import {
   normalizeSubmittalIssueStatus,
   type SubmittalIssueStatus,
 } from "../types/tradeDocuments";
+import { formatSubmittalDisplayDate } from "./dateInputUtils";
 
 export type SubmittalScope = "paint" | "wallcovering" | "frp";
 
@@ -142,6 +143,7 @@ export function normalizeHistoryEntry(raw: SubmittalHistoryEntry): SubmittalHist
     issue_status,
     locked: raw.locked ?? isLockedPackageStatus(issue_status),
     revision_note: raw.revision_note?.trim() || undefined,
+    date: raw.date?.trim() ? formatSubmittalDisplayDate(raw.date) : raw.date,
   };
 }
 
@@ -149,7 +151,7 @@ export function formatSubmittalHistoryLabel(entry: SubmittalHistoryEntry): strin
   const normalized = normalizeHistoryEntry(entry);
   const num = formatSubmittalNumLabel(normalized.submittal_number);
   const rev = normalized.revision_number ?? 0;
-  const dateStr = normalized.date?.split(" ")[0] ?? normalized.date ?? "Unknown date";
+  const dateStr = normalized.date ? formatSubmittalDisplayDate(normalized.date) : "Unknown date";
   const count = normalized.items?.length ?? 0;
   const type = normalized.submittal_type ? TYPE_LABELS[normalized.submittal_type] ?? normalized.submittal_type : "";
   const typePart = type ? ` · ${type}` : "";
@@ -195,6 +197,7 @@ export function addSubmittalToHistory(
     issueStatus?: SubmittalIssueStatus;
     locked?: boolean;
     packageType?: SubmittalPackageCategory;
+    date?: string;
   },
 ): SubmittalHistoryEntry[] {
   const filtered = items.filter((i) => {
@@ -207,7 +210,7 @@ export function addSubmittalToHistory(
   const entry: SubmittalHistoryEntry = normalizeHistoryEntry({
     submittal_number: submittalNumber,
     revision_number: revisionNumber,
-    date: new Date().toISOString().replace("T", " ").slice(0, 19),
+    date: formatSubmittalDisplayDate(options?.date?.trim() || formatToday()),
     items:
       scope === "paint"
         ? (filtered as PaintItem[]).map((i) => ({ ...i }))

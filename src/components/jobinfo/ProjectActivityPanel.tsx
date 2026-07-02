@@ -10,30 +10,64 @@ import type { ProjectForm } from "../../types/database";
 type Props = {
   project: ProjectForm;
   refreshKey?: string | number;
+  limit?: number;
 };
 
-function resolveLastEditor(
-  project: ProjectForm,
-  rows: ProjectActivityRow[],
-): { name: string; at: string | null } {
-  if (rows[0]) {
-    return { name: rows[0].user_name.trim() || "Unknown user", at: rows[0].created_at };
+function ActivityFeed({ rows, compact }: { rows: ProjectActivityRow[]; compact?: boolean }) {
+  if (!rows.length) {
+    return <p className="muted small">No edits logged yet for this project.</p>;
   }
-  if (project.updated_at) {
-    return { name: "Unknown user", at: project.updated_at };
+
+  if (compact) {
+    return (
+      <ul className="job-activity-list job-activity-list--compact">
+        {rows.map((row) => {
+          const source = activityActionLabel(row.action);
+          const summary = row.summary.trim();
+          const action = summary && summary !== source ? summary : "Updated";
+          return (
+            <li key={row.id} className="job-activity-item job-activity-item--compact">
+              <span className="job-activity-compact-main">
+                {source} · {action}
+              </span>
+              <span className="job-activity-compact-time muted small">{formatDateTime(row.created_at)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    );
   }
-  return { name: "", at: null };
+
+  return (
+    <ul className="job-activity-list">
+      {rows.map((row) => (
+        <li key={row.id} className="job-activity-item">
+          <div className="job-activity-item-main">
+            <span className="job-activity-action">{activityActionLabel(row.action)}</span>
+            {row.summary && row.summary !== activityActionLabel(row.action) && (
+              <span className="job-activity-summary">{row.summary}</span>
+            )}
+          </div>
+          <div className="job-activity-meta muted small">
+            {row.user_name.trim() || "Unknown user"} · {formatDateTime(row.created_at)}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
-export function ProjectActivityPanel({ project, refreshKey = 0 }: Props) {
+export function ProjectActivityPanel({ project, refreshKey = 0, limit }: Props) {
   const [rows, setRows] = useState<ProjectActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewAllOpen, setViewAllOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const result = await loadProjectActivity(project.id, 12);
+    const fetchLimit = limit ? Math.max(limit, 12) : 12;
+    const result = await loadProjectActivity(project.id, fetchLimit);
     setLoading(false);
     if (result.error) {
       setError(result.error);
@@ -41,48 +75,60 @@ export function ProjectActivityPanel({ project, refreshKey = 0 }: Props) {
       return;
     }
     setRows(result.rows);
-  }, [project.id]);
+  }, [project.id, limit]);
 
   useEffect(() => {
     void reload();
   }, [reload, refreshKey]);
 
-  const last = resolveLastEditor(project, rows);
+  const visibleRows = limit ? rows.slice(0, limit) : rows;
+  const hasMore = limit ? rows.length > limit : false;
 
   return (
-    <section className="card stack job-activity-panel">
-      <div className="job-activity-header">
-        <h3 className="job-dashboard-section-title">Project activity</h3>
-        {last.at && (
-          <p className="muted small job-activity-last">
-            Last updated by <strong>{last.name}</strong> · {formatDateTime(last.at)}
-          </p>
+    <>
+      <section className="card stack job-activity-panel">
+        <div className="job-activity-header">
+          <h3 className="job-dashboard-section-title">Recent activity</h3>
+          {hasMore && (
+            <button type="button" className="link-btn small" onClick={() => setViewAllOpen(true)}>
+              View all
+            </button>
+          )}
+        </div>
+
+        {error && <div className="banner banner-error">{error}</div>}
+
+        {loading ? (
+          <p className="muted small">Loading activity…</p>
+        ) : (
+          <ActivityFeed rows={visibleRows} compact={Boolean(limit)} />
         )}
-      </div>
+      </section>
 
-      {error && <div className="banner banner-error">{error}</div>}
-
-      {loading ? (
-        <p className="muted small">Loading activity…</p>
-      ) : rows.length === 0 ? (
-        <p className="muted small">No edits logged yet for this project.</p>
-      ) : (
-        <ul className="job-activity-list">
-          {rows.map((row) => (
-            <li key={row.id} className="job-activity-item">
-              <div className="job-activity-item-main">
-                <span className="job-activity-action">{activityActionLabel(row.action)}</span>
-                {row.summary && row.summary !== activityActionLabel(row.action) && (
-                  <span className="job-activity-summary">{row.summary}</span>
-                )}
-              </div>
-              <div className="job-activity-meta muted small">
-                {row.user_name.trim() || "Unknown user"} · {formatDateTime(row.created_at)}
-              </div>
-            </li>
-          ))}
-        </ul>
+      {viewAllOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setViewAllOpen(false)}>
+          <div
+            className="modal card stack job-activity-modal"
+            role="dialog"
+            aria-labelledby="job-activity-all-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="row-between wrap gap">
+              <h2 id="job-activity-all-title" className="job-dashboard-section-title">
+                Project activity
+              </h2>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => setViewAllOpen(false)}>
+                Close
+              </button>
+            </div>
+            {loading ? (
+              <p className="muted small">Loading activity…</p>
+            ) : (
+              <ActivityFeed rows={rows} />
+            )}
+          </div>
+        </div>
       )}
-    </section>
+    </>
   );
 }

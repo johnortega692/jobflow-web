@@ -1,6 +1,7 @@
 import type { Json } from "./database";
 import type { BudgetMakerData } from "./budgetMaker";
 import type { PaintTrackerState, WcTrackerLineState, WcTrackerState } from "./fieldTracker";
+import { formatSubmittalDisplayDate } from "../lib/dateInputUtils";
 import { normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
 import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract";
 import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks";
@@ -801,6 +802,7 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
             Object.entries(raw.brushout_pushed).map(([k, v]) => [k, String(v)]),
           )
         : undefined,
+    date: formatSubmittalDisplayDate((raw.date ?? base.date).trim()) || formatToday(),
   };
 }
 
@@ -817,6 +819,7 @@ export function normalizeWallcoveringSubmittal(
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "Wallcovering Samples", "wallcovering"),
     revision_note: raw.revision_note?.trim() || undefined,
+    date: formatSubmittalDisplayDate((raw.date ?? base.date).trim()) || formatToday(),
   };
 }
 
@@ -831,7 +834,7 @@ export function normalizeFrpSubmittal(raw: Partial<FrpSubmittalData> | null | un
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "FRP Product Data", "frp"),
     subject: raw.subject?.trim() || frpSubjectForPackage(normalizePackageCategory(raw.package_type, "FRP Product Data", "frp")),
-    date: raw.date?.trim() || formatToday(),
+    date: formatSubmittalDisplayDate((raw.date?.trim() || base.date).trim()) || formatToday(),
     revision_note: raw.revision_note?.trim() || undefined,
   };
 }

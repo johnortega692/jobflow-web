@@ -27,6 +27,8 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     contract_amount: str(o.contract_amount),
     start_date: str(o.start_date),
     end_date: str(o.end_date),
+    first_furnishing_date: str(o.first_furnishing_date),
+    public_works: Boolean(o.public_works),
     scope_of_out_work: str(o.scope_of_out_work),
     project_description: str(o.project_description),
     gc_address: str(o.gc_address),
@@ -528,8 +530,8 @@ export function projectPrintInfoForContract(
   };
 }
 
-export function gcAddressBlock(contractor: string, info: JobInfoData): string {
-  return [contractor.trim(), info.gc_address.trim()].filter(Boolean).join("\n");
+export function gcAddressBlock(_contractor: string, info: JobInfoData): string {
+  return info.gc_address.trim();
 }
 
 export function applyJobInfoToTransmittal(
@@ -538,12 +540,11 @@ export function applyJobInfoToTransmittal(
   info: JobInfoData,
 ): TransmittalData {
   const gcName = contractor.trim();
-  const toBlock = [info.gc_pm.trim(), gcName, info.gc_address.trim()].filter(Boolean).join("\n");
   return {
     ...data,
     to_name: data.to_name.trim() || info.gc_pm.trim(),
     gc_name: data.gc_name.trim() || gcName,
-    to_address: data.to_address.trim() || toBlock,
+    to_address: data.to_address.trim() || info.gc_address.trim(),
     to_phone: data.to_phone.trim() || info.gc_office_phone.trim(),
   };
 }

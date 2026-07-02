@@ -21,6 +21,7 @@ export const ORG_SETTINGS_KEYS = [
   "work_order_materials",
   "work_order_labor_rates",
   "work_order_fonts",
+  "company_labor_rates",
 ] as const;
 
 /** Per-user settings (each account keeps their own row). */

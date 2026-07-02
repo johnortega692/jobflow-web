@@ -1,18 +1,28 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
 import { supabase } from "../../lib/supabase";
-import { jobCityZipCountyLine, parseProjectDataBlob, syncLegacyFieldOrderFields } from "../../lib/jobInfo";
+import { jobCityZipCountyLine, normalizeJobInfo, parseProjectDataBlob, syncLegacyFieldOrderFields } from "../../lib/jobInfo";
 import { applyProposalImportPatch, importJobInfoFromProposalPdf } from "../../lib/proposalPdfImport";
-import { commitProjectUpdate } from "../../lib/projectActivity";
+import { commitProjectUpdate, recordProjectActivity } from "../../lib/projectActivity";
 import {
   parseStartupChecklist,
   startupChecklistForJobInfo,
 } from "../../lib/projectStartupChecklist";
+import {
+  applyPublicWorksFlag,
+  applyWallcoveringScope,
+  defaultStartupItems,
+  parseStartupItems,
+  type StartupItemsState,
+} from "../../lib/projectStartupItems";
 import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSync";
 import { IcbiInfoSection } from "./IcbiInfoSection";
+import { StartupChecklistConfigSection } from "./StartupChecklistConfigSection";
 import { TradeAppsSyncSection } from "./TradeAppsSyncSection";
 import type { ProjectForm } from "../../types/database";
 import { JOB_COST_TYPES, JOB_TYPES, type JobInfoData } from "../../types/jobInfo";
+
+type JobSetupTab = "info" | "startup";
 
 type Props = {
   open: boolean;
@@ -20,6 +30,8 @@ type Props = {
   projectId: string;
   onClose: () => void;
   onSaved: (project: ProjectForm) => void;
+  /** Which tab to show when the drawer opens. */
+  initialTab?: JobSetupTab;
 };
 
 function patchJobInfo(info: JobInfoData, patch: Partial<JobInfoData>): JobInfoData {
@@ -37,19 +49,34 @@ function JobSection({ title, defaultOpen, children }: { title: string; defaultOp
   );
 }
 
-export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose, onSaved }: Props) {
+export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose, onSaved, initialTab = "info" }: Props) {
   const [project, setProject] = useState(initial);
+  const [activeTab, setActiveTab] = useState<JobSetupTab>(initialTab);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [startupItems, setStartupItems] = useState<StartupItemsState>(() => defaultStartupItems());
   const proposalInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) setProject(initial);
-  }, [open, initial, projectId]);
+    if (open) {
+      setProject(initial);
+      setActiveTab(initialTab);
+    }
+  }, [open, initial, projectId, initialTab]);
+
+  useEffect(() => {
+    if (!open) return;
+    void (async () => {
+      const { data, error: err } = await supabase.from("projects").select("data").eq("id", projectId).single();
+      if (err) return;
+      const blob = parseProjectDataBlob(data?.data);
+      setStartupItems(parseStartupItems(blob.startup_items, blob.startup_optional));
+    })();
+  }, [open, projectId]);
 
   function setJobInfo(patch: Partial<JobInfoData>) {
     setProject((p) => ({ ...p, jobInfo: patchJobInfo(p.jobInfo, patch) }));
@@ -102,11 +129,23 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
 
     const cityLine = jobCityZipCountyLine(project.jobInfo);
     const baseData = parseProjectDataBlob(row?.data);
+    const prevJobInfo = normalizeJobInfo(baseData.job_info, project);
     const jobInfo = syncLegacyFieldOrderFields(project.jobInfo);
     const startupChecklist = startupChecklistForJobInfo(
       parseStartupChecklist(baseData.startup_checklist),
       jobInfo,
     );
+    const { state: afterPublicWorks, activityNotes: publicWorksNotes } = applyPublicWorksFlag(
+      startupItems,
+      jobInfo.public_works,
+      prevJobInfo.public_works,
+    );
+    const { state: nextStartupItems, activityNotes: wallcoveringNotes } = applyWallcoveringScope(
+      afterPublicWorks,
+      jobInfo.has_wallcovering,
+      prevJobInfo.has_wallcovering,
+    );
+    const activityNotes = [...publicWorksNotes, ...wallcoveringNotes];
     const errMsg = await commitProjectUpdate({
       projectId,
       columns: {
@@ -117,7 +156,12 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
         contractor: project.contractor,
         architect: project.architect,
         owner: project.owner,
-        data: { ...baseData, job_info: jobInfo, startup_checklist: startupChecklist },
+        data: {
+          ...baseData,
+          job_info: jobInfo,
+          startup_checklist: startupChecklist,
+          startup_items: nextStartupItems,
+        },
       },
       activity: {
         action: "job_info_saved",
@@ -131,7 +175,25 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
       return;
     }
 
-    const next = { ...project, jobInfo, job_address2: cityLine || project.job_address2 };
+    for (const note of activityNotes) {
+      await recordProjectActivity({
+        projectId,
+        action: "startup_checklist_updated",
+        summary: note,
+      });
+    }
+
+    const next = {
+      ...project,
+      jobInfo,
+      job_address2: cityLine || project.job_address2,
+      data: {
+        ...baseData,
+        job_info: jobInfo,
+        startup_checklist: startupChecklist,
+        startup_items: nextStartupItems,
+      },
+    };
     let savedProject = next;
 
     if (fieldAppsSyncReady(next)) {
@@ -158,6 +220,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
               ...baseData,
               job_info: jobInfo,
               startup_checklist: syncedChecklist,
+              startup_items: nextStartupItems,
             },
           };
         }
@@ -185,9 +248,18 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
               Fill once for templates, submittals, and exports. Reopen anytime to add missing fields.
             </p>
           </div>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Close
-          </button>
+          <div className="row-gap wrap job-info-drawer-header-actions">
+            {savedAt && <span className="muted small">Saved {savedAt}</span>}
+            <button type="submit" form="job-setup-form" className="btn btn-primary btn-sm" disabled={saving}>
+              {saving ? "Saving…" : "Save job info"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+              Done
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </header>
 
         {(error || importSuccess || syncStatus) && (
@@ -196,9 +268,33 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
           </div>
         )}
 
-        <form className="stack job-info-form job-info-drawer-body" onSubmit={saveProject}>
+        <div className="job-info-drawer-tabs" role="tablist" aria-label="Job setup sections">
+          <button
+            type="button"
+            role="tab"
+            id="job-setup-tab-info"
+            aria-selected={activeTab === "info"}
+            aria-controls="job-setup-panel-info"
+            className={`job-info-drawer-tab${activeTab === "info" ? " job-info-drawer-tab--active" : ""}`}
+            onClick={() => setActiveTab("info")}
+          >
+            Job info
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="job-setup-tab-startup"
+            aria-selected={activeTab === "startup"}
+            aria-controls="job-setup-panel-startup"
+            className={`job-info-drawer-tab${activeTab === "startup" ? " job-info-drawer-tab--active" : ""}`}
+            onClick={() => setActiveTab("startup")}
+          >
+            Startup &amp; field
+          </button>
+        </div>
+
+        <form id="job-setup-form" className="stack job-info-form job-info-drawer-body" onSubmit={saveProject}>
           <div className="row-gap wrap job-info-drawer-tools">
-            {savedAt && <span className="muted small">Saved {savedAt}</span>}
             <input
               ref={proposalInputRef}
               type="file"
@@ -216,6 +312,13 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             </button>
           </div>
 
+          <div
+            id="job-setup-panel-info"
+            role="tabpanel"
+            aria-labelledby="job-setup-tab-info"
+            hidden={activeTab !== "info"}
+            className="job-info-drawer-tab-panel stack"
+          >
           <JobSection title="Job Info" defaultOpen>
             <p className="muted small">
               Job # and name are set when the project is created and cannot be changed here.
@@ -281,6 +384,16 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                 <DateInput value={j.start_date} onChange={(v) => setJobInfo({ start_date: v })} />
               </label>
               <label>
+                First furnishing date
+                <DateInput
+                  value={j.first_furnishing_date}
+                  onChange={(v) => setJobInfo({ first_furnishing_date: v })}
+                />
+                <span className="muted small job-info-field-help">
+                  Date labor or materials were first furnished. Used to calculate the preliminary notice deadline.
+                </span>
+              </label>
+              <label>
                 Estimated end date
                 <DateInput value={j.end_date} onChange={(v) => setJobInfo({ end_date: v })} />
               </label>
@@ -288,8 +401,26 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             <label className="checkbox-row job-info-wc-toggle">
               <input
                 type="checkbox"
+                checked={j.public_works}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  const wasPublicWorks = j.public_works;
+                  setJobInfo({ public_works: checked });
+                  setStartupItems((items) => applyPublicWorksFlag(items, checked, wasPublicWorks).state);
+                }}
+              />
+              Public works project
+            </label>
+            <label className="checkbox-row job-info-wc-toggle">
+              <input
+                type="checkbox"
                 checked={j.has_wallcovering}
-                onChange={(e) => setJobInfo({ has_wallcovering: e.target.checked })}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  const wasWallcovering = j.has_wallcovering;
+                  setJobInfo({ has_wallcovering: checked });
+                  setStartupItems((items) => applyWallcoveringScope(items, checked, wasWallcovering).state);
+                }}
               />
               This project includes wallcovering (separate contract / job #)
             </label>
@@ -552,17 +683,18 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
           </JobSection>
 
           <IcbiInfoSection key={projectId} jobInfo={j} onChange={setJobInfo} />
+          </div>
 
-          <TradeAppsSyncSection project={project} projectId={projectId} />
-
-          <footer className="job-info-drawer-footer row-gap wrap">
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? "Saving…" : "Save job info"}
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
-              Done
-            </button>
-          </footer>
+          <div
+            id="job-setup-panel-startup"
+            role="tabpanel"
+            aria-labelledby="job-setup-tab-startup"
+            hidden={activeTab !== "startup"}
+            className="job-info-drawer-tab-panel stack"
+          >
+            <StartupChecklistConfigSection value={startupItems} jobInfo={j} onChange={setStartupItems} embedded />
+            <TradeAppsSyncSection project={project} projectId={projectId} embedded />
+          </div>
         </form>
       </aside>
     </div>

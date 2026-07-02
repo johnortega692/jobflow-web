@@ -10,6 +10,10 @@ export type JobInfoData = {
   contract_amount: string;
   start_date: string;
   end_date: string;
+  /** Date labor or materials were first furnished (prelim notice deadline). */
+  first_furnishing_date: string;
+  /** Public works projects — enables DIR / certified payroll checklist items. */
+  public_works: boolean;
   scope_of_out_work: string;
   project_description: string;
   gc_address: string;
@@ -89,6 +93,8 @@ export function defaultJobInfo(): JobInfoData {
     contract_amount: "",
     start_date: "",
     end_date: "",
+    first_furnishing_date: "",
+    public_works: false,
     scope_of_out_work: "",
     project_description: "",
     gc_address: "",

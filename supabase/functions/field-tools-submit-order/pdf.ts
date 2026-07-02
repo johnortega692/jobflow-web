@@ -16,6 +16,7 @@ export type MaterialPdfInput = {
   jobName: string;
   poNumber: string;
   siteContact: string;
+  siteContactLabel?: string;
   vendor: string;
   pm: string;
   super: string;
@@ -33,6 +34,7 @@ export type ListPdfInput = {
   jobName: string;
   poNumber?: string;
   siteContact: string;
+  siteContactLabel?: string;
   dateNeeded: string;
   notes: string;
   sectionLabel: string;
@@ -535,7 +537,7 @@ export async function buildMaterialPdf(input: MaterialPdfInput): Promise<Uint8Ar
   layout.y = drawMetaBlock(layout, [
     { label: "Job:", value: `${input.jobCode}${input.jobName ? ` — ${input.jobName}` : ""}` },
     { label: "Date needed:", value: formatDateNeeded(input.dateNeeded), bold: true },
-    { label: "Site contact:", value: input.siteContact },
+    { label: `${input.siteContactLabel ?? "Site contact"}:`, value: input.siteContact },
     { label: "Vendor:", value: input.vendor },
     { label: "PM / Super:", value: [input.pm, input.super].filter(Boolean).join("  |  ") },
     {
@@ -588,7 +590,7 @@ export async function buildListPdf(input: ListPdfInput): Promise<Uint8Array> {
   layout.y = drawMetaBlock(layout, [
     { label: "Job:", value: `${input.jobCode}${input.jobName ? ` — ${input.jobName}` : ""}` },
     { label: "Date needed:", value: formatDateNeeded(input.dateNeeded), bold: true },
-    { label: "Site contact:", value: input.siteContact },
+    { label: `${input.siteContactLabel ?? "Site contact"}:`, value: input.siteContact },
     { label: "Vendor / Rep:", value: input.vendorOrRep ?? "" },
     {
       label: "Order total:",

@@ -201,6 +201,7 @@ export function WallcoveringSubmittalsPage() {
             issueStatus: draft.issue_status,
             locked: true,
             packageType: draft.package_type,
+            date: draft.date,
           },
         );
       }

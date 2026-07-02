@@ -255,7 +255,11 @@ export function TransmittalPage() {
   }
 
   function pullFromJobInfo() {
-    setDraft((d) => applyJobInfoToTransmittal(d, project.contractor, project.jobInfo));
+    setDraft((d) => {
+      const next = applyJobInfoToTransmittal(d, project.contractor, project.jobInfo);
+      const gcAddress = project.jobInfo.gc_address.trim();
+      return gcAddress ? { ...next, to_address: gcAddress } : next;
+    });
     setStatus("Filled recipient fields from Job Info.");
   }
 

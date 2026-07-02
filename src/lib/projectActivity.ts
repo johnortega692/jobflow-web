@@ -20,6 +20,7 @@ export type ProjectActivityAction =
   | "transmittal_saved"
   | "sds_packet_saved"
   | "budget_saved"
+  | "billing_saved"
   | "submittal_log_added"
   | "submittal_log_updated"
   | "submittal_log_deleted"
@@ -271,6 +272,7 @@ export function activityActionLabel(action: ProjectActivityAction): string {
     transmittal_saved: "Transmittal",
     sds_packet_saved: "SDS packet",
     budget_saved: "Budget",
+    billing_saved: "Billing",
     submittal_log_added: "Submittal log",
     submittal_log_updated: "Submittal log",
     submittal_log_deleted: "Submittal log",

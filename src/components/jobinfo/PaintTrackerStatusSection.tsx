@@ -30,6 +30,7 @@ type Props = {
   projectId: string;
   onOpenJobSetup?: () => void;
   onProjectUpdate?: (project: ProjectForm) => void;
+  showStatusPills?: boolean;
 };
 
 const AUTO_SAVE_MS = 700;
@@ -79,6 +80,7 @@ export function PaintTrackerStatusSection({
   projectId,
   onOpenJobSetup,
   onProjectUpdate,
+  showStatusPills = true,
 }: Props) {
   const { user } = useAuth();
   const { settings: letterhead, branding, profile } = useLetterhead();
@@ -357,14 +359,16 @@ export function PaintTrackerStatusSection({
   } else {
     body = (
       <>
-        <div className="job-status-pills" aria-label="Tracker status">
-          <StatusPill label="Submittal ordered" on={tracker.submittalOrdered} />
-          <StatusPill label="Submitted" on={tracker.submittedForApproval} />
-          <StatusPill label="Approved" on={tracker.approved} />
-          <StatusPill label="Revision" on={tracker.revision} />
-          <StatusPill label="Nights" on={tracker.nightsWeekends} />
-          <StatusPill label="Match existing" on={tracker.matchExisting} />
-        </div>
+        {showStatusPills && (
+          <div className="job-status-pills" aria-label="Tracker status">
+            <StatusPill label="Submittal ordered" on={tracker.submittalOrdered} />
+            <StatusPill label="Submitted" on={tracker.submittedForApproval} />
+            <StatusPill label="Approved" on={tracker.approved} />
+            <StatusPill label="Revision" on={tracker.revision} />
+            <StatusPill label="Nights" on={tracker.nightsWeekends} />
+            <StatusPill label="Match existing" on={tracker.matchExisting} />
+          </div>
+        )}
 
         <div className="grid-2">
           <label>

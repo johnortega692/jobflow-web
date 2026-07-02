@@ -68,7 +68,7 @@ export function EmailVendorModal({
   const isPrep = mode === "prep";
   const atticPaintItems = items as AtticStockPaintItem[];
 
-  const [vendorIdx, setVendorIdx] = useState(0);
+  const [vendorIdx, setVendorIdx] = useState<number | "">("");
   const [subject, setSubject] = useState(() => {
     if (isAtticStock) return buildAtticStockEmailSubject(jobNumber, jobName);
     if (isPrep) return buildPrepEmailSubject(prepSite);
@@ -91,7 +91,7 @@ export function EmailVendorModal({
     setIncludeSuperCc(Boolean(superEmail.trim()));
   }, [superEmail]);
 
-  const vendor = vendors[vendorIdx];
+  const vendor = vendorIdx === "" ? undefined : vendors[vendorIdx];
   const activeSignature = includeSignature ? signature : undefined;
   const ccList = useMemo(() => {
     const list: string[] = [];
@@ -253,8 +253,12 @@ export function EmailVendorModal({
           <select
             value={vendorIdx}
             disabled={!vendors.length}
-            onChange={(e) => setVendorIdx(Number(e.target.value))}
+            onChange={(e) => {
+              const next = e.target.value;
+              setVendorIdx(next === "" ? "" : Number(next));
+            }}
           >
+            <option value="">Select vendor…</option>
             {vendors.map((v, i) => (
               <option key={`${v.vendor_email}-${i}`} value={i}>
                 {v.name} ({v.brand}) — {v.vendor_email}

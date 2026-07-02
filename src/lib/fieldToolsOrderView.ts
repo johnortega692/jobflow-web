@@ -112,7 +112,11 @@ export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
   const rows: OrderDetailRow[] = [];
 
   const siteContact = order.site_contact || asString(payload.name);
-  if (siteContact) rows.push({ label: "Site contact", value: siteContact });
+  if (siteContact) {
+    const delivery = order.delivery_type || asString(payload.deliveryType);
+    const label = delivery === "willCall" ? "Pick up person" : "Site contact";
+    rows.push({ label, value: siteContact });
+  }
 
   const dateNeeded = order.date_needed || asString(payload.date);
   if (dateNeeded) {

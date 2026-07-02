@@ -52,6 +52,7 @@ export function issueSubmittalDraft(
       issueStatus: "issued",
       locked: true,
       packageType: issued.package_type,
+      date: issued.date,
     },
   );
   return { draft: issued, history: nextHistory };

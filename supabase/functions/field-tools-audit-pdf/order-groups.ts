@@ -100,7 +100,11 @@ export function buildAuditMetaLines(order: AuditOrder): string[] {
   const lines: string[] = [];
 
   const siteContact = order.site_contact || asString(payload.name);
-  if (siteContact) lines.push(`Site contact: ${siteContact}`);
+  if (siteContact) {
+    const delivery = order.delivery_type || asString(payload.deliveryType);
+    const label = delivery === "willCall" ? "Pick up person" : "Site contact";
+    lines.push(`${label}: ${siteContact}`);
+  }
 
   const dateNeeded = order.date_needed || asString(payload.date);
   if (dateNeeded) {

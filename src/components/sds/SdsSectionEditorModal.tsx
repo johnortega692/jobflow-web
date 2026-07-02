@@ -4,7 +4,6 @@ import { sanitizeFinishType } from "../../lib/sdsSectionModel";
 import {
   SDS_ATTACHMENT_KINDS,
   SDS_SECTION_CATEGORIES,
-  notesFromAttachments,
   type SdsAttachmentKind,
 } from "../../lib/sdsSectionModel";
 import type { SdsSection, SdsSectionCategory } from "../../types/tradeDocuments";
@@ -48,10 +47,6 @@ export function SdsSectionEditorModal({ title, section: initial, projectId, onSa
         ...(meta.product ? { product: meta.product } : {}),
         ...(meta.finish_type ? { finish_type: meta.finish_type } : {}),
       };
-      if (!next.intended_use.trim() || next.intended_use.startsWith("Include ")) {
-        next.intended_use = notesFromAttachments(next);
-        if (next.intended_use === "—") next.intended_use = "";
-      }
       setSection(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -138,6 +133,7 @@ export function SdsSectionEditorModal({ title, section: initial, projectId, onSa
             <input
               value={section.intended_use}
               onChange={(e) => patch({ intended_use: e.target.value })}
+              placeholder="Optional — TDS/SDS attachments are listed separately"
             />
           </label>
         </div>

@@ -8,9 +8,11 @@ import type { ProjectForm } from "../../types/database";
 type Props = {
   project: ProjectForm;
   projectId: string;
+  /** Render as a flat section (e.g. inside Job setup tab) instead of collapsible details. */
+  embedded?: boolean;
 };
 
-export function TradeAppsSyncSection({ project, projectId }: Props) {
+export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
   const identities = useMemo(() => projectTradeJobIdentities(project), [project]);
   const [busy, setBusy] = useState<"field" | "manpower" | "both" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -67,11 +69,8 @@ export function TradeAppsSyncSection({ project, projectId }: Props) {
 
   const ready = fieldAppsSyncReady(project);
 
-  return (
-    <details className="job-section card stack">
-      <summary className="job-section-summary">
-        <h3>Field Tools &amp; Manpower</h3>
-      </summary>
+  const body = (
+    <>
       <p className="muted small">
         Job numbers register in the Field Tools order app and Manpower hours tracker. When PM,
         super, address, and job # are filled, saving job setup syncs automatically. Dual-contract
@@ -118,6 +117,24 @@ export function TradeAppsSyncSection({ project, projectId }: Props) {
           {busy === "manpower" ? "Registering…" : "Manpower only"}
         </button>
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <section className="job-section card stack job-setup-tab-section">
+        <h3 className="job-setup-tab-section-title">Field Tools &amp; Manpower</h3>
+        {body}
+      </section>
+    );
+  }
+
+  return (
+    <details className="job-section card stack">
+      <summary className="job-section-summary">
+        <h3>Field Tools &amp; Manpower</h3>
+      </summary>
+      {body}
     </details>
   );
 }

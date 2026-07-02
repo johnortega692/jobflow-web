@@ -21,10 +21,20 @@ import {
   normalizePaintSubmittal,
   normalizeWallcoveringSubmittal,
   parseProjectTradeData,
+  type PaintSubmittalData,
   type ProjectTradeData,
   type WallcoveringItem,
 } from "../types/tradeDocuments";
 import { harmonizeTrackerRevision } from "./paintTrackerRevision";
+
+export function withSyncedPaintVendor(trade: ProjectTradeData, submittal: PaintSubmittalData): ProjectTradeData {
+  const vendor = normalizePaintVendor(submittal.paint_vendor ?? "PPG");
+  return {
+    ...trade,
+    paint_submittal: { ...submittal, paint_vendor: vendor },
+    paint_tracker: { ...resolvePaintTracker(trade), paintVendor: vendor },
+  };
+}
 
 export type FieldPaintRow = {
   projectId: string;
@@ -277,10 +287,18 @@ export async function savePaintTrackerState(
   const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
   if (error) return error.message;
   const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const vendor = normalizePaintVendor(tracker.paintVendor);
+  const normalizedTracker = { ...tracker, paintVendor: vendor };
   const paintSubmittal = normalizePaintSubmittal(trade.paint_submittal);
-  const mergeData: Record<string, unknown> = { paint_tracker: tracker };
-  if (Boolean(paintSubmittal.submittal_ordered) !== tracker.submittalOrdered) {
-    mergeData.paint_submittal = { ...paintSubmittal, submittal_ordered: tracker.submittalOrdered };
+  const vendorChanged = normalizePaintVendor(paintSubmittal.paint_vendor ?? "") !== vendor;
+  const orderedChanged = Boolean(paintSubmittal.submittal_ordered) !== tracker.submittalOrdered;
+  const mergeData: Record<string, unknown> = { paint_tracker: normalizedTracker };
+  if (vendorChanged || orderedChanged) {
+    mergeData.paint_submittal = {
+      ...paintSubmittal,
+      ...(vendorChanged ? { paint_vendor: vendor } : {}),
+      ...(orderedChanged ? { submittal_ordered: tracker.submittalOrdered } : {}),
+    };
   }
   return patchProjectData(projectId, mergeData, { action: "paint_tracker_saved", summary });
 }

@@ -17,6 +17,7 @@ import { SdsPacketPage } from "./pages/SdsPacketPage";
 import { GoogleSheetsPage } from "./pages/GoogleSheetsPage";
 import { ExcelPasteHelperPage } from "./pages/ExcelPasteHelperPage";
 import { BudgetPage } from "./pages/BudgetPage";
+import { BillingPage } from "./pages/BillingPage";
 import { ProjectWorkOrdersPage } from "./pages/ProjectWorkOrdersPage";
 import { WorkOrderEditorPage } from "./pages/WorkOrderEditorPage";
 import { FrpSubmittalsPage } from "./pages/FrpSubmittalsPage";
@@ -66,6 +67,7 @@ export default function App() {
               <Route path="orders" element={<ProjectOrdersPage />} />
               <Route path="sds" element={<SdsPacketPage />} />
               <Route path="budget" element={<BudgetPage />} />
+              <Route path="billing" element={<BillingPage />} />
               <Route path="work-orders" element={<ProjectWorkOrdersPage />} />
               <Route path="work-orders/:workOrderId" element={<WorkOrderEditorPage />} />
             </Route>

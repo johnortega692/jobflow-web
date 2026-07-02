@@ -23,7 +23,7 @@ import type { ExtractedPaintRow } from "../lib/paintImageImport";
 import { applyTransmittalContractIfDistinct, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
-import { patchPaintTrackerSubmittalOrdered, reloadProject } from "../lib/fieldTrackerProject";
+import { patchPaintTrackerSubmittalOrdered, reloadProject, resolvePaintTracker, withSyncedPaintVendor } from "../lib/fieldTrackerProject";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
@@ -92,20 +92,23 @@ export function PaintSubmittalsPage() {
 
   const persist = useCallback(
     async (nextDraft: PaintSubmittalData, nextHistory = history) => {
+      const syncedTrade = withSyncedPaintVendor(tradeData, nextDraft);
       const ok = await save({
-        ...tradeData,
-        paint_submittal: nextDraft,
+        ...syncedTrade,
         paint_submittal_history: nextHistory,
       });
       if (ok) {
-        setDraft(nextDraft);
+        const nextSubmittal = syncedTrade.paint_submittal!;
+        setDraft(nextSubmittal);
         setHistory(nextHistory);
-        syncBaseline({ draft: nextDraft, history: nextHistory });
+        syncBaseline({ draft: nextSubmittal, history: nextHistory });
         setError(null);
+        const updated = await reloadProject(projectId);
+        if (updated) setProject(updated);
       }
       return ok;
     },
-    [history, tradeData, save, setError, syncBaseline],
+    [history, tradeData, save, setError, syncBaseline, projectId, setProject],
   );
 
   const onDiscardUnsaved = useCallback(() => {
@@ -124,13 +127,14 @@ export function PaintSubmittalsPage() {
 
   useEffect(() => {
     if (!loading) {
-      const d = normalizePaintSubmittal(tradeData.paint_submittal);
+      const vendor = resolvePaintTracker(tradeData).paintVendor;
+      const d = { ...normalizePaintSubmittal(tradeData.paint_submittal), paint_vendor: vendor };
       const h = tradeData.paint_submittal_history ?? [];
       setDraft(d);
       setHistory(h);
       syncBaseline({ draft: d, history: h });
     }
-  }, [loading, tradeData.paint_submittal, tradeData.paint_submittal_history, syncBaseline]);
+  }, [loading, tradeData, syncBaseline]);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,6 +263,7 @@ export function PaintSubmittalsPage() {
             issueStatus: draft.issue_status,
             locked: true,
             packageType: draft.package_type,
+            date: draft.date,
           },
         );
       }
@@ -286,8 +291,7 @@ export function PaintSubmittalsPage() {
       });
       transmittal = applyTransmittalContractIfDistinct(project, transmittal, "paint");
       await save({
-        ...tradeData,
-        paint_submittal: draft,
+        ...withSyncedPaintVendor(tradeData, draft),
         paint_submittal_history: nextHistory,
         transmittal,
       });
@@ -476,6 +480,7 @@ export function PaintSubmittalsPage() {
         onTypeChange={setType}
         onSubjectChange={(subject) => setDraft({ ...draft, subject })}
         onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
+        onPaintVendorChange={(paint_vendor) => setDraft({ ...draft, paint_vendor })}
         onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
       />
 

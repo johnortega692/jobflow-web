@@ -12,6 +12,7 @@ export type ProjectModuleId =
   | "orders"
   | "po"
   | "budget"
+  | "billing"
   | "work-orders";
 
 export type ProjectModule = {
@@ -69,6 +70,7 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     label: "Tracking",
     modules: [
       { id: "budget", label: "Budget", path: "budget", ready: true },
+      { id: "billing", label: "Billing", path: "billing", ready: true },
       { id: "work-orders", label: "Work Orders", path: "work-orders", ready: true },
     ],
   },

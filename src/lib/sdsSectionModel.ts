@@ -77,7 +77,7 @@ export function normalizeSdsSection(raw: LegacySection | null | undefined): SdsS
 
   const category = normalizeCategory(raw.category);
 
-  return {
+  const section: SdsSection = {
     id: raw.id?.trim() || base.id,
     category,
     manufacturer: raw.manufacturer?.trim() ?? "",
@@ -88,6 +88,26 @@ export function normalizeSdsSection(raw: LegacySection | null | undefined): SdsS
     intended_use: raw.intended_use?.trim() ?? "",
     attachments,
   };
+
+  return {
+    ...section,
+    intended_use: normalizeStoredIntendedUse(section),
+  };
+}
+
+function normalizeStoredIntendedUse(section: SdsSection): string {
+  const intended = section.intended_use.trim();
+  if (!intended) return "";
+
+  const suffix = attachmentIncludeSuffix(section);
+  if (isAutoIncludeNote(intended, suffix)) return "";
+
+  const parts = intended
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const customParts = [...new Set(parts.filter((part) => !isAutoIncludeNote(part, suffix)))];
+  return customParts.join("; ");
 }
 
 function emptySdsSectionInternal(): SdsSection {
@@ -177,25 +197,66 @@ export function attachmentSummary(section: SdsSection): string {
   return parts.length ? parts.join(" · ") : "—";
 }
 
-export function notesFromAttachments(section: SdsSection): string {
-  const autoOnly = new Set([
-    "Include TDS",
-    "Include SDS",
-    "Include TDS and SDS",
-    "Include Product Data (PDS/TDS)",
-    "Include Product Data / TDS",
-    "Include LEED/HPD",
-    "Include LEED / HPD / EPD",
-    ...SDS_ATTACHMENT_KINDS.map((k) => `Include ${k.label}`),
-  ]);
+export function attachmentIncludeSuffix(section: SdsSection): string {
   const labels = SDS_ATTACHMENT_KINDS.filter((k) => sectionHasAttachment(section, k.kind)).map(
     (k) => k.label,
   );
-  const suffix = labels.length ? `Include ${labels.join(", ")}` : "";
-  const user = autoOnly.has(section.intended_use.trim()) ? "" : section.intended_use.trim();
-  if (user && suffix) return `${user}; ${suffix}`;
-  if (user) return user;
-  return suffix || "—";
+  return labels.length ? `Include ${labels.join(", ")}` : "";
+}
+
+const LEGACY_AUTO_INCLUDE_NOTES = new Set([
+  "Include TDS",
+  "Include SDS",
+  "Include TDS and SDS",
+  "Include Product Data (PDS/TDS)",
+  "Include Product Data / TDS",
+  "Include LEED/HPD",
+  "Include LEED / HPD / EPD",
+  ...SDS_ATTACHMENT_KINDS.map((k) => `Include ${k.label}`),
+]);
+
+/** True when notes are auto-generated from attachment rows (not custom user text). */
+export function isAutoIncludeNote(text: string, currentSuffix = ""): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (LEGACY_AUTO_INCLUDE_NOTES.has(t)) return true;
+  if (currentSuffix && t === currentSuffix) return true;
+  if (!t.startsWith("Include ")) return false;
+  const body = t.slice("Include ".length);
+  const parts = body
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return false;
+  return parts.every((part) => SDS_ATTACHMENT_KINDS.some((k) => k.label === part));
+}
+
+export function notesFromAttachments(section: SdsSection): string {
+  const suffix = attachmentIncludeSuffix(section);
+  const intended = section.intended_use.trim();
+
+  if (!intended) return suffix || "—";
+
+  const parts = intended
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const uniqueParts = [...new Set(parts)];
+
+  if (uniqueParts.length > 1 && uniqueParts.every((part) => isAutoIncludeNote(part, suffix))) {
+    return suffix || uniqueParts[0]!;
+  }
+
+  if (uniqueParts.length === 1) {
+    const only = uniqueParts[0]!;
+    if (isAutoIncludeNote(only, suffix)) return suffix || only;
+    return only;
+  }
+
+  const customParts = uniqueParts.filter((part) => !isAutoIncludeNote(part, suffix));
+  if (customParts.length) return customParts.join("; ");
+
+  return suffix || intended;
 }
 
 export function sectionsGroupedByCategory(sections: SdsSection[]): SdsSection[] {

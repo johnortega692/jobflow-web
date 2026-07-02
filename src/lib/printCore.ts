@@ -1,5 +1,6 @@
 import { defaultLetterheadPdfVisibility } from "../types/letterheadSettings";
 import { normalizeRevisionNumber } from "../types/tradeDocuments";
+import { formatSubmittalDisplayDate } from "./dateInputUtils";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
 
 function resolveAbsoluteAssetUrl(url: string): string {
@@ -67,7 +68,7 @@ export function submittalDateSectionHtml(
   revisionNumber?: number | string,
 ): string {
   const parts: string[] = [];
-  if (date.trim()) parts.push(`Date: ${esc(date.trim())}`);
+  if (date.trim()) parts.push(`Date: ${esc(formatSubmittalDisplayDate(date.trim()))}`);
   if (submittalNumber !== undefined && submittalNumber !== null && String(submittalNumber).trim() !== "") {
     parts.push(`Submittal No: ${esc(formatSubmittalNumberDisplay(submittalNumber))}`);
   }

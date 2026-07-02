@@ -8,6 +8,7 @@ export type EmailHtmlInput = {
   jobName: string;
   poNumber?: string;
   siteContact: string;
+  siteContactLabel?: string;
   dateNeeded: string;
   notes: string;
   vendorLabel?: string;
@@ -30,7 +31,7 @@ export function buildOrderEmailHtml(input: EmailHtmlInput): string {
     input.poNumber ? metaRow("PO Number", input.poNumber, true) : "",
     metaRow("Project", jobLabel),
     input.dateNeeded ? metaRow("Date needed", formatDateNeeded(input.dateNeeded), true) : "",
-    input.siteContact ? metaRow("Site contact", input.siteContact) : "",
+    input.siteContact ? metaRow(input.siteContactLabel ?? "Site contact", input.siteContact) : "",
     input.vendorLabel ? metaRow("Vendor", input.vendorLabel) : "",
     input.pm ? metaRow("PM", input.pm) : "",
     input.super ? metaRow("Superintendent", input.super) : "",

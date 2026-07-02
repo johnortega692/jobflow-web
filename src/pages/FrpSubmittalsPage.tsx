@@ -202,6 +202,7 @@ export function FrpSubmittalsPage() {
             issueStatus: draft.issue_status,
             locked: true,
             packageType: draft.package_type,
+            date: draft.date,
           },
         );
       }

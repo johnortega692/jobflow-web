@@ -55,6 +55,24 @@ export function formatDateDisplay(d: Date): string {
   return `${mm}/${dd}/${yyyy}`;
 }
 
+/** Submittal PDF date line: MM/DD/YYYY with no time. Accepts ISO timestamps and long dates. */
+export function formatSubmittalDisplayDate(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+
+  const isoDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  const candidate = isoDateTime?.[1] ?? raw;
+
+  const parsed = parseFlexibleDate(candidate);
+  if (parsed) return formatDateDisplay(parsed);
+
+  const firstToken = raw.split(/\s+/)[0]?.trim() ?? raw;
+  const parsedToken = parseFlexibleDate(firstToken);
+  if (parsedToken) return formatDateDisplay(parsedToken);
+
+  return raw;
+}
+
 /** MM/DD/YYYY — N calendar days from today (local time). */
 export function addDaysToTodayDisplay(days: number): string {
   const d = new Date();
