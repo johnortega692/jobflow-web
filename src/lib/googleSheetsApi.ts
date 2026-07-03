@@ -1,3 +1,5 @@
+import { authFetch } from "./apiAuth";
+
 type GoogleSheetsProxyRequest = {
   url?: string;
   method?: "GET" | "POST";
@@ -14,9 +16,8 @@ type GoogleSheetsProxyResponse = {
 
 /** Server-side proxy to Google Apps Script (avoids browser CORS in production). */
 export async function googleSheetsProxy(req: GoogleSheetsProxyRequest): Promise<GoogleSheetsProxyResponse> {
-  const res = await fetch("/api/google-sheets", {
+  const res = await authFetch("/api/google-sheets", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
   const json = (await res.json().catch(() => ({}))) as GoogleSheetsProxyResponse;

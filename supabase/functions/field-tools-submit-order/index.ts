@@ -17,6 +17,8 @@ const corsHeaders = {
 type DispatchType = "material" | "rental" | "equipment" | "wallcovering" | "haul_off" | "job_scope_kit";
 
 type SubmitBody = {
+  caller_id: string;
+  session_token: string;
   order: {
     job_number: string;
     job_name?: string;
@@ -198,6 +200,33 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey);
     const branding = await loadOrderBranding(supabase, companyName);
 
+    const body = (await req.json()) as SubmitBody;
+    const callerId = body?.caller_id?.trim();
+    const sessionToken = body?.session_token?.trim();
+    if (!callerId || !sessionToken) {
+      return jsonResponse({ ok: false, error: "caller_id and session_token are required" }, 401);
+    }
+
+    const { data: sessionProfile, error: sessionErr } = await supabase.rpc("field_tools_get_session_profile", {
+      p_caller_id: callerId,
+      p_session_token: sessionToken,
+    });
+    if (sessionErr) {
+      const msg = /SESSION|INVALID/i.test(sessionErr.message)
+        ? "Invalid or expired session. Log in again."
+        : sessionErr.message;
+      return jsonResponse({ ok: false, error: msg }, 403);
+    }
+    const profileResult = sessionProfile as {
+      ok?: boolean;
+      error?: string;
+      profile?: { id: string; name: string; email: string; role: string };
+    };
+    if (!profileResult?.ok || !profileResult.profile) {
+      return jsonResponse({ ok: false, error: profileResult?.error ?? "Invalid session" }, 403);
+    }
+    const trustedProfile = profileResult.profile;
+
     const { data: orderSettings } = await supabase
       .from("field_tools_order_settings")
       .select("global_cc_emails")
@@ -205,7 +234,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const globalCcEmails = parseEmailList(String(orderSettings?.global_cc_emails ?? ""));
 
-    const body = (await req.json()) as SubmitBody;
     if (!body?.order?.job_number || !body.dispatches?.length) {
       return jsonResponse({ ok: false, error: "Invalid submit payload" }, 400);
     }
@@ -221,9 +249,9 @@ Deno.serve(async (req) => {
         job_number: jobCode,
         job_name: jobName,
         order_type: o.order_type,
-        submitted_by_profile_id: o.submitted_by_profile_id,
-        submitted_by_name: o.submitted_by_name,
-        submitted_by_email: o.submitted_by_email,
+        submitted_by_profile_id: trustedProfile.id,
+        submitted_by_name: trustedProfile.name,
+        submitted_by_email: trustedProfile.email,
         site_contact: o.site_contact,
         notes: o.notes,
         delivery_type: o.delivery_type,
@@ -256,8 +284,8 @@ Deno.serve(async (req) => {
     const superName = icbi?.super || String(payload.super ?? "");
     const superEmail = icbi ? icbi.superEmail : String(payload.superEmail ?? "");
     const foreman = icbi
-      ? icbi.foremanEmail || String(o.submitted_by_email ?? "")
-      : String(payload.foreman ?? o.submitted_by_email ?? "");
+      ? icbi.foremanEmail || trustedProfile.email
+      : String(payload.foreman ?? trustedProfile.email);
 
     const lists = payload.lists as Record<string, unknown> | undefined;
     const sections = payload.sections as Record<string, unknown> | undefined;
