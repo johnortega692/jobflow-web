@@ -1,5 +1,7 @@
 /** Paint schedule image import — client helpers. */
 
+import { authFetch } from "./apiAuth";
+
 export type ExtractedPaintRow = {
   label: string;
   manufacturer: string;
@@ -120,9 +122,8 @@ export async function extractPaintFromImage(file: File): Promise<ExtractedPaintR
   }
 
   const { data, mediaType } = await fileToBase64(file);
-  const res = await fetch("/api/extract-paint", {
+  const res = await authFetch("/api/extract-paint", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image_base64: data, media_type: mediaType }),
   });
   const body = await readApiJson(res);

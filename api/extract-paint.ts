@@ -44,6 +44,7 @@ type PaintBody = { image_base64?: string; media_type?: string };
 type VercelRequest = {
   method?: string;
   body?: unknown;
+  headers?: Record<string, string | string[] | undefined>;
 };
 
 type VercelResponse = {
@@ -179,10 +180,27 @@ async function runExtractPaint(body: PaintBody): Promise<{ items: ExtractedPaint
   return { items };
 }
 
+async function verifySupabaseUser(authHeader: string | undefined): Promise<void> {
+  const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
+  if (!token) throw new Error("Sign in required to use AI import.");
+
+  const url = process.env.VITE_SUPABASE_URL?.trim();
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY?.trim();
+  if (!url || !anonKey) return;
+
+  const response = await fetch(`${url}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: anonKey,
+    },
+  });
+  if (!response.ok) throw new Error("Invalid or expired session. Sign in again.");
+}
+
 async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") {
     return res.status(204).end();
@@ -192,11 +210,15 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const auth = req.headers?.authorization;
+    const authStr = Array.isArray(auth) ? auth[0] : auth;
+    await verifySupabaseUser(authStr);
     const result = await runExtractPaint(parseBody(req.body));
     return res.status(200).json(result);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Import failed";
-    return res.status(500).json({ error: message });
+    const status = message.includes("Sign in") || message.includes("session") ? 401 : 500;
+    return res.status(status).json({ error: message });
   }
 }
 

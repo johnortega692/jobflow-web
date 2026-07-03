@@ -209,6 +209,20 @@ export async function commitProjectUpdate(options: CommitProjectUpdateOptions): 
   const { projectId, activity, mergeData, columns, user } = options;
   const actor = user ?? (await resolveActivityUser());
 
+  const { data: authData } = await supabase.auth.getUser();
+  const isFieldAnon = !authData.user?.id;
+
+  if (isFieldAnon && mergeData) {
+    const { error } = await supabase.rpc("field_view_commit_project_update" as never, {
+      p_project_id: projectId,
+      p_merge_data: mergeData,
+      p_action: activity.action,
+      p_summary: activity.summary,
+      p_user_name: actor.userName,
+    } as never);
+    return error?.message ?? null;
+  }
+
   const { data: row, error: loadErr } = await supabase
     .from("projects")
     .select("data")

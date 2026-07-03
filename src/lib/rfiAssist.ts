@@ -21,10 +21,11 @@ async function readApiJson(res: Response): Promise<RfiAssistResult & { error?: s
   }
 }
 
+import { authFetch } from "./apiAuth";
+
 export async function requestRfiAssist(input: RfiAssistRequest): Promise<RfiAssistResult> {
-  const res = await fetch("/api/rfi-assist", {
+  const res = await authFetch("/api/rfi-assist", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   const body = await readApiJson(res);
