@@ -1,4 +1,4 @@
-import { icbiProjectManager, icbiSuperintendent, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
+import { formatGcSuperFieldDisplay, gcSuperintendentContact, icbiProjectManager, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
 import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus";
 import { normalizePaintVendor } from "./paintTrackerSync";
 import { resolveDisplayCompanyName } from "./displayCompanyName";
@@ -43,6 +43,8 @@ export type FieldPaintRow = {
   jobAddress: string;
   gcName: string;
   gcSuper: string;
+  gcSuperName: string;
+  gcSuperPhone: string;
   startDate: string;
   paintVendor: string;
   status: PaintFieldStatus;
@@ -140,13 +142,16 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
   const trade = parseProjectTradeData(project.data as Json);
   const tracker = resolvePaintTracker(trade);
   const j = project.jobInfo;
+  const gcSuper = gcSuperintendentContact(j);
   return {
     projectId: project.id,
     jobNumber: project.job_number.trim(),
     jobName: project.job_name.trim(),
     jobAddress: jobFullAddressOneLine(project, j),
     gcName: project.contractor.trim(),
-    gcSuper: icbiSuperintendent(j),
+    gcSuper: formatGcSuperFieldDisplay(gcSuper),
+    gcSuperName: gcSuper.name,
+    gcSuperPhone: gcSuper.phone,
     startDate: j.start_date.trim(),
     paintVendor: tracker.paintVendor,
     status: paintFieldStatus(tracker),
@@ -372,6 +377,6 @@ export async function saveWcInstallDate(
 export function paintJobSmsText(row: FieldPaintRow): string {
   const night = row.nightsWeekends ? " - Nights/Weekends" : "";
   const noPaint = row.tracker.noPaint ? " - NO PAINT" : "";
-  const superLine = row.gcSuper ? `\nSuper: ${row.gcSuper}` : "";
+  const superLine = row.gcSuper ? `\nGC Super: ${row.gcSuper}` : "";
   return `Job #${row.jobNumber}\nJob Name: ${row.jobName}${night}${noPaint}\nAddress: ${row.jobAddress}\nGC: ${row.gcName}${superLine}`;
 }

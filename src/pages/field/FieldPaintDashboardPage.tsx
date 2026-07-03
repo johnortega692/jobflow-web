@@ -33,6 +33,16 @@ function rowClass(status: PaintFieldStatus): string {
   return "";
 }
 
+function GcSuperCell({ row }: { row: FieldPaintRow }) {
+  if (!row.gcSuperName && !row.gcSuperPhone) return <>—</>;
+  return (
+    <span className="field-gc-super-cell">
+      {row.gcSuperName ? <span>{row.gcSuperName}</span> : null}
+      {row.gcSuperPhone ? <span className="field-gc-super-phone">{row.gcSuperPhone}</span> : null}
+    </span>
+  );
+}
+
 function PaintStartDateCell({
   row,
   onSaved,
@@ -106,7 +116,9 @@ export function FieldPaintDashboardPage() {
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase().trim();
     return paintRows.filter((row) => {
-      const text = [row.jobNumber, row.jobName, row.jobAddress, row.gcName, row.gcSuper].join(" ").toLowerCase();
+      const text = [row.jobNumber, row.jobName, row.jobAddress, row.gcName, row.gcSuperName, row.gcSuperPhone]
+        .join(" ")
+        .toLowerCase();
       if (q && !text.includes(q)) return false;
       if (pm && row.pm !== pm) return false;
       if (status && row.status !== status) return false;
@@ -208,8 +220,10 @@ export function FieldPaintDashboardPage() {
                         <dd>{row.gcName || "—"}</dd>
                       </div>
                       <div>
-                        <dt>Super</dt>
-                        <dd>{row.gcSuper || "—"}</dd>
+                        <dt>GC Super</dt>
+                        <dd>
+                          <GcSuperCell row={row} />
+                        </dd>
                       </div>
                       <div>
                         <dt>Paint</dt>
@@ -249,7 +263,7 @@ export function FieldPaintDashboardPage() {
                 <th>Job Name</th>
                 <th>Address</th>
                 <th>GC</th>
-                <th>Super</th>
+                <th>GC Super</th>
                 <th>Copy</th>
                 <th>Start Date</th>
                 <th>Paint</th>
@@ -277,7 +291,9 @@ export function FieldPaintDashboardPage() {
                   </td>
                   <td>{row.jobAddress}</td>
                   <td>{row.gcName}</td>
-                  <td>{row.gcSuper}</td>
+                  <td>
+                    <GcSuperCell row={row} />
+                  </td>
                   <td>
                     <CopyActions row={row} />
                   </td>

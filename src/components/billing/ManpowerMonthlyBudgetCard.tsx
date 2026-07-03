@@ -1,23 +1,41 @@
 import {
-  formatJobDateLabel,
   manpowerEndDateHint,
   manpowerWeekStarts,
 } from "../../lib/manpowerCalendar";
-import { deriveMonthlyBudgets, monthBeyondContract, currentMonthKey, currentMonthLabel } from "../../lib/weeklyBudget";
-import { formatMoney0, type ProjectBillingData } from "../../types/projectBilling";
+import {
+  deriveMonthCalculatorTotals,
+  formatMoney0,
+  loadCalculatorLaborRates,
+  loadMonthMaterial,
+} from "../../lib/manpowerCalculator";
+import {
+  currentMonthKey,
+  currentMonthLabel,
+  deriveMonthlyHours,
+  formatHoursCompact,
+  formatManWeeksCompact,
+  monthBeyondContract,
+  type DerivedMonthHours,
+} from "../../lib/manpowerHours";
+import type { ProjectBillingData } from "../../types/projectBilling";
 
 type Props = {
   billing: ProjectBillingData;
+  projectId: string;
   projectStartIso: string;
   projectEndIso: string;
+  calculatorRevision: number;
+  onOpenMonth: (month: DerivedMonthHours) => void;
 };
 
-function formatHours(hours: number): string {
-  if (hours <= 0) return "—";
-  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
-}
-
-export function ManpowerMonthlyBudgetCard({ billing, projectStartIso, projectEndIso }: Props) {
+export function ManpowerMonthlyBudgetCard({
+  billing,
+  projectId,
+  projectStartIso,
+  projectEndIso,
+  calculatorRevision,
+  onOpenMonth,
+}: Props) {
   const { weekStarts: weeks, contractEndWeekIndex } = manpowerWeekStarts(
     projectStartIso,
     projectEndIso,
@@ -25,55 +43,70 @@ export function ManpowerMonthlyBudgetCard({ billing, projectStartIso, projectEnd
     billing.manpowerWeekCount,
   );
   const endDateHint = manpowerEndDateHint(projectStartIso, projectEndIso);
-  const endDateLabel = formatJobDateLabel(projectEndIso);
-  const months = deriveMonthlyBudgets(billing, weeks);
+  const months = deriveMonthlyHours(billing, weeks);
   const thisMonth = currentMonthKey();
+  const laborRates = loadCalculatorLaborRates(projectId);
+
+  const monthTotals = months.map((m) => {
+    void calculatorRevision;
+    const material = loadMonthMaterial(projectId, m.key);
+    return deriveMonthCalculatorTotals(m.hours, laborRates, material);
+  });
 
   const totalHours = months.reduce((sum, m) => sum + m.hours, 0);
-  const totalCost = months.reduce((sum, m) => sum + m.cost, 0);
-  const totalBillable = months.reduce((sum, m) => sum + m.billable, 0);
+  const totalCost = monthTotals.reduce((sum, t) => sum + t.cost, 0);
+  const totalBillable = monthTotals.reduce((sum, t) => sum + t.billable, 0);
+
+  function monthHeaderClass(m: DerivedMonthHours): string {
+    return [
+      "billing-manpower-month-col",
+      "num",
+      "billing-manpower-month-col--clickable",
+      m.key === thisMonth ? "billing-manpower-month-col--current" : "",
+      monthBeyondContract(m.weekStartIsos, weeks, contractEndWeekIndex)
+        ? "billing-manpower-week-col--beyond-contract"
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
 
   return (
     <section className="card stack billing-card billing-manpower-card billing-budget-card billing-monthly-budget-card">
       <div className="row-between wrap gap">
-        <h3 className="billing-card-title">Monthly budget</h3>
+        <h3 className="billing-card-title">Monthly hours</h3>
         <span className="muted small">
-          Billable {formatMoney0(totalBillable)} · Cost {formatMoney0(totalCost)}
+          {formatHoursCompact(totalHours)} hrs · {formatManWeeksCompact(totalHours)} man-wks
           {totalBillable > 0 || totalCost > 0 ? (
-            <> · Margin {formatMoney0(totalBillable - totalCost)}</>
+            <> · Calc billable {formatMoney0(totalBillable)} · cost {formatMoney0(totalCost)}</>
           ) : null}
         </span>
       </div>
 
       {endDateHint ? (
         <p className="banner banner-warn billing-manpower-end-hint">{endDateHint}</p>
-      ) : endDateLabel && contractEndWeekIndex !== null ? (
-        <p className="muted small billing-manpower-end-hint">
-          Weekly plan rolled up by calendar month · summary cards cumulative through {currentMonthLabel()}
-        </p>
       ) : (
         <p className="muted small billing-manpower-end-hint">
-          Weekly plan rolled up by calendar month · summary cards cumulative through {currentMonthLabel()}
+          Click a month to open the cost calculator · current month highlighted ({currentMonthLabel()})
         </p>
       )}
 
-      <div className="billing-manpower-scroll" tabIndex={0} aria-label="Monthly budget — scroll horizontally">
+      <div className="billing-manpower-scroll" tabIndex={0} aria-label="Monthly hours — scroll horizontally">
         <table className="billing-manpower-table">
           <thead>
             <tr>
               <th className="billing-manpower-sticky billing-manpower-phase-col">Row</th>
               {months.map((m) => (
-                <th
-                  key={m.key}
-                  className={`billing-manpower-month-col num${
-                    m.key === thisMonth ? " billing-manpower-month-col--current" : ""
-                  }${
-                    monthBeyondContract(m.weekStartIsos, weeks, contractEndWeekIndex)
-                      ? " billing-manpower-week-col--beyond-contract"
-                      : ""
-                  }`}
-                >
-                  {m.label}
+                <th key={m.key} className={monthHeaderClass(m)}>
+                  <button
+                    type="button"
+                    className="billing-manpower-month-button"
+                    onClick={() => onOpenMonth(m)}
+                    title={`Calculate cost & billable for ${m.label}`}
+                    aria-label={`Open cost calculator for ${m.label}`}
+                  >
+                    {m.label}
+                  </button>
                 </th>
               ))}
               <th className="billing-manpower-sticky billing-manpower-total-col num">Total</th>
@@ -91,61 +124,97 @@ export function ManpowerMonthlyBudgetCard({ billing, projectStartIso, projectEnd
                     m.key === thisMonth ? " billing-manpower-month-col--current" : ""
                   }`}
                 >
-                  {formatHours(m.hours)}
+                  {formatHoursCompact(m.hours)}
                 </td>
               ))}
-              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatHours(totalHours)}</td>
+              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatHoursCompact(totalHours)}</td>
             </tr>
             <tr>
-              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">Cost</td>
+              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
+                Man-weeks
+              </td>
               {months.map((m) => (
                 <td
                   key={m.key}
                   className={`billing-manpower-month-col num${m.key === thisMonth ? " billing-manpower-month-col--current" : ""}`}
                 >
-                  {formatMoney0(m.cost)}
+                  {formatManWeeksCompact(m.hours)}
+                </td>
+              ))}
+              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatManWeeksCompact(totalHours)}</td>
+            </tr>
+            <tr>
+              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
+                Cost (calc)
+              </td>
+              {monthTotals.map((t, i) => (
+                <td
+                  key={months[i].key}
+                  className={`billing-manpower-month-col num${
+                    months[i].key === thisMonth ? " billing-manpower-month-col--current" : ""
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="billing-budget-value-button"
+                    onClick={() => onOpenMonth(months[i])}
+                    title={`Edit calculator for ${months[i].label}`}
+                  >
+                    {formatMoney0(t.cost)}
+                  </button>
                 </td>
               ))}
               <td className="billing-manpower-sticky billing-manpower-total-col num">{formatMoney0(totalCost)}</td>
             </tr>
             <tr>
-              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">Billable</td>
-              {months.map((m) => (
+              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
+                Billable (calc)
+              </td>
+              {monthTotals.map((t, i) => (
                 <td
-                  key={m.key}
-                  className={`billing-manpower-month-col num${m.key === thisMonth ? " billing-manpower-month-col--current" : ""}`}
+                  key={months[i].key}
+                  className={`billing-manpower-month-col num${
+                    months[i].key === thisMonth ? " billing-manpower-month-col--current" : ""
+                  }`}
                 >
-                  {formatMoney0(m.billable)}
+                  <button
+                    type="button"
+                    className="billing-budget-value-button"
+                    onClick={() => onOpenMonth(months[i])}
+                    title={`Edit calculator for ${months[i].label}`}
+                  >
+                    {formatMoney0(t.billable)}
+                  </button>
                 </td>
               ))}
               <td className="billing-manpower-sticky billing-manpower-total-col num">{formatMoney0(totalBillable)}</td>
             </tr>
             <tr>
               <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
-                Cumulative billable
+                Cumulative hrs
               </td>
               {(() => {
                 let running = 0;
                 return months.map((m) => {
-                  running += m.billable;
+                  running += m.hours;
                   return (
                     <td
-                  key={m.key}
-                  className={`billing-manpower-month-col num${m.key === thisMonth ? " billing-manpower-month-col--current" : ""}`}
-                >
-                      {formatMoney0(running)}
+                      key={m.key}
+                      className={`billing-manpower-month-col num${m.key === thisMonth ? " billing-manpower-month-col--current" : ""}`}
+                    >
+                      {formatHoursCompact(running)}
                     </td>
                   );
                 });
               })()}
-              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatMoney0(totalBillable)}</td>
+              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatHoursCompact(totalHours)}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <p className="muted small billing-manpower-caption">
-        Cumulative billable through the highlighted month drives the summary cards · edit weeks in Weekly budget
+        Cost and billable rows are calculator estimates (browser only) · project stores hours only
       </p>
     </section>
   );

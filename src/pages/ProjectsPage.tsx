@@ -8,7 +8,6 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import { defaultJobInfo } from "../types/jobInfo";
 import { defaultProjectBilling } from "../types/projectBilling";
-import { loadCompanyLaborRates } from "../lib/companyLaborRates";
 import { resolveDashboardPaintTracker } from "../lib/projectDashboardSnapshot";
 import { loadFieldToolsStaffForJobflow } from "../lib/fieldToolsStaff";
 import {
@@ -147,8 +146,7 @@ export function ProjectsPage() {
       ...jobInfoPatchFromStaffSelection(superContact, foremanContact, pmContact),
       ...(!pmContact ? jobInfoPatchFromProfilePm(profile, staffPms, jobRole) : {}),
     };
-    const companyRates = await loadCompanyLaborRates();
-    const billing = defaultProjectBilling(companyRates);
+    const billing = defaultProjectBilling();
     const { data: inserted, error: err } = await supabase
       .from("projects")
       .insert({

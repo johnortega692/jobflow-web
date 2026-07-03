@@ -6408,6 +6408,52 @@ input.readonly {
   font-weight: 600;
 }
 
+.billing-manpower-month-col--clickable {
+  padding: 0;
+}
+
+.billing-manpower-month-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.billing-manpower-month-button:hover,
+.billing-manpower-month-button:focus-visible {
+  background: rgba(79, 140, 255, 0.12);
+  outline: none;
+}
+
+.billing-month-calculator-rates {
+  gap: 8px;
+}
+
+.billing-month-calculator-rates-toggle {
+  align-self: flex-start;
+}
+
+.billing-month-calculator-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 560px) {
+  .billing-month-calculator-totals {
+    grid-template-columns: 1fr;
+  }
+}
+
 .billing-manpower-week-header-button {
   display: inline-flex;
   align-items: center;

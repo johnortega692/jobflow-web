@@ -1,5 +1,4 @@
-import type { Project } from "../types/database";
-import type { ProjectForm } from "../types/database";
+import type { Project, ProjectForm, RfiFormData } from "../types/database";
 import { defaultJobInfo, type JobInfoData } from "../types/jobInfo";
 import {
   applyTransmittalContractNumber,
@@ -165,6 +164,19 @@ export function projectForemanEmail(info: JobInfoData | undefined): string {
 /** ICBI / Field Tools superintendent — not the GC's superintendent in GC Info. */
 export function icbiSuperintendent(info: JobInfoData | undefined): string {
   return info?.field_request_super?.trim() ?? "";
+}
+
+/** GC superintendent from Job setup → GC Info (name + phone for field view). */
+export function gcSuperintendentContact(info: JobInfoData | undefined): { name: string; phone: string } {
+  const raw = info?.gc_superintendent?.trim() ?? "";
+  const name = raw && raw.toLowerCase() !== "tbd" ? raw : "";
+  const phone = info?.gc_super_phone?.trim() ?? "";
+  return { name, phone };
+}
+
+export function formatGcSuperFieldDisplay(contact: { name: string; phone: string }): string {
+  if (contact.name && contact.phone) return `${contact.name} · ${contact.phone}`;
+  return contact.name || contact.phone;
 }
 
 export function icbiSuperEmail(info: JobInfoData | undefined): string {
@@ -546,6 +558,23 @@ export function applyJobInfoToTransmittal(
     gc_name: data.gc_name.trim() || gcName,
     to_address: data.to_address.trim() || info.gc_address.trim(),
     to_phone: data.to_phone.trim() || info.gc_office_phone.trim(),
+  };
+}
+
+function gcSuperNameForForms(info: JobInfoData): string {
+  return gcSuperintendentContact(info).name;
+}
+
+/** Pre-fill empty RFI header fields from Job setup → GC Info. */
+export function applyJobInfoToRfi(form: RfiFormData, contractor: string, info: JobInfoData): RfiFormData {
+  const gcName = contractor.trim();
+  const gcPm = info.gc_pm.trim();
+  const gcSuper = gcSuperNameForForms(info);
+  return {
+    ...form,
+    to_name: form.to_name.trim() || gcName,
+    attn_name: form.attn_name.trim() || gcPm || gcSuper,
+    drawing_ref: form.drawing_ref.trim() || info.drawings.trim(),
   };
 }
 

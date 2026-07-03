@@ -26,7 +26,6 @@ type Props = {
   saving: boolean;
   onBillingChange: (next: ProjectBillingData) => void;
   onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
-  onOpenWeekBudget: (weekStartIso: string) => void;
 };
 
 function cellKey(phaseId: ManpowerPhaseId, weekStartIso: string): string {
@@ -52,7 +51,6 @@ export function ManpowerPlanCard({
   saving,
   onBillingChange,
   onPersistQuiet,
-  onOpenWeekBudget,
 }: Props) {
   const { weekStarts: weeks, contractEndWeekIndex } = manpowerWeekStarts(
     projectStartIso,
@@ -120,15 +118,7 @@ export function ManpowerPlanCard({
                       : ""
                   }`}
                 >
-                  <button
-                    type="button"
-                    className="billing-manpower-week-header-button"
-                    onClick={() => onOpenWeekBudget(w)}
-                    title={`Edit weekly budget for ${weekColumnLabel(w)}`}
-                    aria-label={`Edit weekly budget for week of ${weekColumnLabel(w)}`}
-                  >
-                    {weekColumnLabel(w)}
-                  </button>
+                  {weekColumnLabel(w)}
                 </th>
               ))}
               <th className="billing-manpower-sticky billing-manpower-total-col num">Man-wks</th>

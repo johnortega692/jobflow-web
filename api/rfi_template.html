@@ -310,9 +310,9 @@
           <tr>
             <td>
               <div class="cb-hdr">REASON FOR REQUEST</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if reason_insufficient else '' }}</span>Insufficient Information</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if reason_conflict else '' }}</span>Engineering Conflict</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if reason_alternate else '' }}</span>Alternate Proposal</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if reason_insufficient else '' }}</span>Insufficient information</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if reason_conflict else '' }}</span>Conflict in documents</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if reason_alternate else '' }}</span>Alternate proposed</div>
             </td>
             <td>
               <div class="cb-hdr">ACTION REQUESTED</div>
@@ -322,12 +322,12 @@
             </td>
             <td>
               <div class="cb-hdr">PROBABLE EFFECT</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if effect_increase_cost else '' }}</span>Increase Cost</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if effect_decrease_cost else '' }}</span>Decrease Cost</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if effect_unknown_cost else '' }}</span>Unknown Cost</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if effect_increase_time else '' }}</span>Increase Time</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if effect_decrease_time else '' }}</span>Decrease Time</div>
-              <div class="cb-item"><span class="cb">{{ '✓' if effect_unknown_time else '' }}</span>Unknown Time</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if effect_increase_cost else '' }}</span>Increase cost</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if effect_increase_time else '' }}</span>Increase time</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if effect_decrease_cost else '' }}</span>Decrease cost</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if effect_decrease_time else '' }}</span>Decrease time</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if effect_unknown_cost else '' }}</span>Unknown cost</div>
+              <div class="cb-item"><span class="cb">{{ '✓' if effect_unknown_time else '' }}</span>Unknown time</div>
             </td>
           </tr>
         </table>

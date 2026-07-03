@@ -21,6 +21,13 @@ export function rfiAttachmentStoragePath(
   return `${projectId}/${rfiId}/${fileId}_${safeFilename(filename)}`;
 }
 
+function storageErrorMessage(message: string, action: string): string {
+  if (/bucket not found/i.test(message)) {
+    return `RFI file storage is not set up (${action}). Contact an admin if this persists.`;
+  }
+  return message;
+}
+
 export async function uploadRfiAttachment(
   projectId: string,
   rfiId: string,
@@ -32,25 +39,27 @@ export async function uploadRfiAttachment(
     upsert: true,
     contentType: file.type || undefined,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(storageErrorMessage(error.message, "upload"));
   return { path, filename: file.name };
 }
 
 export async function downloadRfiAttachment(path: string): Promise<ArrayBuffer> {
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
-  if (error || !data) throw new Error(error?.message ?? "Could not download attachment.");
+  if (error || !data) {
+    throw new Error(storageErrorMessage(error?.message ?? "Could not download attachment.", "download"));
+  }
   return data.arrayBuffer();
 }
 
 export async function removeRfiAttachment(path: string): Promise<void> {
   if (!path) return;
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(storageErrorMessage(error.message, "remove"));
 }
 
 export async function removeRfiAttachments(paths: string[]): Promise<void> {
   const unique = [...new Set(paths.filter(Boolean))];
   if (!unique.length) return;
   const { error } = await supabase.storage.from(BUCKET).remove(unique);
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(storageErrorMessage(error.message, "remove"));
 }

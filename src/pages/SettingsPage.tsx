@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { CompletedProjectsSettingsSection } from "../components/settings/CompletedProjectsSettingsSection";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
-import { LaborRatesSettingsSection } from "../components/settings/LaborRatesSettingsSection";
 import { ManpowerCalSettingsSection } from "../components/settings/ManpowerCalSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
 import { PaintEmailSettingsSection } from "../components/settings/PaintEmailSettingsSection";
@@ -34,7 +33,6 @@ const SETTINGS_TABS = [
   { id: "paint-email", label: "Paint & email" },
   { id: "manpower", label: "Manpower" },
   { id: "work-orders", label: "Work orders" },
-  { id: "labor-rates", label: "Labor rates" },
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -88,7 +86,6 @@ export function SettingsPage() {
     [setTabDirty],
   );
   const onWorkOrdersDirty = useCallback((dirty: boolean) => setTabDirty("work-orders", dirty), [setTabDirty]);
-  const onLaborRatesDirty = useCallback((dirty: boolean) => setTabDirty("labor-rates", dirty), [setTabDirty]);
 
   const profileReady = !loading && Boolean(user);
   const { markSaved: markProfileSaved, getIsDirty: getProfileDirty } = useSettingsDirtyTracker(
@@ -679,17 +676,6 @@ export function SettingsPage() {
           readOnly={sharedSettingsReadOnly}
           onDirtyChange={sharedSettingsReadOnly ? undefined : onWorkOrdersDirty}
           onBindActions={(actions) => bindSectionActions("work-orders", actions)}
-        />
-      </div>
-
-      <div
-        className={`card stack settings-form settings-tab-panel${activeTab === "labor-rates" ? "" : " settings-tab-panel--hidden"}`}
-        aria-hidden={activeTab !== "labor-rates"}
-      >
-        <LaborRatesSettingsSection
-          readOnly={sharedSettingsReadOnly}
-          onDirtyChange={sharedSettingsReadOnly ? undefined : onLaborRatesDirty}
-          onBindActions={(actions) => bindSectionActions("labor-rates", actions)}
         />
       </div>
         </div>

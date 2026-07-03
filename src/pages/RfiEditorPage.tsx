@@ -17,18 +17,23 @@ import { supabase } from "../lib/supabase";
 import { printRfi } from "../lib/rfiPrint";
 import { rfiFilename } from "../lib/pdfFilenames";
 import { applyRfiProfileDefaults } from "../lib/userProfile";
+import {
+  RFI_ACTION_LABELS,
+  RFI_EFFECT_LABELS,
+  RFI_REASON_LABELS,
+} from "../lib/rfiFormLabels";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import {
+  applyJobInfoToRfi,
   coerceTransmittalContract,
   hasTransmittalContractSwitch,
-  normalizeTransmittalContract,
   projectPrintInfoForContract,
   transmittalPrintInfo,
 } from "../lib/jobInfo";
 import {
   defaultRfiFormData,
   normalizeProject,
-  normalizeRfiAttachedFiles,
+  normalizeRfiFormData,
   type Json,
   type ProjectForm,
   type Rfi,
@@ -37,17 +42,7 @@ import {
 } from "../types/database";
 
 function parseRfiData(raw: unknown): RfiFormData {
-  const base = defaultRfiFormData();
-  if (!raw || typeof raw !== "object") return base;
-  const patch = raw as Partial<RfiFormData>;
-  return {
-    ...base,
-    ...patch,
-    pdf_show_solution: patch.pdf_show_solution ?? base.pdf_show_solution,
-    pdf_show_response: patch.pdf_show_response ?? base.pdf_show_response,
-    attached_files: normalizeRfiAttachedFiles(patch.attached_files ?? base.attached_files),
-    contract: normalizeTransmittalContract(patch.contract),
-  };
+  return normalizeRfiFormData(raw);
 }
 
 export function RfiEditorPage() {
@@ -86,9 +81,10 @@ export function RfiEditorPage() {
       setRfiNumber(rfi.rfi_number ?? "001");
       setSubject(rfi.subject ?? "");
       setStatus(normalizeRfiStatus(rfi.status));
-      const parsed = applyRfiProfileDefaults(parseRfiData(rfi.data), profile);
       const proj = normalizeProject(projRes.data);
-      setForm({ ...parsed, contract: coerceTransmittalContract(proj, parsed.contract) });
+      const withProfile = applyRfiProfileDefaults(parseRfiData(rfi.data), profile);
+      const withJobInfo = applyJobInfoToRfi(withProfile, proj.contractor, proj.jobInfo);
+      setForm({ ...withJobInfo, contract: coerceTransmittalContract(proj, withJobInfo.contract) });
     }
     void load();
   }, [projectId, rfiId, profile]);
@@ -369,10 +365,17 @@ export function RfiEditorPage() {
             <label>
               To
               <input value={form.to_name} onChange={(e) => setField("to_name", e.target.value)} />
+              {!form.to_name.trim() && project?.contractor.trim() && (
+                <span className="muted small">Defaults from Job setup → GC (contractor)</span>
+              )}
             </label>
             <label>
               Attn
               <input value={form.attn_name} onChange={(e) => setField("attn_name", e.target.value)} />
+              {!form.attn_name.trim() &&
+                (project?.jobInfo.gc_pm.trim() || project?.jobInfo.gc_superintendent.trim()) && (
+                  <span className="muted small">Defaults from Job setup → GC PM / super</span>
+                )}
             </label>
             <label>
               From
@@ -438,7 +441,7 @@ export function RfiEditorPage() {
                   checked={form.reason_insufficient}
                   onChange={(e) => setField("reason_insufficient", e.target.checked)}
                 />
-                Insufficient information
+                {RFI_REASON_LABELS.reason_insufficient}
               </label>
               <label className="check">
                 <input
@@ -446,7 +449,7 @@ export function RfiEditorPage() {
                   checked={form.reason_conflict}
                   onChange={(e) => setField("reason_conflict", e.target.checked)}
                 />
-                Conflict in documents
+                {RFI_REASON_LABELS.reason_conflict}
               </label>
               <label className="check">
                 <input
@@ -454,7 +457,7 @@ export function RfiEditorPage() {
                   checked={form.reason_alternate}
                   onChange={(e) => setField("reason_alternate", e.target.checked)}
                 />
-                Alternate proposed
+                {RFI_REASON_LABELS.reason_alternate}
               </label>
             </div>
 
@@ -466,7 +469,7 @@ export function RfiEditorPage() {
                   checked={form.action_clarification}
                   onChange={(e) => setField("action_clarification", e.target.checked)}
                 />
-                Clarification
+                {RFI_ACTION_LABELS.action_clarification}
               </label>
               <label className="check">
                 <input
@@ -474,7 +477,7 @@ export function RfiEditorPage() {
                   checked={form.action_direction}
                   onChange={(e) => setField("action_direction", e.target.checked)}
                 />
-                Direction
+                {RFI_ACTION_LABELS.action_direction}
               </label>
               <label className="check">
                 <input
@@ -482,61 +485,23 @@ export function RfiEditorPage() {
                   checked={form.action_approval}
                   onChange={(e) => setField("action_approval", e.target.checked)}
                 />
-                Approval
+                {RFI_ACTION_LABELS.action_approval}
               </label>
             </div>
 
             <div className="rfi-checkbox-col">
               <h3 className="rfi-checkbox-col-title">Probable effect</h3>
               <div className="rfi-effect-checks">
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.effect_increase_cost}
-                    onChange={(e) => setField("effect_increase_cost", e.target.checked)}
-                  />
-                  Increase cost
-                </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.effect_increase_time}
-                    onChange={(e) => setField("effect_increase_time", e.target.checked)}
-                  />
-                  Increase time
-                </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.effect_decrease_cost}
-                    onChange={(e) => setField("effect_decrease_cost", e.target.checked)}
-                  />
-                  Decrease cost
-                </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.effect_decrease_time}
-                    onChange={(e) => setField("effect_decrease_time", e.target.checked)}
-                  />
-                  Decrease time
-                </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.effect_unknown_cost}
-                    onChange={(e) => setField("effect_unknown_cost", e.target.checked)}
-                  />
-                  Unknown cost
-                </label>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={form.effect_unknown_time}
-                    onChange={(e) => setField("effect_unknown_time", e.target.checked)}
-                  />
-                  Unknown time
-                </label>
+                {RFI_EFFECT_LABELS.map(({ key, label }) => (
+                  <label key={key} className="check">
+                    <input
+                      type="checkbox"
+                      checked={form[key]}
+                      onChange={(e) => setField(key, e.target.checked)}
+                    />
+                    {label}
+                  </label>
+                ))}
               </div>
             </div>
           </div>

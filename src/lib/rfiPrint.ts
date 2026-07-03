@@ -1,4 +1,9 @@
 import type { Project, RfiFormData } from "../types/database";
+import {
+  RFI_ACTION_LABELS,
+  RFI_EFFECT_LABELS,
+  RFI_REASON_LABELS,
+} from "./rfiFormLabels";
 import { esc, pdfSignerDisplayName, printHtml, type PrintBranding } from "./printCore";
 import { pdfTitleFromFilename, rfiFilename } from "./pdfFilenames";
 
@@ -151,24 +156,19 @@ export function buildRfiPrintHtml(
           <tr>
             <td>
               <div class="cb-hdr">REASON FOR REQUEST</div>
-              <div class="cb-item">${cb(form.reason_insufficient)}Insufficient Information</div>
-              <div class="cb-item">${cb(form.reason_conflict)}Engineering Conflict</div>
-              <div class="cb-item">${cb(form.reason_alternate)}Alternate Proposal</div>
+              <div class="cb-item">${cb(form.reason_insufficient)}${RFI_REASON_LABELS.reason_insufficient}</div>
+              <div class="cb-item">${cb(form.reason_conflict)}${RFI_REASON_LABELS.reason_conflict}</div>
+              <div class="cb-item">${cb(form.reason_alternate)}${RFI_REASON_LABELS.reason_alternate}</div>
             </td>
             <td>
               <div class="cb-hdr">ACTION REQUESTED</div>
-              <div class="cb-item">${cb(form.action_clarification)}Clarification</div>
-              <div class="cb-item">${cb(form.action_direction)}Direction</div>
-              <div class="cb-item">${cb(form.action_approval)}Approval</div>
+              <div class="cb-item">${cb(form.action_clarification)}${RFI_ACTION_LABELS.action_clarification}</div>
+              <div class="cb-item">${cb(form.action_direction)}${RFI_ACTION_LABELS.action_direction}</div>
+              <div class="cb-item">${cb(form.action_approval)}${RFI_ACTION_LABELS.action_approval}</div>
             </td>
             <td>
               <div class="cb-hdr">PROBABLE EFFECT</div>
-              <div class="cb-item">${cb(form.effect_increase_cost)}Increase Cost</div>
-              <div class="cb-item">${cb(form.effect_decrease_cost)}Decrease Cost</div>
-              <div class="cb-item">${cb(form.effect_unknown_cost)}Unknown Cost</div>
-              <div class="cb-item">${cb(form.effect_increase_time)}Increase Time</div>
-              <div class="cb-item">${cb(form.effect_decrease_time)}Decrease Time</div>
-              <div class="cb-item">${cb(form.effect_unknown_time)}Unknown Time</div>
+              ${RFI_EFFECT_LABELS.map(({ key, label }) => `<div class="cb-item">${cb(form[key])}${label}</div>`).join("")}
             </td>
           </tr>
         </table>

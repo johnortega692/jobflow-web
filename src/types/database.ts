@@ -105,6 +105,55 @@ export function normalizeRfiAttachedFiles(raw: unknown): RfiAttachedFile[] {
     .filter((f): f is RfiAttachedFile => Boolean(f));
 }
 
+function rfiBool(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === 1 || value === "1" || value === "true") return true;
+  if (value === 0 || value === "0" || value === "false") return false;
+  return fallback;
+}
+
+export function normalizeRfiFormData(raw: unknown): RfiFormData {
+  const base = defaultRfiFormData();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
+  const o = raw as Record<string, unknown>;
+  return {
+    ...base,
+    rfi_date: typeof o.rfi_date === "string" ? o.rfi_date : base.rfi_date,
+    due_date: typeof o.due_date === "string" ? o.due_date : base.due_date,
+    to_name: typeof o.to_name === "string" ? o.to_name : base.to_name,
+    attn_name: typeof o.attn_name === "string" ? o.attn_name : base.attn_name,
+    from_name: typeof o.from_name === "string" ? o.from_name : base.from_name,
+    spec_ref: typeof o.spec_ref === "string" ? o.spec_ref : base.spec_ref,
+    drawing_ref: typeof o.drawing_ref === "string" ? o.drawing_ref : base.drawing_ref,
+    detail_no: typeof o.detail_no === "string" ? o.detail_no : base.detail_no,
+    cost_change: typeof o.cost_change === "string" ? o.cost_change : base.cost_change,
+    sched_change: typeof o.sched_change === "string" ? o.sched_change : base.sched_change,
+    question: typeof o.question === "string" ? o.question : base.question,
+    solution_text: typeof o.solution_text === "string" ? o.solution_text : base.solution_text,
+    impact_notes: typeof o.impact_notes === "string" ? o.impact_notes : base.impact_notes,
+    attach_other: typeof o.attach_other === "string" ? o.attach_other : base.attach_other,
+    pdf_show_solution: rfiBool(o.pdf_show_solution, base.pdf_show_solution),
+    pdf_show_response: rfiBool(o.pdf_show_response, base.pdf_show_response),
+    reason_insufficient: rfiBool(o.reason_insufficient, base.reason_insufficient),
+    reason_conflict: rfiBool(o.reason_conflict, base.reason_conflict),
+    reason_alternate: rfiBool(o.reason_alternate, base.reason_alternate),
+    action_clarification: rfiBool(o.action_clarification, base.action_clarification),
+    action_direction: rfiBool(o.action_direction, base.action_direction),
+    action_approval: rfiBool(o.action_approval, base.action_approval),
+    effect_increase_cost: rfiBool(o.effect_increase_cost, base.effect_increase_cost),
+    effect_decrease_cost: rfiBool(o.effect_decrease_cost, base.effect_decrease_cost),
+    effect_unknown_cost: rfiBool(o.effect_unknown_cost, base.effect_unknown_cost),
+    effect_increase_time: rfiBool(o.effect_increase_time, base.effect_increase_time),
+    effect_decrease_time: rfiBool(o.effect_decrease_time, base.effect_decrease_time),
+    effect_unknown_time: rfiBool(o.effect_unknown_time, base.effect_unknown_time),
+    attach_photos: rfiBool(o.attach_photos, base.attach_photos),
+    attach_markup: rfiBool(o.attach_markup, base.attach_markup),
+    attach_submittal: rfiBool(o.attach_submittal, base.attach_submittal),
+    attached_files: normalizeRfiAttachedFiles(o.attached_files ?? base.attached_files),
+    contract: normalizeTransmittalContract(o.contract),
+  };
+}
+
 export function rfiContractFromData(raw: unknown): TransmittalContract {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "paint";
   const contract = (raw as Partial<RfiFormData>).contract;
