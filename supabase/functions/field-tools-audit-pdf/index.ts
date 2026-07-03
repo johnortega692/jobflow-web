@@ -11,6 +11,7 @@ const corsHeaders = {
 
 type AuditBody = {
   caller_id: string;
+  session_token: string;
   job_number: string;
   job_name?: string;
 };
@@ -34,16 +35,18 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as AuditBody;
     const callerId = body?.caller_id?.trim();
+    const sessionToken = body?.session_token?.trim();
     const jobNumber = body?.job_number?.trim();
 
-    if (!callerId || !jobNumber) {
-      return jsonResponse({ ok: false, error: "caller_id and job_number are required" }, 400);
+    if (!callerId || !sessionToken || !jobNumber) {
+      return jsonResponse({ ok: false, error: "caller_id, session_token, and job_number are required" }, 400);
     }
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const { data: listData, error: listErr } = await supabase.rpc("field_tools_admin_list_orders_by_job", {
       p_caller_id: callerId,
+      p_session_token: sessionToken,
       p_job_number: jobNumber,
     });
 

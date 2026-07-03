@@ -194,6 +194,13 @@ export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
 /** Company name for public Field view (no login). */
 export async function loadFieldViewCompanyName(): Promise<string> {
   try {
+    const { data, error } = await supabase.rpc("field_view_company_name" as never);
+    const rpcName = typeof data === "string" ? (data as string).trim() : "";
+    if (!error && rpcName) return resolveDisplayCompanyName(rpcName);
+  } catch {
+    /* fall through */
+  }
+  try {
     const org = await loadOrgSettingsBlob();
     const name = typeof org.company_name === "string" ? org.company_name.trim() : "";
     if (name) return resolveDisplayCompanyName(name);
@@ -205,10 +212,20 @@ export async function loadFieldViewCompanyName(): Promise<string> {
   );
 }
 
+async function loadProjectDataForField(projectId: string): Promise<{ data: unknown; error: string | null }> {
+  const { data, error } = await supabase.rpc("field_view_get_project" as never, {
+    p_project_id: projectId,
+  } as never);
+  if (error) return { data: null, error: error.message };
+  const row = data as { data?: unknown } | null;
+  return { data: row?.data ?? null, error: null };
+}
+
 export async function loadAllProjectsForField(): Promise<{ projects: ProjectForm[]; error: string | null }> {
-  const { data, error } = await supabase.from("projects").select("*").order("job_number", { ascending: true });
+  const { data, error } = await supabase.rpc("field_view_list_projects" as never);
   if (error) return { projects: [], error: error.message };
-  return { projects: (data ?? []).map(normalizeProject), error: null };
+  const rows = (Array.isArray(data) ? data : []) as ProjectForm[];
+  return { projects: rows.map(normalizeProject), error: null };
 }
 
 export async function patchProjectData(
@@ -247,9 +264,9 @@ export async function saveWcTrackerState(
   tracker: WcTrackerState,
   summary = "Wallcovering tracker saved",
 ): Promise<string | null> {
-  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
-  if (error) return error.message;
-  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
   const wcSubmittal = normalizeWallcoveringSubmittal(trade.wallcovering_submittal);
   const mergeData: Record<string, unknown> = { wc_tracker: tracker };
   if (Boolean(wcSubmittal.submittal_ordered) !== tracker.submittalOrdered) {
@@ -263,9 +280,9 @@ export async function syncWcSubmittalOrdered(
   projectId: string,
   submittalOrdered: boolean,
 ): Promise<string | null> {
-  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
-  if (error) return error.message;
-  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
   const tracker = { ...resolveWcTracker(trade), submittalOrdered };
   const wcSubmittal = { ...normalizeWallcoveringSubmittal(trade.wallcovering_submittal), submittal_ordered: submittalOrdered };
   return patchProjectData(
@@ -279,9 +296,11 @@ export async function syncWcSubmittalOrdered(
 }
 
 export async function reloadProject(projectId: string): Promise<ProjectForm | null> {
-  const { data, error } = await supabase.from("projects").select("*").eq("id", projectId).single();
+  const { data, error } = await supabase.rpc("field_view_get_project" as never, {
+    p_project_id: projectId,
+  } as never);
   if (error || !data) return null;
-  return normalizeProject(data);
+  return normalizeProject(data as ProjectForm);
 }
 
 export async function savePaintTrackerState(
@@ -289,9 +308,9 @@ export async function savePaintTrackerState(
   tracker: PaintTrackerState,
   summary = "Paint tracker saved",
 ): Promise<string | null> {
-  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
-  if (error) return error.message;
-  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
   const vendor = normalizePaintVendor(tracker.paintVendor);
   const normalizedTracker = { ...tracker, paintVendor: vendor };
   const paintSubmittal = normalizePaintSubmittal(trade.paint_submittal);
@@ -313,9 +332,9 @@ export async function syncPaintSubmittalOrdered(
   projectId: string,
   submittalOrdered: boolean,
 ): Promise<string | null> {
-  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
-  if (error) return error.message;
-  const trade = parseProjectTradeData(parseProjectDataBlob(data?.data) as Json);
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
   const tracker = { ...resolvePaintTracker(trade), submittalOrdered };
   const paintSubmittal = { ...normalizePaintSubmittal(trade.paint_submittal), submittal_ordered: submittalOrdered };
   return patchProjectData(
@@ -337,9 +356,9 @@ export async function patchPaintTrackerSubmittalOrdered(
 }
 
 export async function saveProjectStartDate(projectId: string, startDate: string): Promise<string | null> {
-  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
-  if (error) return error.message;
-  const base = parseProjectDataBlob(data?.data);
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const base = parseProjectDataBlob(data);
   const jobInfo = { ...(base.job_info as Record<string, unknown>), start_date: startDate };
   return commitProjectUpdate({
     projectId,
@@ -358,9 +377,9 @@ export async function saveWcInstallDate(
   lineId: string,
   installDate: string,
 ): Promise<string | null> {
-  const { data, error } = await supabase.from("projects").select("data").eq("id", projectId).single();
-  if (error) return error.message;
-  const base = parseProjectDataBlob(data?.data);
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const base = parseProjectDataBlob(data);
   const trade = parseProjectTradeData(base as Json);
   const lines = resolveWcTrackerLines(trade);
   const next = lines.map((line) => (line.id === lineId ? { ...line, installDate } : line));
