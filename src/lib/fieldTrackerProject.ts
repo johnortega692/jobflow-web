@@ -5,6 +5,7 @@ import { resolveDisplayCompanyName } from "./displayCompanyName";
 import { loadOrgSettingsBlob } from "./orgSettings";
 import { commitProjectUpdate } from "./projectActivity";
 import { supabase } from "./supabase";
+import { fieldViewRpcAuthArgs, loadFieldViewSession } from "./fieldViewAuth";
 import type { ProjectForm, Json } from "../types/database";
 import { normalizeProject } from "../types/database";
 import {
@@ -194,7 +195,10 @@ export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
 /** Company name for public Field view (no login). */
 export async function loadFieldViewCompanyName(): Promise<string> {
   try {
-    const { data, error } = await supabase.rpc("field_view_company_name" as never);
+    const { data, error } = await supabase.rpc(
+      "field_view_company_name" as never,
+      fieldViewRpcAuthArgs(loadFieldViewSession()) as never,
+    );
     const rpcName = typeof data === "string" ? (data as string).trim() : "";
     if (!error && rpcName) return resolveDisplayCompanyName(rpcName);
   } catch {
@@ -215,6 +219,7 @@ export async function loadFieldViewCompanyName(): Promise<string> {
 async function loadProjectDataForField(projectId: string): Promise<{ data: unknown; error: string | null }> {
   const { data, error } = await supabase.rpc("field_view_get_project" as never, {
     p_project_id: projectId,
+    ...fieldViewRpcAuthArgs(loadFieldViewSession()),
   } as never);
   if (error) return { data: null, error: error.message };
   const row = data as { data?: unknown } | null;
@@ -222,7 +227,10 @@ async function loadProjectDataForField(projectId: string): Promise<{ data: unkno
 }
 
 export async function loadAllProjectsForField(): Promise<{ projects: ProjectForm[]; error: string | null }> {
-  const { data, error } = await supabase.rpc("field_view_list_projects" as never);
+  const { data, error } = await supabase.rpc(
+    "field_view_list_projects" as never,
+    fieldViewRpcAuthArgs(loadFieldViewSession()) as never,
+  );
   if (error) return { projects: [], error: error.message };
   const rows = (Array.isArray(data) ? data : []) as ProjectForm[];
   return { projects: rows.map(normalizeProject), error: null };
@@ -298,6 +306,7 @@ export async function syncWcSubmittalOrdered(
 export async function reloadProject(projectId: string): Promise<ProjectForm | null> {
   const { data, error } = await supabase.rpc("field_view_get_project" as never, {
     p_project_id: projectId,
+    ...fieldViewRpcAuthArgs(loadFieldViewSession()),
   } as never);
   if (error || !data) return null;
   return normalizeProject(data as ProjectForm);

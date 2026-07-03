@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type FormEvent } from "react";
 import { NavLink, Outlet, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
@@ -12,6 +12,13 @@ import {
   type FieldWcItemRow,
 } from "../../lib/fieldTrackerProject";
 import { resolveDisplayCompanyName } from "../../lib/displayCompanyName";
+import {
+  clearFieldViewSession,
+  loadFieldViewSession,
+  loginFieldViewWithPin,
+  logoutFieldView,
+  type FieldViewSession,
+} from "../../lib/fieldViewAuth";
 import {
   readFieldDarkMode,
   readFieldMobileView,
@@ -89,10 +96,77 @@ function FieldViewToggles({
   );
 }
 
+function FieldViewPinLogin({
+  companyName,
+  onLogin,
+  darkMode,
+  setDarkMode,
+}: {
+  companyName: string;
+  onLogin: (session: FieldViewSession) => void;
+  darkMode: boolean;
+  setDarkMode: (value: boolean) => void;
+}) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const clean = pin.trim();
+    if (!clean) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await loginFieldViewWithPin(clean);
+      setPin("");
+      onLogin(session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={`field-dashboard${darkMode ? " field-dashboard--dark" : ""}`}>
+      <div className="field-login-shell">
+        <form className="field-login-card" onSubmit={(e) => void submit(e)}>
+          <div className="company-name">{companyName}</div>
+          <h1>Field View</h1>
+          <p>Enter your Field Tools PIN to continue.</p>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            placeholder="PIN"
+            className="field-login-input"
+            autoFocus
+          />
+          {error && <div className="banner banner-error">{error}</div>}
+          <button type="submit" className="nav-button active field-login-button" disabled={busy || !pin.trim()}>
+            {busy ? "Signing in..." : "Sign in"}
+          </button>
+          <button
+            type="button"
+            className="nav-button nav-button-toggle"
+            onClick={() => setDarkMode(!darkMode)}
+          >
+            {darkMode ? "Light mode" : "Dark mode"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function FieldDashboardLayout() {
   const { user, signOut } = useAuth();
   const { branding, profile } = useLetterhead();
   const location = useLocation();
+  const [fieldSession, setFieldSession] = useState<FieldViewSession | null>(() => loadFieldViewSession());
   const [projects, setProjects] = useState<ProjectForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,26 +186,35 @@ export function FieldDashboardLayout() {
   }, []);
 
   const reload = useCallback(async () => {
+    if (!user && !fieldSession) {
+      setLoading(false);
+      setProjects([]);
+      return;
+    }
     setLoading(true);
     setError(null);
     const result = await loadAllProjectsForField();
     setLoading(false);
     if (result.error) {
+      if (!user && /SESSION|LOGIN|FIELD_VIEW/i.test(result.error)) {
+        clearFieldViewSession();
+        setFieldSession(null);
+      }
       setError(result.error);
       setProjects([]);
       return;
     }
     setProjects(result.projects);
-  }, []);
+  }, [fieldSession, user]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   useEffect(() => {
-    if (user) return;
+    if (user || !fieldSession) return;
     void loadFieldViewCompanyName().then(setPublicCompanyName);
-  }, [user]);
+  }, [fieldSession, user]);
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -167,6 +250,23 @@ export function FieldDashboardLayout() {
       link!.href = "/favicon.svg";
     };
   }, [pageTitle]);
+
+  useEffect(() => {
+    if (!user) return;
+    clearFieldViewSession();
+    setFieldSession(null);
+  }, [user]);
+
+  if (!user && !fieldSession) {
+    return (
+      <FieldViewPinLogin
+        companyName={companyName}
+        onLogin={setFieldSession}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
+    );
+  }
 
   return (
     <FieldDashboardContext.Provider
@@ -204,6 +304,17 @@ export function FieldDashboardLayout() {
                 </Link>
                 <UserHeaderIdentity profile={profile} email={user.email} className="field-header-user" />
                 <button type="button" className="field-header-signout" onClick={() => signOut()}>
+                  Sign out
+                </button>
+              </div>
+            ) : fieldSession ? (
+              <div className="field-header-account">
+                <span className="field-header-user">{fieldSession.name}</span>
+                <button
+                  type="button"
+                  className="field-header-signout"
+                  onClick={() => void logoutFieldView(fieldSession).finally(() => setFieldSession(null))}
+                >
                   Sign out
                 </button>
               </div>

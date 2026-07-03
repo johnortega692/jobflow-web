@@ -1,6 +1,7 @@
 import { loadEffectiveUserSettings } from "./orgSettings";
 import { parseProjectDataBlob } from "./jobInfo";
 import { supabase } from "./supabase";
+import { fieldViewRpcAuthArgs, loadFieldViewSession } from "./fieldViewAuth";
 import type { Database, Json } from "../types/database";
 import type { ProjectTradeData } from "../types/tradeDocuments";
 
@@ -219,6 +220,7 @@ export async function commitProjectUpdate(options: CommitProjectUpdateOptions): 
       p_action: activity.action,
       p_summary: activity.summary,
       p_user_name: actor.userName,
+      ...fieldViewRpcAuthArgs(loadFieldViewSession()),
     } as never);
     return error?.message ?? null;
   }

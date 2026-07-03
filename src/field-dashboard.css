@@ -251,6 +251,52 @@
   background: var(--fd-border-soft);
 }
 
+.field-dashboard .field-login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.field-dashboard .field-login-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  background: var(--fd-surface);
+  border: 1px solid var(--fd-border-soft);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px var(--fd-shadow);
+  padding: 24px;
+}
+
+.field-dashboard .field-login-card h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.field-dashboard .field-login-card p {
+  margin: 0;
+  color: var(--fd-text-soft);
+}
+
+.field-dashboard .field-login-input {
+  width: 100%;
+  border: 1px solid var(--fd-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--fd-surface2);
+  color: var(--fd-text);
+  font: inherit;
+  font-size: 20px;
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+
+.field-dashboard .field-login-button {
+  justify-content: center;
+  min-height: 44px;
+}
+
 .field-dashboard .title-block {
   display: flex;
   flex-direction: column;
