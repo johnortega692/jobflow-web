@@ -150,6 +150,24 @@ export function FieldDashboardLayout() {
       ? "Installation Calendar"
       : "Wallcovering Dashboard";
 
+  useEffect(() => {
+    document.title = `${pageTitle} · Field View`;
+
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.type = "image/svg+xml";
+      document.head.appendChild(link);
+    }
+    link.href = "/field-favicon.svg";
+
+    return () => {
+      document.title = "JobFlow";
+      link!.href = "/favicon.svg";
+    };
+  }, [pageTitle]);
+
   return (
     <FieldDashboardContext.Provider
       value={{
