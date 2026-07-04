@@ -5,7 +5,9 @@ import { DeliverySettingsSection } from "../components/settings/DeliverySettings
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
 import { ManpowerCalSettingsSection } from "../components/settings/ManpowerCalSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
-import { PaintEmailSettingsSection } from "../components/settings/PaintEmailSettingsSection";
+import { PaintVendorsSettingsSection } from "../components/settings/PaintVendorsSettingsSection";
+import { EmailSignatureSettingsSection } from "../components/settings/EmailSignatureSettingsSection";
+import { TrackerSchedulesSettingsSection } from "../components/settings/TrackerSchedulesSettingsSection";
 import { ProjectStaffSettingsSection } from "../components/settings/ProjectStaffSettingsSection";
 import { PdfFieldRow } from "../components/settings/PdfFieldRow";
 import type { SettingsSectionActions } from "../components/settings/settingsSectionTypes";
@@ -30,7 +32,9 @@ const SETTINGS_TABS = [
   { id: "delivery", label: "Delivery" },
   { id: "google", label: "Google Sheets", adminOnly: true as const },
   { id: "paint-catalog", label: "Paint products & sheens" },
-  { id: "paint-email", label: "Paint & email" },
+  { id: "paint-vendors", label: "Paint vendors" },
+  { id: "email-signature", label: "Email signature" },
+  { id: "tracker-schedules", label: "Schedules" },
   { id: "manpower", label: "Manpower" },
   { id: "work-orders", label: "Work orders" },
 ] as const;
@@ -80,7 +84,18 @@ export function SettingsPage() {
     (dirty: boolean) => setTabDirty("paint-catalog", dirty),
     [setTabDirty],
   );
-  const onPaintEmailDirty = useCallback((dirty: boolean) => setTabDirty("paint-email", dirty), [setTabDirty]);
+  const onPaintVendorsDirty = useCallback(
+    (dirty: boolean) => setTabDirty("paint-vendors", dirty),
+    [setTabDirty],
+  );
+  const onEmailSignatureDirty = useCallback(
+    (dirty: boolean) => setTabDirty("email-signature", dirty),
+    [setTabDirty],
+  );
+  const onTrackerSchedulesDirty = useCallback(
+    (dirty: boolean) => setTabDirty("tracker-schedules", dirty),
+    [setTabDirty],
+  );
   const onProjectStaffDirty = useCallback(
     (dirty: boolean) => setTabDirty("project-staff", dirty),
     [setTabDirty],
@@ -134,10 +149,12 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (roleLoading) return;
-    const tab = (location.state as { tab?: SettingsTabId } | null)?.tab;
+    const tab = (location.state as { tab?: string } | null)?.tab;
     if (!tab) return;
-    if (("adminOnly" in (SETTINGS_TABS.find((t) => t.id === tab) ?? {})) && !isAdmin) return;
-    if (SETTINGS_TABS.some((t) => t.id === tab)) setActiveTab(tab);
+    const resolvedTab = tab === "paint-email" ? "paint-vendors" : tab;
+    if (!SETTINGS_TABS.some((t) => t.id === resolvedTab)) return;
+    if (("adminOnly" in (SETTINGS_TABS.find((t) => t.id === resolvedTab) ?? {})) && !isAdmin) return;
+    setActiveTab(resolvedTab as SettingsTabId);
   }, [roleLoading, isAdmin, location.state]);
 
   function isActiveTabDirty(): boolean {
@@ -651,13 +668,34 @@ export function SettingsPage() {
       </div>
 
       <div
-        className={`card stack settings-form settings-tab-panel${activeTab === "paint-email" ? "" : " settings-tab-panel--hidden"}`}
-        aria-hidden={activeTab !== "paint-email"}
+        className={`card stack settings-form settings-tab-panel${activeTab === "paint-vendors" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "paint-vendors"}
       >
-        <PaintEmailSettingsSection
+        <PaintVendorsSettingsSection
           readOnly={sharedSettingsReadOnly}
-          onDirtyChange={onPaintEmailDirty}
-          onBindActions={(actions) => bindSectionActions("paint-email", actions)}
+          onDirtyChange={onPaintVendorsDirty}
+          onBindActions={(actions) => bindSectionActions("paint-vendors", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "email-signature" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "email-signature"}
+      >
+        <EmailSignatureSettingsSection
+          onDirtyChange={onEmailSignatureDirty}
+          onBindActions={(actions) => bindSectionActions("email-signature", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "tracker-schedules" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "tracker-schedules"}
+      >
+        <TrackerSchedulesSettingsSection
+          readOnly={sharedSettingsReadOnly}
+          onDirtyChange={onTrackerSchedulesDirty}
+          onBindActions={(actions) => bindSectionActions("tracker-schedules", actions)}
         />
       </div>
 
