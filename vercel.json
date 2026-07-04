@@ -12,9 +12,16 @@
     },
     "api/tracker-email-cron.ts": {
       "maxDuration": 120
+    },
+    "api/pin-lockout-notify.ts": {
+      "maxDuration": 30
     }
   },
   "crons": [
+    {
+      "path": "/api/pin-lockout-notify",
+      "schedule": "*/5 * * * *"
+    },
     {
       "path": "/api/tracker-email-cron?slot=daily",
       "schedule": "0 15 * * *"
