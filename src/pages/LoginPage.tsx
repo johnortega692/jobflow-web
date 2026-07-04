@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
 
@@ -82,16 +82,6 @@ export function LoginPage() {
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
         </form>
-
-        <p className="auth-switch" style={{ marginTop: 12 }}>
-          <Link to="/field" target="_blank" rel="noopener noreferrer" className="link-btn">
-            Open Field view
-          </Link>
-          <span className="muted" style={{ margin: "0 6px" }}>
-            ·
-          </span>
-          No login required
-        </p>
 
         <p className="auth-switch">
           {mode === "signin" ? (
