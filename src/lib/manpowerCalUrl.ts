@@ -1,3 +1,4 @@
+import { supabase } from "./supabase";
 import { loadFieldViewSession, type FieldViewSession } from "./fieldViewAuth";
 
 const MANPOWER_CAL_URL =
@@ -8,20 +9,37 @@ export function manpowerCalUrl(): string {
   return MANPOWER_CAL_URL;
 }
 
-/**
- * Manpower Cal URL with a one-tap handoff for Field Tools crew: passes the
- * active Field Tools session in the URL hash (never sent to the server) so
- * Manpower can exchange it for its own token without a second PIN entry.
- * Office users (no Field Tools session) get the plain URL.
- */
-export function manpowerCalHandoffUrl(session: FieldViewSession | null = loadFieldViewSession()): string {
-  const base = MANPOWER_CAL_URL.replace(/#.*$/, "").replace(/\?.*$/, "");
-  if (!session?.profileId || !session.sessionToken?.trim()) {
-    return base;
-  }
+async function createManpowerHandoffHash(session: FieldViewSession): Promise<string | null> {
+  const { data, error } = await supabase.rpc("field_tools_create_handoff_code" as never, {
+    p_caller_id: session.profileId,
+    p_session_token: session.sessionToken.trim(),
+    p_purpose: "manpower",
+  } as never);
+
+  const result = data as { ok?: boolean; code?: string } | null;
+  if (error || !result?.ok || !result.code) return null;
 
   const params = new URLSearchParams();
   params.set("fp", session.profileId);
-  params.set("ft", session.sessionToken.trim());
-  return `${base}#${params.toString()}`;
+  params.set("hc", result.code);
+  return params.toString();
+}
+
+/** Open Manpower Cal with a one-time handoff code (no session token in the URL). */
+export async function openManpowerCalHandoff(
+  session: FieldViewSession | null = loadFieldViewSession(),
+): Promise<void> {
+  const base = MANPOWER_CAL_URL.replace(/#.*$/, "").replace(/\?.*$/, "");
+  if (!session?.profileId || !session.sessionToken?.trim()) {
+    window.open(base, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  const hash = await createManpowerHandoffHash(session);
+  window.open(hash ? `${base}#${hash}` : base, "_blank", "noopener,noreferrer");
+}
+
+/** @deprecated Use openManpowerCalHandoff — kept so older imports still compile. */
+export function manpowerCalHandoffUrl(_session: FieldViewSession | null = loadFieldViewSession()): string {
+  return manpowerCalUrl();
 }

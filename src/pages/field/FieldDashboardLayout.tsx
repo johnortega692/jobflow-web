@@ -29,7 +29,7 @@ import {
   writeFieldMobileView,
 } from "../../lib/fieldViewPrefs";
 import type { ProjectForm } from "../../types/database";
-import { manpowerCalHandoffUrl } from "../../lib/manpowerCalUrl";
+import { openManpowerCalHandoff } from "../../lib/manpowerCalUrl";
 import {
   FieldDesktopIcon,
   FieldMobileIcon,
@@ -304,7 +304,9 @@ export function FieldDashboardLayout() {
     );
   }
 
-  const manpowerHref = manpowerCalHandoffUrl(fieldSession);
+  function handleOpenManpower() {
+    void openManpowerCalHandoff(fieldSession);
+  }
 
   return (
     <FieldDashboardContext.Provider
@@ -364,14 +366,13 @@ export function FieldDashboardLayout() {
             >
               Wallcovering
             </NavLink>
-            <a
-              href={manpowerHref}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={handleOpenManpower}
               className="nav-button nav-button-external"
             >
               Manpower
-            </a>
+            </button>
             <NavLink
               to="/field/paint"
               className={({ isActive }) => `nav-button${isActive ? " active" : ""}`}
@@ -419,14 +420,13 @@ export function FieldDashboardLayout() {
               >
                 Calendar
               </NavLink>
-              <a
-                href={manpowerHref}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={handleOpenManpower}
                 className="field-bottom-nav-link field-bottom-nav-link-external"
               >
                 Manpower
-              </a>
+              </button>
             </nav>
             <div className="field-bottom-nav-utils">
               <FieldViewToggles

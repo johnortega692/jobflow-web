@@ -9,3 +9,11 @@ __pycache__
 
 .vercel
 .env*
+
+# Supabase CLI local artifacts (project ref, pooler URLs — do not commit)
+supabase/.temp/
+supabase/.apply*.json
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+tsconfig.*.tsbuildinfo

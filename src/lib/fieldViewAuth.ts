@@ -77,16 +77,36 @@ export function fieldViewRpcAuthArgs(session: FieldViewSession | null): {
   };
 }
 
-function parseFieldViewHandoffHash(): Omit<FieldViewSession, "loggedInAt"> | null {
+type LegacyHandoff = {
+  kind: "legacy";
+  profileId: string;
+  sessionToken: string;
+  name: string;
+  role: string;
+};
+
+type CodeHandoff = {
+  kind: "code";
+  profileId: string;
+  code: string;
+};
+
+function parseFieldViewHandoffHash(): LegacyHandoff | CodeHandoff | null {
   const raw = window.location.hash.replace(/^#/, "").trim();
   if (!raw) return null;
 
   const params = new URLSearchParams(raw);
   const profileId = params.get("p")?.trim();
+  if (!profileId) return null;
+
+  const code = params.get("hc")?.trim();
+  if (code) return { kind: "code", profileId, code };
+
   const sessionToken = params.get("t")?.trim();
-  if (!profileId || !sessionToken) return null;
+  if (!sessionToken) return null;
 
   return {
+    kind: "legacy",
     profileId,
     sessionToken,
     name: params.get("n")?.trim() || "Field user",
@@ -111,22 +131,56 @@ async function validateFieldViewSessionAuth(session: FieldViewSession): Promise<
   return !error;
 }
 
+async function exchangeHandoffCode(profileId: string, code: string): Promise<FieldViewSession | null> {
+  const { data, error } = await supabase.rpc("field_tools_exchange_handoff_code" as never, {
+    p_caller_id: profileId,
+    p_code: code,
+  } as never);
+
+  const result = data as {
+    ok?: boolean;
+    error?: string;
+    session_token?: string;
+    profile?: { id?: string; name?: string; role?: string };
+  } | null;
+
+  if (error || !result?.ok || !result.session_token?.trim() || !result.profile?.id) {
+    return null;
+  }
+
+  return {
+    profileId: result.profile.id,
+    sessionToken: result.session_token.trim(),
+    name: result.profile.name ?? "Field user",
+    role: result.profile.role ?? "field",
+    loggedInAt: new Date().toISOString(),
+  };
+}
+
 export function clearFieldViewHandoffFromUrl(): void {
   if (!hasFieldViewHandoffHash()) return;
   stripFieldViewHandoffHash();
 }
 
-/** Accept a Field Tools session passed in the URL hash, then remove it from the address bar. */
+/** Accept a Field Tools handoff from the URL hash, then remove it from the address bar. */
 export async function applyFieldViewHandoffFromHash(): Promise<FieldViewSession | null> {
   const handoff = parseFieldViewHandoffHash();
   if (!handoff) return null;
 
   stripFieldViewHandoffHash();
 
-  const session: FieldViewSession = {
-    ...handoff,
-    loggedInAt: new Date().toISOString(),
-  };
+  let session: FieldViewSession | null =
+    handoff.kind === "code"
+      ? await exchangeHandoffCode(handoff.profileId, handoff.code)
+      : {
+          profileId: handoff.profileId,
+          sessionToken: handoff.sessionToken,
+          name: handoff.name,
+          role: handoff.role,
+          loggedInAt: new Date().toISOString(),
+        };
+
+  if (!session) return null;
 
   const valid = await validateFieldViewSessionAuth(session);
   if (!valid) return null;
