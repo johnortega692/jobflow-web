@@ -6,7 +6,7 @@ type Props = {
   subject: string;
   question: string;
   solutionText: string;
-  onApply: (question: string, solutionText?: string) => void;
+  onApply: (question: string, solutionText?: string, subject?: string) => void;
   onClose: () => void;
 };
 
@@ -20,6 +20,7 @@ export function RfiAiAssistModal({
 }: Props) {
   const hasExistingSolution = Boolean(solutionText.trim());
   const [generateSolution, setGenerateSolution] = useState(hasExistingSolution);
+  const [aiSubject, setAiSubject] = useState("");
   const [aiQuestion, setAiQuestion] = useState("");
   const [aiSolution, setAiSolution] = useState("");
   const [status, setStatus] = useState("Click Generate to refine your text with AI.");
@@ -33,6 +34,7 @@ export function RfiAiAssistModal({
     setGenerating(true);
     setHasResult(false);
     setStatusOk(false);
+    setAiSubject("");
     setAiQuestion("");
     setAiSolution("");
     setStatus("Sending to Claude…");
@@ -45,6 +47,7 @@ export function RfiAiAssistModal({
         solution_text: solutionText,
         generate_solution: generateSolution || hasExistingSolution,
       });
+      setAiSubject(result.subject);
       setAiQuestion(result.question);
       setAiSolution(result.solution_text ?? "");
       setHasResult(true);
@@ -59,14 +62,15 @@ export function RfiAiAssistModal({
   }
 
   function onApplyToForm() {
+    const subj = aiSubject.trim();
     const req = aiQuestion.trim();
     const sol = aiSolution.trim();
-    if (!req && !sol) {
+    if (!req && !sol && !subj) {
       setStatusOk(false);
       setStatus("Generate AI text first.");
       return;
     }
-    onApply(req, sol || undefined);
+    onApply(req, sol || undefined, subj || undefined);
     setStatusOk(true);
     setStatus("Applied to form.");
   }
@@ -101,6 +105,21 @@ export function RfiAiAssistModal({
         <div className="rfi-ai-col-labels">
           <span className="muted small">ORIGINAL (current form text)</span>
           <span className="small rfi-ai-accent-label">AI GENERATED (editable before applying)</span>
+        </div>
+
+        <div className="rfi-ai-columns">
+          <div className="stack">
+            <strong className="small">SUBJECT</strong>
+            <input readOnly className="rfi-ai-readonly" value={subject} placeholder="(empty)" />
+          </div>
+          <div className="stack">
+            <strong className="small">SUBJECT</strong>
+            <input
+              value={aiSubject}
+              onChange={(e) => setAiSubject(e.target.value)}
+              placeholder="AI suggested subject will appear here…"
+            />
+          </div>
         </div>
 
         <div className="rfi-ai-columns">

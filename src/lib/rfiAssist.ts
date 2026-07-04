@@ -7,6 +7,7 @@ export type RfiAssistRequest = {
 };
 
 export type RfiAssistResult = {
+  subject: string;
   question: string;
   solution_text?: string;
 };

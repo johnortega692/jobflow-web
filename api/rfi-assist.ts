@@ -9,6 +9,7 @@ type RfiAssistRequest = {
 };
 
 type RfiAssistResult = {
+  subject: string;
   question: string;
   solution_text?: string;
 };
@@ -28,12 +29,17 @@ type VercelResponse = {
 
 function buildPrompt(body: RfiAssistRequest, wantSolution: boolean): string {
   const proj = body.project_name?.trim() || "Unknown";
-  const subj = body.subject?.trim() || "Unknown";
+  const existingSubj = body.subject?.trim() ?? "";
   const existingReq = body.question?.trim() ?? "";
   const existingSol = body.solution_text?.trim() ?? "";
 
+  const subjectInstruction = existingSubj
+    ? `Current subject: "${existingSubj}" — suggest a concise refined subject line (under 80 characters).`
+    : "Suggest a concise RFI subject line (under 80 characters) that summarizes the request.";
+
   let solutionInstruction = "";
-  let formatInstruction = "Respond with only the request text. No labels or headers.";
+  let formatInstruction =
+    "Respond in this exact format:\nSUBJECT:\n[subject line]\n\nREQUEST:\n[request text]";
 
   if (wantSolution) {
     if (existingSol) {
@@ -45,18 +51,19 @@ The contractor already has this proposed solution — refine it to match the rew
 Also write a PROPOSED SOLUTION — a brief contractor recommendation based on the request above.`;
     }
     formatInstruction =
-      "Respond in this exact format:\nREQUEST:\n[request text]\n\nSOLUTION:\n[solution text]";
+      "Respond in this exact format:\nSUBJECT:\n[subject line]\n\nREQUEST:\n[request text]\n\nSOLUTION:\n[solution text]";
   }
 
   return `You are helping a painting/drywall subcontractor write RFI documents on commercial construction projects.
 
 Project: ${proj}
-Subject: ${subj}
 
 The contractor has entered this request:
 ---
 ${existingReq}
 ---
+
+${subjectInstruction}
 
 Rewrite this as the REQUEST section of an RFI. Use professional construction industry language — clear, concise, and complete. Write 2–4 sentences. State what the drawings or finish schedule show, describe the conflict or question, and ask for a specific confirmation or direction. Do not use overly legal phrases. Do not over-simplify. Reference drawing or spec numbers if mentioned.${solutionInstruction}
 
@@ -64,15 +71,34 @@ ${formatInstruction}`;
 }
 
 function parseRfiAssistResponse(raw: string, wantSolution: boolean): RfiAssistResult {
-  const result = raw.trim();
-  if (wantSolution && result.includes("SOLUTION:")) {
-    const parts = result.split("SOLUTION:", 2);
+  let text = raw.trim();
+  let subject = "";
+
+  if (/^SUBJECT:/im.test(text)) {
+    const afterSubject = text.replace(/^SUBJECT:\s*/im, "");
+    const nextLabel = afterSubject.search(/\n(?:REQUEST|SOLUTION):/i);
+    if (nextLabel >= 0) {
+      subject = afterSubject.slice(0, nextLabel).trim();
+      text = afterSubject.slice(nextLabel + 1).trim();
+    } else {
+      subject = afterSubject.trim();
+      text = "";
+    }
+  }
+
+  if (wantSolution && /SOLUTION:/i.test(text)) {
+    const parts = text.split(/SOLUTION:/i, 2);
     return {
-      question: parts[0]!.replace("REQUEST:", "").trim(),
+      subject,
+      question: parts[0]!.replace(/^REQUEST:\s*/i, "").trim(),
       solution_text: parts[1]?.trim() || undefined,
     };
   }
-  return { question: result.replace("REQUEST:", "").trim() };
+
+  return {
+    subject,
+    question: text.replace(/^REQUEST:\s*/i, "").trim(),
+  };
 }
 
 function parseBody(raw: unknown): RfiAssistRequest {

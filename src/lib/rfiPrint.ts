@@ -89,6 +89,32 @@ export type RfiPrintInput = {
   branding: PrintBranding;
 };
 
+export function rfiLetterheadContactLines(branding: PrintBranding): { address: string; phoneLicense: string } {
+  const address = branding.companyAddress
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(", ");
+  const phone = branding.companyPhone.trim();
+  const license = branding.companyLicense.trim();
+  const meta: string[] = [];
+  if (phone) meta.push(/^office\s*:/i.test(phone) ? phone : `Office: ${phone}`);
+  if (license) {
+    if (/^license\s*#/i.test(license) || /^license/i.test(license)) meta.push(license);
+    else meta.push(`License #${license.replace(/^#/, "")}`);
+  }
+  return { address, phoneLicense: meta.join(" | ") };
+}
+
+function rfiHeaderContactHtml(branding: PrintBranding): string {
+  const { address, phoneLicense } = rfiLetterheadContactLines(branding);
+  const lines: string[] = [];
+  if (address) lines.push(`<span class="co-addr">${esc(address)}</span>`);
+  if (phoneLicense) lines.push(`<span class="co-addr">${esc(phoneLicense)}</span>`);
+  return lines.join("<br/>");
+}
+
 export function buildRfiPrintHtml(
   { project, rfi_number, subject, form, branding }: RfiPrintInput,
   saveFilename?: string,
@@ -124,12 +150,12 @@ export function buildRfiPrintHtml(
       <td class="hdr-meta-cell"><span class="meta-lbl">RFI #:</span><span class="meta-val" style="font-weight:bold;font-size:12pt;">${esc(rfi_number)}</span></td>
     </tr>
     <tr>
-      <td class="hdr-center">${branding.companyContactLine ? `<span class="co-addr">${esc(branding.companyContactLine)}</span>` : branding.companyAddress ? `<span class="co-addr">${esc(branding.companyAddress)}</span>` : ""}</td>
+      <td class="hdr-center">${rfiHeaderContactHtml(branding)}</td>
       <td class="hdr-meta-cell"><span class="meta-lbl">Date:</span><span class="meta-val">${esc(form.rfi_date)}</span></td>
     </tr>
     <tr>
       <td class="hdr-center"></td>
-      <td class="hdr-meta-cell">${branding.companyPhone ? `<span class="meta-lbl">Phone:</span><span class="meta-val">${esc(branding.companyPhone)}</span>` : ""}</td>
+      <td class="hdr-meta-cell"></td>
     </tr>
   </table>
   <table class="form-block">

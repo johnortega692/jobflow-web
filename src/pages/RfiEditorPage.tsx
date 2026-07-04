@@ -570,9 +570,10 @@ export function RfiEditorPage() {
           subject={subject}
           question={form.question}
           solutionText={form.solution_text}
-          onApply={(q, sol) => {
+          onApply={(q, sol, subj) => {
             setField("question", q);
             if (sol) setField("solution_text", sol);
+            if (subj) setSubject(subj);
             setAiAssistOpen(false);
           }}
           onClose={() => setAiAssistOpen(false)}

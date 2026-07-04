@@ -18,6 +18,7 @@ import {
   RFI_REASON_LABELS,
 } from "./rfiFormLabels";
 import type { RfiPrintInput } from "./rfiPrint";
+import { rfiLetterheadContactLines } from "./rfiPrint";
 import { pdfSignerDisplayName } from "./printCore";
 
 const M = 18;
@@ -151,6 +152,24 @@ function formatRfiDate(value: string): string {
   return formatSubmittalDisplayDate(trimmed);
 }
 
+function drawCenteredWrappedInRegion(
+  page: PDFPage,
+  text: string,
+  left: number,
+  width: number,
+  topBaselineY: number,
+  font: PDFFont,
+  size: number,
+): number {
+  const lines = wrapLines(text, font, size, width - 4);
+  let baselineY = topBaselineY;
+  for (const line of lines) {
+    drawCenteredInRegion(page, line, left, width, baselineY, font, size);
+    baselineY -= size + 3;
+  }
+  return baselineY;
+}
+
 export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array> {
   const { project, rfi_number, subject, form, branding } = input;
   const doc = await PDFDocument.create();
@@ -168,7 +187,6 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
 
   let y = LETTER_HEIGHT - M;
 
-  const headerBottom = y - 88;
   if (logo) {
     const maxH = 78;
     const maxW = logoColW - 8;
@@ -191,17 +209,21 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
   drawCenteredInRegion(page, branding.companyName, centerX, centerColW, rowY, bold, 10);
   drawLabelValue(page, metaX, rowY, "RFI #:", rfi_number, font, bold, 36, metaColW - 40);
   rowY -= 13;
-  const contactLine = (branding.companyContactLine || branding.companyAddress || "").trim();
-  if (contactLine) {
-    drawCenteredInRegion(page, contactLine, centerX, centerColW, rowY, font, 9);
+
+  const { address, phoneLicense } = rfiLetterheadContactLines(branding);
+  const dateRowY = rowY;
+  if (address) {
+    rowY = drawCenteredWrappedInRegion(page, address, centerX, centerColW, rowY, font, 9) + 3;
+  } else {
+    rowY -= 11;
   }
-  drawLabelValue(page, metaX, rowY, "Date:", formatRfiDate(form.rfi_date), font, bold, 36, metaColW - 40);
-  rowY -= 13;
-  if (branding.companyPhone.trim()) {
-    drawLabelValue(page, metaX, rowY, "Phone:", branding.companyPhone, font, bold, 36, metaColW - 40);
+  drawLabelValue(page, metaX, dateRowY, "Date:", formatRfiDate(form.rfi_date), font, bold, 36, metaColW - 40);
+  if (phoneLicense) {
+    drawCenteredInRegion(page, phoneLicense, centerX, centerColW, rowY, font, 9);
+    rowY -= 11;
   }
 
-  y = headerBottom - 6;
+  y = rowY - 6;
 
   const formTop = y;
   const formLeftW = contentW / 2;
