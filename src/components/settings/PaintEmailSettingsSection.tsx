@@ -268,7 +268,7 @@ function ScheduledEmailSection({
           checked={schedule.enabled}
           onChange={(e) => patchSchedule({ enabled: e.target.checked })}
         />
-        Enable automatic tracker emails for my account
+        Enable automatic tracker emails (company-wide)
       </label>
       <label>
         Timezone for &quot;due today&quot; follow-ups
