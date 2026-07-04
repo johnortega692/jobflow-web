@@ -28,15 +28,24 @@ async function createManpowerHandoffHash(session: FieldViewSession): Promise<str
 /** Open Manpower Cal with a one-time handoff code (no session token in the URL). */
 export async function openManpowerCalHandoff(
   session: FieldViewSession | null = loadFieldViewSession(),
+  onError?: (message: string) => void,
 ): Promise<void> {
   const base = MANPOWER_CAL_URL.replace(/#.*$/, "").replace(/\?.*$/, "");
-  if (!session?.profileId || !session.sessionToken?.trim()) {
+  const active = session ?? loadFieldViewSession();
+  if (!active?.profileId || !active.sessionToken?.trim()) {
+    onError?.("Sign in to Field View first, then open Manpower.");
     window.open(base, "_blank", "noopener,noreferrer");
     return;
   }
 
-  const hash = await createManpowerHandoffHash(session);
-  window.open(hash ? `${base}#${hash}` : base, "_blank", "noopener,noreferrer");
+  const hash = await createManpowerHandoffHash(active);
+  if (!hash) {
+    onError?.("Could not transfer your sign-in to Manpower. Enter your PIN or try again.");
+    window.open(base, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  window.open(`${base}#${hash}`, "_blank", "noopener,noreferrer");
 }
 
 /** @deprecated Use openManpowerCalHandoff — kept so older imports still compile. */

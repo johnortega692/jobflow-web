@@ -169,8 +169,10 @@ export function FieldDashboardLayout() {
   const { user, signOut } = useAuth();
   const { branding, profile } = useLetterhead();
   const location = useLocation();
-  const [fieldSession, setFieldSession] = useState<FieldViewSession | null>(() => loadFieldViewSession());
-  const [handoffBusy, setHandoffBusy] = useState(() => !loadFieldViewSession() && hasFieldViewHandoffHash());
+  const [fieldSession, setFieldSession] = useState<FieldViewSession | null>(() =>
+    hasFieldViewHandoffHash() ? null : loadFieldViewSession(),
+  );
+  const [handoffBusy, setHandoffBusy] = useState(() => hasFieldViewHandoffHash());
   const [projects, setProjects] = useState<ProjectForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -257,9 +259,10 @@ export function FieldDashboardLayout() {
 
   useEffect(() => {
     if (!user) return;
+    if (hasFieldViewHandoffHash() || handoffBusy) return;
     clearFieldViewSession();
     setFieldSession(null);
-  }, [user]);
+  }, [user, handoffBusy]);
 
   useEffect(() => {
     if (!fieldSession) return;
@@ -267,7 +270,7 @@ export function FieldDashboardLayout() {
   }, [fieldSession]);
 
   useEffect(() => {
-    if (user || fieldSession || !handoffBusy) return;
+    if (fieldSession || !handoffBusy) return;
     let cancelled = false;
     void applyFieldViewHandoffFromHash().then((session) => {
       if (cancelled) return;
@@ -277,7 +280,7 @@ export function FieldDashboardLayout() {
     return () => {
       cancelled = true;
     };
-  }, [fieldSession, handoffBusy, user]);
+  }, [fieldSession, handoffBusy]);
 
   if (handoffBusy) {
     return (
@@ -305,7 +308,7 @@ export function FieldDashboardLayout() {
   }
 
   function handleOpenManpower() {
-    void openManpowerCalHandoff(fieldSession);
+    void openManpowerCalHandoff(fieldSession ?? loadFieldViewSession(), toast);
   }
 
   return (
