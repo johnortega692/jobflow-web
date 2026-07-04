@@ -1,4 +1,5 @@
 import { isSupabaseAdminConfigured } from "../src/lib/supabaseAdmin";
+import { runPinLockoutNotify } from "../src/lib/pinLockoutNotifyCore";
 import { runTrackerEmailCron, type CronRunResult } from "../src/lib/trackerEmailCronCore";
 import type { TrackerEmailCronSlot } from "../src/lib/trackerEmailSchedule";
 
@@ -53,7 +54,19 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const slot = parseSlot(req);
     const result: CronRunResult = await runTrackerEmailCron(slot);
-    return res.status(200).json({ ok: true, ...result });
+    let pinLockout: Awaited<ReturnType<typeof runPinLockoutNotify>> | undefined;
+    if (slot === "daily") {
+      try {
+        pinLockout = await runPinLockoutNotify();
+      } catch (e) {
+        return res.status(500).json({
+          ok: false,
+          error: e instanceof Error ? e.message : "PIN lockout notify failed",
+          tracker: result,
+        });
+      }
+    }
+    return res.status(200).json({ ok: true, ...result, pinLockout });
   } catch (e) {
     return res.status(500).json({
       ok: false,

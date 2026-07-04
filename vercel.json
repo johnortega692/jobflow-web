@@ -19,10 +19,6 @@
   },
   "crons": [
     {
-      "path": "/api/pin-lockout-notify",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/tracker-email-cron?slot=daily",
       "schedule": "0 15 * * *"
     },
