@@ -10,6 +10,7 @@ import {
   LETTER_WIDTH,
   TEXT,
   truncate,
+  wrapLines,
 } from "./pdfDrawCore";
 import {
   RFI_ACTION_LABELS,
@@ -91,18 +92,29 @@ function drawLinedBox(
   text: string,
   font: PDFFont,
 ): number {
-  const rawLines = text.trim() ? text.replace(/\r\n/g, "\n").split("\n") : [];
+  const maxTextWidth = width - 8;
+  const wrappedLines: string[] = [];
+  if (text.trim()) {
+    for (const paragraph of text.replace(/\r\n/g, "\n").split("\n")) {
+      if (!paragraph.trim()) {
+        wrappedLines.push("");
+        continue;
+      }
+      wrappedLines.push(...wrapLines(paragraph, font, FS, maxTextWidth));
+    }
+  }
+
   const minLines = Math.max(2, Math.ceil(minHeight / LINE_H));
-  const totalLines = Math.max(rawLines.length + 2, minLines);
+  const totalLines = Math.max(wrappedLines.length + 2, minLines);
   const height = totalLines * LINE_H + 4;
   const bottomY = topY - height;
   page.drawRectangle({ x, y: bottomY, width, height, borderColor: TEXT, borderWidth: 1 });
 
   let ly = topY - 4 - FS * 0.85;
   for (let i = 0; i < totalLines; i += 1) {
-    const line = rawLines[i]?.trim() ?? "";
+    const line = wrappedLines[i] ?? "";
     if (line) {
-      page.drawText(truncate(line, font, FS, width - 8), { x: x + 4, y: ly, size: FS, font, color: TEXT });
+      page.drawText(line, { x: x + 4, y: ly, size: FS, font, color: TEXT });
     }
     ly -= LINE_H;
   }
