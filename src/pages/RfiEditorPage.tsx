@@ -14,7 +14,7 @@ import {
   type RfiWorkflowStatus,
 } from "../lib/rfiStatus";
 import { supabase } from "../lib/supabase";
-import { printRfi } from "../lib/rfiPrint";
+import { downloadRfiPdf } from "../lib/rfiPdf";
 import { rfiFilename } from "../lib/pdfFilenames";
 import { applyRfiProfileDefaults } from "../lib/userProfile";
 import {
@@ -168,17 +168,17 @@ export function RfiEditorPage() {
     }
   }
 
-  function onPrintPdf() {
+  async function onDownloadPdf() {
     if (!project) return;
     if (!subject.trim()) {
-      setError("Enter a subject before printing.");
+      setError("Enter a subject before downloading the PDF.");
       return;
     }
     setPrinting(true);
     setError(null);
     try {
       const printProject = projectPrintInfoForContract(project, form.contract);
-      printRfi({
+      await downloadRfiPdf({
         project: {
           job_number: printProject.job_number,
           job_name: printProject.job_name,
@@ -194,7 +194,7 @@ export function RfiEditorPage() {
         branding,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Print failed");
+      setError(e instanceof Error ? e.message : "PDF download failed");
     } finally {
       setPrinting(false);
     }
@@ -291,9 +291,9 @@ export function RfiEditorPage() {
             type="button"
             className="btn btn-secondary"
             disabled={printing || saving}
-            onClick={onPrintPdf}
+            onClick={() => void onDownloadPdf()}
           >
-            {printing ? "Opening…" : "Print / Save PDF"}
+            {printing ? "Generating…" : "Download PDF"}
           </button>
           <button
             type="submit"
