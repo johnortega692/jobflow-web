@@ -29,7 +29,7 @@ import {
   writeFieldMobileView,
 } from "../../lib/fieldViewPrefs";
 import type { ProjectForm } from "../../types/database";
-import { manpowerCalUrl } from "../../lib/manpowerCalUrl";
+import { manpowerCalHandoffUrl } from "../../lib/manpowerCalUrl";
 import {
   FieldDesktopIcon,
   FieldMobileIcon,
@@ -304,6 +304,8 @@ export function FieldDashboardLayout() {
     );
   }
 
+  const manpowerHref = manpowerCalHandoffUrl(fieldSession);
+
   return (
     <FieldDashboardContext.Provider
       value={{
@@ -363,7 +365,7 @@ export function FieldDashboardLayout() {
               Wallcovering
             </NavLink>
             <a
-              href={manpowerCalUrl()}
+              href={manpowerHref}
               target="_blank"
               rel="noopener noreferrer"
               className="nav-button nav-button-external"
@@ -418,7 +420,7 @@ export function FieldDashboardLayout() {
                 Calendar
               </NavLink>
               <a
-                href={manpowerCalUrl()}
+                href={manpowerHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="field-bottom-nav-link field-bottom-nav-link-external"
