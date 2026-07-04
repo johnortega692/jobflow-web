@@ -16,6 +16,7 @@ import {
   applyFieldViewHandoffFromHash,
   clearFieldViewSession,
   clearFieldViewHandoffFromUrl,
+  clearLegacyFieldViewHandoffHash,
   hasFieldViewHandoffHash,
   loadFieldViewSession,
   loginFieldViewWithPin,
@@ -169,9 +170,10 @@ export function FieldDashboardLayout() {
   const { user, signOut } = useAuth();
   const { branding, profile } = useLetterhead();
   const location = useLocation();
-  const [fieldSession, setFieldSession] = useState<FieldViewSession | null>(() =>
-    hasFieldViewHandoffHash() ? null : loadFieldViewSession(),
-  );
+  const [fieldSession, setFieldSession] = useState<FieldViewSession | null>(() => {
+    clearLegacyFieldViewHandoffHash();
+    return hasFieldViewHandoffHash() ? null : loadFieldViewSession();
+  });
   const [handoffBusy, setHandoffBusy] = useState(() => hasFieldViewHandoffHash());
   const [projects, setProjects] = useState<ProjectForm[]>([]);
   const [loading, setLoading] = useState(true);

@@ -77,41 +77,34 @@ export function fieldViewRpcAuthArgs(session: FieldViewSession | null): {
   };
 }
 
-type LegacyHandoff = {
-  kind: "legacy";
-  profileId: string;
-  sessionToken: string;
-  name: string;
-  role: string;
-};
-
 type CodeHandoff = {
-  kind: "code";
   profileId: string;
   code: string;
 };
 
-function parseFieldViewHandoffHash(): LegacyHandoff | CodeHandoff | null {
+function parseFieldViewHandoffHash(): CodeHandoff | null {
   const raw = window.location.hash.replace(/^#/, "").trim();
   if (!raw) return null;
 
   const params = new URLSearchParams(raw);
   const profileId = params.get("p")?.trim();
-  if (!profileId) return null;
-
   const code = params.get("hc")?.trim();
-  if (code) return { kind: "code", profileId, code };
+  if (!profileId || !code) return null;
 
-  const sessionToken = params.get("t")?.trim();
-  if (!sessionToken) return null;
+  return { profileId, code };
+}
 
-  return {
-    kind: "legacy",
-    profileId,
-    sessionToken,
-    name: params.get("n")?.trim() || "Field user",
-    role: params.get("r")?.trim() || "field",
-  };
+/** Remove expired legacy handoff hashes (#p=…&t=…) from the address bar. */
+export function clearLegacyFieldViewHandoffHash(): void {
+  const raw = window.location.hash.replace(/^#/, "").trim();
+  if (!raw) return;
+
+  const params = new URLSearchParams(raw);
+  if (params.get("hc")?.trim()) return;
+  if (params.get("p") || params.get("t")) {
+    const { pathname, search } = window.location;
+    window.history.replaceState(null, "", `${pathname}${search}`);
+  }
 }
 
 export function hasFieldViewHandoffHash(): boolean {
@@ -162,24 +155,16 @@ export function clearFieldViewHandoffFromUrl(): void {
   stripFieldViewHandoffHash();
 }
 
-/** Accept a Field Tools handoff from the URL hash, then remove it from the address bar. */
+/** Accept a Field Tools handoff from the URL hash (#p=…&hc=…), then remove it from the address bar. */
 export async function applyFieldViewHandoffFromHash(): Promise<FieldViewSession | null> {
+  clearLegacyFieldViewHandoffHash();
+
   const handoff = parseFieldViewHandoffHash();
   if (!handoff) return null;
 
   stripFieldViewHandoffHash();
 
-  let session: FieldViewSession | null =
-    handoff.kind === "code"
-      ? await exchangeHandoffCode(handoff.profileId, handoff.code)
-      : {
-          profileId: handoff.profileId,
-          sessionToken: handoff.sessionToken,
-          name: handoff.name,
-          role: handoff.role,
-          loggedInAt: new Date().toISOString(),
-        };
-
+  const session = await exchangeHandoffCode(handoff.profileId, handoff.code);
   if (!session) return null;
 
   const valid = await validateFieldViewSessionAuth(session);
