@@ -76,3 +76,61 @@ export function fieldViewRpcAuthArgs(session: FieldViewSession | null): {
     p_session_token: session.sessionToken,
   };
 }
+
+function parseFieldViewHandoffHash(): Omit<FieldViewSession, "loggedInAt"> | null {
+  const raw = window.location.hash.replace(/^#/, "").trim();
+  if (!raw) return null;
+
+  const params = new URLSearchParams(raw);
+  const profileId = params.get("p")?.trim();
+  const sessionToken = params.get("t")?.trim();
+  if (!profileId || !sessionToken) return null;
+
+  return {
+    profileId,
+    sessionToken,
+    name: params.get("n")?.trim() || "Field user",
+    role: params.get("r")?.trim() || "field",
+  };
+}
+
+export function hasFieldViewHandoffHash(): boolean {
+  return parseFieldViewHandoffHash() !== null;
+}
+
+function stripFieldViewHandoffHash(): void {
+  const { pathname, search } = window.location;
+  window.history.replaceState(null, "", `${pathname}${search}`);
+}
+
+async function validateFieldViewSessionAuth(session: FieldViewSession): Promise<boolean> {
+  const { error } = await supabase.rpc(
+    "field_view_company_name" as never,
+    fieldViewRpcAuthArgs(session) as never,
+  );
+  return !error;
+}
+
+export function clearFieldViewHandoffFromUrl(): void {
+  if (!hasFieldViewHandoffHash()) return;
+  stripFieldViewHandoffHash();
+}
+
+/** Accept a Field Tools session passed in the URL hash, then remove it from the address bar. */
+export async function applyFieldViewHandoffFromHash(): Promise<FieldViewSession | null> {
+  const handoff = parseFieldViewHandoffHash();
+  if (!handoff) return null;
+
+  stripFieldViewHandoffHash();
+
+  const session: FieldViewSession = {
+    ...handoff,
+    loggedInAt: new Date().toISOString(),
+  };
+
+  const valid = await validateFieldViewSessionAuth(session);
+  if (!valid) return null;
+
+  saveFieldViewSession(session);
+  return session;
+}

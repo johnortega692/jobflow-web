@@ -13,7 +13,10 @@ import {
 } from "../../lib/fieldTrackerProject";
 import { resolveDisplayCompanyName } from "../../lib/displayCompanyName";
 import {
+  applyFieldViewHandoffFromHash,
   clearFieldViewSession,
+  clearFieldViewHandoffFromUrl,
+  hasFieldViewHandoffHash,
   loadFieldViewSession,
   loginFieldViewWithPin,
   logoutFieldView,
@@ -167,6 +170,7 @@ export function FieldDashboardLayout() {
   const { branding, profile } = useLetterhead();
   const location = useLocation();
   const [fieldSession, setFieldSession] = useState<FieldViewSession | null>(() => loadFieldViewSession());
+  const [handoffBusy, setHandoffBusy] = useState(() => !loadFieldViewSession() && hasFieldViewHandoffHash());
   const [projects, setProjects] = useState<ProjectForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -256,6 +260,38 @@ export function FieldDashboardLayout() {
     clearFieldViewSession();
     setFieldSession(null);
   }, [user]);
+
+  useEffect(() => {
+    if (!fieldSession) return;
+    clearFieldViewHandoffFromUrl();
+  }, [fieldSession]);
+
+  useEffect(() => {
+    if (user || fieldSession || !handoffBusy) return;
+    let cancelled = false;
+    void applyFieldViewHandoffFromHash().then((session) => {
+      if (cancelled) return;
+      if (session) setFieldSession(session);
+      setHandoffBusy(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fieldSession, handoffBusy, user]);
+
+  if (handoffBusy) {
+    return (
+      <div className={`field-dashboard${darkMode ? " field-dashboard--dark" : ""}`}>
+        <div className="field-login-shell">
+          <div className="field-login-card">
+            <div className="company-name">{companyName}</div>
+            <h1>Field View</h1>
+            <p>Signing you in from Field Tools…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user && !fieldSession) {
     return (
