@@ -84,7 +84,7 @@ export function GoogleSheetsSettingsSection({ onDirtyChange, onBindActions }: Se
         <h2>Google Apps Script URLs</h2>
         <p className="muted small">
           Shared for everyone in JobFlow. Deploy each script with <strong>Anyone</strong> access.
-          Used by the startup checklist, BrushOuts, and Gmail send via the Dashboard web app.
+          Dashboard URL powers scheduled tracker emails; Field Request Order URL powers Field Tools order emails.
         </p>
         {GOOGLE_URL_FIELDS.map(({ key, title, hint }) => (
           <label key={key}>

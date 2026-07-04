@@ -2,7 +2,6 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { createExtractPaintMiddleware } from "./server/extractPaintDev";
 import { createRfiAssistMiddleware } from "./server/rfiAssistDev";
-import { createBrushoutsMiddleware } from "./server/brushoutsDev";
 import { createGoogleSheetsMiddleware } from "./server/googleSheetsDev";
 import { createSendVendorEmailMiddleware } from "./server/sendVendorEmailDev";
 
@@ -32,7 +31,6 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use(createExtractPaintMiddleware());
           server.middlewares.use(createRfiAssistMiddleware());
-          server.middlewares.use(createBrushoutsMiddleware());
           server.middlewares.use(createGoogleSheetsMiddleware());
           server.middlewares.use(createSendVendorEmailMiddleware());
         },

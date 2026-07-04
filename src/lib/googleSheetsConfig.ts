@@ -1,31 +1,20 @@
-export type GoogleUrlKey =
-  | "paint_tracker"
-  | "brushouts_tracker"
-  | "field_request_order";
+export type GoogleUrlKey = "paint_tracker" | "field_request_order";
 
 export const GOOGLE_URL_FIELDS: { key: GoogleUrlKey; title: string; hint: string }[] = [
   {
     key: "paint_tracker",
     title: "Dashboard Web App URL",
-    hint: "John's Dashboard web app — send vendor/submittal emails via Gmail. Deploy as Execute as: Me; run Authorize vendor email once in the sheet menu.",
-  },
-  {
-    key: "brushouts_tracker",
-    title: "BrushOuts Tracker URL (legacy)",
-    hint: "Deprecated — approved brush-outs and PM/Super staff lists live in Supabase (Settings → Project staff).",
+    hint: "Gmail send for paint tracker notifications, follow-up/install reminders, and weekly digests. Deploy as Execute as: Me.",
   },
   {
     key: "field_request_order",
-    title: "Field Request Order URL (legacy)",
-    hint: "Deprecated — PM/Super lists come from Settings → Project staff (Supabase). GAS is only needed for paint vendor email if configured.",
+    title: "Field Request Order URL",
+    hint: "Field Tools order emails with PDF attachments (?action=sendOrderEmail). Must match Supabase edge secret GAS_SEND_EMAIL_URL.",
   },
 ];
 
 export const DEFAULT_GOOGLE_URLS: Record<GoogleUrlKey, string> = {
-  paint_tracker:
-    "https://script.google.com/macros/s/AKfycbzwBK28rK9w_WGKc87s0FI8V-BFVQ-NljJLliD0M6vZR-58wClc2cIC30-1_qSWmU9h4g/exec",
-  brushouts_tracker:
-    "https://script.google.com/macros/s/AKfycbzwBK28rK9w_WGKc87s0FI8V-BFVQ-NljJLliD0M6vZR-58wClc2cIC30-1_qSWmU9h4g/exec",
+  paint_tracker: "",
   field_request_order: "",
 };
 
