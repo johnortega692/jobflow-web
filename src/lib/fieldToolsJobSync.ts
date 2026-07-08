@@ -11,7 +11,11 @@ function fieldToolsSuperintendent(project: ProjectForm): string {
   return icbiSuperintendent(project.jobInfo);
 }
 
-export async function upsertFieldToolsJob(project: ProjectForm, identity: TradeJobIdentity): Promise<void> {
+export async function upsertFieldToolsJob(
+  project: ProjectForm,
+  identity: TradeJobIdentity,
+  projectId?: string,
+): Promise<void> {
   const jobNumber = identity.jobNumber.trim();
   if (!jobNumber) throw new Error("Job number is required.");
 
@@ -20,12 +24,16 @@ export async function upsertFieldToolsJob(project: ProjectForm, identity: TradeJ
     p_job_name: identity.jobName.trim(),
     p_address: jobFullAddressOneLine(project, project.jobInfo),
     p_superintendent: fieldToolsSuperintendent(project),
+    p_project_id: projectId ?? null,
   } as never);
 
   if (error) throw new Error(error.message);
 }
 
-export async function syncProjectTradeJobsToFieldTools(project: ProjectForm): Promise<FieldToolsJobSyncRow[]> {
+export async function syncProjectTradeJobsToFieldTools(
+  project: ProjectForm,
+  projectId?: string,
+): Promise<FieldToolsJobSyncRow[]> {
   const identities = projectTradeJobIdentities(project);
   if (!identities.length) {
     return [
@@ -44,7 +52,7 @@ export async function syncProjectTradeJobsToFieldTools(project: ProjectForm): Pr
   const rows: FieldToolsJobSyncRow[] = [];
   for (const identity of identities) {
     try {
-      await upsertFieldToolsJob(project, identity);
+      await upsertFieldToolsJob(project, identity, projectId);
       rows.push({
         ...identity,
         ok: true,

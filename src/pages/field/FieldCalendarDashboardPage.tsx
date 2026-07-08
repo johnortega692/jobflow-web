@@ -7,6 +7,7 @@ import {
   type FieldCalendarEvent,
 } from "../../lib/fieldCalendarEvents";
 import { FieldLoadingPanel, useFieldDashboard } from "./FieldDashboardLayout";
+import { useFieldCompactLayout } from "../../lib/useMediaQuery";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MAX_VISIBLE_EVENTS = 3;
@@ -26,6 +27,7 @@ function EventChip({ event }: { event: FieldCalendarEvent }) {
 
 export function FieldCalendarDashboardPage() {
   const { paintRows, wcRows, loading, mobileView } = useFieldDashboard();
+  const compactLayout = useFieldCompactLayout(mobileView);
   const [viewMonth, setViewMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
@@ -74,7 +76,7 @@ export function FieldCalendarDashboardPage() {
         </div>
       </div>
 
-      <div className={`field-cal-body${mobileView ? " field-cal-body--mobile" : ""}`}>
+      <div className={`field-cal-body${compactLayout ? " field-cal-body--mobile" : ""}`}>
         <div className="field-cal-grid-wrap">
           <div className="field-cal-weekdays">
             {WEEKDAYS.map((day) => (

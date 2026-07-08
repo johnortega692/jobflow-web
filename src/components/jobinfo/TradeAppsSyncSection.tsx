@@ -1,6 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { syncProjectTradeJobsToFieldTools } from "../../lib/fieldToolsJobSync";
 import { projectTradeJobIdentities } from "../../lib/jobInfo";
+import {
+  getProjectFieldAppVisibility,
+  setProjectFieldAppVisibility,
+} from "../../lib/projectFieldAppVisibility";
 import { registerProjectTradeJobsInManpower } from "../../lib/registerProjectTradeJobs";
 import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSync";
 import type { ProjectForm } from "../../types/database";
@@ -14,9 +18,29 @@ type Props = {
 
 export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
   const identities = useMemo(() => projectTradeJobIdentities(project), [project]);
-  const [busy, setBusy] = useState<"field" | "manpower" | "both" | null>(null);
+  const [busy, setBusy] = useState<"field" | "manpower" | "both" | "visibility" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hiddenFromFieldApps, setHiddenFromFieldApps] = useState(false);
+  const [visibilityLoaded, setVisibilityLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setVisibilityLoaded(false);
+    void (async () => {
+      try {
+        const hidden = await getProjectFieldAppVisibility(projectId);
+        if (!cancelled) setHiddenFromFieldApps(hidden);
+      } catch {
+        if (!cancelled) setHiddenFromFieldApps(false);
+      } finally {
+        if (!cancelled) setVisibilityLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   async function runSync(mode: "both" | "field" | "manpower") {
     setBusy(mode);
@@ -31,16 +55,21 @@ export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
       }
 
       if (mode === "field") {
-        const rows = await syncProjectTradeJobsToFieldTools(project);
+        const rows = await syncProjectTradeJobsToFieldTools(project, projectId);
         const failed = rows.filter((r) => !r.ok);
         if (failed.length) setError(failed.map((r) => `${r.contractLabel}: ${r.message}`).join(" "));
         else {
           setStatus(
             rows.length === 1
-              ? `Field Tools: ${rows[0]!.jobNumber} registered.`
-              : `Field Tools: ${rows.map((r) => r.jobNumber).join(", ")} registered.`,
+              ? `Field Tools: ${rows[0]!.jobNumber}${hiddenFromFieldApps ? " (hidden)" : " registered"}.`
+              : `Field Tools: ${rows.map((r) => r.jobNumber).join(", ")}${hiddenFromFieldApps ? " (hidden)" : " registered"}.`,
           );
         }
+        return;
+      }
+
+      if (hiddenFromFieldApps) {
+        setStatus("Manpower sync skipped — project is hidden from Field Tools and Manpower Cal.");
         return;
       }
 
@@ -65,6 +94,25 @@ export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
     }
   }
 
+  async function onToggleVisibility(nextHidden: boolean) {
+    setBusy("visibility");
+    setError(null);
+    setStatus(null);
+    try {
+      await setProjectFieldAppVisibility(projectId, nextHidden);
+      setHiddenFromFieldApps(nextHidden);
+      setStatus(
+        nextHidden
+          ? "Project hidden from Field Tools ordering and Manpower Cal."
+          : "Project visible in Field Tools ordering and Manpower Cal.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update visibility.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!identities.length) return null;
 
   const ready = fieldAppsSyncReady(project);
@@ -76,6 +124,18 @@ export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
         super, address, and job # are filled, saving job setup syncs automatically. Dual-contract
         jobs register each trade job # separately.
       </p>
+      <label className="checkbox-row paint-tracker-flag">
+        <input
+          type="checkbox"
+          checked={hiddenFromFieldApps}
+          disabled={!visibilityLoaded || busy !== null}
+          onChange={(e) => void onToggleVisibility(e.target.checked)}
+        />
+        <span>
+          Hide from Field Tools ordering and Manpower Cal
+          {hiddenFromFieldApps ? " (hidden)" : ""}
+        </span>
+      </label>
       <ul className="trade-apps-sync-list muted small">
         {identities.map((identity) => (
           <li key={identity.contract}>
@@ -111,7 +171,7 @@ export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
         <button
           type="button"
           className="btn btn-ghost"
-          disabled={busy !== null}
+          disabled={busy !== null || hiddenFromFieldApps}
           onClick={() => void runSync("manpower")}
         >
           {busy === "manpower" ? "Registering…" : "Manpower only"}

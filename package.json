@@ -14,12 +14,13 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
     "@vercel/node": "^5.1.14",
-    "pdfjs-dist": "^4.10.38",
+    "chart.js": "^4.5.1",
+    "jszip": "^3.10.1",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.4.0",
-    "jszip": "^3.10.1",
     "tesseract.js": "^6.0.1",
     "xlsx": "^0.18.5"
   },

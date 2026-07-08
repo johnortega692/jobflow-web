@@ -9,7 +9,7 @@ export function readFieldMobileView(): boolean {
   } catch {
     /* ignore */
   }
-  return window.matchMedia("(max-width: 768px)").matches;
+  return window.matchMedia("(max-width: 1024px)").matches;
 }
 
 export function writeFieldMobileView(value: boolean): void {

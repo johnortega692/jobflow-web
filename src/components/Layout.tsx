@@ -20,6 +20,7 @@ export function Layout() {
         <span className="topbar-sep" aria-hidden="true" />
         <nav className="topnav">
           <Link to="/projects">Projects</Link>
+          <Link to="/workload">Workload</Link>
           <Link to="/field" target="_blank" rel="noopener noreferrer">
             Field view
           </Link>

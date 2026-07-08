@@ -1,3 +1,4 @@
+import { syncProjectStartDateToManpower } from "./syncProjectStartDate";
 import { formatGcSuperFieldDisplay, gcSuperintendentContact, icbiProjectManager, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
 import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus";
 import { normalizePaintVendor } from "./paintTrackerSync";
@@ -369,7 +370,7 @@ export async function saveProjectStartDate(projectId: string, startDate: string)
   if (error) return error;
   const base = parseProjectDataBlob(data);
   const jobInfo = { ...(base.job_info as Record<string, unknown>), start_date: startDate };
-  return commitProjectUpdate({
+  const errMsg = await commitProjectUpdate({
     projectId,
     mergeData: { job_info: jobInfo },
     activity: {
@@ -379,6 +380,15 @@ export async function saveProjectStartDate(projectId: string, startDate: string)
         : "Start date cleared",
     },
   });
+  if (errMsg) return errMsg;
+
+  try {
+    await syncProjectStartDateToManpower(projectId);
+  } catch {
+    // Manpower sync is best-effort; Field View start date is already saved in JobFlow.
+  }
+
+  return null;
 }
 
 export async function saveWcInstallDate(

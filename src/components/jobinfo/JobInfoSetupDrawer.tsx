@@ -15,6 +15,7 @@ import {
   parseStartupItems,
   type StartupItemsState,
 } from "../../lib/projectStartupItems";
+import { syncProjectStartDateToManpower } from "../../lib/syncProjectStartDate";
 import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSync";
 import { IcbiInfoSection } from "./IcbiInfoSection";
 import { StartupChecklistConfigSection } from "./StartupChecklistConfigSection";
@@ -173,6 +174,14 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
       setSaving(false);
       setError(errMsg);
       return;
+    }
+
+    if (jobInfo.start_date.trim() !== prevJobInfo.start_date.trim()) {
+      try {
+        await syncProjectStartDateToManpower(projectId);
+      } catch {
+        // Best-effort; job setup save already succeeded.
+      }
     }
 
     for (const note of activityNotes) {

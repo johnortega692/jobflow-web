@@ -28,8 +28,10 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { BrushOutRequestPage } from "./pages/BrushOutRequestPage";
 import { FieldDashboardLayout } from "./pages/field/FieldDashboardLayout";
 import { FieldCalendarDashboardPage } from "./pages/field/FieldCalendarDashboardPage";
+import { FieldWorkloadPage } from "./pages/field/FieldWorkloadPage";
 import { FieldPaintDashboardPage } from "./pages/field/FieldPaintDashboardPage";
 import { FieldWallcoveringDashboardPage } from "./pages/field/FieldWallcoveringDashboardPage";
+import { CompanyWorkloadPage } from "./pages/CompanyWorkloadPage";
 
 export default function App() {
   return (
@@ -43,10 +45,12 @@ export default function App() {
             <Route path="wallcovering" element={<FieldWallcoveringDashboardPage />} />
             <Route path="paint" element={<FieldPaintDashboardPage />} />
             <Route path="calendar" element={<FieldCalendarDashboardPage />} />
+            <Route path="workload" element={<FieldWorkloadPage />} />
           </Route>
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/workload" element={<CompanyWorkloadPage />} />
             <Route path="/brush-out-request" element={<BrushOutRequestPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/projects/:projectId" element={<ProjectLayout />}>

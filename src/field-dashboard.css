@@ -61,8 +61,12 @@
 }
 
 .field-dashboard.field-dashboard--mobile {
-  --fd-bottom-nav-height: 112px;
-  padding-bottom: calc(var(--fd-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 24px);
+  --fd-bottom-nav-height: 0px;
+}
+
+.field-dashboard.field-dashboard--bottom-nav {
+  --fd-bottom-nav-height: 64px;
+  padding-bottom: calc(var(--fd-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 16px);
 }
 
 .field-dashboard-loading {
@@ -181,13 +185,216 @@
   justify-content: space-between;
   align-items: center;
   background: var(--fd-surface);
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-radius: 10px;
   box-shadow: 0 1px 4px var(--fd-shadow);
   margin-bottom: 14px;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   border: 1px solid var(--fd-border-soft);
+}
+
+.field-dashboard .title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.field-dashboard .field-avatar-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-avatar-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--fd-accent);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.field-dashboard .field-avatar-btn-initials {
+  line-height: 1;
+}
+
+.field-dashboard .field-avatar-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  min-width: 220px;
+  background: var(--fd-surface);
+  border: 1px solid var(--fd-border-soft);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px var(--fd-shadow);
+  overflow: hidden;
+}
+
+.field-dashboard .field-avatar-dropdown-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--fd-border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.field-dashboard .field-avatar-dropdown-header strong {
+  font-size: 14px;
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-avatar-dropdown-header span {
+  font-size: 12px;
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-avatar-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  background: transparent;
+  color: var(--fd-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.field-dashboard .field-avatar-dropdown-item:hover {
+  background: var(--fd-surface2);
+}
+
+.field-dashboard .field-avatar-dropdown-item .field-view-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-avatar-dropdown-item--danger {
+  color: #e34948;
+}
+
+.field-dashboard .field-avatar-dropdown-divider {
+  height: 1px;
+  background: var(--fd-border-soft);
+  margin: 4px 0;
+}
+
+.field-dashboard .field-desktop-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--fd-surface2);
+  border: 1px solid var(--fd-border-soft);
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-desktop-nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fd-text-soft);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.field-dashboard .field-desktop-nav-link:hover {
+  color: var(--fd-text);
+  text-decoration: none;
+}
+
+.field-dashboard .field-desktop-nav-link.active {
+  background: var(--fd-accent);
+  color: #fff;
+  text-decoration: none;
+}
+
+.field-dashboard.field-dashboard--dark .field-desktop-nav-link.active {
+  background: var(--fd-accent);
+  color: #fff;
+}
+
+.field-dashboard .field-mobile-tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  align-items: stretch;
+  background: var(--fd-topbar);
+  border-top: 0.5px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -2px 12px var(--fd-shadow);
+}
+
+.field-dashboard .field-mobile-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 56px;
+  padding: 6px 2px 8px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.field-dashboard .field-mobile-tab .field-bottom-nav-icon,
+.field-dashboard .field-mobile-tab .field-nav-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.field-dashboard .field-mobile-tab-label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.field-dashboard .field-mobile-tab.active {
+  color: var(--fd-accent);
+  text-decoration: none;
+}
+
+.field-dashboard .field-mobile-tab:hover {
+  color: #fff;
+  text-decoration: none;
+}
+
+.field-dashboard .field-mobile-tab.active:hover {
+  color: var(--fd-accent);
 }
 
 .field-dashboard .header-right {
@@ -297,12 +504,6 @@
   min-height: 44px;
 }
 
-.field-dashboard .title-block {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .field-dashboard .company-name {
   font-size: 12px;
   font-weight: 600;
@@ -408,9 +609,23 @@
   box-shadow: none;
   border-top: none;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  padding: 8px 10px 4px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 6px 8px 4px;
+}
+
+.field-dashboard .field-bottom-nav-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-bottom-nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
 }
 
 .field-dashboard .field-bottom-nav-utils {
@@ -460,23 +675,36 @@
 
 .field-dashboard .field-bottom-nav-link {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 10px 6px;
+  gap: 4px;
+  padding: 8px 2px;
+  border: none;
   border-radius: 8px;
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 12px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
   font-weight: 600;
   text-decoration: none;
   text-align: center;
-  min-height: 44px;
+  min-height: 56px;
+  cursor: pointer;
 }
 
-.field-dashboard .field-bottom-nav-link.active,
+.field-dashboard .field-bottom-nav-link.active {
+  background: transparent;
+  color: var(--fd-accent);
+  text-decoration: none;
+}
+
 .field-dashboard .field-bottom-nav-link:hover {
-  background: rgba(255, 255, 255, 0.14);
   color: #fff;
   text-decoration: none;
+}
+
+.field-dashboard .field-bottom-nav-link.active:hover {
+  color: var(--fd-accent);
 }
 
 .field-dashboard .toolbar {
@@ -997,6 +1225,110 @@
   grid-template-columns: 1fr;
 }
 
+@media (max-width: 1024px) {
+  .field-dashboard .field-cal {
+    padding: 12px;
+  }
+
+  .field-dashboard .field-cal-body {
+    grid-template-columns: 1fr;
+  }
+
+  .field-dashboard .field-cal-body .field-cal-detail:not(.field-cal-detail--open) {
+    display: none;
+  }
+
+  .field-dashboard .field-cal-body .field-cal-detail--open {
+    display: block;
+  }
+
+  .field-dashboard .field-workload-stat-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .field-dashboard .field-workload-chart-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 640px) {
+  .field-dashboard .field-cal {
+    padding: 10px;
+    border-radius: 8px;
+  }
+
+  .field-dashboard .field-cal-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .field-dashboard .field-cal-nav {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .field-dashboard .field-cal-month {
+    min-width: 0;
+    font-size: 16px;
+    flex: 1;
+  }
+
+  .field-dashboard .field-cal-legend {
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .field-dashboard .field-cal-weekday {
+    font-size: 10px;
+    padding: 6px 2px;
+  }
+
+  .field-dashboard .field-cal-day {
+    min-height: 48px;
+    padding: 4px 2px;
+  }
+
+  .field-dashboard .field-cal-day-num {
+    font-size: 12px;
+  }
+
+  .field-dashboard .field-cal-day-events,
+  .field-dashboard .field-cal-overflow,
+  .field-dashboard .field-cal-load-badge {
+    display: none;
+  }
+
+  .field-dashboard .field-cal-day--has-events .field-cal-day-num::after {
+    content: "";
+    display: block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--fd-accent);
+    margin: 3px auto 0;
+  }
+
+  .field-dashboard .field-cal-detail {
+    border-radius: 8px;
+    margin-top: 4px;
+  }
+
+  .field-dashboard .field-workload-chart-legend {
+    gap: 8px 10px;
+    font-size: 11px;
+  }
+
+  .field-dashboard .field-workload-chart-canvas-wrap {
+    height: 260px;
+  }
+
+  .field-dashboard .field-workload-summary {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
 .field-dashboard .field-cal-grid-wrap {
   min-width: 0;
   border: 1px solid var(--fd-border-soft);
@@ -1209,6 +1541,309 @@
   color: var(--fd-muted);
 }
 
+.field-dashboard .field-workload-summary {
+  margin: 0 0 12px;
+  padding: 0 2px;
+}
+
+.field-dashboard .field-cal-legend-dot--load-light {
+  background: #fef08a;
+  border: 1px solid #ca8a04;
+}
+
+.field-dashboard .field-cal-legend-dot--load-normal {
+  background: #bbf7d0;
+  border: 1px solid #16a34a;
+}
+
+.field-dashboard .field-cal-legend-dot--load-heavy {
+  background: #fed7aa;
+  border: 1px solid #ea580c;
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-legend-dot--load-light {
+  background: rgba(234, 179, 8, 0.45);
+  border-color: #eab308;
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-legend-dot--load-normal {
+  background: rgba(34, 197, 94, 0.35);
+  border-color: #22c55e;
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-legend-dot--load-heavy {
+  background: rgba(249, 115, 22, 0.35);
+  border-color: #f97316;
+}
+
+.field-dashboard .field-cal-day--load-light {
+  background: rgba(254, 240, 138, 0.35);
+}
+
+.field-dashboard .field-cal-day--load-normal {
+  background: rgba(187, 247, 208, 0.35);
+}
+
+.field-dashboard .field-cal-day--load-heavy {
+  background: rgba(254, 215, 170, 0.45);
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-day--load-light {
+  background: rgba(234, 179, 8, 0.14);
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-day--load-normal {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.field-dashboard.field-dashboard--dark .field-cal-day--load-heavy {
+  background: rgba(249, 115, 22, 0.16);
+}
+
+.field-dashboard .field-cal-load-badge {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--fd-text);
+  opacity: 0.85;
+}
+
+.field-dashboard .field-workload-band {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.field-dashboard .field-workload-band strong {
+  font-size: 13px;
+}
+
+.field-dashboard .field-workload-band--light {
+  background: rgba(254, 240, 138, 0.45);
+  border: 1px solid rgba(202, 138, 4, 0.35);
+}
+
+.field-dashboard .field-workload-band--normal {
+  background: rgba(187, 247, 208, 0.45);
+  border: 1px solid rgba(22, 163, 74, 0.35);
+}
+
+.field-dashboard .field-workload-band--heavy {
+  background: rgba(254, 215, 170, 0.55);
+  border: 1px solid rgba(234, 88, 12, 0.35);
+}
+
+.field-dashboard.field-dashboard--dark .field-workload-band--light {
+  background: rgba(234, 179, 8, 0.16);
+}
+
+.field-dashboard.field-dashboard--dark .field-workload-band--normal {
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.field-dashboard.field-dashboard--dark .field-workload-band--heavy {
+  background: rgba(249, 115, 22, 0.18);
+}
+
+.field-dashboard .field-workload-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-left: 4px;
+}
+
+.field-dashboard .field-workload-view-btn {
+  border: 0;
+  background: transparent;
+  color: var(--fd-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.field-dashboard .field-workload-view-btn--active {
+  background: var(--fd-surface-alt, rgba(148, 163, 184, 0.12));
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-workload-chart {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.field-dashboard .field-workload-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.field-dashboard .field-workload-stat-card {
+  background: var(--fd-surface2);
+  border: 1px solid var(--fd-border-soft);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.field-dashboard .field-workload-stat-label {
+  font-size: 11px;
+  color: var(--fd-muted);
+  margin-bottom: 4px;
+}
+
+.field-dashboard .field-workload-stat-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--fd-text);
+  line-height: 1.3;
+}
+
+.field-dashboard .field-workload-stat-value--danger {
+  color: #e34948;
+}
+
+.field-dashboard.field-dashboard--mobile .field-workload-stat-cards {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .field-dashboard .field-workload-stat-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.field-dashboard .field-workload-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.field-dashboard .field-workload-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-workload-chart-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-workload-chart-legend-line {
+  width: 18px;
+  height: 0;
+  border-top: 2px dashed #ef4444;
+}
+
+.field-dashboard .field-workload-chart-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+  border: 1px solid var(--fd-border-soft);
+  border-radius: 8px;
+  background: var(--fd-surface);
+}
+
+.field-dashboard .field-workload-chart-scroll--canvas {
+  padding-bottom: 0;
+}
+
+.field-dashboard .field-workload-chart-canvas-wrap {
+  height: 300px;
+  position: relative;
+}
+
+.field-dashboard .field-workload-chart-canvas {
+  display: block;
+}
+
+.field-dashboard .field-workload-chart-svg {
+  display: block;
+  max-width: none;
+}
+
+.field-dashboard .field-workload-chart-grid {
+  stroke: var(--fd-border-soft);
+  stroke-width: 1;
+}
+
+.field-dashboard .field-workload-chart-axis {
+  fill: var(--fd-muted);
+  font-size: 11px;
+}
+
+.field-dashboard .field-workload-chart-axis--label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.field-dashboard .field-workload-chart-axis--week {
+  font-size: 10px;
+}
+
+.field-dashboard .field-workload-chart-capacity {
+  stroke: #ef4444;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.field-dashboard .field-workload-chart-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.field-dashboard .field-workload-chart-hit--selected {
+  fill: rgba(59, 130, 246, 0.08);
+}
+
+.field-dashboard .field-workload-chart-segment {
+  stroke: rgba(15, 23, 42, 0.08);
+  stroke-width: 1;
+}
+
+.field-dashboard.field-dashboard--dark .field-workload-chart-segment {
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.field-dashboard .field-workload-chart-tooltip {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+  min-width: 160px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+}
+
+.field-dashboard .field-workload-chart-tooltip strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.field-dashboard .field-workload-chart-tooltip-total {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(248, 250, 252, 0.15);
+  font-weight: 600;
+}
+
 .field-dashboard .field-toast {
   position: fixed;
   bottom: 20px;
@@ -1259,8 +1894,9 @@
 }
 
 .field-dashboard.field-dashboard--mobile .field-mobile-list::after,
-.field-dashboard.field-dashboard--mobile .field-cal-body--mobile::after,
-.field-dashboard.field-dashboard--mobile .table-view::after {
+.field-dashboard.field-dashboard--bottom-nav .field-cal-body--mobile::after,
+.field-dashboard.field-dashboard--bottom-nav .field-mobile-list::after,
+.field-dashboard.field-dashboard--bottom-nav .table-view::after {
   content: "";
   display: block;
   flex-shrink: 0;
@@ -1408,6 +2044,15 @@
   white-space: nowrap;
 }
 
+.field-dashboard .field-gc-super-phone-link {
+  color: var(--fd-accent);
+  text-decoration: none;
+}
+
+.field-dashboard .field-gc-super-phone-link:hover {
+  text-decoration: underline;
+}
+
 .field-dashboard.field-dashboard--mobile .group-header {
   grid-template-columns: 24px 1fr;
   grid-template-areas:
@@ -1436,35 +2081,33 @@
   width: 100%;
 }
 
-.field-dashboard.field-dashboard--mobile .header .company-name {
-  display: none;
-}
-
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .field-dashboard {
     padding: 10px;
-  }
-
-  .field-dashboard:not(.field-dashboard--mobile) {
-    padding-bottom: 10px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 16px);
   }
 
   .field-dashboard .header {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 12px;
+    margin-bottom: 10px;
   }
 
   .field-dashboard .title {
-    font-size: 18px;
-    text-align: center;
+    font-size: 17px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .field-dashboard .company-name {
-    text-align: center;
+    display: none;
   }
 
-  .field-dashboard .nav-buttons {
-    justify-content: center;
+  .field-dashboard .field-desktop-nav {
+    display: none;
   }
 
   .field-dashboard .search-wrap {
@@ -1509,13 +2152,8 @@
   }
 }
 
-@media (max-width: 768px) {
-  .field-dashboard .field-header-user {
+@media (min-width: 768px) {
+  .field-dashboard .field-mobile-tab-bar {
     display: none;
-  }
-
-  .field-dashboard .header-right {
-    width: 100%;
-    justify-content: space-between;
   }
 }

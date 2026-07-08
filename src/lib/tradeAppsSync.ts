@@ -1,5 +1,6 @@
 import { syncProjectTradeJobsToFieldTools, type FieldToolsJobSyncRow } from "./fieldToolsJobSync";
 import { icbiProjectManager, icbiSuperintendent, projectTradeJobIdentities } from "./jobInfo";
+import { getProjectFieldAppVisibility } from "./projectFieldAppVisibility";
 import { registerProjectTradeJobsInManpower, type ManpowerRegisterRow } from "./registerProjectTradeJobs";
 import type { ProjectForm } from "../types/database";
 
@@ -40,13 +41,26 @@ export async function syncProjectTradeApps(
     };
   }
 
-  const fieldTools = await syncProjectTradeJobsToFieldTools(project);
+  const hidden = await getProjectFieldAppVisibility(projectId).catch(() => false);
+
+  const fieldTools = await syncProjectTradeJobsToFieldTools(project, projectId);
   for (const row of fieldTools) {
-    if (row.ok) messages.push(`Field Tools · ${row.jobNumber}`);
-    else errors.push(`Field Tools · ${row.contractLabel}: ${row.message}`);
+    if (row.ok) {
+      messages.push(
+        hidden ? `Field Tools · ${row.jobNumber} (hidden)` : `Field Tools · ${row.jobNumber}`,
+      );
+    } else errors.push(`Field Tools · ${row.contractLabel}: ${row.message}`);
   }
 
-  const { rows: manpower, error: rpcError } = await registerProjectTradeJobsInManpower(projectId, project);
+  let manpower: ManpowerRegisterRow[] = [];
+  let rpcError: string | null = null;
+  if (hidden) {
+    messages.push("Manpower: skipped (project hidden from Field Tools and Manpower Cal).");
+  } else {
+    const result = await registerProjectTradeJobsInManpower(projectId, project);
+    manpower = result.rows;
+    rpcError = result.error;
+  }
   if (rpcError) errors.push(`Manpower: ${rpcError}`);
   else {
     for (const row of manpower) {

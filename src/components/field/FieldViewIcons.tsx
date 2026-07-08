@@ -9,6 +9,59 @@ const svgProps = {
   focusable: false,
 };
 
+export function FieldNavWallcoveringIcon() {
+  return (
+    <svg {...svgProps} className="field-bottom-nav-icon">
+      <path d="M6 4h9a2 2 0 0 1 2 2v13a1 1 0 0 1-1.45.89L12 17.2l-3.55 2.69A1 1 0 0 1 7 19V6a2 2 0 0 1 2-2Z" />
+      <path d="M9 7h6" />
+    </svg>
+  );
+}
+
+export function FieldNavManpowerIcon() {
+  return (
+    <svg {...svgProps} className="field-bottom-nav-icon">
+      <circle cx="9" cy="8" r="2.5" />
+      <path d="M5 18v-1a4 4 0 0 1 4-4h0" />
+      <circle cx="16.5" cy="9" r="2" />
+      <path d="M14 18v-1a3 3 0 0 1 2.6-2.97" />
+    </svg>
+  );
+}
+
+export function FieldNavPaintIcon() {
+  return (
+    <svg {...svgProps} className="field-bottom-nav-icon">
+      <path d="M14 4l6 6" />
+      <path d="M6 20h7l8.5-8.5a2.1 2.1 0 0 0-3-3L10 17v3Z" />
+      <path d="M5 20h2" />
+    </svg>
+  );
+}
+
+export function FieldNavCalendarIcon() {
+  return (
+    <svg {...svgProps} className="field-bottom-nav-icon">
+      <rect x="4" y="5" width="16" height="15" rx="2" />
+      <path d="M8 3v4" />
+      <path d="M16 3v4" />
+      <path d="M4 10h16" />
+      <path d="M9 14h2" />
+      <path d="M13 14h2" />
+    </svg>
+  );
+}
+
+export function FieldNavWorkloadIcon() {
+  return (
+    <svg {...svgProps} className="field-bottom-nav-icon">
+      <path d="M6 20V11" />
+      <path d="M12 20V6" />
+      <path d="M18 20V14" />
+    </svg>
+  );
+}
+
 export function FieldMobileIcon() {
   return (
     <svg {...svgProps} className="field-view-icon">

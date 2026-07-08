@@ -33,12 +33,21 @@ function rowClass(status: PaintFieldStatus): string {
   return "";
 }
 
-function GcSuperCell({ row }: { row: FieldPaintRow }) {
+function GcSuperCell({ row, linkPhone = false }: { row: FieldPaintRow; linkPhone?: boolean }) {
   if (!row.gcSuperName && !row.gcSuperPhone) return <>—</>;
+  const phoneHref = row.gcSuperPhone ? `tel:${row.gcSuperPhone.replace(/[^\d+]/g, "")}` : "";
   return (
     <span className="field-gc-super-cell">
       {row.gcSuperName ? <span>{row.gcSuperName}</span> : null}
-      {row.gcSuperPhone ? <span className="field-gc-super-phone">{row.gcSuperPhone}</span> : null}
+      {row.gcSuperPhone ? (
+        linkPhone ? (
+          <a href={phoneHref} className="field-gc-super-phone field-gc-super-phone-link">
+            {row.gcSuperPhone}
+          </a>
+        ) : (
+          <span className="field-gc-super-phone">{row.gcSuperPhone}</span>
+        )
+      ) : null}
     </span>
   );
 }
@@ -222,7 +231,7 @@ export function FieldPaintDashboardPage() {
                       <div>
                         <dt>GC Super</dt>
                         <dd>
-                          <GcSuperCell row={row} />
+                          <GcSuperCell row={row} linkPhone={mobileView} />
                         </dd>
                       </div>
                       <div>

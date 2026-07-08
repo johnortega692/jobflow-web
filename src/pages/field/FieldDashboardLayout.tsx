@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type FormEvent } from "react";
-import { NavLink, Outlet, useLocation, Link } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
-import { UserHeaderIdentity } from "../../components/UserHeaderIdentity";
+import { DesktopNavTabs } from "../../components/field/DesktopNavTabs";
+import { FieldAvatarMenu } from "../../components/field/FieldAvatarMenu";
+import { MobileTabBar } from "../../components/field/MobileTabBar";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
@@ -29,14 +31,9 @@ import {
   writeFieldDarkMode,
   writeFieldMobileView,
 } from "../../lib/fieldViewPrefs";
+import { FIELD_COMPACT_MAX_WIDTH, useMediaQuery } from "../../lib/useMediaQuery";
 import type { ProjectForm } from "../../types/database";
 import { openManpowerCalHandoff } from "../../lib/manpowerCalUrl";
-import {
-  FieldDesktopIcon,
-  FieldMobileIcon,
-  FieldMoonIcon,
-  FieldSunIcon,
-} from "../../components/field/FieldViewIcons";
 import "../../field-dashboard.css";
 
 type FieldDashboardContextValue = {
@@ -59,45 +56,6 @@ export function useFieldDashboard() {
   const ctx = useContext(FieldDashboardContext);
   if (!ctx) throw new Error("useFieldDashboard must be used within FieldDashboardLayout");
   return ctx;
-}
-
-function FieldViewToggles({
-  mobileView,
-  setMobileView,
-  darkMode,
-  setDarkMode,
-  className = "nav-button nav-button-toggle nav-button-icon",
-}: {
-  mobileView: boolean;
-  setMobileView: (value: boolean) => void;
-  darkMode: boolean;
-  setDarkMode: (value: boolean) => void;
-  className?: string;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        className={`${className}${mobileView ? " active" : ""}`}
-        onClick={() => setMobileView(!mobileView)}
-        title={mobileView ? "Switch to desktop layout" : "Switch to mobile layout"}
-        aria-label={mobileView ? "Switch to desktop layout" : "Switch to mobile layout"}
-        aria-pressed={mobileView}
-      >
-        {mobileView ? <FieldDesktopIcon /> : <FieldMobileIcon />}
-      </button>
-      <button
-        type="button"
-        className={`${className}${darkMode ? " active" : ""}`}
-        onClick={() => setDarkMode(!darkMode)}
-        title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-        aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-        aria-pressed={darkMode}
-      >
-        {darkMode ? <FieldSunIcon /> : <FieldMoonIcon />}
-      </button>
-    </>
-  );
 }
 
 function FieldViewPinLogin({
@@ -180,8 +138,11 @@ export function FieldDashboardLayout() {
   const [error, setError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [publicCompanyName, setPublicCompanyName] = useState("");
-  const [mobileView, setMobileViewState] = useState(readFieldMobileView);
+  const [mobileViewPref, setMobileViewState] = useState(readFieldMobileView);
   const [darkMode, setDarkModeState] = useState(readFieldDarkMode);
+  const narrowViewport = useMediaQuery(`(max-width: ${FIELD_COMPACT_MAX_WIDTH}px)`);
+  const isMobileNav = useMediaQuery("(max-width: 767px)");
+  const mobileView = mobileViewPref || narrowViewport;
 
   const setMobileView = useCallback((value: boolean) => {
     setMobileViewState(value);
@@ -239,7 +200,9 @@ export function FieldDashboardLayout() {
     ? "Paint Dashboard"
     : location.pathname.includes("/calendar")
       ? "Installation Calendar"
-      : "Wallcovering Dashboard";
+      : location.pathname.includes("/workload")
+        ? "Company Workload"
+        : "Wallcovering Dashboard";
 
   useEffect(() => {
     document.title = `${pageTitle} · Field View`;
@@ -313,6 +276,21 @@ export function FieldDashboardLayout() {
     void openManpowerCalHandoff(fieldSession ?? loadFieldViewSession(), toast);
   }
 
+  function handleSignOut() {
+    if (user) {
+      void signOut();
+      return;
+    }
+    if (fieldSession) {
+      void logoutFieldView(fieldSession).finally(() => setFieldSession(null));
+    }
+  }
+
+  const avatarName = user
+    ? profile.name.trim() || user.email?.trim() || "User"
+    : fieldSession?.name.trim() || "Field user";
+  const avatarRole = user ? profile.title.trim() : fieldSession?.role.trim() || "";
+
   return (
     <FieldDashboardContext.Provider
       value={{
@@ -330,120 +308,41 @@ export function FieldDashboardLayout() {
       }}
     >
       <div
-        className={`field-dashboard${darkMode ? " field-dashboard--dark" : ""}${mobileView ? " field-dashboard--mobile" : ""}`}
+        className={[
+          "field-dashboard",
+          darkMode ? "field-dashboard--dark" : "",
+          mobileView ? "field-dashboard--mobile" : "",
+          isMobileNav ? "field-dashboard--bottom-nav" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         <div className={`field-toast${toastMsg ? " show" : ""}`}>{toastMsg ?? ""}</div>
 
-        <div className="header">
+        <header className="header">
           <div className="title-block">
-            <div className="company-name">{companyName}</div>
+            {!isMobileNav ? <div className="company-name">{companyName}</div> : null}
             <div className="title">
               <span>{pageTitle}</span>
             </div>
           </div>
-          <div className="header-right">
-            {user ? (
-              <div className="field-header-account">
-                <Link to="/projects" className="field-header-link">
-                  Office
-                </Link>
-                <UserHeaderIdentity profile={profile} email={user.email} className="field-header-user" />
-                <button type="button" className="field-header-signout" onClick={() => signOut()}>
-                  Sign out
-                </button>
-              </div>
-            ) : fieldSession ? (
-              <div className="field-header-account">
-                <span className="field-header-user">{fieldSession.name}</span>
-                <button
-                  type="button"
-                  className="field-header-signout"
-                  onClick={() => void logoutFieldView(fieldSession).finally(() => setFieldSession(null))}
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : null}
-            <div className="nav-buttons">
-            <NavLink
-              to="/field/wallcovering"
-              className={({ isActive }) => `nav-button${isActive ? " active" : ""}`}
-            >
-              Wallcovering
-            </NavLink>
-            <button
-              type="button"
-              onClick={handleOpenManpower}
-              className="nav-button nav-button-external"
-            >
-              Manpower
-            </button>
-            <NavLink
-              to="/field/paint"
-              className={({ isActive }) => `nav-button${isActive ? " active" : ""}`}
-            >
-              Paint
-            </NavLink>
-            <NavLink
-              to="/field/calendar"
-              className={({ isActive }) => `nav-button${isActive ? " active" : ""}`}
-            >
-              Calendar
-            </NavLink>
-            <FieldViewToggles
-              mobileView={mobileView}
-              setMobileView={setMobileView}
-              darkMode={darkMode}
-              setDarkMode={setDarkMode}
-            />
-            </div>
-          </div>
-        </div>
+          {!isMobileNav ? <DesktopNavTabs onOpenManpower={handleOpenManpower} /> : null}
+          <FieldAvatarMenu
+            name={avatarName}
+            role={avatarRole}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            mobileView={mobileView}
+            setMobileView={setMobileView}
+            onSignOut={handleSignOut}
+          />
+        </header>
 
         {error && <div className="banner banner-error">{error}</div>}
 
         <Outlet />
 
-        {mobileView && (
-          <div className="field-bottom-nav-wrap">
-            <nav className="field-bottom-nav" aria-label="Field view sections">
-              <NavLink
-                to="/field/wallcovering"
-                className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
-              >
-                Wallcovering
-              </NavLink>
-              <NavLink
-                to="/field/paint"
-                className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
-              >
-                Paint
-              </NavLink>
-              <NavLink
-                to="/field/calendar"
-                className={({ isActive }) => `field-bottom-nav-link${isActive ? " active" : ""}`}
-              >
-                Calendar
-              </NavLink>
-              <button
-                type="button"
-                onClick={handleOpenManpower}
-                className="field-bottom-nav-link field-bottom-nav-link-external"
-              >
-                Manpower
-              </button>
-            </nav>
-            <div className="field-bottom-nav-utils">
-              <FieldViewToggles
-                mobileView={mobileView}
-                setMobileView={setMobileView}
-                darkMode={darkMode}
-                setDarkMode={setDarkMode}
-                className="field-bottom-nav-toggle field-bottom-nav-toggle-icon"
-              />
-            </div>
-          </div>
-        )}
+        {isMobileNav ? <MobileTabBar onOpenManpower={handleOpenManpower} /> : null}
       </div>
     </FieldDashboardContext.Provider>
   );
