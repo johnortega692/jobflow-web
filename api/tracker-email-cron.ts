@@ -33,7 +33,9 @@ function verifyCronSecret(req: VercelRequest): boolean {
 function parseSlot(req: VercelRequest): TrackerEmailCronSlot {
   const slot = req.query?.slot;
   const value = Array.isArray(slot) ? slot[0] : slot;
-  return value === "weekly" ? "weekly" : "daily";
+  if (value === "weekly") return "weekly";
+  if (value === "monday") return "monday";
+  return "daily";
 }
 
 async function handler(req: VercelRequest, res: VercelResponse) {

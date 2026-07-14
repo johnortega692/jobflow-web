@@ -103,8 +103,8 @@ export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
       setHiddenFromFieldApps(nextHidden);
       setStatus(
         nextHidden
-          ? "Project hidden from Field Tools ordering and Manpower Cal."
-          : "Project visible in Field Tools ordering and Manpower Cal.",
+          ? "Project hidden from Field Tools ordering, order history, and Manpower Cal."
+          : "Project visible in Field Tools ordering, order history, and Manpower Cal.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update visibility.");
@@ -132,7 +132,7 @@ export function TradeAppsSyncSection({ project, projectId, embedded }: Props) {
           onChange={(e) => void onToggleVisibility(e.target.checked)}
         />
         <span>
-          Hide from Field Tools ordering and Manpower Cal
+          Hide from Field Tools ordering, order history, and Manpower Cal
           {hiddenFromFieldApps ? " (hidden)" : ""}
         </span>
       </label>

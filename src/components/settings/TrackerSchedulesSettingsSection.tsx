@@ -76,8 +76,9 @@ export function TrackerSchedulesSettingsSection({
         <p className="muted small">
           Manual sends and scheduled emails go <strong>To</strong> your Profile email (or notification primary
           email for automatic cron). <strong>CC</strong> uses ICBI super and foreman from each job&apos;s setup.
-          Paint tracker approval/revision notifications use <strong>Job setup → ICBI Info</strong> (PM, super,
-          foreman).
+          Paint tracker approval/revision notifications use <strong>Job setup → GC Info</strong> for the GC
+          Super line. Brush-out vendor emails CC the <strong>GC super</strong>. Transmittal/attic emails still
+          CC ICBI staff.
         </p>
       </section>
 

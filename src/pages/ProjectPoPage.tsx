@@ -8,6 +8,7 @@ import {
   type FieldToolsPoDispatchRow,
   updatePoDispatchTracking,
 } from "../lib/fieldToolsPoTracker";
+import { getProjectFieldAppVisibility } from "../lib/projectFieldAppVisibility";
 import type { ProjectForm } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string };
@@ -27,13 +28,33 @@ function formatSubmittedAt(iso: string): string {
 }
 
 export function ProjectPoPage() {
-  const { project } = useOutletContext<Ctx>();
+  const { project, projectId } = useOutletContext<Ctx>();
   const [rows, setRows] = useState<FieldToolsPoDispatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [viewOrder, setViewOrder] = useState<ViewTarget | null>(null);
   const [contractFilter, setContractFilter] = useState<TransmittalContract | "all">("all");
+  const [hiddenFromFieldApps, setHiddenFromFieldApps] = useState(false);
+  const [visibilityLoaded, setVisibilityLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setVisibilityLoaded(false);
+    void (async () => {
+      try {
+        const hidden = await getProjectFieldAppVisibility(projectId);
+        if (!cancelled) setHiddenFromFieldApps(hidden);
+      } catch {
+        if (!cancelled) setHiddenFromFieldApps(false);
+      } finally {
+        if (!cancelled) setVisibilityLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const jobLookups = useMemo(
     () =>
@@ -47,7 +68,7 @@ export function ProjectPoPage() {
   const hasMultipleContracts = jobLookups.length > 1;
 
   const load = useCallback(async () => {
-    if (!jobLookups.length) {
+    if (!jobLookups.length || hiddenFromFieldApps) {
       setRows([]);
       setLoading(false);
       return;
@@ -62,7 +83,7 @@ export function ProjectPoPage() {
     } finally {
       setLoading(false);
     }
-  }, [jobLookups]);
+  }, [jobLookups, hiddenFromFieldApps]);
 
   useEffect(() => {
     void load();
@@ -107,6 +128,18 @@ export function ProjectPoPage() {
   }
 
   const viewRow = viewOrder ? rows.find((r) => r.dispatchId === viewOrder.dispatchId) : null;
+
+  if (visibilityLoaded && hiddenFromFieldApps) {
+    return (
+      <div className="stack po-tracker-page">
+        <div className="banner banner-warn">
+          Order history is hidden while this project is hidden from Field Tools. Uncheck{" "}
+          <strong>Hide from Field Tools ordering, order history, and Manpower Cal</strong> in Job
+          setup to show PO tracking again.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="stack po-tracker-page">

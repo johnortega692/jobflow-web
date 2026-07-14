@@ -25,6 +25,10 @@
     {
       "path": "/api/tracker-email-cron?slot=weekly",
       "schedule": "0 15 * * 5"
+    },
+    {
+      "path": "/api/tracker-email-cron?slot=monday",
+      "schedule": "0 15 * * 1"
     }
   ],
   "rewrites": [

@@ -1,5 +1,5 @@
 import type { ProjectForm } from "../types/database";
-import { collectProjectIcbiStaffCc, icbiSuperintendent, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo";
+import { collectProjectIcbiStaffCc, formatGcSuperFieldDisplay, gcSuperintendentContact, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
@@ -165,7 +165,7 @@ function pushWcFollowUp(
     wcLabel: row.label,
     address: jobFullAddressOneLine(project, j),
     gcName: project.contractor.trim(),
-    gcSuper: icbiSuperintendent(j),
+    gcSuper: formatGcSuperFieldDisplay(gcSuperintendentContact(j)),
     followUpDate: formatDisplayDate(dateValue),
     daysOverdue: kind === "overdue" ? -until : undefined,
     followUpLabel,

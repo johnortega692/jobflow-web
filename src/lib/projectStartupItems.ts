@@ -161,7 +161,7 @@ function mergeCatalogItems(stored: StartupChecklistItem[]): StartupChecklistItem
   for (const seed of STARTUP_CHECKLIST_CATALOG) {
     const existing = byId.get(seed.id);
     const parsed = parseItem(existing, seedItem(seed, existing));
-    merged.push({ ...parsed, label: seed.label });
+    merged.push({ ...parsed, label: seed.label, blocking: Boolean(seed.blocking) });
     byId.delete(seed.id);
   }
 

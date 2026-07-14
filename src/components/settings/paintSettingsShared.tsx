@@ -15,6 +15,7 @@ import {
   sendWeeklyTrackerDigest,
   type WeeklyDigestKind,
 } from "../../lib/trackerWeeklyDigest";
+import { sendSiteReadyDigest } from "../../lib/startupSiteReadyDigest";
 import type { LetterheadSettings } from "../../types/letterheadSettings";
 import {
   DEFAULT_TRACKER_EMAIL_SCHEDULE,
@@ -75,7 +76,9 @@ export function WeeklyDigestSection({
   letterhead: LetterheadSettings;
   brandingCompanyName: string;
 }) {
-  const [digestSending, setDigestSending] = useState<WeeklyDigestKind | null>(null);
+  const [digestSending, setDigestSending] = useState<"combined" | "wallcovering" | "site_ready" | null>(
+    null,
+  );
   const [digestMessage, setDigestMessage] = useState<string | null>(null);
   const [digestError, setDigestError] = useState<string | null>(null);
 
@@ -84,7 +87,7 @@ export function WeeklyDigestSection({
   const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
-  async function sendDigest(kind: WeeklyDigestKind) {
+  async function sendDigest(kind: WeeklyDigestKind | "site_ready") {
     setDigestSending(kind);
     setDigestMessage(null);
     setDigestError(null);
@@ -103,22 +106,40 @@ export function WeeklyDigestSection({
     try {
       const { projects, error } = await loadProjectsForWeeklyDigest();
       if (error) throw new Error(error);
-      await sendWeeklyTrackerDigest({
-        kind,
-        projects,
-        primaryEmail,
-        primaryName: profile.name.trim() || "PM",
-        companyName,
-        companyAddress: letterhead.company_address,
-        fromName: `${companyName} Dashboard`.trim(),
-        gasUrl,
-        logoUrl: letterhead.logo_url,
-      });
-      setDigestMessage(
-        kind === "combined"
-          ? "Combined weekly submittal digest sent."
-          : "Wallcovering weekly digest sent.",
-      );
+      if (kind === "site_ready") {
+        const result = await sendSiteReadyDigest({
+          projects,
+          primaryEmail,
+          primaryName: profile.name.trim() || "PM",
+          companyName,
+          companyAddress: letterhead.company_address,
+          fromName: `${companyName} Dashboard`.trim(),
+          gasUrl,
+          logoUrl: letterhead.logo_url,
+        });
+        setDigestMessage(
+          result.sent
+            ? `Site-ready digest sent (${result.count} job${result.count === 1 ? "" : "s"}).`
+            : "Site-ready digest: nothing due right now.",
+        );
+      } else {
+        await sendWeeklyTrackerDigest({
+          kind,
+          projects,
+          primaryEmail,
+          primaryName: profile.name.trim() || "PM",
+          companyName,
+          companyAddress: letterhead.company_address,
+          fromName: `${companyName} Dashboard`.trim(),
+          gasUrl,
+          logoUrl: letterhead.logo_url,
+        });
+        setDigestMessage(
+          kind === "combined"
+            ? "Combined weekly submittal digest sent."
+            : "Wallcovering weekly digest sent.",
+        );
+      }
     } catch (e) {
       setDigestError(e instanceof Error ? e.message : "Could not send digest.");
     } finally {
@@ -154,6 +175,14 @@ export function WeeklyDigestSection({
           onClick={() => void sendDigest("wallcovering")}
         >
           {digestSending === "wallcovering" ? "Sending…" : "Send wallcovering digest only"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={digestSending !== null}
+          onClick={() => void sendDigest("site_ready")}
+        >
+          {digestSending === "site_ready" ? "Sending…" : "Send Monday site-ready digest now"}
         </button>
       </div>
     </section>
@@ -380,7 +409,19 @@ export function ScheduledEmailSection({
             />
             Wallcovering digest only
           </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={schedule.weekly.startup_site_ready}
+              disabled={!schedule.weekly.enabled}
+              onChange={(e) => patchWeekly({ startup_site_ready: e.target.checked })}
+            />
+            Monday site-ready + Needs attention (contract / COI / billing)
+          </label>
         </div>
+        <p className="muted small" style={{ margin: 0 }}>
+          Site-ready emails send Mondays ({TRACKER_CRON_UTC_SCHEDULE.monday}). Paint/WC digests stay on Fridays.
+        </p>
       </div>
     </section>
   );

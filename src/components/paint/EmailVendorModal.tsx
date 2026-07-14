@@ -34,6 +34,8 @@ type Props = {
   logoUrl?: string;
   superName?: string;
   superEmail?: string;
+  /** Label next to the super CC checkbox (e.g. "GC super" or "ICBI super"). */
+  superRoleLabel?: string;
   foremanName?: string;
   foremanEmail?: string;
   composeEmailMethod?: ComposeEmailMethod;
@@ -55,6 +57,7 @@ export function EmailVendorModal({
   logoUrl = "",
   superName = "",
   superEmail = "",
+  superRoleLabel = "super",
   foremanName = "",
   foremanEmail = "",
   composeEmailMethod = "gmail",
@@ -283,7 +286,7 @@ export function EmailVendorModal({
 
         {(superEmail.trim() || foremanEmail.trim()) && (
           <fieldset className="stack">
-            <legend className="paint-col-head">CC recipients (Job setup → ICBI)</legend>
+            <legend className="paint-col-head">CC recipients (Job setup)</legend>
             {foremanEmail.trim() ? (
               <label className="check">
                 <input type="checkbox" checked disabled readOnly />
@@ -303,7 +306,7 @@ export function EmailVendorModal({
                 {superName.trim()
                   ? `${superName.trim()} (${superEmail.trim()})`
                   : superEmail.trim()}{" "}
-                — super
+                — {superRoleLabel}
               </label>
             ) : null}
           </fieldset>

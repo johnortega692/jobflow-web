@@ -6,6 +6,10 @@ import { profileFromSettings } from "./userProfile";
 import { sendFollowUpReminderViaGasDirect, followUpReminderHasContent } from "./trackerFollowUpReminders";
 import type { TrackerEmailCronSlot } from "./trackerEmailSchedule";
 import { sendWeeklyTrackerDigestViaGasDirect } from "./trackerWeeklyDigest";
+import {
+  sendSiteReadyDigestViaGasDirect,
+  siteReadyDigestHasContent,
+} from "./startupSiteReadyDigest";
 import { listTrackerCronTargets, ORG_TRACKER_CRON_TARGET } from "./userSettingsAdmin";
 
 export type CronRunResult = {
@@ -143,6 +147,21 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         }
       } else if (slot === "weekly" && !schedule.weekly.enabled) {
         result.skipped.push(`${label}: weekly schedule disabled`);
+      }
+
+      if (slot === "monday") {
+        if (!schedule.weekly.enabled) {
+          result.skipped.push(`${label}: weekly schedule disabled (Monday site-ready)`);
+        } else if (schedule.weekly.startup_site_ready) {
+          if (siteReadyDigestHasContent(projects)) {
+            await sendSiteReadyDigestViaGasDirect({ ...sendBase });
+            result.sent.push(`${label}: Monday site-ready digest`);
+          } else {
+            result.skipped.push(`${label}: Monday site-ready digest (nothing due)`);
+          }
+        } else {
+          result.skipped.push(`${label}: Monday site-ready disabled`);
+        }
       }
     } catch (e) {
       result.errors.push({

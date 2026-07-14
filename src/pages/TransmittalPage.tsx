@@ -988,6 +988,7 @@ export function TransmittalPage() {
           logoUrl={branding.logoUrl}
           superName={icbiSuperintendent(project.jobInfo)}
           superEmail={icbiSuperEmail(project.jobInfo)}
+          superRoleLabel="ICBI super"
           foremanName={project.jobInfo?.icbi_foreman}
           foremanEmail={project.jobInfo?.icbi_foreman_email}
           composeEmailMethod={userSettings.compose_email_method}

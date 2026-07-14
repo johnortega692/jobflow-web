@@ -179,6 +179,11 @@ export function formatGcSuperFieldDisplay(contact: { name: string; phone: string
   return contact.name || contact.phone;
 }
 
+/** GC superintendent email from Job setup → GC Info. */
+export function gcSuperEmail(info: JobInfoData | undefined): string {
+  return info?.gc_super_email?.trim() ?? "";
+}
+
 export function icbiSuperEmail(info: JobInfoData | undefined): string {
   return info?.icbi_super_email?.trim() ?? "";
 }

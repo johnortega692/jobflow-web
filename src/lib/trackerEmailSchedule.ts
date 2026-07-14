@@ -1,4 +1,4 @@
-export type TrackerEmailCronSlot = "daily" | "weekly";
+export type TrackerEmailCronSlot = "daily" | "weekly" | "monday";
 
 export type TrackerEmailSchedule = {
   /** Master switch for Vercel cron sends for this account. */
@@ -16,6 +16,8 @@ export type TrackerEmailSchedule = {
     /** Combined paint + wallcovering submittal digest (Friday-style). */
     combined_digest: boolean;
     wallcovering_digest: boolean;
+    /** Site-ready gates + Needs attention — Monday cron slot. */
+    startup_site_ready: boolean;
   };
 };
 
@@ -32,6 +34,7 @@ export const DEFAULT_TRACKER_EMAIL_SCHEDULE: TrackerEmailSchedule = {
     enabled: false,
     combined_digest: true,
     wallcovering_digest: false,
+    startup_site_ready: true,
   },
 };
 
@@ -60,6 +63,9 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
     if (typeof w.wallcovering_digest === "boolean") {
       base.weekly.wallcovering_digest = w.wallcovering_digest;
     }
+    if (typeof w.startup_site_ready === "boolean") {
+      base.weekly.startup_site_ready = w.startup_site_ready;
+    }
   }
 
   return base;
@@ -69,4 +75,5 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
 export const TRACKER_CRON_UTC_SCHEDULE = {
   daily: "15:00 UTC daily (~7:00 AM Pacific standard time)",
   weekly: "15:00 UTC Fridays (~7:00 AM Pacific standard time)",
+  monday: "15:00 UTC Mondays (~7:00 AM Pacific standard time)",
 } as const;

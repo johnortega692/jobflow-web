@@ -41,7 +41,7 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
 
    Optional: set `TRACKER_CRON_USER_ID` to a Supabase user UUID to force cron for one account only (otherwise the shared org schedule in **Settings → Paint & email → Scheduled emails** runs using **Notification primary email**).
 
-   Cron schedule (UTC, configured in `vercel.json`): daily follow-ups at **15:00 UTC**; weekly digests **Fridays 15:00 UTC** (~7:00 AM US Pacific in standard time). Enable which emails run in **Settings → Paint & email → Scheduled emails** (master switch plus **Daily follow-ups** and **Weekly digest**).
+   Cron schedule (UTC, configured in `vercel.json`): daily follow-ups at **15:00 UTC**; weekly digests **Fridays 15:00 UTC**; site-ready digest **Mondays 15:00 UTC** (~7:00 AM US Pacific in standard time). Enable which emails run in **Settings → Paint & email → Scheduled emails** (master switch plus **Daily follow-ups** and **Weekly digest**).
 
 5. Click **Deploy**
 6. Copy your live URL, e.g. `https://jobflow-web.vercel.app`

@@ -1,7 +1,7 @@
 import type { ProjectForm } from "../types/database";
 import type { PaintTrackerState } from "../types/fieldTracker";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import { icbiSuperintendent } from "./jobInfo";
+import { formatGcSuperFieldDisplay, gcSuperintendentContact } from "./jobInfo";
 import { sendVendorEmail } from "./sendVendorEmail";
 
 export type PaintNotificationJobData = {
@@ -61,13 +61,14 @@ export function projectToPaintNotificationJobData(
     .map((part) => part.trim())
     .filter(Boolean)
     .join(", ");
+  const gcSuper = gcSuperintendentContact(j);
 
   return {
     jobNumber: project.job_number.trim(),
     jobName: project.job_name.trim(),
     address,
     gcName: project.contractor.trim(),
-    gcSuper: icbiSuperintendent(j),
+    gcSuper: formatGcSuperFieldDisplay(gcSuper) || gcSuper.name,
     startDate: j.start_date.trim(),
     paintVendor: tracker.paintVendor,
     creativeTeam: tracker.creativeTeam.trim(),
