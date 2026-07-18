@@ -1,16 +1,13 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import { budgetHoursPdfFilename, budgetPdfFilename, budgetPdfJobTitle } from "./pdfFilenames";
 import {
-  bucketDisplay,
   buildHoursExportRows,
   buildSummaryRows,
   computeSummaryMetrics,
   exportFooterText,
-  fmtCell,
   type HoursExportRow,
 } from "./budgetMakerCore";
 import type { BudgetLibrary, BudgetMakerData } from "../types/budgetMaker";
-import { PUSH_COLS } from "../types/budgetMaker";
 
 const HEADER = rgb(68 / 255, 114 / 255, 196 / 255);
 const HIGHLIGHT = rgb(1, 241 / 255, 118 / 255);
@@ -18,7 +15,6 @@ const TOTAL_BG = rgb(231 / 255, 238 / 255, 248 / 255);
 const ROW_ALT = rgb(0.96, 0.96, 0.96);
 const BORDER = rgb(0.75, 0.75, 0.75);
 
-const LINE_WEIGHTS = [2.4, 0.75, 0.55, 2.1, 0.5, 0.32, 0.55, 0.58, 0.5, 1.4];
 const TOTAL_WEIGHTS = [1.6, 2.0, 0.45, 0.55, 0.45, 0.6, 0.35, 1.2];
 const HOURS_WEIGHTS = [1.5, 1.8, 0.55, 0.65, 0.65];
 
@@ -227,18 +223,6 @@ export async function downloadBudgetPdf(
   );
   const combineByCostCode = data.combine_cost_codes_on_export !== false;
 
-  const visible = data.lines.filter((l) => !l.Hidden);
-  const lineCols = [...PUSH_COLS];
-  const lineRows = visible.map((line) =>
-    lineCols.map((col) => {
-      if (col === "Bucket") return bucketDisplay(line.Bucket, data.buckets, lib);
-      if (col === "Quantity" || col === "Unit Cost" || col === "Amount" || col === "Man Hours") {
-        return fmtCell(line[col as keyof typeof line]);
-      }
-      return String(line[col as keyof typeof line] ?? "");
-    }),
-  );
-
   const summary = buildSummaryRows(data.buckets, data.lines, lib, data.hide_zero_amounts, {
     combineByCostCode,
   });
@@ -260,7 +244,7 @@ export async function downloadBudgetPdf(
   const margin = 32;
   const jobTitle = budgetPdfJobTitle(jobNumber, data.job_name);
 
-  let page = addPage(doc, true);
+  const page = addPage(doc, true);
   let y = page.getHeight() - margin;
   page.drawText(truncate(jobTitle, bold, 14, page.getWidth() - margin * 2), {
     x: margin,
@@ -270,7 +254,7 @@ export async function downloadBudgetPdf(
   });
   y -= 20;
   page.drawText("Budget", { x: margin, y: y - 12, size: 11, font });
-  y -= 20;
+  y -= 18;
   if (footer) {
     page.drawText(truncate(footer.replace(/   \|   /g, " | "), font, 8, page.getWidth() - margin * 2), {
       x: margin,
@@ -278,32 +262,13 @@ export async function downloadBudgetPdf(
       size: 8,
       font,
     });
+    y -= 16;
   }
+  page.drawText("Bucket Totals", { x: margin, y: y - 12, size: 11, font: bold });
+  y -= 18;
 
-  page = addPage(doc, true);
-  y = page.getHeight() - margin;
-  page.drawText(truncate(jobTitle, bold, 11, page.getWidth() - margin * 2), {
-    x: margin,
-    y: y - 11,
-    size: 11,
-    font: bold,
-  });
-  page.drawText("Scanned PDF Lines", { x: margin, y: y - 26, size: 11, font: bold });
-  drawTable(doc, page, true, margin, font, bold, 7, lineCols, lineRows, LINE_WEIGHTS, {
-    contentTop: margin + 30,
-  });
-
-  page = addPage(doc, true);
-  y = page.getHeight() - margin;
-  page.drawText(truncate(jobTitle, bold, 11, page.getWidth() - margin * 2), {
-    x: margin,
-    y: y - 11,
-    size: 11,
-    font: bold,
-  });
-  page.drawText("Bucket Totals", { x: margin, y: y - 26, size: 11, font: bold });
   drawTable(doc, page, true, margin, font, bold, 7, totalCols, totalRows, TOTAL_WEIGHTS, {
-    contentTop: margin + 30,
+    contentTop: page.getHeight() - y,
   });
 
   downloadPdfBytes(

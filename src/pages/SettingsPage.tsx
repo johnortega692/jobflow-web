@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { CompletedProjectsSettingsSection } from "../components/settings/CompletedProjectsSettingsSection";
+import { BudgetCatalogSettingsSection } from "../components/settings/BudgetCatalogSettingsSection";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
 import { ManpowerCalSettingsSection } from "../components/settings/ManpowerCalSettingsSection";
@@ -31,6 +32,7 @@ const SETTINGS_TABS = [
   { id: "vendors", label: "Vendors & architects" },
   { id: "delivery", label: "Delivery" },
   { id: "google", label: "Google Sheets", adminOnly: true as const },
+  { id: "budget", label: "Budget", adminOnly: true as const },
   { id: "paint-catalog", label: "Paint products & sheens" },
   { id: "paint-vendors", label: "Paint vendors" },
   { id: "email-signature", label: "Email signature" },
@@ -80,6 +82,7 @@ export function SettingsPage() {
   const onVendorsDirty = useCallback((dirty: boolean) => setTabDirty("vendors", dirty), [setTabDirty]);
   const onDeliveryDirty = useCallback((dirty: boolean) => setTabDirty("delivery", dirty), [setTabDirty]);
   const onGoogleDirty = useCallback((dirty: boolean) => setTabDirty("google", dirty), [setTabDirty]);
+  const onBudgetDirty = useCallback((dirty: boolean) => setTabDirty("budget", dirty), [setTabDirty]);
   const onPaintCatalogDirty = useCallback(
     (dirty: boolean) => setTabDirty("paint-catalog", dirty),
     [setTabDirty],
@@ -143,6 +146,9 @@ export function SettingsPage() {
       setActiveTab("profile");
     }
     if (!roleLoading && activeTab === "google" && !isAdmin) {
+      setActiveTab("profile");
+    }
+    if (!roleLoading && activeTab === "budget" && !isAdmin) {
       setActiveTab("profile");
     }
   }, [activeTab, isAdmin, roleLoading]);
@@ -653,6 +659,16 @@ export function SettingsPage() {
         <GoogleSheetsSettingsSection
           onDirtyChange={onGoogleDirty}
           onBindActions={(actions) => bindSectionActions("google", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "budget" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "budget"}
+      >
+        <BudgetCatalogSettingsSection
+          onDirtyChange={onBudgetDirty}
+          onBindActions={(actions) => bindSectionActions("budget", actions)}
         />
       </div>
 

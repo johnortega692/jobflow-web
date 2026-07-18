@@ -65,9 +65,16 @@ export function rfiFilename(jobName: string, jobNumber: string, rfiNumber: strin
   return `${projectPart}_RFI_${rfiPart}.pdf`;
 }
 
-export function wallcoveringOrderFormFilename(jobName: string, jobNumber: string): string {
+export function wallcoveringOrderFormFilename(
+  jobName: string,
+  jobNumber: string,
+  poNumber?: string,
+): string {
   const projectPart = projectFilenamePart(jobName, jobNumber);
-  return `${projectPart}_Wallcovering_Order_Form.pdf`;
+  const po = sanitizeFilenamePart((poNumber ?? "").replace(/^PO[-#]?\s*/i, "").trim());
+  return po
+    ? `${projectPart}_Wallcovering_Order_${po}.pdf`
+    : `${projectPart}_Wallcovering_Order_Form.pdf`;
 }
 
 export function frpSubmittalFilename(jobName: string, jobNumber: string, submittalNumber: number): string {
@@ -76,14 +83,18 @@ export function frpSubmittalFilename(jobName: string, jobNumber: string, submitt
   return `${projectPart}_FRP_Submittal_${numPart}.pdf`;
 }
 
-export function frpOrderFormFilename(jobName: string, jobNumber: string): string {
+export function frpOrderFormFilename(jobName: string, jobNumber: string, poNumber?: string): string {
   const projectPart = projectFilenamePart(jobName, jobNumber);
-  return `${projectPart}_FRP_Order_Form.pdf`;
+  const po = sanitizeFilenamePart((poNumber ?? "").replace(/^PO[-#]?\s*/i, "").trim());
+  return po ? `${projectPart}_FRP_Order_${po}.pdf` : `${projectPart}_FRP_Order_Form.pdf`;
 }
 
-export function trackOrderFormFilename(jobName: string, jobNumber: string): string {
+export function trackOrderFormFilename(jobName: string, jobNumber: string, poNumber?: string): string {
   const projectPart = projectFilenamePart(jobName, jobNumber);
-  return `${projectPart}_Stretched_Fabric_Track.pdf`;
+  const po = sanitizeFilenamePart((poNumber ?? "").replace(/^PO[-#]?\s*/i, "").trim());
+  return po
+    ? `${projectPart}_FWP_Order_${po}.pdf`
+    : `${projectPart}_Stretched_Fabric_Track.pdf`;
 }
 
 export function budgetPdfJobTitle(jobNumber: string, jobName: string): string {

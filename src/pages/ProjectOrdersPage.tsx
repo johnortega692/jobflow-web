@@ -6,6 +6,12 @@ import { VendorOrderModal } from "../components/wallcovering/VendorOrderModal";
 import { WcOrderSamplesModal } from "../components/wallcovering/WcOrderSamplesModal";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
+import {
+  previewNextMaterialOrderPo,
+  recordMaterialOrderPo,
+  resolveMaterialOrderPo,
+  type MaterialOrderPoScope,
+} from "../lib/materialOrderPo";
 import { loadContactDirectory } from "../lib/contactDirectory";
 import {
   DEFAULT_DELIVERY_SCHEDULING,
@@ -14,7 +20,7 @@ import {
 } from "../lib/deliverySettings";
 import type { FrpCatalog } from "../lib/frpCatalog";
 import { loadFrpCatalog } from "../lib/frpCatalog";
-import { frpItemsToOrderForm, printFrpOrderForm } from "../lib/frpOrderFormPrint";
+import { frpItemsToOrderForm, downloadFrpOrderForm } from "../lib/frpOrderFormPrint";
 import {
   frpJobName,
   frpJobNumber,
@@ -26,7 +32,7 @@ import {
 } from "../lib/jobInfo";
 import { orderedWallcoveringItems } from "../lib/wcSampleOrderEmail";
 import {
-  printWallcoveringOrderForm,
+  downloadWallcoveringOrderForm,
   wallcoveringItemsToOrderForm,
 } from "../lib/wallcoveringOrderFormPrint";
 import type { TrackCatalog } from "../lib/trackCatalog";
@@ -36,11 +42,12 @@ import {
   loadTrackUsage,
   stripProductPrefix,
 } from "../lib/trackCatalog";
-import { printTrackOrderForm, trackItemsToOrderForm } from "../lib/trackOrderFormPrint";
+import { downloadTrackOrderForm, trackItemsToOrderForm } from "../lib/trackOrderFormPrint";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
+  MATERIAL_ORDER_UNITS,
   defaultFrpSubmittal,
   defaultTrackSubmittal,
   defaultWallcoveringSubmittal,
@@ -49,6 +56,7 @@ import {
   emptyWallcoveringItem,
   type FrpItem,
   type FrpSubmittalData,
+  type MaterialOrderUnit,
   type TrackItem,
   type TrackSubmittalData,
   type WallcoveringItem,
@@ -67,6 +75,7 @@ type UnifiedOrderRow = {
   manufacturer: string;
   color: string;
   qty: string;
+  unit: string;
   order: boolean;
 };
 
@@ -110,6 +119,7 @@ function normalizeWcDraft(raw: WallcoveringSubmittalData): WallcoveringSubmittal
     ...emptyWallcoveringItem(),
     ...i,
     order: i.order ?? false,
+    unit: i.unit?.trim() || "EA",
   }));
   return { ...defaultWallcoveringSubmittal(), ...raw, items };
 }
@@ -119,6 +129,7 @@ function normalizeFrpDraft(raw: FrpSubmittalData): FrpSubmittalData {
     ...emptyFrpItem(),
     ...i,
     order: i.order ?? false,
+    unit: i.unit?.trim() || "EA",
   }));
   return { ...defaultFrpSubmittal(), ...raw, items };
 }
@@ -128,6 +139,7 @@ function normalizeTrackDraft(raw: TrackSubmittalData): TrackSubmittalData {
     ...emptyTrackItem(),
     ...i,
     order: i.order ?? false,
+    unit: (i.unit?.trim() || "EA") as TrackItem["unit"],
   }));
   return { ...defaultTrackSubmittal(), ...raw, items };
 }
@@ -144,6 +156,7 @@ function buildUnifiedRows(wc: WallcoveringSubmittalData, frp: FrpSubmittalData):
       manufacturer: item.manufacturer,
       color: item.color,
       qty: item.qty,
+      unit: item.unit?.trim() || "EA",
       order: item.order,
     });
   });
@@ -157,6 +170,7 @@ function buildUnifiedRows(wc: WallcoveringSubmittalData, frp: FrpSubmittalData):
       manufacturer: item.manufacturer,
       color: item.color,
       qty: item.quantity,
+      unit: item.unit?.trim() || "EA",
       order: item.order,
     });
   });
@@ -165,7 +179,7 @@ function buildUnifiedRows(wc: WallcoveringSubmittalData, frp: FrpSubmittalData):
 
 export function ProjectOrdersPage() {
   const { user } = useAuth();
-  const { branding } = useLetterhead();
+  const { branding, profile, settings } = useLetterhead();
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
 
@@ -184,8 +198,10 @@ export function ProjectOrdersPage() {
   const [search, setSearch] = useState("");
 
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [suggestedPo, setSuggestedPo] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [pendingDeliveryAddress, setPendingDeliveryAddress] = useState("");
+  const [pendingPoOverride, setPendingPoOverride] = useState<string | null>(null);
   const [vendorOpen, setVendorOpen] = useState(false);
   const [vendorMode, setVendorMode] = useState<"samples" | "orders_by_vendor">("orders_by_vendor");
   const [pendingVendor, setPendingVendor] = useState<{ name: string; email: string } | null>(null);
@@ -293,6 +309,20 @@ export function ProjectOrdersPage() {
     }
   }
 
+  function setUnit(scope: OrderScope, index: number, unit: MaterialOrderUnit) {
+    if (scope === "wallcovering") {
+      setWcDraft((d) => ({
+        ...d,
+        items: d.items.map((item, i) => (i === index ? { ...item, unit } : item)),
+      }));
+    } else {
+      setFrpDraft((d) => ({
+        ...d,
+        items: d.items.map((item, i) => (i === index ? { ...item, unit } : item)),
+      }));
+    }
+  }
+
   function patchFwpItem(index: number, patch: Partial<TrackItem>) {
     setTrackDraft((d) => ({
       ...d,
@@ -308,10 +338,21 @@ export function ProjectOrdersPage() {
     return true;
   }
 
+  async function openDeliveryModal(action: PendingAction) {
+    setPendingAction(action);
+    setSuggestedPo("");
+    setDeliveryOpen(true);
+    try {
+      const next = await previewNextMaterialOrderPo(wcJobNumber);
+      setSuggestedPo(next);
+    } catch {
+      // Preview is optional — allocate still works on confirm.
+    }
+  }
+
   function startDelivery(action: PendingAction) {
     if (!requireJobIds()) return;
-    setPendingAction(action);
-    setDeliveryOpen(true);
+    void openDeliveryModal(action);
   }
 
   function startVendor(action: PendingAction) {
@@ -335,64 +376,140 @@ export function ProjectOrdersPage() {
       setVendorOpen(true);
       return;
     }
-    setPendingAction(action);
-    setDeliveryOpen(true);
+    void openDeliveryModal(action);
   }
 
-  function printWcForm(items: WallcoveringItem[], address: string, vendor?: string) {
-    printWallcoveringOrderForm(
-      {
-        job_number: wcJobNumber,
-        project_name: wcJobName,
-        delivery_address: address,
-        specifier: project.architect,
-        items: wallcoveringItemsToOrderForm(items, vendor),
+  async function consumePoNumber(jobNumber: string): Promise<string> {
+    const override = pendingPoOverride;
+    setPendingPoOverride(null);
+    const suggested = suggestedPo.trim();
+    // If user kept the suggested preview value, allocate so we don't race; if they edited, use override.
+    const useOverride =
+      override != null && override.trim() !== "" && override.trim() !== suggested;
+    return resolveMaterialOrderPo({
+      jobNumber,
+      overridePo: useOverride ? override : undefined,
+    });
+  }
+
+  async function issueOrderPdf(input: {
+    scope: MaterialOrderPoScope;
+    jobNumber: string;
+    jobName: string;
+    address: string;
+    vendorLabel?: string;
+    download: (poNumber: string) => Promise<void>;
+  }): Promise<string> {
+    const poNumber = await consumePoNumber(input.jobNumber);
+    await input.download(poNumber);
+    await recordMaterialOrderPo({
+      projectId,
+      jobNumber: input.jobNumber,
+      jobName: input.jobName,
+      poNumber,
+      scope: input.scope,
+      vendorLabel: input.vendorLabel,
+      deliveryAddress: input.address,
+      createdBy: user?.id ?? null,
+      createdByName: profile.name.trim() || user?.email || "",
+    });
+    return poNumber;
+  }
+
+  async function downloadWcForm(
+    items: WallcoveringItem[],
+    address: string,
+    vendor?: string,
+  ): Promise<string> {
+    return issueOrderPdf({
+      scope: "wallcovering",
+      jobNumber: wcJobNumber,
+      jobName: wcJobName,
+      address,
+      vendorLabel: vendor,
+      download: async (poNumber) => {
+        await downloadWallcoveringOrderForm(
+          {
+            job_number: wcJobNumber,
+            project_name: wcJobName,
+            delivery_address: address,
+            specifier: project.architect,
+            po_number: poNumber,
+            items: wallcoveringItemsToOrderForm(items, vendor),
+          },
+          branding,
+          deliverySettings,
+        );
       },
-      branding,
-      deliverySettings,
-    );
+    });
   }
 
-  function printFrpForm(items: FrpItem[], address: string) {
+  async function downloadFrpForm(items: FrpItem[], address: string, vendor?: string): Promise<string> {
     if (!frpCatalog) throw new Error("FRP catalog unavailable.");
-    printFrpOrderForm(
-      {
-        job_number: frpNum || wcJobNumber,
-        project_name: frpName || wcJobName,
-        delivery_address: address,
-        specifier: project.architect,
-        items: frpItemsToOrderForm(items, frpCatalog),
+    const jobNumber = frpNum || wcJobNumber;
+    const jobName = frpName || wcJobName;
+    return issueOrderPdf({
+      scope: "frp",
+      jobNumber,
+      jobName,
+      address,
+      vendorLabel: vendor,
+      download: async (poNumber) => {
+        await downloadFrpOrderForm(
+          {
+            job_number: jobNumber,
+            project_name: jobName,
+            delivery_address: address,
+            specifier: project.architect,
+            po_number: poNumber,
+            items: frpItemsToOrderForm(items, frpCatalog),
+          },
+          branding,
+          deliverySettings,
+        );
       },
-      branding,
-      deliverySettings,
-    );
+    });
   }
 
-  function printFwpForm(items: TrackItem[], address: string) {
+  async function downloadFwpForm(items: TrackItem[], address: string, vendor?: string): Promise<string> {
     for (const item of items) {
       const product = stripProductPrefix(item.product);
       if (product) incrementTrackUsage(product);
     }
     void loadTrackUsage().then(setTrackUsage);
-    printTrackOrderForm(
-      {
-        job_number: fwpNum || wcJobNumber,
-        project_name: fwpName || wcJobName,
-        delivery_address: address,
-        specifier: project.architect,
-        manufacturer: "APS",
-        items: trackItemsToOrderForm(items),
+    const jobNumber = fwpNum || wcJobNumber;
+    const jobName = fwpName || wcJobName;
+    return issueOrderPdf({
+      scope: "fwp",
+      jobNumber,
+      jobName,
+      address,
+      vendorLabel: vendor,
+      download: async (poNumber) => {
+        await downloadTrackOrderForm(
+          {
+            job_number: jobNumber,
+            project_name: jobName,
+            delivery_address: address,
+            specifier: project.architect,
+            manufacturer: "APS",
+            po_number: poNumber,
+            items: trackItemsToOrderForm(items),
+          },
+          branding,
+          deliverySettings,
+        );
       },
-      branding,
-      deliverySettings,
-    );
+    });
   }
 
-  function onDeliveryConfirmed(address: string) {
+  function onDeliveryConfirmed(address: string, poNumber: string) {
     setDeliveryOpen(false);
     const action = pendingAction;
     setPendingAction(null);
     if (!action) return;
+
+    setPendingPoOverride(poNumber);
 
     if (
       action.kind === "wc_vendor" ||
@@ -406,27 +523,29 @@ export function ProjectOrdersPage() {
       return;
     }
 
-    try {
-      if (action.kind === "wc_form") {
-        const items = wcDraft.items.filter(wcItemHasContent);
-        if (!items.length) throw new Error("Add wallcovering items in the Wallcovering tab first.");
-        printWcForm(items, address);
-        setStatus("Wallcovering order form PDF opened.");
-      } else if (action.kind === "frp_form") {
-        const items = frpDraft.items.filter(frpItemHasContent);
-        if (!items.length) throw new Error("Add FRP items in the FRP tab first.");
-        printFrpForm(items, address);
-        setStatus("FRP order form PDF opened.");
-      } else if (action.kind === "fwp_form") {
-        const items = trackDraft.items.filter(trackItemHasContent);
-        if (!items.length) throw new Error("Add FWP items below before generating an order form.");
-        printFwpForm(items, address);
-        setStatus("FWP order form PDF opened.");
+    void (async () => {
+      try {
+        if (action.kind === "wc_form") {
+          const items = wcDraft.items.filter(wcItemHasContent);
+          if (!items.length) throw new Error("Add wallcovering items in the Wallcovering tab first.");
+          const po = await downloadWcForm(items, address);
+          setStatus(`Wallcovering order form PDF downloaded — PO# ${po}.`);
+        } else if (action.kind === "frp_form") {
+          const items = frpDraft.items.filter(frpItemHasContent);
+          if (!items.length) throw new Error("Add FRP items in the FRP tab first.");
+          const po = await downloadFrpForm(items, address);
+          setStatus(`FRP order form PDF downloaded — PO# ${po}.`);
+        } else if (action.kind === "fwp_form") {
+          const items = trackDraft.items.filter(trackItemHasContent);
+          if (!items.length) throw new Error("Add FWP items below before generating an order form.");
+          const po = await downloadFwpForm(items, address);
+          setStatus(`FWP order form PDF downloaded — PO# ${po}.`);
+        }
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not generate order form.");
       }
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not generate order form.");
-    }
+    })();
   }
 
   function onVendorConfirmed(name: string, email: string) {
@@ -441,28 +560,32 @@ export function ProjectOrdersPage() {
     }
 
     const address = pendingDeliveryAddress;
-    try {
-      if (action?.kind === "wc_vendor" || action?.kind === "all_vendor") {
-        const items = wcDraft.items.filter((i) => i.order);
-        if (items.length) printWcForm(items, address, name);
+    void (async () => {
+      try {
+        const issued: string[] = [];
+        if (action?.kind === "wc_vendor" || action?.kind === "all_vendor") {
+          const items = wcDraft.items.filter((i) => i.order);
+          if (items.length) issued.push(await downloadWcForm(items, address, name));
+        }
+        if (action?.kind === "frp_vendor" || action?.kind === "all_vendor") {
+          const items = frpDraft.items.filter((i) => i.order);
+          if (items.length) issued.push(await downloadFrpForm(items, address, name));
+        }
+        if (action?.kind === "fwp_vendor" || action?.kind === "all_vendor") {
+          const items = trackDraft.items.filter((i) => i.order);
+          if (items.length) issued.push(await downloadFwpForm(items, address, name));
+        }
+        const poLabel = issued.length ? ` — PO# ${issued.join(", ")}` : "";
+        setStatus(
+          action?.kind === "all_vendor"
+            ? `Order form(s) downloaded for ${name}${poLabel}.`
+            : `Order form for ${name} downloaded${poLabel}.`,
+        );
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not generate order form.");
       }
-      if (action?.kind === "frp_vendor" || action?.kind === "all_vendor") {
-        const items = frpDraft.items.filter((i) => i.order);
-        if (items.length) printFrpForm(items, address);
-      }
-      if (action?.kind === "fwp_vendor" || action?.kind === "all_vendor") {
-        const items = trackDraft.items.filter((i) => i.order);
-        if (items.length) printFwpForm(items, address);
-      }
-      setStatus(
-        action?.kind === "all_vendor"
-          ? `Order form(s) opened for ${name}.`
-          : `Order form for ${name} opened.`,
-      );
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not generate order form.");
-    }
+    })();
   }
 
   if (loading || catalogLoading) return <p className="muted">Loading material orders…</p>;
@@ -555,6 +678,7 @@ export function ProjectOrdersPage() {
                 <th>Manufacturer</th>
                 <th>Color / code</th>
                 <th>Qty</th>
+                <th>Unit</th>
               </tr>
             </thead>
             <tbody>
@@ -585,6 +709,20 @@ export function ProjectOrdersPage() {
                       placeholder="Qty"
                       onChange={(e) => setQty(row.scope, row.index, e.target.value)}
                     />
+                  </td>
+                  <td>
+                    <select
+                      className="project-orders-unit"
+                      value={row.unit || "EA"}
+                      aria-label={`Unit for ${row.product || row.label || "line"}`}
+                      onChange={(e) => setUnit(row.scope, row.index, e.target.value as MaterialOrderUnit)}
+                    >
+                      {MATERIAL_ORDER_UNITS.map((u) => (
+                        <option key={u} value={u}>
+                          {u}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                 </tr>
               ))}
@@ -663,10 +801,13 @@ export function ProjectOrdersPage() {
         <DeliveryAddressModal
           defaultAddress={jobFullAddressOneLine(project, project.jobInfo)}
           warehouseAddress={deliverySettings.default_delivery_address}
+          companyAddress={settings.company_address}
+          suggestedPo={suggestedPo}
           onConfirm={onDeliveryConfirmed}
           onClose={() => {
             setDeliveryOpen(false);
             setPendingAction(null);
+            setPendingPoOverride(null);
           }}
         />
       )}

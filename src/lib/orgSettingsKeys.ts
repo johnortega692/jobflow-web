@@ -22,6 +22,7 @@ export const ORG_SETTINGS_KEYS = [
   "work_order_labor_rates",
   "work_order_fonts",
   "company_labor_rates",
+  "budget_library",
 ] as const;
 
 /** Per-user settings (each account keeps their own row). */
@@ -37,7 +38,6 @@ export const PERSONAL_SETTINGS_KEYS = [
   "work_order_scan_boxes",
   "work_order_total_positions",
   "work_order_text_spacing",
-  "budget_library",
   "compose_email_method",
 ] as const;
 

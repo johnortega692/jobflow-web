@@ -8,9 +8,10 @@ import {
   BudgetIconHide,
   BudgetIconPush,
   BudgetIconRemove,
+  BudgetIconSelectAll,
   BudgetIconSplit,
 } from "../components/budget/BudgetLineToolbarIcons";
-import { BudgetSettingsModal } from "../components/budget/BudgetSettingsModal";
+import { BudgetBucketsModal } from "../components/budget/BudgetSettingsModal";
 import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -70,14 +71,14 @@ function fmtMoney(n: number): string {
 }
 
 export function BudgetPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading, load } = useProjectTradeData(projectId);
   const [library, setLibrary] = useState<BudgetLibrary | null>(null);
   const [draft, setDraft] = useState(() => defaultBudgetMaker(project.job_name));
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
   const [targetBucket, setTargetBucket] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showBuckets, setShowBuckets] = useState(false);
   const [splitLineId, setSplitLineId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -369,12 +370,17 @@ export function BudgetPage() {
   async function handleDefaultTemplateChange(name: string) {
     if (!user) return;
     const nextLib = { ...lib, default_bucket_template: name };
-    const err = await saveBudgetLibrary(user.id, nextLib);
-    if (err) {
-      setError(err);
-      return;
+    if (isAdmin) {
+      const err = await saveBudgetLibrary(user.id, nextLib);
+      if (err) {
+        setError(err);
+        return;
+      }
+      setLibrary(nextLib);
+    } else {
+      // Non-admins can pick a template for this session/job only.
+      setLibrary(nextLib);
     }
-    setLibrary(nextLib);
     setError(null);
     if (!draft.buckets.length && name) {
       const tplPatch = defaultTemplateDraftPatch(nextLib);
@@ -483,6 +489,12 @@ export function BudgetPage() {
     setError(null);
   }
 
+  function selectAllVisibleLines() {
+    if (!visibleLines.length) return;
+    const allSelected = visibleLines.every((l) => selectedLineIds.has(l.id));
+    setSelectedLineIds(allSelected ? new Set() : new Set(visibleLines.map((l) => l.id)));
+  }
+
   function hideSelected() {
     const ids = selectedLineIds;
     if (!ids.size) return;
@@ -569,8 +581,8 @@ export function BudgetPage() {
           </div>
           <div className="row-gap wrap">
             {savedAt && <span className="muted small">Saved {savedAt}</span>}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowSettings(true)}>
-              Options…
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowBuckets(true)}>
+              Buckets…
             </button>
             <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void handleSave()}>
               {saving ? "Saving…" : "Save"}
@@ -667,14 +679,14 @@ export function BudgetPage() {
           )}
           <div className="row-gap wrap budget-summary-inputs">
               <label className="budget-inline-label">
-                Default template
+                {isAdmin ? "Default template" : "Template"}
                 <select
                   value={resolveDefaultTemplateName(lib)}
                   disabled={!templateNames.length}
                   onChange={(e) => void handleDefaultTemplateChange(e.target.value)}
                 >
                   <option value="">
-                    {templateNames.length ? "— Select default —" : "No saved templates"}
+                    {templateNames.length ? "— Select —" : "No saved templates"}
                   </option>
                   {templateNames.map((name) => (
                     <option key={name} value={name}>
@@ -692,7 +704,7 @@ export function BudgetPage() {
               ["Grand total", metrics.userGrandTotal != null ? fmtMoney(metrics.userGrandTotal) : "—", ""],
               ["Profit & OH", profit != null ? fmtMoney(profit) : "—", "ok"],
               ["Profit %", profit != null && metrics.userGrandTotal ? formatPct(profit, metrics.userGrandTotal) : "—", "ok"],
-              ["Hours", metrics.totalHours ? metrics.totalHours.toFixed(1) : "—", ""],
+              ["Hours", metrics.totalHours ? String(Math.trunc(metrics.totalHours)) : "—", ""],
               ["Unassigned", fmtMoney(metrics.unassignedTotal), "warn"],
             ].map(([label, value, tone]) => (
               <div key={String(label)} className={`budget-metric ${tone}`}>
@@ -719,6 +731,24 @@ export function BudgetPage() {
               <button type="button" className="btn btn-secondary btn-sm btn-with-icon" onClick={duplicateSelectedLines}>
                 <BudgetIconDuplicate />
                 Dupe
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm btn-icon"
+                onClick={selectAllVisibleLines}
+                disabled={!visibleLines.length}
+                title={
+                  visibleLines.length && visibleLines.every((l) => selectedLineIds.has(l.id))
+                    ? "Clear selection"
+                    : "Select all"
+                }
+                aria-label={
+                  visibleLines.length && visibleLines.every((l) => selectedLineIds.has(l.id))
+                    ? "Clear selection"
+                    : "Select all"
+                }
+              >
+                <BudgetIconSelectAll />
               </button>
               <button
                 type="button"
@@ -956,18 +986,15 @@ export function BudgetPage() {
         </section>
       </div>
 
-      {showSettings && user && (
-        <BudgetSettingsModal
+      {showBuckets && user && (
+        <BudgetBucketsModal
           userId={user.id}
           library={lib}
           draft={draft}
-          onClose={() => setShowSettings(false)}
+          canEditCatalog={isAdmin}
+          onClose={() => setShowBuckets(false)}
           onChange={patch}
           onLibraryChange={setLibrary}
-          onLibrarySaved={(next) => {
-            setLibrary(next);
-            void loadLib();
-          }}
         />
       )}
 

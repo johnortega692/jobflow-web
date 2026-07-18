@@ -35,6 +35,13 @@ export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
     defaultEnabled: true,
   },
   {
+    id: "job_start_form",
+    group: "contract_compliance",
+    label: "Complete Job Start Form",
+    source: "manual",
+    defaultEnabled: true,
+  },
+  {
     id: "executed_subcontract",
     group: "contract_compliance",
     label: "Return executed contract",

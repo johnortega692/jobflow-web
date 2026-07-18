@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { ProjectMiniPipeline } from "../components/projects/ProjectMiniPipeline";
+import { Link, useNavigate } from "react-router-dom";
+import { ProjectsAttentionCard } from "../components/projects/ProjectsAttentionCard";
 import { ProjectStatusBadge } from "../components/projects/ProjectStatusBadge";
 import { SubmittalStagePill } from "../components/projects/SubmittalStagePill";
 import { StaffContactSelect } from "../components/projects/StaffContactSelect";
@@ -8,14 +8,20 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import { defaultJobInfo } from "../types/jobInfo";
 import { defaultProjectBilling } from "../types/projectBilling";
-import { resolveDashboardPaintTracker } from "../lib/projectDashboardSnapshot";
 import { loadFieldToolsStaffForJobflow } from "../lib/fieldToolsStaff";
 import {
   compareProjectsForListSort,
   computeProjectListSummaries,
-  loadProjectsListSort,
-  saveProjectsListSort,
+  filterProjectsByStage,
+  getSpotlight,
+  loadProjectsListSortState,
+  loadProjectsListStageFilter,
+  nextProjectsListSortState,
+  saveProjectsListSortState,
+  saveProjectsListStageFilter,
   type ProjectsListSort,
+  type ProjectsListSortState,
+  type ProjectsListStageFilter,
 } from "../lib/projectListSummary";
 import {
   findStaffContact,
@@ -30,7 +36,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
 import { formatDateTime } from "../lib/strings";
-import { normalizeProject, type Project } from "../types/database";
+import { type Project } from "../types/database";
 
 function projectSearchText(p: Project): string {
   return [p.job_number, p.job_name, p.contractor, p.architect, p.owner, p.job_address, p.job_address2]
@@ -39,6 +45,7 @@ function projectSearchText(p: Project): string {
 }
 
 export function ProjectsPage() {
+  const navigate = useNavigate();
   const { isAdmin, jobRole } = useAuth();
   const { profile } = useLetterhead();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -57,22 +64,36 @@ export function ProjectsPage() {
   const [fieldStaffError, setFieldStaffError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [listSort, setListSort] = useState<ProjectsListSort>(() => loadProjectsListSort());
+  const [listSortState, setListSortState] = useState<ProjectsListSortState>(() =>
+    loadProjectsListSortState(),
+  );
+  const [stageFilter, setStageFilter] = useState<ProjectsListStageFilter>(() =>
+    loadProjectsListStageFilter(),
+  );
   const pmDefaultedRef = useRef(false);
 
   const summaries = useMemo(() => computeProjectListSummaries(projects), [projects]);
 
-  const recentProjects = useMemo(() => projects.slice(0, 3), [projects]);
+  const attentionSpotlight = useMemo(() => getSpotlight(projects, summaries), [projects, summaries]);
 
   const filteredProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const base = q ? projects.filter((p) => projectSearchText(p).includes(q)) : projects;
-    return [...base].sort((a, b) => compareProjectsForListSort(a, b, summaries, listSort));
-  }, [projects, search, summaries, listSort]);
+    const searched = q ? projects.filter((p) => projectSearchText(p).includes(q)) : projects;
+    const staged = filterProjectsByStage(searched, summaries, stageFilter);
+    return [...staged].sort((a, b) =>
+      compareProjectsForListSort(a, b, summaries, listSortState.sort, listSortState.dir),
+    );
+  }, [projects, search, summaries, listSortState, stageFilter]);
 
   function onListSortChange(sort: ProjectsListSort) {
-    setListSort(sort);
-    saveProjectsListSort(sort);
+    const next = nextProjectsListSortState(listSortState, sort);
+    setListSortState(next);
+    saveProjectsListSortState(next);
+  }
+
+  function onStageFilterChange(filter: ProjectsListStageFilter) {
+    setStageFilter(filter);
+    saveProjectsListStageFilter(filter);
   }
 
   async function loadProjects() {
@@ -283,31 +304,7 @@ export function ProjectsPage() {
         </div>
       ) : (
         <>
-          {recentProjects.length > 0 && (
-            <section className="projects-recent-section">
-              <h2 className="projects-recent-heading">Recently updated</h2>
-              <div className="projects-recent-grid">
-                {recentProjects.map((p) => {
-                  const summary = summaries.get(p.id)!;
-                  const tracker = resolveDashboardPaintTracker(normalizeProject(p));
-                  return (
-                    <Link key={p.id} className="projects-recent-card card" to={`/projects/${p.id}`}>
-                      <div className="projects-recent-card-top">
-                        <div className="projects-recent-job">{p.job_number}</div>
-                        <ProjectStatusBadge summary={summary} />
-                      </div>
-                      <div className="projects-recent-name">{p.job_name || "Untitled job"}</div>
-                      {p.contractor?.trim() && (
-                        <div className="projects-recent-meta muted small">{p.contractor}</div>
-                      )}
-                      <ProjectMiniPipeline tracker={tracker} stage={summary.submittalStage} />
-                      <div className="projects-recent-meta muted small">{formatDateTime(p.updated_at)}</div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+          {projects.length > 0 && <ProjectsAttentionCard spotlight={attentionSpotlight} />}
 
           <div className="projects-search-wrap">
             <input
@@ -326,66 +323,120 @@ export function ProjectsPage() {
 
           {filteredProjects.length === 0 ? (
             <div className="card empty-state">
-              <p>No projects match &ldquo;{search.trim()}&rdquo;.</p>
+              <p>
+                {search.trim()
+                  ? `No projects match “${search.trim()}”.`
+                  : "No projects match this filter."}
+              </p>
             </div>
           ) : (
             <>
-              <div className="projects-list-sort" role="group" aria-label="Sort projects">
-                <span className="projects-list-sort-label muted small">Sort</span>
-                <button
-                  type="button"
-                  className={`projects-list-sort-btn${listSort === "updated" ? " projects-list-sort-btn--active" : ""}`}
-                  onClick={() => onListSortChange("updated")}
-                >
-                  Recently updated
-                </button>
-                <button
-                  type="button"
-                  className={`projects-list-sort-btn${listSort === "attention" ? " projects-list-sort-btn--active" : ""}`}
-                  onClick={() => onListSortChange("attention")}
-                >
-                  Needs attention
-                </button>
+              <div className="projects-list-controls">
+                <div className="projects-list-sort" role="group" aria-label="Sort projects">
+                  <span className="projects-list-sort-label muted small">Sort</span>
+                  {(
+                    [
+                      ["updated", "Updated"],
+                      ["attention", "Needs attention"],
+                      ["job", "Job #"],
+                      ["name", "Name"],
+                    ] as const
+                  ).map(([id, label]) => {
+                    const active = listSortState.sort === id;
+                    const dirMark = active ? (listSortState.dir === "asc" ? " ↑" : " ↓") : "";
+                    const title = active
+                      ? `Sort by ${label} (${listSortState.dir === "asc" ? "ascending" : "descending"}). Click again to reverse.`
+                      : `Sort by ${label}`;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`projects-list-sort-btn${active ? " projects-list-sort-btn--active" : ""}`}
+                        onClick={() => onListSortChange(id)}
+                        title={title}
+                        aria-pressed={active}
+                        aria-label={title}
+                      >
+                        {label}
+                        {dirMark}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className="projects-list-controls-sep" aria-hidden="true" />
+                <div className="projects-list-sort" role="group" aria-label="Filter by submittal stage">
+                  <span className="projects-list-sort-label muted small">Filter</span>
+                  {(
+                    [
+                      ["all", "All"],
+                      ["not_started", "Not started"],
+                      ["ordered", "Ordered"],
+                      ["submitted", "Submitted"],
+                      ["revision", "Revision"],
+                      ["approved", "Approved"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`projects-list-sort-btn projects-list-filter-btn${stageFilter === id ? " projects-list-filter-btn--active" : ""}`}
+                      onClick={() => onStageFilterChange(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="table-wrap card projects-table-wrap">
-                <table className="projects-table">
-                  <thead>
-                    <tr>
-                      <th>Job #</th>
-                      <th>Name</th>
-                      <th>Submittal</th>
-                      <th>Attention</th>
-                      <th>Updated</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProjects.map((p) => {
-                      const summary = summaries.get(p.id)!;
-                      return (
-                        <tr key={p.id}>
+              <div className="card projects-table-shell">
+                <div
+                  className={`projects-table-scroller${filteredProjects.length > 10 ? " projects-table-scroller--scroll" : ""}`}
+                >
+                  <table className="projects-table">
+                    <thead>
+                      <tr>
+                        <th>Job #</th>
+                        <th>Name</th>
+                        <th>Submittal</th>
+                        <th>Attention</th>
+                        <th>Updated</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProjects.map((p) => {
+                        const summary = summaries.get(p.id)!;
+                        return (
+                          <tr
+                            key={p.id}
+                            className="projects-table-row"
+                            onDoubleClick={() => navigate(`/projects/${p.id}`)}
+                          >
                           <td>{p.job_number}</td>
-                          <td className="projects-table-name" title={p.job_name ?? undefined}>
-                            {p.job_name}
-                          </td>
-                          <td>
-                            <SubmittalStagePill stage={summary.submittalStage} />
-                          </td>
-                          <td>
-                            <ProjectStatusBadge summary={summary} tableMode />
-                          </td>
-                          <td className="muted">{formatDateTime(p.updated_at)}</td>
-                          <td>
-                            <Link className="btn btn-small" to={`/projects/${p.id}`}>
-                              Open
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            <td className="projects-table-name" title={p.job_name ?? undefined}>
+                              <div className="projects-table-job-name">{p.job_name || "Untitled job"}</div>
+                              {p.contractor?.trim() ? (
+                                <div className="projects-table-gc muted small">{p.contractor.trim()}</div>
+                              ) : null}
+                            </td>
+                            <td>
+                              <SubmittalStagePill stage={summary.submittalStage} />
+                            </td>
+                            <td>
+                              <ProjectStatusBadge summary={summary} tableMode />
+                            </td>
+                            <td className="muted">{formatDateTime(p.updated_at)}</td>
+                            <td>
+                              <Link className="btn btn-small" to={`/projects/${p.id}`}>
+                                Open
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </>
           )}

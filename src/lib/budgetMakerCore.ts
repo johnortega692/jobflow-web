@@ -630,7 +630,7 @@ export function combineSummaryRows(rows: BucketSummaryRow[]): BucketSummaryRow[]
     return {
       ...row,
       bucketIdx: index,
-      hours: hoursNum ? hoursNum.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
+      hours: hoursNum ? String(Math.trunc(hoursNum)) : "",
       pct: formatPct(row.amount, budgetTotal),
       notes: noteParts.join("; "),
     };
@@ -660,7 +660,7 @@ export function buildSummaryRows(
       costCode: formatCostCode(bucket.cost_code, lib, bucket.cost_class),
       costClass: bucket.cost_class,
       glAcct: costClassGlAcct(lib, bucket.cost_class),
-      hours: hours ? hours.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
+      hours: hours ? String(Math.trunc(hours)) : "",
       amount,
       pct: formatPct(amount, budgetTotal),
       notes: fmtCell(bucket.notes),

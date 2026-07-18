@@ -115,10 +115,14 @@ export function ProjectPoPage() {
       current.map((r) => (r.dispatchId === row.dispatchId ? { ...r, [field]: next } : r)),
     );
     try {
-      await updatePoDispatchTracking(row.dispatchId, {
-        receivedField: field === "receivedField" ? next : undefined,
-        completed: field === "completed" ? next : undefined,
-      });
+      await updatePoDispatchTracking(
+        row.dispatchId,
+        {
+          receivedField: field === "receivedField" ? next : undefined,
+          completed: field === "completed" ? next : undefined,
+        },
+        row.source,
+      );
     } catch (e) {
       setRows(prev);
       setError(e instanceof Error ? e.message : "Update failed.");
@@ -145,9 +149,10 @@ export function ProjectPoPage() {
     <div className="stack po-tracker-page">
       <div className="po-tracker-intro">
         <p className="muted small">
-          PO numbers issued from <strong>Field Tools</strong> orders for this job. Check{" "}
-          <strong>Received Field</strong> when the foreman sends a packing slip photo, and{" "}
-          <strong>Completed</strong> after the PO is entered in FSI.
+          PO numbers issued from <strong>Field Tools</strong> and <strong>Material orders</strong>{" "}
+          for this job (shared sequence, e.g. 1058-002). Check <strong>Received Field</strong> when
+          the foreman sends a packing slip photo, and <strong>Completed</strong> after the PO is
+          entered in FSI.
         </p>
         {jobLookups.length > 0 && (
           <p className="muted small">
@@ -200,8 +205,8 @@ export function ProjectPoPage() {
       ) : filteredRows.length === 0 ? (
         <p className="muted">
           No PO orders yet
-          {contractFilter === "all" ? " for this job" : " for this contract"}. Orders submitted from
-          Field Tools with a material PO will appear here.
+          {contractFilter === "all" ? " for this job" : " for this contract"}. Field Tools material
+          orders and JobFlow Material Order PDFs will appear here.
         </p>
       ) : (
         <div className="po-tracker-table-wrap">
@@ -264,19 +269,23 @@ export function ProjectPoPage() {
                     </label>
                   </td>
                   <td className="po-tracker-action-col">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() =>
-                        setViewOrder({
-                          orderId: row.orderId,
-                          poNumber: row.poNumber,
-                          dispatchId: row.dispatchId,
-                        })
-                      }
-                    >
-                      View
-                    </button>
+                    {row.source === "field_tools" ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() =>
+                          setViewOrder({
+                            orderId: row.orderId,
+                            poNumber: row.poNumber,
+                            dispatchId: row.dispatchId,
+                          })
+                        }
+                      >
+                        View
+                      </button>
+                    ) : (
+                      <span className="muted small">PDF</span>
+                    )}
                   </td>
                 </tr>
               ))}

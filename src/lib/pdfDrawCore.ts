@@ -212,6 +212,18 @@ export type PdfTableState = {
   bold: PDFFont;
 };
 
+export type PdfTableAlign = "left" | "right" | "center";
+
+export type PdfTableDrawOptions = {
+  aligns?: PdfTableAlign[];
+  /** `grid` = cell boxes (default). `rows` = header block + horizontal rules only. */
+  borders?: "grid" | "rows";
+  /** Vertical padding inside body rows (points). Default 3; use ~9 for document-style tables. */
+  padY?: number;
+  /** Vertical padding inside header row; defaults to `padY` (use a smaller value for a shorter header). */
+  headerPadY?: number;
+};
+
 export function drawDataTable(
   state: PdfTableState,
   margin: number,
@@ -219,9 +231,16 @@ export function drawDataTable(
   colWeights: number[],
   rows: string[][],
   fontSize = 9,
+  /** Min y reserved for footers; defaults to `margin`. */
+  contentBottom = margin,
+  options: PdfTableDrawOptions = {},
 ): PdfTableState {
-  const rowHeight = fontSize + 6;
-  const headerHeight = rowHeight + 2;
+  const borders = options.borders ?? "grid";
+  const aligns = options.aligns ?? [];
+  const padY = options.padY ?? (borders === "rows" ? 9 : 3);
+  const headerPadY = options.headerPadY ?? padY;
+  const rowHeight = fontSize + padY * 2;
+  const headerHeight = fontSize + headerPadY * 2;
   let { doc, page, y, font, bold } = state;
   const pageWidth = page.getWidth();
   const usable = pageWidth - margin * 2;
@@ -229,31 +248,69 @@ export function drawDataTable(
   const colWidths = colWeights.map((w) => (usable * w) / weightSum);
 
   function newPageIfNeeded(need: number) {
-    if (y - need >= margin) return;
+    if (y - need >= contentBottom) return;
     page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
-    y = page.getHeight() - margin;
+    y = page.getHeight() - PDF_MARGIN_TOP;
+  }
+
+  function cellTextX(
+    text: string,
+    colIndex: number,
+    colX: number,
+    colW: number,
+    useFont: typeof font,
+  ): number {
+    const align = aligns[colIndex] ?? "left";
+    const maxW = colW - 8;
+    const drawn = truncate(text, useFont, fontSize, maxW);
+    const tw = useFont.widthOfTextAtSize(drawn, fontSize);
+    if (align === "right") return colX + colW - 4 - tw;
+    if (align === "center") return colX + (colW - tw) / 2;
+    return colX + 4;
   }
 
   function drawHeader() {
     newPageIfNeeded(headerHeight);
-    let x = margin;
-    columns.forEach((col, i) => {
+    if (borders === "rows") {
       page.drawRectangle({
-        x,
+        x: margin,
         y: y - headerHeight,
-        width: colWidths[i]!,
+        width: usable,
         height: headerHeight,
         color: HEADER_BG,
       });
-      page.drawText(truncate(col, bold, fontSize, colWidths[i]! - 4), {
-        x: x + 3,
-        y: y - headerHeight + 3,
-        size: fontSize,
-        font: bold,
-        color: rgb(1, 1, 1),
+      let x = margin;
+      columns.forEach((col, i) => {
+        const label = truncate(col, bold, fontSize, colWidths[i]! - 8);
+        page.drawText(label, {
+          x: cellTextX(col, i, x, colWidths[i]!, bold),
+          y: y - headerHeight + headerPadY,
+          size: fontSize,
+          font: bold,
+          color: rgb(1, 1, 1),
+        });
+        x += colWidths[i]!;
       });
-      x += colWidths[i]!;
-    });
+    } else {
+      let x = margin;
+      columns.forEach((col, i) => {
+        page.drawRectangle({
+          x,
+          y: y - headerHeight,
+          width: colWidths[i]!,
+          height: headerHeight,
+          color: HEADER_BG,
+        });
+        page.drawText(truncate(col, bold, fontSize, colWidths[i]! - 8), {
+          x: x + 4,
+          y: y - headerHeight + headerPadY,
+          size: fontSize,
+          font: bold,
+          color: rgb(1, 1, 1),
+        });
+        x += colWidths[i]!;
+      });
+    }
     y -= headerHeight;
   }
 
@@ -266,23 +323,34 @@ export function drawDataTable(
     }
     let x = margin;
     row.forEach((cell, ci) => {
-      page.drawRectangle({
-        x,
-        y: y - rowHeight,
-        width: colWidths[ci]!,
-        height: rowHeight,
-        borderColor: BORDER,
-        borderWidth: 0.25,
-      });
-      page.drawText(truncate(cell, font, fontSize, colWidths[ci]! - 4), {
-        x: x + 3,
-        y: y - rowHeight + 3,
+      if (borders === "grid") {
+        page.drawRectangle({
+          x,
+          y: y - rowHeight,
+          width: colWidths[ci]!,
+          height: rowHeight,
+          borderColor: BORDER,
+          borderWidth: 0.25,
+        });
+      }
+      const drawn = truncate(cell, font, fontSize, colWidths[ci]! - 8);
+      page.drawText(drawn, {
+        x: cellTextX(cell, ci, x, colWidths[ci]!, font),
+        y: y - rowHeight + padY,
         size: fontSize,
         font,
         color: TEXT,
       });
       x += colWidths[ci]!;
     });
+    if (borders === "rows") {
+      page.drawLine({
+        start: { x: margin, y: y - rowHeight },
+        end: { x: margin + usable, y: y - rowHeight },
+        thickness: 0.4,
+        color: BORDER,
+      });
+    }
     y -= rowHeight;
   });
 

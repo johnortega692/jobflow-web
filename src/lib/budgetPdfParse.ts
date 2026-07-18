@@ -93,6 +93,12 @@ function toFloat(s: string | undefined): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+/** Keep the integer part only (6.5 → 6, 13456.24 → 13456). No rounding. */
+function toWholeNumber(s: string | undefined): number | null {
+  const n = toFloat(s);
+  return n == null ? null : Math.trunc(n);
+}
+
 function detectCategory(line: string): string | null {
   for (const { pattern, category } of CATEGORY_HEADER_PATTERNS) {
     if (pattern.test(line)) return category;
@@ -110,8 +116,8 @@ function parsePdfLine(line: string, category: string): Omit<BudgetScanLine, "id"
       Quantity: toFloat(m.groups.qty),
       UoM: m.groups.uom,
       "Unit Cost": toFloat(m.groups.unit),
-      Amount: toFloat(m.groups.amount),
-      "Man Hours": toFloat(m.groups.man),
+      Amount: toWholeNumber(m.groups.amount),
+      "Man Hours": toWholeNumber(m.groups.man),
     };
   }
 
@@ -124,7 +130,7 @@ function parsePdfLine(line: string, category: string): Omit<BudgetScanLine, "id"
       Quantity: toFloat(m.groups.qty),
       UoM: m.groups.uom,
       "Unit Cost": null,
-      Amount: toFloat(m.groups.amount),
+      Amount: toWholeNumber(m.groups.amount),
       "Man Hours": null,
     };
   }
@@ -138,7 +144,7 @@ function parsePdfLine(line: string, category: string): Omit<BudgetScanLine, "id"
       Quantity: null,
       UoM: m.groups.uom,
       "Unit Cost": null,
-      Amount: toFloat(m.groups.amount),
+      Amount: toWholeNumber(m.groups.amount),
       "Man Hours": null,
     };
   }
@@ -152,8 +158,8 @@ function parsePdfLine(line: string, category: string): Omit<BudgetScanLine, "id"
       Quantity: null,
       UoM: "",
       "Unit Cost": null,
-      Amount: toFloat(m.groups.amount),
-      "Man Hours": toFloat(m.groups.man),
+      Amount: toWholeNumber(m.groups.amount),
+      "Man Hours": toWholeNumber(m.groups.man),
     };
   }
 

@@ -5,7 +5,12 @@ import {
   stripProductPrefix,
   trackProductsForType,
 } from "../../lib/trackCatalog";
-import type { TrackItem, TrackItemType } from "../../types/tradeDocuments";
+import {
+  MATERIAL_ORDER_UNITS,
+  type TrackItem,
+  type TrackItemType,
+  type MaterialOrderUnit,
+} from "../../types/tradeDocuments";
 
 const TRACK_TYPES: TrackItemType[] = ["Track", "Infill"];
 
@@ -33,6 +38,7 @@ export function TrackItemRow({
   onRemove,
 }: Props) {
   const productOptions = item.type ? trackProductsForType(catalog, item.type, usage) : [];
+  const unitValue = (item.unit?.trim() || "EA") as MaterialOrderUnit;
 
   function onTypeChange(type: TrackItemType) {
     onChange({ type, product: "", mat_code: "" });
@@ -98,11 +104,26 @@ export function TrackItemRow({
           />
         </label>
         <label className="track-col track-col--qty">
-          <span className="paint-col-head">Quantity</span>
+          <span className="paint-col-head">Qty</span>
           <input
             value={item.quantity}
             onChange={(e) => onChange({ quantity: e.target.value })}
+            inputMode="decimal"
           />
+        </label>
+        <label className="track-col track-col--unit">
+          <span className="paint-col-head">Unit</span>
+          <select
+            value={unitValue}
+            onChange={(e) => onChange({ unit: e.target.value as MaterialOrderUnit })}
+            aria-label={`Unit row ${index + 1}`}
+          >
+            {MATERIAL_ORDER_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
         </label>
         <div className="track-row-actions">
           <button

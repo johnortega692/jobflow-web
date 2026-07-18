@@ -184,21 +184,86 @@ function ironwoodCombineCityLines(parts: string[]): string {
 const STREET_SUFFIX_RE =
   /\b(st|street|blvd|boulevard|dr|drive|ave|avenue|way|ct|court|rd|road|ln|lane|hwy|highway|pkwy|parkway|pl|place)\b/i;
 
+const SUITE_RE = /\b(ste\.?|suite|unit|#)\s*\.?\s*\w+/i;
+
+/** True when a line looks like a street address, not a company/person name. */
+function ironwoodLooksLikeStreetLine(line: string): boolean {
+  const s = (line ?? "").trim();
+  if (!s) return false;
+  if (ironwoodLooksLikeCityZipLine(s) && !/^\d/.test(s)) return false;
+  if (/^\d+[A-Za-z]?\s+\S+/.test(s) && STREET_SUFFIX_RE.test(s)) return true;
+  if (/^\d+[A-Za-z]?\s+\S+/.test(s) && SUITE_RE.test(s)) return true;
+  return false;
+}
+
+function ironwoodLooksLikeCityZipLine(line: string): boolean {
+  const s = (line ?? "").trim();
+  if (!s) return false;
+  return /,\s*[A-Za-z]{2}\s*\d{5}(?:-\d{4})?\b/.test(s) || /\b[A-Za-z]{2}\s+\d{5}(?:-\d{4})?\b/.test(s);
+}
+
+/**
+ * Two streets merged on one pdf.js line, e.g.
+ * ``8417 Washington Blvd. Ste.130 1945 Irving St,``
+ */
+function ironwoodSplitDualStreetLine(line: string): { gcStreet: string; jobStreet: string } | null {
+  const cleaned = (line ?? "").trim().replace(/,\s*$/, "");
+  if (!cleaned || !/^\d/.test(cleaned)) return null;
+
+  const starts: number[] = [];
+  const numRe = /\d+[A-Za-z]?\s+/g;
+  let m: RegExpExecArray | null;
+  while ((m = numRe.exec(cleaned))) {
+    starts.push(m.index);
+  }
+  if (starts.length < 2) return null;
+
+  // Prefer the rightmost split that yields two street-looking halves
+  // (avoids splitting on suite numbers like Ste.130).
+  for (let i = starts.length - 1; i >= 1; i--) {
+    const gcStreet = cleaned.slice(0, starts[i]).trim().replace(/,\s*$/, "");
+    const jobStreet = cleaned.slice(starts[i]).trim().replace(/,\s*$/, "");
+    if (ironwoodLooksLikeStreetLine(gcStreet) && ironwoodLooksLikeStreetLine(jobStreet)) {
+      return { gcStreet, jobStreet };
+    }
+  }
+  return null;
+}
+
 /** pdf.js often merges ``G Swanson 560 S Winchester Blvd`` onto one line. */
 function ironwoodSplitNameAndStreet(line: string): { name: string; street: string } {
   const s = (line ?? "").trim();
   if (!s) return { name: "", street: "" };
+
+  // Whole line is address text — never treat as a company name.
+  if (ironwoodLooksLikeStreetLine(s)) {
+    return { name: "", street: s };
+  }
+
   const m = s.match(/^(.+?)\s+(\d+\s+.+\S)$/);
   if (m && (STREET_SUFFIX_RE.test(m[2]!) || /^\d+\s+[NSEW]?\s*/i.test(m[2]!))) {
-    return { name: m[1]!.trim(), street: m[2]!.trim() };
+    const name = m[1]!.trim();
+    const street = m[2]!.trim();
+    if (ironwoodLooksLikeStreetLine(name) || /^\d/.test(name)) {
+      return { name: "", street: s };
+    }
+    return { name, street };
   }
   return { name: s, street: "" };
 }
 
-/** ``Milpitas, CA 95035 CA 95128`` → GC city line + job state/zip suffix. */
+/** ``Milpitas, CA 95035 CA 95128`` or ``Roseville, CA 95678 San Francisco,CA 94122``. */
 function ironwoodSplitDualCityZip(line: string): { primary: string; secondaryStateZip: string } {
-  const s = (line ?? "").trim();
+  const s = (line ?? "").trim().replace(/,\s*([A-Za-z]{2})\s*/g, ", $1 ");
   if (!s) return { primary: "", secondaryStateZip: "" };
+
+  const dualCity = s.match(
+    /^(.+?,\s*[A-Za-z]{2}\s*\d{5}(?:-\d{4})?)\s+(.+?,\s*[A-Za-z]{2}\s*\d{5}(?:-\d{4})?)\s*$/i,
+  );
+  if (dualCity) {
+    return { primary: dualCity[1]!.trim(), secondaryStateZip: dualCity[2]!.trim() };
+  }
+
   const m = s.match(/^(.+?\b\d{5}(?:-\d{4})?)\s+([A-Za-z]{2}\s+\d{5}(?:-\d{4})?)\s*$/i);
   if (m) return { primary: m[1]!.trim(), secondaryStateZip: m[2]!.trim() };
   return { primary: s, secondaryStateZip: "" };
@@ -231,10 +296,30 @@ function ironwoodParseDescribedBelowLayout(fullText: string): IronwoodParsed | n
 
   const gc_pm = allLines[0]!;
   if (/plan date:/i.test(gc_pm) || /addendum:/i.test(gc_pm)) return null;
-  const gc_name = allLines[1] ?? "";
-  const gc_street = allLines[2] ?? "";
-  const gc_city_line = allLines[3] ?? "";
-  let rest = allLines.slice(4).filter((ln) => !ironwoodIsNoiseLine(ln));
+
+  let gc_name = allLines[1] ?? "";
+  let gc_street = allLines[2] ?? "";
+  let gc_city_line = allLines[3] ?? "";
+  let restStart = 4;
+
+  // Missing GC company: street landed in the company slot — shift left.
+  if (ironwoodLooksLikeStreetLine(gc_name)) {
+    gc_street = gc_name;
+    gc_city_line = allLines[2] ?? "";
+    gc_name = "";
+    restStart = 3;
+  } else if (ironwoodLooksLikeCityZipLine(gc_street) && !ironwoodLooksLikeStreetLine(gc_street)) {
+    // Company present but street missing; city already in street slot.
+    gc_city_line = gc_street;
+    gc_street = "";
+    restStart = 3;
+  }
+
+  if (ironwoodLooksLikeStreetLine(gc_name)) {
+    gc_name = "";
+  }
+
+  let rest = allLines.slice(restStart).filter((ln) => !ironwoodIsNoiseLine(ln));
   rest = rest.filter((ln) => !/^\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/.test(ln));
 
   let { rest: restLines, jobDate, planDate } = ironwoodSplitDateLines(rest);
@@ -320,15 +405,47 @@ function ironwoodParseProposalToLayout(fullText: string): IronwoodParsed | null 
   }
 
   const nameStreetLine = lines[idx++] ?? "";
-  const { name: gc_name, street: jobStreetFromGcLine } = ironwoodSplitNameAndStreet(nameStreetLine);
+  const dualStreets = ironwoodSplitDualStreetLine(nameStreetLine);
 
-  let gc_street = lines[idx++] ?? "";
+  let gc_name = "";
+  let jobStreetFromGcLine = "";
+  let gc_street = "";
   let job_city_name = "";
-  const streetCity = ironwoodExtractTrailingCityFromStreet(gc_street);
-  gc_street = streetCity.street;
-  job_city_name = streetCity.cityName;
+
+  if (dualStreets) {
+    // Missing company name: next content line is two streets side-by-side.
+    gc_street = dualStreets.gcStreet;
+    jobStreetFromGcLine = dualStreets.jobStreet;
+  } else {
+    const split = ironwoodSplitNameAndStreet(nameStreetLine);
+    gc_name = split.name;
+    jobStreetFromGcLine = split.street;
+
+    if (!gc_name && ironwoodLooksLikeStreetLine(nameStreetLine)) {
+      gc_street = nameStreetLine.replace(/,\s*$/, "");
+    } else {
+      gc_street = lines[idx++] ?? "";
+      const streetCity = ironwoodExtractTrailingCityFromStreet(gc_street);
+      gc_street = streetCity.street;
+      job_city_name = streetCity.cityName;
+    }
+  }
+
+  // Never keep a street-looking value as the contractor/company name.
+  if (ironwoodLooksLikeStreetLine(gc_name)) {
+    if (!gc_street) gc_street = gc_name;
+    gc_name = "";
+  }
 
   let gc_city_line = idx < lines.length ? (lines[idx++] ?? "") : "";
+  // If we still needed a street line and grabbed the city instead, don't treat city as street.
+  if (gc_street && ironwoodLooksLikeCityZipLine(gc_street) && !ironwoodLooksLikeStreetLine(gc_street)) {
+    if (!gc_city_line) {
+      gc_city_line = gc_street;
+      gc_street = "";
+    }
+  }
+
   const dualCity = ironwoodSplitDualCityZip(gc_city_line);
   gc_city_line = dualCity.primary;
 
@@ -530,6 +647,16 @@ function extractFromMarkers(text: string, startMarker: string, endMarker: string
 }
 
 function patchFromIronwood(parsed: IronwoodParsed, fullText: string): ProposalImportPatch {
+  // Final guard: street-looking values must never become company / job name.
+  if (ironwoodLooksLikeStreetLine(parsed.gc_name)) {
+    if (!parsed.gc_street) parsed.gc_street = parsed.gc_name;
+    parsed.gc_name = "";
+  }
+  if (ironwoodLooksLikeStreetLine(parsed.job_name)) {
+    if (!parsed.job_street) parsed.job_street = parsed.job_name;
+    parsed.job_name = "";
+  }
+
   const gc_address = parsed.gc_street
     ? parsed.gc_city_line
       ? `${parsed.gc_street}, ${parsed.gc_city_line}`

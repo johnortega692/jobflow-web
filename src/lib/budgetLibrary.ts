@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import {
   loadEffectiveUserSettings,
+  loadOrgSettingsBlob,
   removeOrgSettingsKeys,
   saveOrgSettingsPatch,
   savePersonalUserSettingsPatch,
@@ -14,17 +15,61 @@ import {
   normalizeLibrary,
 } from "./budgetMakerCore";
 import type { BudgetLibrary, BudgetMakerData, BudgetScanLine } from "../types/budgetMaker";
+import { defaultBudgetLibrary } from "../types/budgetMaker";
+import type { Json } from "../types/database";
 
 function exportFilename(stem: string, extension: string, jobName = ""): string {
   const ext = extension.replace(/^\./, "");
   const job = jobName.trim().replace(/[<>:"/\\|?*]+/g, "").replace(/\s+/g, "_");
   return job ? `${job}-${stem}.${ext}` : `${stem}.${ext}`;
 }
-import { defaultBudgetLibrary } from "../types/budgetMaker";
-import type { Json } from "../types/database";
 
-const LIB_KEY = "budget_library";
+export const BUDGET_LIBRARY_KEY = "budget_library";
+const LIB_KEY = BUDGET_LIBRARY_KEY;
 const ORG_KEY_SET = new Set<string>(ORG_SETTINGS_KEYS);
+
+function libraryHasContent(lib: BudgetLibrary): boolean {
+  return Boolean(
+    lib.cost_codes.length ||
+      lib.cost_classes.length ||
+      lib.bucket_templates.length ||
+      lib.default_bucket_template.trim(),
+  );
+}
+
+async function loadPersonalBudgetLibraryRaw(userId: string): Promise<unknown> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("settings")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data?.settings || typeof data.settings !== "object" || Array.isArray(data.settings)) {
+    return null;
+  }
+  return (data.settings as Record<string, unknown>)[LIB_KEY] ?? null;
+}
+
+async function clearPersonalBudgetLibrary(userId: string): Promise<void> {
+  const { data, error: loadErr } = await supabase
+    .from("user_settings")
+    .select("settings")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (loadErr || !data?.settings || typeof data.settings !== "object" || Array.isArray(data.settings)) {
+    return;
+  }
+  const current = data.settings as Record<string, unknown>;
+  if (!(LIB_KEY in current)) return;
+  const next = { ...current };
+  delete next[LIB_KEY];
+  await supabase.from("user_settings").upsert(
+    {
+      user_id: userId,
+      settings: next as Json,
+    },
+    { onConflict: "user_id" },
+  );
+}
 
 /** Merged org + personal settings (use for reads across the app). */
 export async function loadRawUserSettings(userId: string): Promise<Record<string, unknown>> {
@@ -90,12 +135,30 @@ export async function removeUserSettingsKeys(
 }
 
 export async function loadBudgetLibrary(userId: string): Promise<BudgetLibrary> {
-  const raw = await loadRawUserSettings(userId);
-  return normalizeLibrary(raw[LIB_KEY] ?? defaultBudgetLibrary());
+  const org = await loadOrgSettingsBlob();
+  const orgLib = normalizeLibrary(org[LIB_KEY] ?? defaultBudgetLibrary());
+  if (libraryHasContent(orgLib)) return orgLib;
+
+  // One-time promote: personal → org (admin write). Non-admins still read personal until migrated.
+  const personalRaw = await loadPersonalBudgetLibraryRaw(userId);
+  const personalLib = normalizeLibrary(personalRaw ?? defaultBudgetLibrary());
+  if (!libraryHasContent(personalLib)) return orgLib;
+
+  const promoteErr = await saveOrgSettingsPatch({ [LIB_KEY]: personalLib }, userId);
+  if (!promoteErr) {
+    await clearPersonalBudgetLibrary(userId);
+    return personalLib;
+  }
+  return personalLib;
 }
 
 export async function saveBudgetLibrary(userId: string, lib: BudgetLibrary): Promise<string | null> {
-  return patchUserSettings(userId, { [LIB_KEY]: lib });
+  const err = await saveOrgSettingsPatch({ [LIB_KEY]: lib }, userId);
+  if (!err) {
+    // Drop legacy personal copy so org stays the single source of truth.
+    await clearPersonalBudgetLibrary(userId);
+  }
+  return err;
 }
 
 function normalizeCol(name: string): string {
@@ -224,8 +287,6 @@ function lineExportRow(line: BudgetScanLine, buckets: BudgetMakerData["buckets"]
 }
 
 export function downloadBudgetExcel(data: BudgetMakerData, lib: BudgetLibrary): void {
-  const visible = data.lines.filter((l) => !l.Hidden);
-  const linesRows = visible.map((l) => lineExportRow(l, data.buckets, lib));
   const totalsRows = buildSummaryRows(data.buckets, data.lines, lib, data.hide_zero_amounts, {
     combineByCostCode: data.combine_cost_codes_on_export !== false,
   }).map((r) => ({
@@ -240,7 +301,6 @@ export function downloadBudgetExcel(data: BudgetMakerData, lib: BudgetLibrary): 
   }));
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linesRows), "Scanned PDF Lines");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(totalsRows), "Bucket Totals");
   const filename = exportFilename("budget", "xlsx", data.job_name);
   XLSX.writeFile(wb, filename);

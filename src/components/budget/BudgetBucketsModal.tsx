@@ -53,7 +53,7 @@ function findCodeKeyForBucket(
   return options.some((c) => costCodeRecordKey(c) === key) ? key : costCodeRecordKey(options[0] ?? exact);
 }
 
-function BucketEditor({
+function BudgetBucketEditor({
   library,
   bucket,
   existingBuckets = [],
@@ -207,6 +207,7 @@ export function BudgetBucketsPanel({
   onChange,
   onLibraryChange,
   onError,
+  canEditCatalog = false,
 }: {
   userId: string;
   library: BudgetLibrary;
@@ -214,6 +215,8 @@ export function BudgetBucketsPanel({
   onChange: (patch: Partial<BudgetMakerData>) => void;
   onLibraryChange: (lib: BudgetLibrary) => void;
   onError: (message: string | null) => void;
+  /** Admin: save/delete templates and set company default. */
+  canEditCatalog?: boolean;
 }) {
   const [templatePick, setTemplatePick] = useState(library.default_bucket_template || "");
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -363,18 +366,22 @@ export function BudgetBucketsPanel({
           <button type="button" className="btn btn-secondary btn-sm" onClick={onLoadTemplate}>
             Load
           </button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void saveCurrentTemplate()}>
-            Save current…
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void deleteTemplate()}>
-            Delete saved
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void setDefaultTemplate()}>
-            Set as default
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void clearDefaultTemplate()}>
-            Clear default
-          </button>
+          {canEditCatalog && (
+            <>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void saveCurrentTemplate()}>
+                Save current…
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void deleteTemplate()}>
+                Delete saved
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void setDefaultTemplate()}>
+                Set as default
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void clearDefaultTemplate()}>
+                Clear default
+              </button>
+            </>
+          )}
           {library.default_bucket_template && (
             <span className="muted small">Default at startup: {library.default_bucket_template}</span>
           )}
@@ -409,7 +416,7 @@ export function BudgetBucketsPanel({
         </div>
 
         {(adding || editingIdx != null) && (
-          <BucketEditor
+          <BudgetBucketEditor
             library={library}
             bucket={editingIdx != null ? draft.buckets[editingIdx] : undefined}
             existingBuckets={editingIdx != null ? draft.buckets.filter((_, i) => i !== editingIdx) : draft.buckets}
@@ -486,3 +493,5 @@ export function BudgetBucketsPanel({
     </div>
   );
 }
+
+export { BudgetBucketEditor };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 import {
   UnsavedNavigationProvider,
   useUnsavedNavigation,
@@ -84,11 +84,6 @@ function ProjectLayoutShell() {
 
       <aside id="project-sidebar" className="project-sidebar" aria-label="Project navigation">
         <div className="project-sidebar-header">
-          <p className="breadcrumb project-sidebar-breadcrumb">
-            <Link to="/projects" onClick={(e) => requestNavigation("/projects", e)}>
-              Projects
-            </Link>
-          </p>
           <p className="project-sidebar-job">{project.job_number}</p>
           <p className="project-sidebar-name" title={project.job_name}>
             {project.job_name}

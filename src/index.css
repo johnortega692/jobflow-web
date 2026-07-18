@@ -412,7 +412,22 @@ label {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
+}
+
+.projects-list-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.projects-list-controls-sep {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 .projects-list-sort-label {
@@ -441,12 +456,203 @@ label {
   color: #9ec0ff;
 }
 
-.projects-table-wrap {
+.projects-list-filter-btn--active {
+  background: rgba(240, 180, 41, 0.14);
+  border-color: rgba(240, 180, 41, 0.5);
+  color: #f0c96a;
+}
+
+.projects-attention-card {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(240, 180, 41, 0.35);
+  background: linear-gradient(135deg, rgba(240, 180, 41, 0.08), rgba(34, 40, 54, 0.95));
+  color: inherit;
+  text-decoration: none;
+}
+
+.projects-attention-card:hover {
+  border-color: rgba(240, 180, 41, 0.55);
+  text-decoration: none;
+}
+
+.projects-attention-card--clear {
+  border-color: rgba(95, 211, 141, 0.4);
+  background: linear-gradient(135deg, rgba(95, 211, 141, 0.08), rgba(34, 40, 54, 0.95));
+  cursor: default;
+}
+
+.projects-attention-card--clear:hover {
+  border-color: rgba(95, 211, 141, 0.55);
+}
+
+.projects-attention-card--clear .projects-attention-card-eyebrow {
+  color: var(--ok);
+}
+
+.projects-attention-card--clear .projects-attention-card-stat-value {
+  color: var(--ok);
+}
+
+.projects-attention-card-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.projects-attention-card-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #f0c96a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.projects-attention-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.projects-attention-card-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.projects-attention-card-flags-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(240, 180, 41, 0.18);
+  color: #f0c96a;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.projects-attention-card-meta {
+  margin-top: 0.25rem;
+}
+
+.projects-attention-card-stat {
+  flex-shrink: 0;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+}
+
+.projects-attention-card-stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.projects-attention-card-stat-value {
+  font-size: 1.75rem;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .projects-attention-card {
+    flex-direction: column;
+  }
+
+  .projects-attention-card-stat {
+    text-align: left;
+  }
+
+  .projects-attention-card-stat-row {
+    justify-content: flex-start;
+  }
+
+  .projects-list-controls-sep {
+    display: none;
+  }
+}
+
+/* Outer: border + radius + clip. No scroll / max-height. */
+.projects-table-shell {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Inner: the only scrollport; table is its direct child. */
+.projects-table-scroller {
   overflow-x: auto;
+  padding: 0;
+}
+
+.projects-table-scroller--scroll {
+  max-height: 27.5rem; /* ~10 data rows + header */
+  overflow-y: auto;
+}
+
+.projects-table-shell .projects-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0;
+}
+
+.projects-table-shell .projects-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+.projects-table-shell .projects-table th,
+.projects-table-shell .projects-table td {
+  padding: 0.55rem 0.75rem;
+}
+
+.projects-table-shell .projects-table th:first-child,
+.projects-table-shell .projects-table td:first-child {
+  padding-left: 1.1rem;
+}
+
+.projects-table-shell .projects-table th:last-child,
+.projects-table-shell .projects-table td:last-child {
+  padding-right: 1.1rem;
+}
+
+.projects-table-row {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.projects-table-row:hover td {
+  background: var(--surface2);
 }
 
 .projects-table-name {
-  max-width: 14rem;
+  max-width: 18rem;
+}
+
+.projects-table-job-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects-table-gc {
+  margin-top: 0.1rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -495,6 +701,56 @@ label {
 .project-orders-qty {
   width: 5.5rem;
   min-width: 4rem;
+  text-align: right;
+}
+
+.project-orders-unit {
+  width: 4.5rem;
+  min-width: 4rem;
+}
+
+.delivery-address-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.delivery-address-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.delivery-address-preset:hover {
+  border-color: var(--accent);
+}
+
+.delivery-address-preset--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface2));
+}
+
+.delivery-address-preset-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.delivery-address-preset-value {
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .breadcrumb {
@@ -745,10 +1001,6 @@ th {
   margin-bottom: 0.85rem;
   padding-bottom: 0.85rem;
   border-bottom: 1px solid var(--border);
-}
-
-.project-sidebar-breadcrumb {
-  margin-bottom: 0.35rem;
 }
 
 .project-sidebar-job {
@@ -3896,8 +4148,9 @@ input.readonly {
     2.75rem
     minmax(5.5rem, 6.5rem)
     minmax(12rem, 2fr)
-    minmax(9rem, 1.2fr)
-    minmax(5rem, 6rem)
+    minmax(8rem, 1.1fr)
+    minmax(4.5rem, 5.5rem)
+    minmax(4rem, 5rem)
     auto;
   gap: 0.35rem;
   align-items: end;
@@ -3908,6 +4161,10 @@ input.readonly {
 
 .track-col--product {
   min-width: 10rem;
+}
+
+.track-col--qty input {
+  text-align: right;
 }
 
 .track-col--code input {
@@ -5445,6 +5702,21 @@ input.readonly {
 
 .job-info-drawer-header-actions {
   align-items: center;
+}
+
+.job-info-drawer-close {
+  color: var(--danger);
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 2rem;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.job-info-drawer-close:hover {
+  color: #ff8a8a;
+  background: rgba(255, 107, 107, 0.12);
 }
 
 .job-info-drawer-tabs {

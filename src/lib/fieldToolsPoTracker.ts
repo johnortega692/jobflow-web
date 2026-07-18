@@ -1,13 +1,19 @@
 import { supabase } from "./supabase";
 
 import type { FieldToolsOrder } from "../types/fieldToolsOrder";
+import {
+  listMaterialOrderPosForJobs,
+  materialOrderScopeLabel,
+  updateMaterialOrderPoTracking,
+} from "./materialOrderPo";
 
 export type FieldToolsPoDispatchRow = {
   dispatchId: string;
   poNumber: string;
   dispatchType: string;
   orderId: string;
-  orderType: "field_request" | "job_scope_kit";
+  orderType: "field_request" | "job_scope_kit" | "material_order";
+  source: "field_tools" | "jobflow_material";
   jobNumber: string;
   jobName: string;
   contractLabel: string;
@@ -76,13 +82,21 @@ function dispatchTypeLabel(type: string): string {
       return "Material";
     case "job_scope_kit":
       return "Scope kit";
+    case "wallcovering":
+      return materialOrderScopeLabel("wallcovering");
+    case "frp":
+      return materialOrderScopeLabel("frp");
+    case "fwp":
+      return materialOrderScopeLabel("fwp");
     default:
       return type.replace(/_/g, " ");
   }
 }
 
 function orderTypeLabel(type: string): string {
-  return type === "job_scope_kit" ? "Job Scope Kit" : "Field Request";
+  if (type === "job_scope_kit") return "Job Scope Kit";
+  if (type === "material_order") return "Material order";
+  return "Field Request";
 }
 
 export function formatPoOrderMeta(row: FieldToolsPoDispatchRow): string {
@@ -146,7 +160,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
     byOrder.get(row.order.id)!.push(row.po_number);
   }
 
-  return rows
+  const fieldRows: FieldToolsPoDispatchRow[] = rows
     .filter((row) => jobCodes.has(normalizeFieldToolsJobCode(row.order.job_number)))
     .map((row) => {
       const payload =
@@ -162,6 +176,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         dispatchType: row.dispatch_type,
         orderId: row.order.id,
         orderType: row.order.order_type,
+        source: "field_tools" as const,
         jobNumber: row.order.job_number,
         jobName: row.order.job_name,
         contractLabel: labelByCode.get(jobCode) ?? "—",
@@ -174,6 +189,34 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         completed: row.completed,
       };
     });
+
+  const materialRows: FieldToolsPoDispatchRow[] = (
+    await listMaterialOrderPosForJobs([...jobCodes])
+  ).map((row) => {
+    const jobCode = normalizeFieldToolsJobCode(row.jobNumber);
+    return {
+      dispatchId: row.id,
+      poNumber: row.poNumber,
+      dispatchType: row.scope,
+      orderId: row.id,
+      orderType: "material_order" as const,
+      source: "jobflow_material" as const,
+      jobNumber: row.jobNumber,
+      jobName: row.jobName,
+      contractLabel: labelByCode.get(jobCode) ?? "—",
+      submittedBy: row.createdByName,
+      dateNeeded: null,
+      submittedAt: row.createdAt,
+      vendorLabel: row.vendorLabel,
+      emailStatus: "sent",
+      receivedField: row.receivedField,
+      completed: row.completed,
+    };
+  });
+
+  return [...fieldRows, ...materialRows].sort(
+    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+  );
 }
 
 export async function getFieldToolsOrder(orderId: string): Promise<FieldToolsOrder | null> {
@@ -220,7 +263,13 @@ export async function getFieldToolsOrder(orderId: string): Promise<FieldToolsOrd
 export async function updatePoDispatchTracking(
   dispatchId: string,
   patch: { receivedField?: boolean; completed?: boolean },
+  source: "field_tools" | "jobflow_material" = "field_tools",
 ): Promise<void> {
+  if (source === "jobflow_material") {
+    await updateMaterialOrderPoTracking(dispatchId, patch);
+    return;
+  }
+
   const body: Record<string, unknown> = {
     tracking_updated_at: new Date().toISOString(),
   };

@@ -253,9 +253,6 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
         <header className="job-info-drawer-header row-between wrap">
           <div>
             <h2 id="job-info-drawer-title">Job setup</h2>
-            <p className="muted small">
-              Fill once for templates, submittals, and exports. Reopen anytime to add missing fields.
-            </p>
           </div>
           <div className="row-gap wrap job-info-drawer-header-actions">
             {savedAt && <span className="muted small">Saved {savedAt}</span>}
@@ -265,8 +262,13 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
               Done
             </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
-              Close
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm job-info-drawer-close"
+              onClick={onClose}
+              aria-label="Close job setup"
+            >
+              ✕
             </button>
           </div>
         </header>

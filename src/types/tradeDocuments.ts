@@ -17,6 +17,41 @@ export type PaintItem = {
   previous_color: string;
 };
 
+/** Order-form unit of measure (vendor-facing). */
+export type MaterialOrderUnit =
+  | "EA"
+  | "LF"
+  | "YD"
+  | "SF"
+  | "SY"
+  | "LY"
+  | "BX"
+  | "RL"
+  | "GAL"
+  | "PC"
+  | "CS"
+  | "PL";
+
+export const MATERIAL_ORDER_UNITS: MaterialOrderUnit[] = [
+  "EA",
+  "LF",
+  "YD",
+  "SF",
+  "SY",
+  "LY",
+  "BX",
+  "RL",
+  "GAL",
+  "PC",
+  "CS",
+  "PL",
+];
+
+/** @deprecated Use MaterialOrderUnit */
+export type TrackOrderUnit = MaterialOrderUnit;
+/** @deprecated Use MATERIAL_ORDER_UNITS */
+export const TRACK_ORDER_UNITS = MATERIAL_ORDER_UNITS;
+
 export type WallcoveringItem = {
   label: string;
   floor: string;
@@ -25,6 +60,8 @@ export type WallcoveringItem = {
   color: string;
   previous_color: string;
   qty: string;
+  /** Unit of measure for material orders; defaults to EA. */
+  unit: MaterialOrderUnit | string;
   notes: string;
   panels: boolean;
   include_in_submittal: boolean;
@@ -221,6 +258,8 @@ export type FrpItem = {
   product: string;
   color: string;
   quantity: string;
+  /** Unit of measure for material orders; defaults to EA. */
+  unit: MaterialOrderUnit | string;
   notes: string;
   label: string;
   panel_size: string;
@@ -247,6 +286,8 @@ export type TrackItem = {
   product: string;
   mat_code: string;
   quantity: string;
+  /** Unit of measure for material orders; defaults to EA. */
+  unit: MaterialOrderUnit | string;
   /** Include in Orders by Vendor */
   order: boolean;
 };
@@ -657,6 +698,7 @@ export function emptyWallcoveringItem(): WallcoveringItem {
     color: "",
     previous_color: "",
     qty: "",
+    unit: "EA",
     notes: "",
     panels: false,
     include_in_submittal: true,
@@ -670,6 +712,7 @@ export function emptyFrpItem(): FrpItem {
     product: "",
     color: "",
     quantity: "",
+    unit: "EA",
     notes: "",
     label: "",
     panel_size: "",
@@ -679,7 +722,7 @@ export function emptyFrpItem(): FrpItem {
 }
 
 export function emptyTrackItem(): TrackItem {
-  return { type: "", product: "", mat_code: "", quantity: "", order: false };
+  return { type: "", product: "", mat_code: "", quantity: "", unit: "EA", order: false };
 }
 
 export function emptyEnclosure(): TransmittalEnclosure {
@@ -814,7 +857,11 @@ export function normalizeWallcoveringSubmittal(
   return {
     ...base,
     ...raw,
-    items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyWallcoveringItem(), ...i })),
+    items: (raw.items?.length ? raw.items : base.items).map((i) => ({
+      ...emptyWallcoveringItem(),
+      ...i,
+      unit: i.unit?.trim() || "EA",
+    })),
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "Wallcovering Samples", "wallcovering"),
@@ -829,7 +876,12 @@ export function normalizeFrpSubmittal(raw: Partial<FrpSubmittalData> | null | un
   return {
     ...base,
     ...raw,
-    items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyFrpItem(), ...i, order: i.order ?? false })),
+    items: (raw.items?.length ? raw.items : base.items).map((i) => ({
+      ...emptyFrpItem(),
+      ...i,
+      order: i.order ?? false,
+      unit: i.unit?.trim() || "EA",
+    })),
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "FRP Product Data", "frp"),
