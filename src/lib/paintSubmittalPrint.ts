@@ -3,6 +3,7 @@ import {
   groupByFloor,
   logoBlock,
   submittalRevisionNoteHtml,
+  submittalSubjectSpecBannerHtml,
   SUBMITTAL_SIGNATURE_FOOTER_CSS,
   submittalDateSectionHtml,
   submittalFooterHtml,
@@ -49,7 +50,21 @@ ${SUBMITTAL_SIGNATURE_FOOTER_CSS}
 .form-title { text-align: center; font-size: 16pt; font-weight: bold; text-decoration: underline; margin-bottom: 25px; }
 .project-info { margin-bottom: 20px; line-height: 1.15; }
 .info-row { font-size: 10pt; line-height: 1.15; }
-.info-row-subject { margin-top: 0.85em; }
+.subject-spec-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  background: #f0f0f0;
+  border-left: 4px solid #1f1f1f;
+  padding: 6px 12px;
+  margin: 12px 0 8px;
+  font-size: 11pt;
+  line-height: 1.3;
+}
+.subject-spec-bar-subject { font-weight: bold; color: #000; }
+.subject-spec-bar-sep { color: #444; }
+.subject-spec-bar-spec { font-weight: normal; color: #444; }
 .floor-section-title { font-weight: bold; font-size: 11pt; margin: 18px 0 8px; color: #333; }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 table th { background: #333; color: #fff; padding: 6px 10px; text-align: left; font-size: 10pt; }
@@ -163,6 +178,7 @@ export async function downloadPaintSubmittal(
     project.job_number,
     data.submittal_number,
     data.submittal_type,
+    data.spec_section,
   );
   await downloadTradeSubmittalPdf({
     filename,
@@ -170,9 +186,11 @@ export async function downloadPaintSubmittal(
     branding,
     date: data.date,
     subject: data.subject,
+    specSection: data.spec_section,
     submittalNumber: data.submittal_number,
     revisionNumber: data.revision_number,
     revisionNote: data.revision_note,
+    submittalType: data.submittal_type,
     sections: buildPaintSubmittalSections(data),
   });
 }
@@ -214,9 +232,9 @@ export function buildPaintSubmittalHtml(
   <div class="form-title">Submittals</div>
   <div class="project-info">
     ${submittalProjectInfoHtml(project)}
-    <p class="info-row info-row-subject">Subject: ${esc(data.subject)}</p>
-    ${submittalRevisionNoteHtml(data.revision_number, data.revision_note)}
+    ${submittalRevisionNoteHtml(data.revision_number, data.revision_note, data.submittal_type)}
   </div>
+  ${submittalSubjectSpecBannerHtml(data.subject, data.spec_section)}
   ${bodyTables}
   </div>
   <div class="print-footer-spacer" aria-hidden="true"></div>

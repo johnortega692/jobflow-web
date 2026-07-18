@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
@@ -12,13 +12,17 @@ import { PaintImageImport } from "../components/PaintImageImport";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import {
-  getProductDisplayList,
   loadPaintColors,
   loadPaintProducts,
   loadPaintSheens,
   type PaintColorsDb,
   type PaintProduct,
 } from "../lib/paintCatalog";
+import {
+  applyPaintAutoLabels,
+  paintItemsReadiness,
+  paintRowAutoLabel,
+} from "../lib/paintItemLabels";
 import type { ExtractedPaintRow } from "../lib/paintImageImport";
 import { applyTransmittalContractIfDistinct, gcSuperEmail, gcSuperintendentContact, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
@@ -31,6 +35,8 @@ import {
 } from "../lib/submittalHistory";
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
+import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
+import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
 import { queuePendingItem } from "../lib/transmittalHelpers";
 import { listOpenBrushoutPreps, loadPaintUserSettings } from "../lib/paintUserSettings";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
@@ -83,6 +89,8 @@ export function PaintSubmittalsPage() {
   const [emailDraft, setEmailDraft] = useState<PaintSubmittalData | null>(null);
   const [prepOpen, setPrepOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
   const [userSettings, setUserSettings] = useState<Awaited<ReturnType<typeof loadPaintUserSettings>> | null>(
     null,
   );
@@ -167,13 +175,14 @@ export function PaintSubmittalsPage() {
     void loadPaintUserSettings(user.id).then(setUserSettings);
   }, [user?.id]);
 
-  const productOptions = useMemo(() => getProductDisplayList(products, "PPG"), [products]);
   const openPreps = useMemo(
     () => listOpenBrushoutPreps(userSettings?.brushout_preps ?? []),
     [userSettings?.brushout_preps],
   );
   const showPreviousColor = draft.submittal_type === "substitution";
   const draftLocked = submittalDraftIsLocked(draft);
+  const autoLabel = draft.auto_label !== false;
+  const itemsReadiness = useMemo(() => paintItemsReadiness(draft.items), [draft.items]);
 
   function updateDraft(updater: (d: PaintSubmittalData) => PaintSubmittalData) {
     setDraft((current) => {
@@ -194,11 +203,36 @@ export function PaintSubmittalsPage() {
     }));
   }
 
+  function withMaybeAutoLabels(items: PaintItem[], enabled: boolean): PaintItem[] {
+    return enabled ? applyPaintAutoLabels(items) : items;
+  }
+
   function patchItem(index: number, patch: Partial<PaintItem>) {
-    updateDraft((d) => ({
-      ...d,
-      items: d.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
-    }));
+    updateDraft((d) => {
+      const enabled = d.auto_label !== false;
+      const items = d.items.map((item, i) => {
+        if (i !== index) return item;
+        const next = { ...item, ...patch };
+        if (enabled) next.label = paintRowAutoLabel(index);
+        return next;
+      });
+      return { ...d, items };
+    });
+  }
+
+  function reorderItems(from: number, to: number) {
+    updateDraft((d) => {
+      const moved = moveItem(d.items, from, to);
+      return { ...d, items: withMaybeAutoLabels(moved, d.auto_label !== false) };
+    });
+  }
+
+  function confirmGapsIfNeeded(): boolean {
+    const readiness = paintItemsReadiness(draft.items);
+    if (readiness.complete || (readiness.missingColor === 0 && readiness.missingSheen === 0)) {
+      return true;
+    }
+    return window.confirm(readiness.confirmMessage);
   }
 
   function onImported(rows: ExtractedPaintRow[]) {
@@ -247,6 +281,7 @@ export function PaintSubmittalsPage() {
   }
 
   async function onDownloadPdf() {
+    if (!confirmGapsIfNeeded()) return;
     try {
       await downloadPaintSubmittal(projectPrintInfo(project, project.jobInfo), draft, branding);
       let nextHistory = history;
@@ -264,16 +299,19 @@ export function PaintSubmittalsPage() {
             locked: true,
             packageType: draft.package_type,
             date: draft.date,
+            specSection: draft.spec_section,
           },
         );
       }
       await persist(draft, nextHistory);
       let logRowId = "";
       try {
+        const parsed = parseSpecSectionForLog(draft.spec_section);
         const row = await recordPdfLogRow(projectId, {
           submittal_type: draft.package_type,
           scope: "Paint",
-          spec: "099000",
+          spec: parsed.spec || "099000",
+          section: parsed.section || draft.spec_section,
           notes: `Paint submittal #${draft.submittal_number}`,
           trade_submittal_number: String(draft.submittal_number),
           status: "Ready",
@@ -282,13 +320,21 @@ export function PaintSubmittalsPage() {
       } catch {
         /* log row optional */
       }
-      let transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
-        submittal_type: draft.package_type,
-        scope: "Paint",
-        source: "paint_submittal",
-        trade_submittal_number: String(draft.submittal_number),
-        log_row_id: logRowId,
-      });
+      const autoOn = await loadTransmittalContentAutoOn(user?.id);
+      let transmittal = queuePendingItem(
+        tradeData.transmittal ?? defaultTransmittal(),
+        {
+          submittal_type: draft.package_type,
+          scope: "Paint",
+          source: "paint_submittal",
+          trade_submittal_number: String(draft.submittal_number),
+          log_row_id: logRowId,
+          spec_section: draft.spec_section,
+          spec: "",
+          section: draft.spec_section,
+        },
+        autoOn,
+      );
       transmittal = applyTransmittalContractIfDistinct(project, transmittal, "paint");
       await save({
         ...withSyncedPaintVendor(tradeData, draft),
@@ -321,6 +367,7 @@ export function PaintSubmittalsPage() {
   }
 
   async function onIssueSubmittal() {
+    if (!confirmGapsIfNeeded()) return;
     const { draft: issued, history: nextHistory } = issueSubmittalDraft(draft, history, "paint");
     const ok = await persist(issued, nextHistory);
     if (ok) {
@@ -351,7 +398,8 @@ export function PaintSubmittalsPage() {
       ...createNewSubmittalPackageDraft(draft, history),
       submittal_type: "new",
       subject: paintSubjectForPackage(draft.package_type, "new"),
-      items: [emptyPaintItem()],
+      auto_label: true,
+      items: withMaybeAutoLabels([emptyPaintItem()], true),
     });
     setStatus("New submittal package started (Rev 0, draft).");
   }
@@ -370,18 +418,18 @@ export function PaintSubmittalsPage() {
         project.job_number,
         draft.submittal_number,
         draft.submittal_type,
+        draft.spec_section,
       ),
-    [project.job_name, project.job_number, draft.submittal_number, draft.submittal_type],
+    [project.job_name, project.job_number, draft.submittal_number, draft.submittal_type, draft.spec_section],
   );
 
   if (loading) return <p className="muted">Loading paint submittal…</p>;
 
   return (
-    <div className="stack">
+    <div className="stack paint-submittal-page">
       <div className="row-between">
         <div>
           <h2>Paint submittals</h2>
-          <p className="muted small">Product, sheen, color lookup, vendor email, and submittal history.</p>
         </div>
         <div className="row-gap wrap paint-submittal-header-actions">
           <div className="row-gap wrap">
@@ -479,6 +527,7 @@ export function PaintSubmittalsPage() {
         }
         onTypeChange={setType}
         onSubjectChange={(subject) => setDraft({ ...draft, subject })}
+        onSpecSectionChange={(spec_section) => setDraft({ ...draft, spec_section })}
         onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
         onPaintVendorChange={(paint_vendor) => setDraft({ ...draft, paint_vendor })}
         onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
@@ -489,7 +538,7 @@ export function PaintSubmittalsPage() {
       <section className="card stack paint-items-section">
         <div className="row-between paint-items-toolbar">
           <div>
-            <h3>Paint items</h3>
+            <h3>Paint items ({draft.items.length})</h3>
             <p className="muted small paint-lookup-hint">
               Search by color name or number (e.g. <code>SW7004</code> or <code>7004</code>). Press{" "}
               <kbd>Enter</kbd>, <kbd>Tab</kbd>, or the search button.
@@ -504,25 +553,43 @@ export function PaintSubmittalsPage() {
               />
               Show floor
             </label>
+            <label className="check paint-floor-toggle">
+              <input
+                type="checkbox"
+                checked={autoLabel}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  updateDraft((d) => ({
+                    ...d,
+                    auto_label: enabled,
+                    items: enabled ? applyPaintAutoLabels(d.items) : d.items,
+                  }));
+                }}
+              />
+              Auto-label by order
+            </label>
             <div className="paint-add-buttons">
               <button
                 type="button"
-                className="btn btn-icon btn-primary"
-                title="Add row"
+                className="btn btn-primary btn-small"
                 onClick={() =>
-                  updateDraft((d) => ({ ...d, items: [...d.items, emptyPaintItem()] }))
+                  updateDraft((d) => {
+                    const enabled = d.auto_label !== false;
+                    const row = emptyPaintItem();
+                    if (enabled) row.label = paintRowAutoLabel(d.items.length);
+                    return { ...d, items: [...d.items, row] };
+                  })
                 }
               >
-                +
+                + Add row
               </button>
               <button
                 type="button"
-                className="btn btn-icon btn-primary"
-                title="Add multiple rows"
+                className="btn btn-secondary btn-small"
                 disabled={catalogLoading}
                 onClick={() => setBulkOpen(true)}
               >
-                ++
+                Add multiple…
               </button>
             </div>
           </div>
@@ -535,6 +602,16 @@ export function PaintSubmittalsPage() {
           role="table"
           aria-label="Paint items"
         >
+          <div className="paint-items-header" role="row">
+            <span className="paint-row-handle-spacer" aria-hidden />
+            <span className="paint-col-head paint-col-label">Label</span>
+            {draft.show_floor === true && <span className="paint-col-head paint-col-floor">Floor</span>}
+            <span className="paint-col-head paint-col-color">Color</span>
+            {showPreviousColor && <span className="paint-col-head paint-col-prev">Previous</span>}
+            <span className="paint-col-head paint-col-product">Product</span>
+            <span className="paint-col-head paint-col-sheen">Sheen</span>
+            <span className="paint-col-head paint-col-head-actions" aria-hidden />
+          </div>
           {draft.items.map((item, index) => (
             <PaintItemRow
               key={index}
@@ -546,34 +623,74 @@ export function PaintSubmittalsPage() {
               colors={colors}
               showPreviousColor={showPreviousColor}
               showFloor={draft.show_floor === true}
+              autoLabel={autoLabel}
+              dragging={dragFrom === index}
+              dragOver={dragOver === index}
               onChange={(patch) => patchItem(index, patch)}
-              onMoveUp={() =>
-                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index - 1) }))
-              }
-              onMoveDown={() =>
-                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index + 1) }))
-              }
+              onDragStart={() => setDragFrom(index)}
+              onDragOver={(e: DragEvent) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOver(index);
+              }}
+              onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
+              onDrop={() => {
+                if (dragFrom !== null && dragFrom !== index) reorderItems(dragFrom, index);
+                setDragFrom(null);
+                setDragOver(null);
+              }}
+              onDragEnd={() => {
+                setDragFrom(null);
+                setDragOver(null);
+              }}
               onRemove={() =>
-                updateDraft((d) => ({
-                  ...d,
-                  items: d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items,
-                }))
+                updateDraft((d) => {
+                  const filtered =
+                    d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items;
+                  return {
+                    ...d,
+                    items: withMaybeAutoLabels(filtered, d.auto_label !== false),
+                  };
+                })
               }
             />
           ))}
+        </div>
+
+        <div className="row-between paint-items-footer">
+          <p className="muted small paint-items-drag-hint">
+            {autoLabel ? "Drag ⠿ to reorder · labels follow order" : "Drag ⠿ to reorder"}
+          </p>
+          <p
+            className={`small paint-items-readiness${
+              itemsReadiness.missingColor > 0 || itemsReadiness.missingSheen > 0
+                ? " paint-items-readiness--warn"
+                : itemsReadiness.count > 0
+                  ? " paint-items-readiness--ok"
+                  : ""
+            }`}
+          >
+            {itemsReadiness.summaryLine}
+          </p>
         </div>
       </section>
 
       {bulkOpen && (
         <PaintBulkAddModal
           products={products}
-          productOptions={productOptions}
           sheenOptions={sheens}
-          onAdd={(items) =>
-            updateDraft((d) => ({
-              ...d,
-              items: [...d.items.filter((i) => i.label || i.color || i.product), ...items],
-            }))
+          autoLabel={autoLabel}
+          nextAutoLabelIndex={draft.items.filter(paintItemHasContent).length || draft.items.length}
+          onAdd={(items, opts) =>
+            updateDraft((d) => {
+              const kept = d.items.filter((i) => i.label || i.color || i.product);
+              const merged = [...kept, ...items];
+              if (opts.turnOffAutoLabel) {
+                return { ...d, auto_label: false, items: merged };
+              }
+              const enabled = d.auto_label !== false;
+              return { ...d, items: withMaybeAutoLabels(merged, enabled) };
+            })
           }
           onClose={() => setBulkOpen(false)}
         />

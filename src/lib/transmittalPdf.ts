@@ -15,6 +15,7 @@ import {
   truncate,
 } from "./pdfDrawCore";
 import { pdfSignerDisplayName, type PrintBranding } from "./printCore";
+import { stripPdfFilenameFromEnclosureDescription } from "./transmittalHelpers";
 import type { TransmittalData } from "../types/tradeDocuments";
 
 const PAGE_ONE_ITEM_ROWS = 10;
@@ -22,7 +23,7 @@ const PAGE_ONE_ITEM_ROWS = 10;
 type ProjectInfo = { job_number: string; job_name: string };
 
 function enclosureDescription(row: { description: string; digital_copy: boolean }): string {
-  const base = row.description.trim();
+  const base = stripPdfFilenameFromEnclosureDescription(row.description);
   if (!row.digital_copy) return base;
   return base ? `${base} (Digital Copy)` : "(Digital Copy)";
 }

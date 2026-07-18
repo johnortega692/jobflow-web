@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 import { LinkBrushoutPrepModal } from "../components/brushout/LinkBrushoutPrepModal";
 import { OpenBrushoutPrepModal } from "../components/brushout/OpenBrushoutPrepModal";
@@ -21,7 +21,6 @@ import {
   type BrushoutPrepDraft,
 } from "../lib/brushoutPrepStorage";
 import {
-  getProductDisplayList,
   loadPaintColors,
   loadPaintProducts,
   loadPaintSheens,
@@ -81,6 +80,8 @@ export function BrushOutRequestPage() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -120,7 +121,6 @@ export function BrushOutRequestPage() {
     };
   }, [user?.id]);
 
-  const productOptions = useMemo(() => getProductDisplayList(products, "PPG"), [products]);
   const sortedPreps = useMemo(() => listBrushoutPrepsSorted(preps), [preps]);
   const currentRecord = draft.prep_id ? preps.find((p) => p.prep_id === draft.prep_id) ?? null : null;
 
@@ -347,7 +347,7 @@ export function BrushOutRequestPage() {
           Email vendor (brush-outs)
         </button>
         {draft.linked_job_key && (
-          <Link className="btn btn-secondary" to={`/projects/${draft.linked_job_key}/paint`}>
+          <Link className="btn btn-secondary" to={`/projects/${draft.linked_job_key}/submittals/paint`}>
             Open linked project
           </Link>
         )}
@@ -387,6 +387,15 @@ export function BrushOutRequestPage() {
         {catalogLoading && <p className="muted small">Loading color catalog…</p>}
 
         <div className="paint-items-grid" role="table" aria-label="Brush-out paint lines">
+          <div className="paint-items-header" role="row">
+            <span className="paint-row-handle-spacer" aria-hidden />
+            <span className="paint-col-head paint-col-label">Label</span>
+            <span className="paint-col-head paint-col-floor">Floor</span>
+            <span className="paint-col-head paint-col-color">Color</span>
+            <span className="paint-col-head paint-col-product">Product</span>
+            <span className="paint-col-head paint-col-sheen">Sheen</span>
+            <span className="paint-col-head paint-col-head-actions" aria-hidden />
+          </div>
           {draft.items.map((item, index) => (
             <PaintItemRow
               key={index}
@@ -398,9 +407,28 @@ export function BrushOutRequestPage() {
               colors={colors}
               showPreviousColor={false}
               showFloor
+              autoLabel={false}
+              dragging={dragFrom === index}
+              dragOver={dragOver === index}
               onChange={(patch) => patchItem(index, patch)}
-              onMoveUp={() => setDraft((d) => ({ ...d, items: moveItem(d.items, index, index - 1) }))}
-              onMoveDown={() => setDraft((d) => ({ ...d, items: moveItem(d.items, index, index + 1) }))}
+              onDragStart={() => setDragFrom(index)}
+              onDragOver={(e: DragEvent) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOver(index);
+              }}
+              onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
+              onDrop={() => {
+                if (dragFrom !== null && dragFrom !== index) {
+                  setDraft((d) => ({ ...d, items: moveItem(d.items, dragFrom, index) }));
+                }
+                setDragFrom(null);
+                setDragOver(null);
+              }}
+              onDragEnd={() => {
+                setDragFrom(null);
+                setDragOver(null);
+              }}
               onRemove={() =>
                 setDraft((d) => ({
                   ...d,
@@ -415,8 +443,9 @@ export function BrushOutRequestPage() {
       {bulkOpen && (
         <PaintBulkAddModal
           products={products}
-          productOptions={productOptions}
           sheenOptions={sheens}
+          autoLabel={false}
+          nextAutoLabelIndex={draft.items.filter(paintItemHasContent).length}
           onAdd={(items) =>
             setDraft((d) => ({
               ...d,

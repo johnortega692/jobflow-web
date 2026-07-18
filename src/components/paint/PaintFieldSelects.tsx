@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import {
+  compactSheenLabel,
   extractManufacturerFromDisplay,
   extractProductName,
-  formatSheenLabel,
   groupProductsForSelect,
   manufacturerForProduct,
   type PaintProduct,
@@ -13,29 +13,39 @@ export function PaintSheenSelect({
   options,
   onChange,
   ariaLabel,
+  emptyLabel = "— Select sheen —",
+  emptyTitle,
+  className,
 }: {
   value: string;
   options: string[];
   onChange: (sheen: string) => void;
   ariaLabel?: string;
+  emptyLabel?: string;
+  /** Tooltip when empty (defaults to emptyLabel). */
+  emptyTitle?: string;
+  className?: string;
 }) {
   const savedCustom = value && !options.includes(value);
 
   return (
     <select
-      className="paint-field-select"
+      className={["paint-field-select", className].filter(Boolean).join(" ")}
       value={value}
+      title={value || emptyTitle || emptyLabel || undefined}
       onChange={(e) => onChange(e.target.value)}
       aria-label={ariaLabel}
     >
-      <option value="">— Select sheen —</option>
+      <option value="">{emptyLabel}</option>
       {options.map((s) => (
-        <option key={s} value={s}>
-          {formatSheenLabel(s)}
+        <option key={s} value={s} title={s}>
+          {compactSheenLabel(s)}
         </option>
       ))}
       {savedCustom && (
-        <option value={value}>{formatSheenLabel(value)} (saved)</option>
+        <option value={value} title={value}>
+          {compactSheenLabel(value)} (saved)
+        </option>
       )}
     </select>
   );
@@ -61,8 +71,9 @@ export function PaintProductSelect({
 
   return (
     <select
-      className="paint-field-select"
+      className="paint-field-select paint-field-select--ellipsis"
       value={value}
+      title={value || undefined}
       onChange={(e) => {
         const display = e.target.value;
         const name = extractProductName(display);
@@ -76,14 +87,16 @@ export function PaintProductSelect({
       {groups.map((group) => (
         <optgroup key={group.manufacturer} label={group.manufacturer}>
           {group.items.map((item) => (
-            <option key={item.display} value={item.display}>
+            <option key={item.display} value={item.display} title={item.display}>
               {item.product}
             </option>
           ))}
         </optgroup>
       ))}
       {savedCustom && (
-        <option value={value}>{extractProductName(value)} (saved)</option>
+        <option value={value} title={value}>
+          {extractProductName(value)} (saved)
+        </option>
       )}
     </select>
   );

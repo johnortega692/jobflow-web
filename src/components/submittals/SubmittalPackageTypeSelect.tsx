@@ -18,11 +18,12 @@ export function SubmittalPackageTypeSelect({
   onChange,
 }: Props) {
   return (
-    <label>
+    <label className="submittal-package-type-field">
       {label}
       <select
         value={value}
         disabled={disabled}
+        title={options.find((o) => o.id === value)?.label ?? value}
         onChange={(e) => onChange(e.target.value as SubmittalPackageCategory)}
       >
         {options.map((opt) => (

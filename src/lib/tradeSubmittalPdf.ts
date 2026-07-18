@@ -1,4 +1,4 @@
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { downloadPdfBytes } from "./pdfDownload";
 import {
   createLetterPdfFonts,
@@ -17,12 +17,14 @@ import {
   truncate,
   wrapLines,
 } from "./pdfDrawCore";
+import { formatSpecSectionBannerText } from "./specSections";
 import { formatSubmittalDisplayDate } from "./dateInputUtils";
 import type { ProjectPrintInfo } from "./jobInfo";
 import {
   formatRevisionNumberDisplay,
   formatSubmittalNumberDisplay,
   isSubmittalRevision,
+  shouldShowRevisionNote,
   submittalProjectInfoLines,
   type PrintBranding,
 } from "./printCore";
@@ -40,16 +42,29 @@ export type TradeSubmittalPdfOptions = {
   branding: PrintBranding;
   date: string;
   subject: string;
+  specSection?: string;
   submittalNumber?: number | string;
   revisionNumber?: number | string;
   revisionNote?: string;
+  submittalType?: string;
   sections: SubmittalPdfFloorSection[];
 };
 
 export async function buildTradeSubmittalPdfBytes(
   options: Omit<TradeSubmittalPdfOptions, "filename">,
 ): Promise<Uint8Array> {
-  const { project, branding, date, subject, submittalNumber, revisionNumber, revisionNote, sections } = options;
+  const {
+    project,
+    branding,
+    date,
+    subject,
+    specSection,
+    submittalNumber,
+    revisionNumber,
+    revisionNote,
+    submittalType,
+    sections,
+  } = options;
   const doc = await PDFDocument.create();
   const { font, bold } = await createLetterPdfFonts(doc);
   const logo = await embedLogoImage(doc, branding.logoUrl);
@@ -137,18 +152,8 @@ export async function buildTradeSubmittalPdfBytes(
     y -= detailLineHeight;
   }
 
-  y -= detailLineHeight;
-  page.drawText(truncate(`Subject: ${subject.trim()}`, font, detailFontSize, contentWidth), {
-    x: PDF_MARGIN_X,
-    y: y - detailFontSize,
-    size: detailFontSize,
-    font,
-    color: TEXT,
-  });
-  y -= detailLineHeight;
-
   const note = revisionNote?.trim();
-  if (note && isSubmittalRevision(revisionNumber)) {
+  if (note && shouldShowRevisionNote(revisionNumber, submittalType)) {
     y -= 4;
     page.drawText("Revision Note:", {
       x: PDF_MARGIN_X,
@@ -161,7 +166,8 @@ export async function buildTradeSubmittalPdfBytes(
     y = drawWrappedText(page, note, PDF_MARGIN_X, y, contentWidth, font, detailFontSize) - 4;
   }
 
-  y -= 8;
+  y -= 10;
+  y = drawSubjectSpecBanner(page, y, contentWidth, subject, specSection, font, bold);
 
   let state = { doc, page, y, font, bold };
   if (!sections.length || sections.every((s) => !s.rows.length)) {
@@ -207,6 +213,67 @@ export async function buildTradeSubmittalPdfBytes(
   drawBrandingSignatureFooter(state.page, pageWidth, state.font, state.bold, branding);
 
   return doc.save();
+}
+
+function drawSubjectSpecBanner(
+  page: PDFPage,
+  topY: number,
+  contentWidth: number,
+  subject: string,
+  specSection: string | undefined,
+  font: PDFFont,
+  bold: PDFFont,
+): number {
+  const subjectText = subject.trim();
+  const specText = formatSpecSectionBannerText(specSection ?? "");
+  if (!subjectText && !specText) return topY;
+
+  const height = 22;
+  const accentW = 4;
+  const padX = 12;
+  const size = 11;
+  const barBottom = topY - height;
+
+  page.drawRectangle({
+    x: PDF_MARGIN_X,
+    y: barBottom,
+    width: contentWidth,
+    height,
+    color: rgb(0.94, 0.94, 0.94),
+  });
+  page.drawRectangle({
+    x: PDF_MARGIN_X,
+    y: barBottom,
+    width: accentW,
+    height,
+    color: rgb(0.12, 0.12, 0.12),
+  });
+
+  const textY = barBottom + (height - size) / 2;
+  let x = PDF_MARGIN_X + padX;
+  const maxTextW = contentWidth - padX - 8;
+
+  if (subjectText) {
+    const drawn = truncate(subjectText, bold, size, maxTextW);
+    page.drawText(drawn, { x, y: textY, size, font: bold, color: TEXT });
+    x += bold.widthOfTextAtSize(drawn, size);
+  }
+
+  if (specText) {
+    const sep = subjectText ? " · " : "";
+    const sepW = font.widthOfTextAtSize(sep, size);
+    const remaining = Math.max(24, PDF_MARGIN_X + contentWidth - 8 - x - sepW);
+    const drawnSpec = truncate(specText, font, size, remaining);
+    page.drawText(`${sep}${drawnSpec}`, {
+      x,
+      y: textY,
+      size,
+      font,
+      color: rgb(0.25, 0.25, 0.25),
+    });
+  }
+
+  return barBottom - 8;
 }
 
 export async function downloadTradeSubmittalPdf(options: TradeSubmittalPdfOptions): Promise<void> {

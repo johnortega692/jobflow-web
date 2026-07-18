@@ -6,12 +6,17 @@ import { normalizeTransmittalContract, type TransmittalContract } from "../lib/j
 import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract";
 import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks";
 import { normalizeSdsSection as normalizeSdsSectionRow } from "../lib/sdsSectionModel";
+import { applyPaintAutoLabels, paintItemsSuggestAutoLabel } from "../lib/paintItemLabels";
+import { applyFrpAutoLabels, frpItemsSuggestAutoLabel, parseFrpQtyField } from "../lib/frpItemLabels";
+import { applyWcAutoLabels, parseWcQtyField, wcItemsHaveFloor, wcItemsSuggestAutoLabel } from "../lib/wcItemLabels";
 
 export type PaintItem = {
   label: string;
   floor: string;
   manufacturer: string;
   color: string;
+  /** Approximate catalog hex when color lookup resolves (display swatch). */
+  color_hex?: string;
   product: string;
   sheen: string;
   previous_color: string;
@@ -204,6 +209,8 @@ export type PaintSubmittalData = {
   package_type: SubmittalPackageCategory;
   submittal_type: TradeSubmittalType;
   subject: string;
+  /** CSI / specification section shown on the submittal PDF and transmittal enclosure. */
+  spec_section: string;
   date: string;
   items: PaintItem[];
   /** Why this revision was created — shown on PDF when revision &gt; 0. */
@@ -215,6 +222,8 @@ export type PaintSubmittalData = {
   brushout_pushed?: Record<string, string>;
   /** When false, hide floor column in UI and omit floor grouping on PDF. */
   show_floor?: boolean;
+  /** When true, labels are A, B, C… by row order and read-only. */
+  auto_label?: boolean;
 };
 
 export type BrushoutPrepLink = {
@@ -235,6 +244,7 @@ export type SubmittalHistoryEntry = {
   scope?: "paint" | "wallcovering" | "frp";
   issue_status?: SubmittalIssueStatus;
   revision_note?: string;
+  spec_section?: string;
   /** Prior revisions are locked once a new revision is created or the package is issued. */
   locked?: boolean;
 };
@@ -246,11 +256,17 @@ export type WallcoveringSubmittalData = {
   package_type: SubmittalPackageCategory;
   submittal_type: TradeSubmittalType;
   subject: string;
+  /** CSI / specification section shown on the submittal PDF and transmittal enclosure. */
+  spec_section: string;
   date: string;
   items: WallcoveringItem[];
   revision_note?: string;
   got_track?: boolean;
   submittal_ordered?: boolean;
+  /** When true, content-row labels follow W-1, W-2… order. */
+  auto_label?: boolean;
+  /** When true, Floor control is shown on content-row secondary tiers. */
+  show_floor?: boolean;
 };
 
 export type FrpItem = {
@@ -266,6 +282,8 @@ export type FrpItem = {
   trim_size: string;
   /** Include in Orders by Vendor */
   order: boolean;
+  /** Include this row on the FRP submittal PDF (default true). */
+  include_in_submittal: boolean;
 };
 
 export type FrpSubmittalData = {
@@ -274,9 +292,13 @@ export type FrpSubmittalData = {
   issue_status: SubmittalIssueStatus;
   package_type: SubmittalPackageCategory;
   subject: string;
+  /** CSI / specification section shown on the submittal PDF and transmittal enclosure. */
+  spec_section: string;
   date: string;
   revision_note?: string;
   items: FrpItem[];
+  /** When true, item labels follow F-1, F-2… order. */
+  auto_label?: boolean;
 };
 
 export type TrackItemType = "Track" | "Infill" | "";
@@ -470,24 +492,6 @@ export type SdsPacketData = {
   contract: TransmittalContract;
   sections: SdsSection[];
 };
-
-export const DEFAULT_SPEC_SECTIONS = [
-  "09 51 00 - Acoustical Ceilings",
-  "09 62 00 - Specialty Ceilings",
-  "09 65 00 - Resilient Flooring",
-  "09 67 00 - Fluid-Applied Flooring",
-  "09 72 00 - Wall Coverings",
-  "09 84 00 - Acoustical Treatment",
-  "09 91 13 - Exterior Painting",
-  "09 91 23 - Interior Painting",
-  "09 96 00 - High-Performance Coatings",
-  "09 97 00 - Special Coatings",
-  "07 84 00 - Firestopping",
-  "07 92 00 - Joint Sealants",
-  "06 60 00 - Plastic Fabrications (FRP)",
-  "06 20 00 - Finish Carpentry",
-  "09 29 00 - Gypsum Board",
-] as const;
 
 export function newSdsSectionId(): string {
   return crypto.randomUUID();
@@ -686,7 +690,16 @@ export function frpSubjectForPackage(packageType: SubmittalPackageCategory): str
 }
 
 export function emptyPaintItem(): PaintItem {
-  return { label: "", floor: "", manufacturer: "", color: "", product: "", sheen: "", previous_color: "" };
+  return {
+    label: "",
+    floor: "",
+    manufacturer: "",
+    color: "",
+    color_hex: "",
+    product: "",
+    sheen: "",
+    previous_color: "",
+  };
 }
 
 export function emptyWallcoveringItem(): WallcoveringItem {
@@ -698,7 +711,7 @@ export function emptyWallcoveringItem(): WallcoveringItem {
     color: "",
     previous_color: "",
     qty: "",
-    unit: "EA",
+    unit: "LY",
     notes: "",
     panels: false,
     include_in_submittal: true,
@@ -718,6 +731,7 @@ export function emptyFrpItem(): FrpItem {
     panel_size: "",
     trim_size: "",
     order: false,
+    include_in_submittal: true,
   };
 }
 
@@ -741,7 +755,7 @@ export function normalizeEnclosure(raw: Partial<TransmittalEnclosure> | null | u
   if (!raw) return base;
   return {
     id: raw.id?.trim() || base.id,
-    description: raw.description?.trim() ?? "",
+    description: stripPdfFilenameFromDescription(raw.description?.trim() ?? ""),
     included: raw.included ?? true,
     copies: raw.copies?.trim() || "1",
     for_field: raw.for_field?.trim() ?? "",
@@ -749,6 +763,10 @@ export function normalizeEnclosure(raw: Partial<TransmittalEnclosure> | null | u
     log_row_id: raw.log_row_id?.trim() || undefined,
     pending_id: raw.pending_id?.trim() || undefined,
   };
+}
+
+function stripPdfFilenameFromDescription(description: string): string {
+  return description.replace(/\s*\(([^()]+\.pdf)\)\s*$/i, "").trim();
 }
 
 export function normalizePendingItem(raw: Partial<PendingSubmittalItem> | null | undefined): PendingSubmittalItem {
@@ -797,11 +815,13 @@ export function defaultPaintSubmittal(): PaintSubmittalData {
     package_type: "Paint Brush-Outs / Color Samples",
     submittal_type: "new",
     subject: paintSubjectForType("new"),
+    spec_section: "09 91 23 - Interior Painting",
     date: formatToday(),
-    items: [emptyPaintItem()],
+    items: applyPaintAutoLabels([emptyPaintItem()]),
     submittal_ordered: false,
     paint_vendor: "PPG",
     show_floor: false,
+    auto_label: true,
   };
 }
 
@@ -821,24 +841,36 @@ export function defaultWallcoveringSubmittal(): WallcoveringSubmittalData {
     package_type: "Paint Brush-Outs / Color Samples",
     submittal_type: "new",
     subject: wcSubjectForType("new"),
+    spec_section: "09 72 00 - Wall Coverings",
     date: formatToday(),
-    items: [emptyWallcoveringItem()],
+    items: applyWcAutoLabels([emptyWallcoveringItem()]),
     submittal_ordered: false,
+    auto_label: true,
+    show_floor: false,
   };
 }
 
 export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null | undefined): PaintSubmittalData {
   const base = defaultPaintSubmittal();
   if (!raw) return base;
+  const items = (raw.items?.length ? raw.items : base.items).map((i) => ({
+    ...emptyPaintItem(),
+    ...i,
+    color_hex: typeof i.color_hex === "string" ? i.color_hex.trim() : "",
+  }));
+  const auto_label =
+    typeof raw.auto_label === "boolean" ? raw.auto_label : paintItemsSuggestAutoLabel(items);
   return {
     ...base,
     ...raw,
-    items: (raw.items?.length ? raw.items : base.items).map((i) => ({ ...emptyPaintItem(), ...i })),
+    items: auto_label ? applyPaintAutoLabels(items) : items,
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "Paint Brush-Outs / Color Samples", "paint"),
     revision_note: raw.revision_note?.trim() || undefined,
+    spec_section: typeof raw.spec_section === "string" ? raw.spec_section.trim() : base.spec_section,
     show_floor: raw.show_floor === true,
+    auto_label,
     brushout_pushed:
       raw.brushout_pushed && typeof raw.brushout_pushed === "object"
         ? Object.fromEntries(
@@ -854,18 +886,29 @@ export function normalizeWallcoveringSubmittal(
 ): WallcoveringSubmittalData {
   const base = defaultWallcoveringSubmittal();
   if (!raw) return base;
+  const items = (raw.items?.length ? raw.items : base.items).map((i) => {
+    const merged = {
+      ...emptyWallcoveringItem(),
+      ...i,
+      order: i.order ?? false,
+    };
+    const parsed = parseWcQtyField(merged.qty, i.unit?.trim() || merged.unit, "LY");
+    return { ...merged, qty: parsed.qty, unit: parsed.unit };
+  });
+  const auto_label =
+    typeof raw.auto_label === "boolean" ? raw.auto_label : wcItemsSuggestAutoLabel(items);
+  const labeled = auto_label ? applyWcAutoLabels(items) : items;
   return {
     ...base,
     ...raw,
-    items: (raw.items?.length ? raw.items : base.items).map((i) => ({
-      ...emptyWallcoveringItem(),
-      ...i,
-      unit: i.unit?.trim() || "EA",
-    })),
+    items: labeled,
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "Wallcovering Samples", "wallcovering"),
     revision_note: raw.revision_note?.trim() || undefined,
+    spec_section: typeof raw.spec_section === "string" ? raw.spec_section.trim() : base.spec_section,
+    auto_label,
+    show_floor: raw.show_floor === true || wcItemsHaveFloor(labeled),
     date: formatSubmittalDisplayDate((raw.date ?? base.date).trim()) || formatToday(),
   };
 }
@@ -873,21 +916,30 @@ export function normalizeWallcoveringSubmittal(
 export function normalizeFrpSubmittal(raw: Partial<FrpSubmittalData> | null | undefined): FrpSubmittalData {
   const base = defaultFrpSubmittal();
   if (!raw) return base;
-  return {
-    ...base,
-    ...raw,
-    items: (raw.items?.length ? raw.items : base.items).map((i) => ({
+  const items = (raw.items?.length ? raw.items : base.items).map((i) => {
+    const merged = {
       ...emptyFrpItem(),
       ...i,
       order: i.order ?? false,
-      unit: i.unit?.trim() || "EA",
-    })),
+      include_in_submittal: i.include_in_submittal !== false,
+    };
+    const parsed = parseFrpQtyField(merged.quantity, i.unit?.trim() || merged.unit, "EA");
+    return { ...merged, quantity: parsed.quantity, unit: parsed.unit };
+  });
+  const auto_label =
+    typeof raw.auto_label === "boolean" ? raw.auto_label : frpItemsSuggestAutoLabel(items);
+  return {
+    ...base,
+    ...raw,
+    items: auto_label ? applyFrpAutoLabels(items) : items,
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "FRP Product Data", "frp"),
     subject: raw.subject?.trim() || frpSubjectForPackage(normalizePackageCategory(raw.package_type, "FRP Product Data", "frp")),
+    spec_section: typeof raw.spec_section === "string" ? raw.spec_section.trim() : base.spec_section,
     date: formatSubmittalDisplayDate((raw.date?.trim() || base.date).trim()) || formatToday(),
     revision_note: raw.revision_note?.trim() || undefined,
+    auto_label,
   };
 }
 
@@ -898,8 +950,10 @@ export function defaultFrpSubmittal(): FrpSubmittalData {
     issue_status: "draft",
     package_type: "FRP Product Data",
     subject: frpSubjectForPackage("FRP Product Data"),
+    spec_section: "06 60 00 - Plastic Fabrications (FRP)",
     date: formatToday(),
-    items: [emptyFrpItem()],
+    items: applyFrpAutoLabels([emptyFrpItem()]),
+    auto_label: true,
   };
 }
 

@@ -2,6 +2,7 @@ import { defaultLetterheadPdfVisibility } from "../types/letterheadSettings";
 import { normalizeRevisionNumber } from "../types/tradeDocuments";
 import { formatSubmittalDisplayDate } from "./dateInputUtils";
 import { embedLogoUrlInHtml } from "./emailImageEmbed";
+import { formatSpecSectionBannerText } from "./specSections";
 
 function resolveAbsoluteAssetUrl(url: string): string {
   const trimmed = url.trim();
@@ -27,13 +28,10 @@ export function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Street + city/zip line block for submittal PDF headers. */
+/** Street + city/zip on one Address line for submittal PDF headers. */
 export function projectAddressPrintHtml(street: string, cityLine: string): string {
-  const line1 = street.trim();
-  const line2 = cityLine.trim();
-  if (!line1 && !line2) return `<p class="info-row">Address:</p>`;
-  if (!line2) return `<p class="info-row">Address: ${esc(line1)}</p>`;
-  return `<p class="info-row">Address: ${esc(line1)}</p><p class="info-row">${esc(line2)}</p>`;
+  const combined = [street.trim(), cityLine.trim()].filter(Boolean).join(", ");
+  return `<p class="info-row">Address: ${esc(combined)}</p>`;
 }
 
 export function formatSubmittalNumberDisplay(n: number | string | undefined): string {
@@ -49,6 +47,14 @@ export function isSubmittalRevision(revisionNumber: number | string | undefined)
   return normalizeRevisionNumber(revisionNumber) > 0;
 }
 
+/** Show revision note for Rev &gt; 0 packages, or when Type is Revised. */
+export function shouldShowRevisionNote(
+  revisionNumber: number | string | undefined,
+  submittalType?: string | null,
+): boolean {
+  return isSubmittalRevision(revisionNumber) || submittalType === "revised";
+}
+
 export function formatRevisionNumberDisplay(n: number | string | undefined): string {
   return String(normalizeRevisionNumber(n));
 }
@@ -56,10 +62,24 @@ export function formatRevisionNumberDisplay(n: number | string | undefined): str
 export function submittalRevisionNoteHtml(
   revisionNumber: number | string | undefined,
   revisionNote?: string,
+  submittalType?: string | null,
 ): string {
   const note = revisionNote?.trim();
-  if (!note || !isSubmittalRevision(revisionNumber)) return "";
+  if (!note || !shouldShowRevisionNote(revisionNumber, submittalType)) return "";
   return `<p class="info-row revision-note"><strong>Revision Note:</strong> ${esc(note)}</p>`;
+}
+
+/** Grey bar: bold subject · Spec Section 09 91 23 – Name */
+export function submittalSubjectSpecBannerHtml(subject: string, specSection: string): string {
+  const subjectText = subject.trim();
+  const specText = formatSpecSectionBannerText(specSection);
+  if (!subjectText && !specText) return "";
+  const subjectHtml = subjectText
+    ? `<span class="subject-spec-bar-subject">${esc(subjectText)}</span>`
+    : "";
+  const sepHtml = subjectText && specText ? `<span class="subject-spec-bar-sep"> · </span>` : "";
+  const specHtml = specText ? `<span class="subject-spec-bar-spec">${esc(specText)}</span>` : "";
+  return `<div class="subject-spec-bar">${subjectHtml}${sepHtml}${specHtml}</div>`;
 }
 
 export function submittalDateSectionHtml(
@@ -86,8 +106,8 @@ export function submittalProjectInfoLines(project: {
 }): string[] {
   const lines = [`Project: ${project.job_name.trim()}`];
   if (project.job_number.trim()) lines.push(`Project Number: ${project.job_number.trim()}`);
-  if (project.job_address.trim()) lines.push(`Address: ${project.job_address.trim()}`);
-  if (project.job_address_line2.trim()) lines.push(project.job_address_line2.trim());
+  const address = [project.job_address.trim(), project.job_address_line2.trim()].filter(Boolean).join(", ");
+  if (address) lines.push(`Address: ${address}`);
   return lines;
 }
 

@@ -17,7 +17,7 @@ export const PROJECT_STARTUP_STEPS = [
     id: "wc_samples_ordered",
     label: "Wallcovering samples ordered",
     shortLabel: "Samples",
-    modulePath: "wallcovering",
+    modulePath: "submittals/wallcovering",
     requiresWallcovering: true, // Job Setup → "includes wallcovering" toggle
   },
   {
@@ -25,7 +25,7 @@ export const PROJECT_STARTUP_STEPS = [
     label: "Approve brush-outs for Field Tools",
     shortLabel: "Brush outs",
     action: PROJECT_STARTUP_ACTIONS.open_approved_brushouts,
-    modulePath: "paint",
+    modulePath: "submittals/paint",
   },
   {
     id: "field_has_hours",

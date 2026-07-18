@@ -1,4 +1,10 @@
 import {
+  applyInferredContentFlags,
+  defaultTransmittalContentAutoOn,
+  inferContentKeysFromPending,
+  type TransmittalContentKey,
+} from "./transmittalCategories";
+import {
   emptyEnclosure,
   normalizeEnclosure,
   normalizePendingItem,
@@ -24,9 +30,17 @@ import {
 import type { ComposeEmailMethod } from "./paintUserSettings";
 
 export function enclosureOutputDescription(row: TransmittalEnclosure): string {
-  const base = row.description.trim();
+  const base = stripPdfFilenameFromEnclosureDescription(row.description);
   if (!row.digital_copy) return base;
   return base ? `${base} (Digital Copy)` : "(Digital Copy)";
+}
+
+/** Drop trailing "(Something.pdf)" so GC-facing enclosure lines stay clean. */
+export function stripPdfFilenameFromEnclosureDescription(description: string): string {
+  return description
+    .trim()
+    .replace(/\s*\(([^()]+\.pdf)\)\s*$/i, "")
+    .trim();
 }
 
 export function pendingItemEnclosureDescription(item: PendingSubmittalItem): string {
@@ -35,20 +49,27 @@ export function pendingItemEnclosureDescription(item: PendingSubmittalItem): str
   if (source === "sds_packet") {
     const spec = normalized.spec_section.trim();
     const packet = normalized.packet_type.trim();
+    // Do not append linked_files / download filenames — those stay internal.
     if (spec && packet) return `${spec} · ${packet}`;
     return spec || packet || "Product Data";
   }
   if (source === "paint_submittal") {
     const stype = normalized.submittal_type.trim();
-    return stype ? `${stype} · Paint` : "Color Samples · Paint";
+    const base = stype ? `${stype} · Paint` : "Color Samples · Paint";
+    const spec = normalized.spec_section.trim();
+    return spec ? `${spec} · ${base}` : base;
   }
   if (source === "wallcovering_submittal") {
     const stype = normalized.submittal_type.trim();
-    return stype ? `${stype} · Wallcovering` : "Color Samples · Wallcovering";
+    const base = stype ? `${stype} · Wallcovering` : "Color Samples · Wallcovering";
+    const spec = normalized.spec_section.trim();
+    return spec ? `${spec} · ${base}` : base;
   }
   if (source === "frp_submittal") {
     const stype = normalized.submittal_type.trim();
-    return stype ? `${stype} · FRP` : "Product Data · FRP";
+    const base = stype ? `${stype} · FRP` : "Product Data · FRP";
+    const spec = normalized.spec_section.trim();
+    return spec ? `${spec} · ${base}` : base;
   }
   const scope = normalized.scope.trim();
   const stype = normalized.submittal_type.trim();
@@ -63,25 +84,18 @@ export function pendingItemLabel(item: PendingSubmittalItem): string {
 export function queuePendingItem(
   transmittal: TransmittalData,
   item: Partial<PendingSubmittalItem>,
+  autoAllowed: readonly TransmittalContentKey[] = defaultTransmittalContentAutoOn(),
 ): TransmittalData {
   const normalized = normalizePendingItem(item);
   const queue = [...(transmittal.pending_submittal_queue ?? []), normalized];
+  const withFlags = applyInferredContentFlags(
+    transmittal,
+    inferContentKeysFromPending(normalized),
+    autoAllowed,
+  );
   return {
-    ...transmittal,
+    ...withFlags,
     pending_submittal_queue: queue,
-    cb_product_data:
-      transmittal.cb_product_data ||
-      normalized.submittal_type === "Product Data" ||
-      normalized.source === "sds_packet",
-    cb_sds_safety:
-      transmittal.cb_sds_safety ||
-      normalized.source === "sds_packet" ||
-      normalized.packet_type.toLowerCase().includes("sds"),
-    cb_submittal: true,
-    cb_samples:
-      transmittal.cb_samples ||
-      normalized.submittal_type.toLowerCase().includes("color") ||
-      normalized.submittal_type.toLowerCase().includes("sample"),
   };
 }
 
@@ -111,7 +125,7 @@ export function appendPendingToEnclosures(
     usedPending.add(item.id);
     newEnclosures.push({
       ...emptyEnclosure(),
-      description: pendingItemEnclosureDescription(item),
+      description: stripPdfFilenameFromEnclosureDescription(pendingItemEnclosureDescription(item)),
       included: true,
       copies: "1",
       pending_id: item.id,

@@ -7,6 +7,8 @@ import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheets
 import { ManpowerCalSettingsSection } from "../components/settings/ManpowerCalSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
 import { PaintVendorsSettingsSection } from "../components/settings/PaintVendorsSettingsSection";
+import { SpecSectionsSettingsSection } from "../components/settings/SpecSectionsSettingsSection";
+import { TransmittalCategoriesSettingsSection } from "../components/settings/TransmittalCategoriesSettingsSection";
 import { EmailSignatureSettingsSection } from "../components/settings/EmailSignatureSettingsSection";
 import { TrackerSchedulesSettingsSection } from "../components/settings/TrackerSchedulesSettingsSection";
 import { ProjectStaffSettingsSection } from "../components/settings/ProjectStaffSettingsSection";
@@ -34,6 +36,8 @@ const SETTINGS_TABS = [
   { id: "google", label: "Google Sheets", adminOnly: true as const },
   { id: "budget", label: "Budget", adminOnly: true as const },
   { id: "paint-catalog", label: "Paint products & sheens" },
+  { id: "spec-sections", label: "Spec sections" },
+  { id: "transmittal-categories", label: "Transmittal categories" },
   { id: "paint-vendors", label: "Paint vendors" },
   { id: "email-signature", label: "Email signature" },
   { id: "tracker-schedules", label: "Schedules" },
@@ -85,6 +89,14 @@ export function SettingsPage() {
   const onBudgetDirty = useCallback((dirty: boolean) => setTabDirty("budget", dirty), [setTabDirty]);
   const onPaintCatalogDirty = useCallback(
     (dirty: boolean) => setTabDirty("paint-catalog", dirty),
+    [setTabDirty],
+  );
+  const onSpecSectionsDirty = useCallback(
+    (dirty: boolean) => setTabDirty("spec-sections", dirty),
+    [setTabDirty],
+  );
+  const onTransmittalCategoriesDirty = useCallback(
+    (dirty: boolean) => setTabDirty("transmittal-categories", dirty),
     [setTabDirty],
   );
   const onPaintVendorsDirty = useCallback(
@@ -680,6 +692,28 @@ export function SettingsPage() {
           readOnly={sharedSettingsReadOnly}
           onDirtyChange={sharedSettingsReadOnly ? undefined : onPaintCatalogDirty}
           onBindActions={(actions) => bindSectionActions("paint-catalog", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "spec-sections" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "spec-sections"}
+      >
+        <SpecSectionsSettingsSection
+          readOnly={sharedSettingsReadOnly}
+          onDirtyChange={sharedSettingsReadOnly ? undefined : onSpecSectionsDirty}
+          onBindActions={(actions) => bindSectionActions("spec-sections", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "transmittal-categories" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "transmittal-categories"}
+      >
+        <TransmittalCategoriesSettingsSection
+          readOnly={sharedSettingsReadOnly}
+          onDirtyChange={sharedSettingsReadOnly ? undefined : onTransmittalCategoriesDirty}
+          onBindActions={(actions) => bindSectionActions("transmittal-categories", actions)}
         />
       </div>
 

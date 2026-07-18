@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
-import { RevisionNoteField } from "../components/submittals/RevisionNoteField";
-import { SubmittalPackageTypeSelect } from "../components/submittals/SubmittalPackageTypeSelect";
-import { SubmittalRevisionField } from "../components/submittals/SubmittalRevisionField";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
-import { DateInput } from "../components/DateInput";
 import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal";
 import { WallcoveringBulkAddModal } from "../components/wallcovering/WallcoveringBulkAddModal";
 import { WallcoveringItemRow } from "../components/wallcovering/WallcoveringItemRow";
+import { WallcoveringSubmittalMetaPanel } from "../components/wallcovering/WallcoveringSubmittalMetaPanel";
 import { useLetterhead } from "../contexts/LetterheadContext";
-import { SubmittalIssueStatusSelect } from "../components/submittals/SubmittalIssueStatusSelect";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
@@ -18,14 +14,26 @@ import {
 } from "../lib/submittalHistory";
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
+import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
+import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
 import { queuePendingItem } from "../lib/transmittalHelpers";
 import { buildWcTrackerLinesFromSubmittal, saveWcTrackerLines, syncWcSubmittalOrdered } from "../lib/fieldTrackerProject";
-import { applyGotTrackToggle, detectGotTrack } from "../lib/wcTrackInfill";
+import {
+  applyGotTrackToggle,
+  detectGotTrack,
+  isTrackInfillItem,
+  withTrackRowLast,
+} from "../lib/wcTrackInfill";
+import {
+  applyWcAutoLabels,
+  wcContentItems,
+  wcItemsHaveFloor,
+  wcItemsReadiness,
+  wcRowAutoLabel,
+} from "../lib/wcItemLabels";
 import {
   applyTransmittalContractIfDistinct,
-  hasDistinctWcContract,
   wcPrintInfo,
-  wcTrackerJobLabel,
 } from "../lib/jobInfo";
 import { downloadWallcoveringSubmittal } from "../lib/wallcoveringSubmittalPrint";
 import { wallcoveringSubmittalFilename } from "../lib/pdfFilenames";
@@ -39,7 +47,6 @@ import {
   emptyWallcoveringItem,
   normalizeWallcoveringSubmittal,
   WALLCOVERING_PACKAGE_TYPE_OPTIONS,
-  WALLCOVERING_SUBMITTAL_TYPES,
   wcSubjectForPackage,
   type SubmittalHistoryEntry,
   type TradeSubmittalType,
@@ -59,11 +66,10 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
 
 function normalizeWcDraft(raw: WallcoveringSubmittalData): WallcoveringSubmittalData {
   const normalized = normalizeWallcoveringSubmittal(raw);
-  const items = normalized.items.map((i) => ({ ...i, order: i.order ?? false }));
   return {
     ...normalized,
-    items,
-    got_track: raw.got_track ?? detectGotTrack(items),
+    items: withTrackRowLast(normalized.items),
+    got_track: raw.got_track ?? detectGotTrack(normalized.items),
   };
 }
 
@@ -78,6 +84,9 @@ export function WallcoveringSubmittalsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [trackerBusy, setTrackerBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const [savedTrackItem, setSavedTrackItem] = useState<WallcoveringItem | null>(null);
 
   const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
   const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
@@ -127,6 +136,11 @@ export function WallcoveringSubmittalsPage() {
   const showPreviousColor = draft.submittal_type === "substitution";
   const wcPrint = useMemo(() => wcPrintInfo(project, project.jobInfo), [project]);
   const draftLocked = submittalDraftIsLocked(draft);
+  const autoLabel = draft.auto_label !== false;
+  const showFloor = draft.show_floor === true || wcItemsHaveFloor(draft.items);
+  const hasTrack = Boolean(draft.got_track) || draft.items.some(isTrackInfillItem);
+  const contentCount = wcContentItems(draft.items).length;
+  const itemsReadiness = useMemo(() => wcItemsReadiness(draft.items), [draft.items]);
 
   function updateDraft(updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) {
     setDraft((current) => {
@@ -135,7 +149,13 @@ export function WallcoveringSubmittalsPage() {
       if (next.revision_number !== current.revision_number) {
         setStatus(`Now editing Rev ${next.revision_number} (draft).`);
       }
-      return { ...next, got_track: detectGotTrack(next.items) };
+      const items = withTrackRowLast(next.items);
+      return {
+        ...next,
+        items,
+        got_track: detectGotTrack(items),
+        show_floor: next.show_floor === true || wcItemsHaveFloor(items),
+      };
     });
   }
 
@@ -147,19 +167,56 @@ export function WallcoveringSubmittalsPage() {
     }));
   }
 
+  function withMaybeAutoLabels(items: WallcoveringItem[], enabled: boolean): WallcoveringItem[] {
+    return enabled ? applyWcAutoLabels(items) : items;
+  }
+
   function patchItem(index: number, patch: Partial<WallcoveringItem>) {
-    updateDraft((d) => ({
-      ...d,
-      items: d.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
-    }));
+    updateDraft((d) => {
+      const enabled = d.auto_label !== false;
+      const items = d.items.map((item, i) => {
+        if (i !== index) return item;
+        if (isTrackInfillItem(item)) return { ...item, ...patch, label: "" };
+        return { ...item, ...patch };
+      });
+      const floorForced = typeof patch.floor === "string" && patch.floor.trim().length > 0;
+      return {
+        ...d,
+        show_floor: floorForced || d.show_floor === true || wcItemsHaveFloor(items),
+        items: withMaybeAutoLabels(items, enabled),
+      };
+    });
+  }
+
+  function reorderContentItems(from: number, to: number) {
+    updateDraft((d) => {
+      if (isTrackInfillItem(d.items[from]!) || isTrackInfillItem(d.items[to]!)) return d;
+      const moved = withTrackRowLast(moveItem(d.items, from, to));
+      return { ...d, items: withMaybeAutoLabels(moved, d.auto_label !== false) };
+    });
   }
 
   function onGotTrackChange(checked: boolean) {
+    if (!checked) {
+      const track = draft.items.find(isTrackInfillItem);
+      if (track) setSavedTrackItem({ ...track });
+    }
     updateDraft((d) => ({
       ...d,
       got_track: checked,
-      items: applyGotTrackToggle(d.items, checked),
+      items: withMaybeAutoLabels(
+        applyGotTrackToggle(d.items, checked, checked ? savedTrackItem : null),
+        d.auto_label !== false,
+      ),
     }));
+  }
+
+  function confirmGapsIfNeeded(): boolean {
+    const readiness = wcItemsReadiness(draft.items);
+    if (readiness.complete || (readiness.missingColor === 0 && readiness.missingQty === 0 && readiness.missingManufacturer === 0)) {
+      return true;
+    }
+    return window.confirm(readiness.confirmMessage);
   }
 
   function loadHistoryItems(items: WallcoveringItem[], replace: boolean) {
@@ -185,6 +242,7 @@ export function WallcoveringSubmittalsPage() {
   }
 
   async function onDownloadPdf() {
+    if (!confirmGapsIfNeeded()) return;
     try {
       await downloadWallcoveringSubmittal(wcPrint, draft, branding);
       let nextHistory = history;
@@ -202,16 +260,19 @@ export function WallcoveringSubmittalsPage() {
             locked: true,
             packageType: draft.package_type,
             date: draft.date,
+            specSection: draft.spec_section,
           },
         );
       }
       await persist(draft, nextHistory);
       let logRowId = "";
       try {
+        const parsed = parseSpecSectionForLog(draft.spec_section);
         const row = await recordPdfLogRow(projectId, {
           submittal_type: draft.package_type,
           scope: "Wallcovering",
-          spec: "096000",
+          spec: parsed.spec || "096000",
+          section: parsed.section || draft.spec_section,
           notes: `Wallcovering submittal #${draft.submittal_number}`,
           trade_submittal_number: String(draft.submittal_number),
           status: "Ready",
@@ -220,13 +281,20 @@ export function WallcoveringSubmittalsPage() {
       } catch {
         /* log row optional */
       }
-      let transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
-        submittal_type: draft.package_type,
-        scope: "Wallcovering",
-        source: "wallcovering_submittal",
-        trade_submittal_number: String(draft.submittal_number),
-        log_row_id: logRowId,
-      });
+      const autoOn = await loadTransmittalContentAutoOn();
+      let transmittal = queuePendingItem(
+        tradeData.transmittal ?? defaultTransmittal(),
+        {
+          submittal_type: draft.package_type,
+          scope: "Wallcovering",
+          source: "wallcovering_submittal",
+          trade_submittal_number: String(draft.submittal_number),
+          log_row_id: logRowId,
+          spec_section: draft.spec_section,
+          section: draft.spec_section,
+        },
+        autoOn,
+      );
       transmittal = applyTransmittalContractIfDistinct(project, transmittal, "wallcovering");
       await save({
         ...tradeData,
@@ -285,6 +353,7 @@ export function WallcoveringSubmittalsPage() {
   }
 
   async function onIssueSubmittal() {
+    if (!confirmGapsIfNeeded()) return;
     const { draft: issued, history: nextHistory } = issueSubmittalDraft(draft, history, "wallcovering");
     const ok = await persist(issued, nextHistory);
     if (ok) {
@@ -309,12 +378,15 @@ export function WallcoveringSubmittalsPage() {
     ) {
       return;
     }
+    setSavedTrackItem(null);
     setDraft({
       ...createNewSubmittalPackageDraft(draft, history),
       submittal_type: "new",
       subject: wcSubjectForPackage(draft.package_type, "new"),
-      items: [emptyWallcoveringItem()],
+      auto_label: true,
+      items: applyWcAutoLabels([emptyWallcoveringItem()]),
       got_track: false,
+      show_floor: false,
     });
     setStatus("New submittal package started (Rev 0, draft).");
   }
@@ -333,24 +405,18 @@ export function WallcoveringSubmittalsPage() {
         wcPrint.job_number,
         draft.submittal_number,
         draft.submittal_type,
+        draft.spec_section,
       ),
-    [wcPrint.job_name, wcPrint.job_number, draft.submittal_number, draft.submittal_type],
+    [wcPrint.job_name, wcPrint.job_number, draft.submittal_number, draft.submittal_type, draft.spec_section],
   );
 
   if (loading) return <p className="muted">Loading wallcovering submittal…</p>;
 
   return (
-    <div className="stack">
+    <div className="stack wc-submittal-page">
       <div className="row-between">
         <div>
           <h2>Wallcovering submittals</h2>
-          <p className="muted small">
-            Wallcovering submittals, tracker sync, and history. Material orders →{" "}
-            <Link to={`/projects/${projectId}/orders`}>Orders</Link>.
-            {hasDistinctWcContract(project) && (
-              <> Contract: {wcTrackerJobLabel(project)}.</>
-            )}
-          </p>
         </div>
         <div className="row-gap wrap">
           <button
@@ -422,72 +488,36 @@ export function WallcoveringSubmittalsPage() {
         </div>
       </section>
 
-      <section className="card stack">
-        <div className="grid-3">
-          <label>
-            Submittal #
-            <input
-              type="number"
-              min={1}
-              value={draft.submittal_number}
-              disabled={draftLocked}
-              onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
-            />
-          </label>
-          <SubmittalRevisionField
-            revisionNumber={draft.revision_number}
-            locked={draftLocked}
-            onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
-          />
-          <label>
-            Type
-            <select
-              value={draft.submittal_type}
-              onChange={(e) => setType(e.target.value as TradeSubmittalType)}
-            >
-              {WALLCOVERING_SUBMITTAL_TYPES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Date
-            <DateInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })} />
-          </label>
-          <SubmittalIssueStatusSelect
-            value={draft.issue_status}
-            onChange={(issue_status) => setDraft({ ...draft, issue_status })}
-          />
-          <SubmittalPackageTypeSelect
-            value={draft.package_type}
-            options={WALLCOVERING_PACKAGE_TYPE_OPTIONS}
-            disabled={draftLocked}
-            onChange={(package_type) =>
-              updateDraft((d) => ({
-                ...d,
-                package_type,
-                subject: wcSubjectForPackage(package_type, d.submittal_type),
-              }))
-            }
-          />
-        </div>
-        <label>
-          Subject
-          <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
-        </label>
-        <RevisionNoteField
-          revisionNumber={draft.revision_number}
-          value={draft.revision_note ?? ""}
-          onChange={(revision_note) => setDraft({ ...draft, revision_note })}
-        />
-      </section>
+      <WallcoveringSubmittalMetaPanel
+        draft={draft}
+        draftLocked={draftLocked}
+        packageTypeOptions={WALLCOVERING_PACKAGE_TYPE_OPTIONS}
+        onSubmittalNumberChange={(submittal_number) => setDraft({ ...draft, submittal_number })}
+        onIssueStatusChange={(issue_status) => setDraft({ ...draft, issue_status })}
+        onDateChange={(date) => setDraft({ ...draft, date })}
+        onPackageTypeChange={(package_type) =>
+          updateDraft((d) => ({
+            ...d,
+            package_type,
+            subject: wcSubjectForPackage(package_type, d.submittal_type),
+          }))
+        }
+        onTypeChange={setType}
+        onSubjectChange={(subject) => setDraft({ ...draft, subject })}
+        onSpecSectionChange={(spec_section) => setDraft({ ...draft, spec_section })}
+        onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
+        onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
+      />
 
       <section className="card stack wc-items-section">
         <div className="row-between wc-items-toolbar">
-          <h3 className="muted small">Wallcovering items</h3>
-          <div className="row-gap wrap">
+          <div>
+            <h3>
+              Wallcovering items ({contentCount}
+              {hasTrack ? " + track" : ""})
+            </h3>
+          </div>
+          <div className="wc-items-toolbar-actions">
             <label className="check wc-got-track">
               <input
                 type="checkbox"
@@ -496,71 +526,152 @@ export function WallcoveringSubmittalsPage() {
               />
               Got Track?
             </label>
+            <label className="check wc-got-track">
+              <input
+                type="checkbox"
+                checked={showFloor}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  if (!enabled && wcItemsHaveFloor(draft.items)) return;
+                  updateDraft((d) => ({ ...d, show_floor: enabled }));
+                }}
+              />
+              Show floor
+            </label>
+            <label className="check wc-got-track">
+              <input
+                type="checkbox"
+                checked={autoLabel}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  updateDraft((d) => ({
+                    ...d,
+                    auto_label: enabled,
+                    items: enabled ? applyWcAutoLabels(d.items) : d.items,
+                  }));
+                }}
+              />
+              Auto-label by order
+            </label>
             <div className="paint-add-buttons">
               <button
                 type="button"
-                className="btn btn-icon btn-primary"
-                title="Add row"
+                className="btn btn-primary btn-small"
                 onClick={() =>
-                  updateDraft((d) => ({ ...d, items: [...d.items, emptyWallcoveringItem()] }))
+                  updateDraft((d) => {
+                    const enabled = d.auto_label !== false;
+                    const content = wcContentItems(d.items);
+                    const row = emptyWallcoveringItem();
+                    if (enabled) row.label = wcRowAutoLabel(content.length);
+                    const track = d.items.find(isTrackInfillItem);
+                    const next = track ? [...content, row, track] : [...content, row];
+                    return { ...d, items: withMaybeAutoLabels(next, enabled) };
+                  })
                 }
               >
-                +
+                + Add row
               </button>
               <button
                 type="button"
-                className="btn btn-icon btn-primary"
-                title="Add multiple rows"
+                className="btn btn-secondary btn-small"
                 onClick={() => setBulkOpen(true)}
               >
-                ++
+                Add multiple…
               </button>
             </div>
           </div>
         </div>
 
-        <div className="wc-items-list">
+        <div className="wc-items-list" role="table" aria-label="Wallcovering items">
+          <div className="wc-items-header" role="row">
+            <span className="wc-row-handle-spacer" aria-hidden />
+            <span className="wc-col-head wc-col-label">Label</span>
+            <span className="wc-col-head wc-col-mfr">Manufacturer</span>
+            <span className="wc-col-head wc-col-product">Product</span>
+            {showPreviousColor && <span className="wc-col-head wc-col-prev">Previous</span>}
+            <span className="wc-col-head wc-col-color">Color / Pattern</span>
+            <span className="wc-col-head wc-col-head-actions" aria-hidden />
+          </div>
           {draft.items.map((item, index) => (
             <WallcoveringItemRow
               key={index}
               item={item}
               index={index}
-              total={draft.items.length}
+              totalContent={contentCount}
               showPreviousColor={showPreviousColor}
+              autoLabel={autoLabel}
+              showFloor={showFloor}
+              dragging={dragFrom === index}
+              dragOver={dragOver === index}
               onChange={(patch) => patchItem(index, patch)}
-              onMoveUp={() =>
-                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index - 1) }))
-              }
-              onMoveDown={() =>
-                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index + 1) }))
-              }
+              onDragStart={() => setDragFrom(index)}
+              onDragOver={(e: DragEvent) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (!isTrackInfillItem(item)) setDragOver(index);
+              }}
+              onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
+              onDrop={() => {
+                if (dragFrom !== null && dragFrom !== index) reorderContentItems(dragFrom, index);
+                setDragFrom(null);
+                setDragOver(null);
+              }}
+              onDragEnd={() => {
+                setDragFrom(null);
+                setDragOver(null);
+              }}
               onRemove={() =>
                 updateDraft((d) => {
-                  const nextItems =
+                  const filtered =
                     d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items;
                   return {
                     ...d,
-                    items: nextItems,
-                    got_track: detectGotTrack(nextItems),
+                    items: withMaybeAutoLabels(withTrackRowLast(filtered), d.auto_label !== false),
                   };
                 })
               }
             />
           ))}
         </div>
+
+        <div className="row-between wc-items-footer">
+          <p className="muted small wc-items-drag-hint">
+            {autoLabel ? "Drag ⠿ to reorder · labels follow order" : "Drag ⠿ to reorder"}
+            {hasTrack ? " · track row stays last" : ""}
+          </p>
+          <p
+            className={`small wc-items-readiness${
+              itemsReadiness.missingColor > 0 ||
+              itemsReadiness.missingQty > 0 ||
+              itemsReadiness.missingManufacturer > 0
+                ? " wc-items-readiness--warn"
+                : itemsReadiness.count > 0
+                  ? " wc-items-readiness--ok"
+                  : ""
+            }`}
+          >
+            {itemsReadiness.summaryLine}
+          </p>
+        </div>
       </section>
 
       {bulkOpen && (
         <WallcoveringBulkAddModal
-          onAdd={(items) =>
-            updateDraft((d) => ({
-              ...d,
-              items: [
-                ...d.items.filter((i) => i.label || i.color || i.manufacturer || i.product),
-                ...items,
-              ],
-              got_track: detectGotTrack([...d.items, ...items]),
-            }))
+          autoLabel={autoLabel}
+          nextAutoLabelIndex={contentCount}
+          onAdd={(items, opts) =>
+            updateDraft((d) => {
+              const content = wcContentItems(d.items).filter(
+                (i) => i.label || i.color || i.manufacturer || i.product,
+              );
+              const track = d.items.find(isTrackInfillItem);
+              const merged = track ? [...content, ...items, track] : [...content, ...items];
+              if (opts.turnOffAutoLabel) {
+                return { ...d, auto_label: false, items: withTrackRowLast(merged) };
+              }
+              const enabled = d.auto_label !== false;
+              return { ...d, items: withMaybeAutoLabels(withTrackRowLast(merged), enabled) };
+            })
           }
           onClose={() => setBulkOpen(false)}
         />

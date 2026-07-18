@@ -5,7 +5,11 @@ import {
   useUnsavedNavigation,
 } from "../contexts/UnsavedNavigationContext";
 import { ProjectNavIcon } from "./ProjectNavIcon";
-import { PROJECT_MODULES, PROJECT_NAV_SECTIONS } from "../config/projectModules";
+import {
+  PROJECT_DETAIL_MODULE_IDS,
+  PROJECT_MODULES,
+  PROJECT_NAV_SECTIONS,
+} from "../config/projectModules";
 import { projectHasWallcovering } from "../lib/jobInfo";
 import { supabase } from "../lib/supabase";
 import type { ProjectForm } from "../types/database";
@@ -13,15 +17,22 @@ import { normalizeProject } from "../types/database";
 
 function matchModule(pathname: string, base: string) {
   let active = PROJECT_MODULES[0];
+  let bestLen = -1;
   for (const mod of PROJECT_MODULES) {
     const modBase = mod.path ? `${base}/${mod.path}` : base;
-    if (pathname === modBase || pathname.startsWith(`${modBase}/`)) {
+    const exact = pathname === modBase;
+    // Dashboard (empty path) only matches the project root — not every nested route.
+    const nested = Boolean(mod.path) && pathname.startsWith(`${modBase}/`);
+    if ((exact || nested) && modBase.length > bestLen) {
+      bestLen = modBase.length;
       active = mod;
-      break;
     }
   }
   const modBase = active.path ? `${base}/${active.path}` : base;
-  const isDetailView = pathname !== modBase && pathname.startsWith(`${modBase}/`);
+  const isDetailView =
+    PROJECT_DETAIL_MODULE_IDS.has(active.id) &&
+    pathname !== modBase &&
+    pathname.startsWith(`${modBase}/`);
   return { activeModule: active, isDetailView };
 }
 
@@ -138,7 +149,7 @@ function ProjectLayoutShell() {
           >
             {navOpen ? "Close menu" : activeModule.label}
           </button>
-          {!isDetailView && (
+          {!isDetailView && activeModule.id !== "submittals" && (
             <div className="page-header project-page-header">
               <h1>{activeModule.label}</h1>
             </div>

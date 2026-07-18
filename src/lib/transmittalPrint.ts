@@ -5,6 +5,7 @@ import type { ProjectTradeData, TransmittalData } from "../types/tradeDocuments"
 import type { ProjectForm } from "../types/database";
 import { buildTransmittalDownloadPdf, type TransmittalDownloadResult } from "./transmittalCombine";
 import { buildTransmittalPdfBytes } from "./transmittalPdf";
+import { stripPdfFilenameFromEnclosureDescription } from "./transmittalHelpers";
 
 export type { TransmittalDownloadResult };
 
@@ -167,7 +168,7 @@ function logoFallbackText(branding: PrintBranding): string {
 }
 
 function enclosureDescription(row: { description: string; digital_copy: boolean }): string {
-  const base = row.description.trim();
+  const base = stripPdfFilenameFromEnclosureDescription(row.description);
   if (!row.digital_copy) return base;
   return base ? `${base} (Digital Copy)` : "(Digital Copy)";
 }

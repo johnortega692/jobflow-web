@@ -4,18 +4,17 @@ import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
 import { SubmittalIssueStatusPill } from "../submittals/SubmittalIssueStatusPill";
 import { SubmittalPackageTypeSelect } from "../submittals/SubmittalPackageTypeSelect";
 import {
-  PAINT_SUBMITTAL_TYPES,
-  PAINT_VENDOR_OPTIONS,
-  type PaintSubmittalData,
+  WALLCOVERING_SUBMITTAL_TYPES,
   type SubmittalIssueStatus,
   type SubmittalPackageCategory,
   type TradeSubmittalType,
+  type WallcoveringSubmittalData,
 } from "../../types/tradeDocuments";
 
 type PackageOption = { id: SubmittalPackageCategory; label: string };
 
 type Props = {
-  draft: PaintSubmittalData;
+  draft: WallcoveringSubmittalData;
   draftLocked: boolean;
   packageTypeOptions: PackageOption[];
   onSubmittalNumberChange: (value: number) => void;
@@ -26,7 +25,6 @@ type Props = {
   onSubjectChange: (value: string) => void;
   onSpecSectionChange: (value: string) => void;
   onRevisionNoteChange: (value: string) => void;
-  onPaintVendorChange: (value: string) => void;
   onCreateNextRevision?: () => void;
 };
 
@@ -34,7 +32,7 @@ function formatSubmittalIdentity(submittalNumber: number, revisionNumber: number
   return `Submittal #${String(submittalNumber).padStart(3, "0")} · Rev ${revisionNumber}`;
 }
 
-export function PaintSubmittalMetaPanel({
+export function WallcoveringSubmittalMetaPanel({
   draft,
   draftLocked,
   packageTypeOptions,
@@ -46,7 +44,6 @@ export function PaintSubmittalMetaPanel({
   onSubjectChange,
   onSpecSectionChange,
   onRevisionNoteChange,
-  onPaintVendorChange,
   onCreateNextRevision,
 }: Props) {
   return (
@@ -54,7 +51,9 @@ export function PaintSubmittalMetaPanel({
       <div className="paint-submittal-meta-strip">
         <div className="paint-submittal-meta-strip-main">
           {draftLocked ? (
-            <p className="paint-submittal-meta-identity">{formatSubmittalIdentity(draft.submittal_number, draft.revision_number)}</p>
+            <p className="paint-submittal-meta-identity">
+              {formatSubmittalIdentity(draft.submittal_number, draft.revision_number)}
+            </p>
           ) : (
             <div className="paint-submittal-meta-identity paint-submittal-meta-identity--edit">
               <label className="paint-submittal-meta-num-label">
@@ -102,17 +101,7 @@ export function PaintSubmittalMetaPanel({
         )}
       </div>
 
-      <div className="grid-3 paint-submittal-meta-fields-row">
-        <label>
-          Paint vendor
-          <select value={draft.paint_vendor ?? "PPG"} onChange={(e) => onPaintVendorChange(e.target.value)}>
-            {PAINT_VENDOR_OPTIONS.map((vendor) => (
-              <option key={vendor} value={vendor}>
-                {vendor}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="paint-submittal-meta-fields-row wc-submittal-meta-fields-row">
         <SubmittalPackageTypeSelect
           value={draft.package_type}
           options={packageTypeOptions}
@@ -125,7 +114,7 @@ export function PaintSubmittalMetaPanel({
             value={draft.submittal_type}
             onChange={(e) => onTypeChange(e.target.value as TradeSubmittalType)}
           >
-            {PAINT_SUBMITTAL_TYPES.map((t) => (
+            {WALLCOVERING_SUBMITTAL_TYPES.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.label}
               </option>
@@ -140,7 +129,7 @@ export function PaintSubmittalMetaPanel({
             onChange={onSpecSectionChange}
           />
         </label>
-        <label>
+        <label className="wc-submittal-meta-subject">
           Subject
           <input value={draft.subject} onChange={(e) => onSubjectChange(e.target.value)} />
         </label>

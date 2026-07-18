@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { PaintImportPreviewModal } from "./PaintImportPreviewModal";
 import {
   extractPaintFromImage,
-  imageFileFromClipboard,
   imageFileFromDataTransfer,
   type ExtractedPaintRow,
 } from "../lib/paintImageImport";
@@ -14,19 +13,86 @@ type PreviewState = {
 
 type Props = {
   onImported: (rows: ExtractedPaintRow[]) => void;
+  /** Kept for call-site compatibility; drop zone layout is the same either way. */
   layout?: "stack" | "row";
 };
 
-export function PaintImageImport({ onImported, layout = "stack" }: Props) {
+function isAbortError(e: unknown): boolean {
+  return e instanceof DOMException
+    ? e.name === "AbortError"
+    : e instanceof Error && e.name === "AbortError";
+}
+
+function ClipboardIcon() {
+  return (
+    <svg
+      className="ai-import-zone-icon"
+      width="26"
+      height="26"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1H9V5Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 12h6M9 16h4"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg
+      className="ai-import-zone-icon ai-import-zone-spinner"
+      width="26"
+      height="26"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2.5" />
+      <path
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function PaintImageImport({ onImported }: Props) {
+  const zoneRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [importing, setImporting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeFileName, setActiveFileName] = useState<string | null>(null);
   const [lastCount, setLastCount] = useState<number | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const previewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
+      abortRef.current?.abort();
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
   }, []);
@@ -52,106 +118,202 @@ export function PaintImageImport({ onImported, layout = "stack" }: Props) {
     closePreview();
   }
 
+  function cancelImport() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setImporting(false);
+    setActiveFileName(null);
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function resetToIdle() {
+    setError(null);
+    setActiveFileName(null);
+    setDragOver(false);
+    zoneRef.current?.focus();
+  }
+
   async function onFile(file: File | null) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Choose an image file (PNG, JPG, etc.).");
+      return;
+    }
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setImporting(true);
     setError(null);
+    setActiveFileName(file.name || "screenshot");
+
     try {
-      const rows = await extractPaintFromImage(file);
+      const rows = await extractPaintFromImage(file, controller.signal);
+      if (controller.signal.aborted) return;
       openPreview(rows, file);
     } catch (e) {
+      if (isAbortError(e) || controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setImporting(false);
+      setActiveFileName(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   }
 
-  async function onPasteClick() {
-    setImporting(true);
-    setError(null);
-    try {
-      const file = await imageFileFromClipboard();
-      if (!file) {
-        setError("No image on clipboard. Copy a screenshot first (Win+Shift+S), then try again.");
-        return;
-      }
-      const rows = await extractPaintFromImage(file);
-      openPreview(rows, file);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Paste failed");
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  function onPaste(e: React.ClipboardEvent) {
+  function onPaste(e: ClipboardEvent) {
+    if (importing) return;
     const file = imageFileFromDataTransfer(e.clipboardData);
     if (!file) return;
     e.preventDefault();
     void onFile(file);
   }
 
+  function onDragOver(e: DragEvent) {
+    if (importing) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragOver(true);
+  }
+
+  function onDragLeave(e: DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDragOver(false);
+  }
+
+  function onDrop(e: DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (importing) return;
+    const file =
+      imageFileFromDataTransfer(e.dataTransfer) ??
+      Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/")) ??
+      null;
+    void onFile(file);
+  }
+
+  function onZoneClick(e: MouseEvent) {
+    if (importing || error) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, label")) return;
+    zoneRef.current?.focus();
+  }
+
+  function onZoneKeyDown(e: KeyboardEvent) {
+    if (importing || error) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      zoneRef.current?.focus();
+    }
+  }
+
+  function onChooseFileClick(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (importing) return;
+    inputRef.current?.click();
+  }
+
+  const zoneClass = [
+    "ai-import-zone",
+    importing ? "ai-import-zone--reading" : "",
+    dragOver ? "ai-import-zone--dragover" : "",
+    error ? "ai-import-zone--error" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <>
-      <section
-        className={`card ai-import ai-import-paste-zone${layout === "row" ? " ai-import--row" : " stack"}`}
+      <div
+        ref={zoneRef}
+        className={zoneClass}
         tabIndex={0}
+        role="group"
+        aria-label="Import paint schedule — paste a screenshot, drop an image, or choose a file"
+        aria-busy={importing}
+        onClick={onZoneClick}
+        onKeyDown={onZoneKeyDown}
         onPaste={onPaste}
-        aria-label="Import paint schedule — paste a screenshot or select an image"
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
       >
-        <div className={layout === "row" ? "ai-import-row-main" : undefined}>
-          <h3>Import Paint Schedule</h3>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          tabIndex={-1}
+          onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+        />
 
-          <div className="row-gap ai-import-actions">
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
-            />
+        {importing ? (
+          <div className="ai-import-zone-inner ai-import-zone-inner--reading">
+            <SpinnerIcon />
+            <div className="ai-import-zone-copy">
+              <p className="ai-import-zone-title">Reading schedule…</p>
+              <p className="ai-import-zone-sub muted">
+                {activeFileName ?? "screenshot"}
+              </p>
+            </div>
             <button
               type="button"
-              className="btn btn-primary"
-              disabled={importing}
-              onClick={() => void onPasteClick()}
+              className="btn btn-secondary btn-small ai-import-zone-cancel"
+              onClick={(e) => {
+                e.stopPropagation();
+                cancelImport();
+              }}
             >
-              {importing ? "Reading image…" : "Paste from clipboard"}
+              Cancel
             </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={importing}
-              onClick={() => inputRef.current?.click()}
-            >
-              Choose image…
-            </button>
-            {lastCount !== null && !error && (
-              <span className="muted small">
-                Added {lastCount} item(s). Review below, then Save.
-              </span>
-            )}
           </div>
-        </div>
-
-        {layout === "row" ? (
-          error ? (
-            <div className="banner banner-error ai-import-row-banner">{error}</div>
-          ) : (
-            <p className="muted small ai-import-hint ai-import-row-hint">
-              Tip: click this box, then <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste a screenshot.
-            </p>
-          )
+        ) : error ? (
+          <div className="ai-import-zone-inner ai-import-zone-inner--error">
+            <ClipboardIcon />
+            <div className="ai-import-zone-copy">
+              <p className="ai-import-zone-title">Import failed</p>
+              <p className="ai-import-zone-sub ai-import-zone-error-msg">{error}</p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={(e) => {
+                e.stopPropagation();
+                resetToIdle();
+              }}
+            >
+              Try again
+            </button>
+          </div>
         ) : (
-          <>
-            <p className="muted small ai-import-hint">
-              Tip: click this box, then <kbd>Ctrl</kbd>+<kbd>V</kbd> to paste a screenshot.
-            </p>
-            {error && <div className="banner banner-error">{error}</div>}
-          </>
+          <div className="ai-import-zone-inner">
+            <ClipboardIcon />
+            <div className="ai-import-zone-copy">
+              <p className="ai-import-zone-title">Import paint schedule</p>
+              <p className="ai-import-zone-sub muted">
+                Click here and paste a screenshot (Ctrl+V), drop an image, or{" "}
+                <button
+                  type="button"
+                  className="ai-import-zone-file-link"
+                  onClick={onChooseFileClick}
+                >
+                  choose a file
+                </button>{" "}
+                — AI reads the table and adds rows to Paint items for review.
+              </p>
+              {lastCount !== null && (
+                <p className="muted small ai-import-zone-success">
+                  Added {lastCount} item(s). Review below, then Save.
+                </p>
+              )}
+            </div>
+          </div>
         )}
-      </section>
+      </div>
 
       {preview ? (
         <PaintImportPreviewModal

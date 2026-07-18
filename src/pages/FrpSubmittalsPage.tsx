@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useOutletContext } from "react-router-dom";
 import { FrpAddTrimModal } from "../components/frp/FrpAddTrimModal";
 import { FrpItemRow } from "../components/frp/FrpItemRow";
+import { FrpSubmittalMetaPanel } from "../components/frp/FrpSubmittalMetaPanel";
 import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal";
-import { DateInput } from "../components/DateInput";
-import { RevisionNoteField } from "../components/submittals/RevisionNoteField";
-import { SubmittalIssueStatusSelect } from "../components/submittals/SubmittalIssueStatusSelect";
-import { SubmittalPackageTypeSelect } from "../components/submittals/SubmittalPackageTypeSelect";
-import { SubmittalRevisionField } from "../components/submittals/SubmittalRevisionField";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import type { FrpCatalog } from "../lib/frpCatalog";
 import { loadFrpCatalog } from "../lib/frpCatalog";
+import {
+  applyFrpAutoLabels,
+  frpItemsReadiness,
+  frpRowAutoLabel,
+} from "../lib/frpItemLabels";
 import { downloadFrpSubmittal } from "../lib/frpSubmittalPrint";
 import {
   applyTransmittalContractIfDistinct,
@@ -29,6 +30,8 @@ import {
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { recordPdfLogRow } from "../lib/submittalLogService";
+import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
+import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
 import { queuePendingItem } from "../lib/transmittalHelpers";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
@@ -57,7 +60,9 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
 }
 
 function frpItemHasContent(item: FrpItem): boolean {
-  return Boolean(item.manufacturer.trim() || item.product.trim() || item.label.trim());
+  return Boolean(
+    item.manufacturer.trim() || item.product.trim() || item.label.trim() || item.color.trim(),
+  );
 }
 
 export function FrpSubmittalsPage() {
@@ -71,6 +76,8 @@ export function FrpSubmittalsPage() {
   const [trimOpen, setTrimOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
   const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
@@ -135,9 +142,11 @@ export function FrpSubmittalsPage() {
   }, [setError]);
 
   const draftLocked = submittalDraftIsLocked(draft);
+  const autoLabel = draft.auto_label !== false;
   const frpPrint = useMemo(() => frpPrintInfo(project, project.jobInfo), [project]);
   const frpNum = frpJobNumber(project);
   const frpName = frpJobName(project);
+  const itemsReadiness = useMemo(() => frpItemsReadiness(draft.items), [draft.items]);
 
   function updateDraft(updater: (d: FrpSubmittalData) => FrpSubmittalData) {
     setDraft((current) => {
@@ -150,23 +159,45 @@ export function FrpSubmittalsPage() {
     });
   }
 
+  function withMaybeAutoLabels(items: FrpItem[], enabled: boolean): FrpItem[] {
+    return enabled ? applyFrpAutoLabels(items) : items;
+  }
+
   function patchItem(index: number, patch: Partial<FrpItem>) {
+    updateDraft((d) => {
+      const enabled = d.auto_label !== false;
+      const items = d.items.map((item, i) => (i === index ? { ...item, ...patch } : item));
+      return { ...d, items: withMaybeAutoLabels(items, enabled) };
+    });
+  }
+
+  function reorderItems(from: number, to: number) {
     updateDraft((d) => ({
       ...d,
-      items: d.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+      items: withMaybeAutoLabels(moveItem(d.items, from, to), d.auto_label !== false),
     }));
+  }
+
+  function confirmGapsIfNeeded(): boolean {
+    const readiness = frpItemsReadiness(draft.items);
+    if (readiness.complete || readiness.gaps === 0) return true;
+    return window.confirm(readiness.confirmMessage);
   }
 
   function loadHistoryItems(items: FrpItem[], replace: boolean) {
     const mapped = items.length
-      ? items.map((i) => ({ ...emptyFrpItem(), ...i, order: i.order ?? false }))
+      ? items.map((i) => ({
+          ...emptyFrpItem(),
+          ...i,
+          order: i.order ?? false,
+          include_in_submittal: i.include_in_submittal !== false,
+        }))
       : [emptyFrpItem()];
-    updateDraft((d) => ({
-      ...d,
-      items: replace
-        ? mapped
-        : [...d.items.filter(frpItemHasContent), ...mapped],
-    }));
+    updateDraft((d) => {
+      const enabled = d.auto_label !== false;
+      const next = replace ? mapped : [...d.items.filter(frpItemHasContent), ...mapped];
+      return { ...d, items: withMaybeAutoLabels(next, enabled) };
+    });
     setHistoryOpen(false);
     setStatus(`Loaded ${items.length} item(s) from history. Save to keep changes.`);
   }
@@ -177,6 +208,7 @@ export function FrpSubmittalsPage() {
   }
 
   async function onSubmittalPdf() {
+    if (!confirmGapsIfNeeded()) return;
     const items = draft.items.filter(frpItemHasContent);
     if (!items.length) {
       setError("Add FRP items before generating a submittal.");
@@ -203,16 +235,19 @@ export function FrpSubmittalsPage() {
             locked: true,
             packageType: draft.package_type,
             date: draft.date,
+            specSection: draft.spec_section,
           },
         );
       }
       await persist(draft, nextHistory);
       let logRowId = "";
       try {
+        const parsed = parseSpecSectionForLog(draft.spec_section);
         const row = await recordPdfLogRow(projectId, {
           submittal_type: draft.package_type,
           scope: "FRP",
-          spec: "066000",
+          spec: parsed.spec || "066000",
+          section: parsed.section || draft.spec_section,
           notes: `FRP submittal #${draft.submittal_number}`,
           trade_submittal_number: String(draft.submittal_number),
           status: "Ready",
@@ -221,13 +256,20 @@ export function FrpSubmittalsPage() {
       } catch {
         /* optional */
       }
-      let transmittal = queuePendingItem(tradeData.transmittal ?? defaultTransmittal(), {
-        submittal_type: draft.package_type,
-        scope: "FRP",
-        source: "frp_submittal",
-        trade_submittal_number: String(draft.submittal_number),
-        log_row_id: logRowId,
-      });
+      const autoOn = await loadTransmittalContentAutoOn();
+      let transmittal = queuePendingItem(
+        tradeData.transmittal ?? defaultTransmittal(),
+        {
+          submittal_type: draft.package_type,
+          scope: "FRP",
+          source: "frp_submittal",
+          trade_submittal_number: String(draft.submittal_number),
+          log_row_id: logRowId,
+          spec_section: draft.spec_section,
+          section: draft.spec_section,
+        },
+        autoOn,
+      );
       transmittal = applyTransmittalContractIfDistinct(project, transmittal, "frp");
       await save({
         ...tradeData,
@@ -247,6 +289,7 @@ export function FrpSubmittalsPage() {
   }
 
   async function onIssueSubmittal() {
+    if (!confirmGapsIfNeeded()) return;
     const { draft: issued, history: nextHistory } = issueSubmittalDraft(draft, history, "frp");
     const ok = await persist(issued, nextHistory);
     if (ok) {
@@ -274,7 +317,8 @@ export function FrpSubmittalsPage() {
     setDraft({
       ...createNewSubmittalPackageDraft(draft, history),
       subject: frpSubjectForPackage(draft.package_type),
-      items: [emptyFrpItem()],
+      items: applyFrpAutoLabels([emptyFrpItem()]),
+      auto_label: true,
     });
     setStatus("New submittal package started (Rev 0, draft).");
   }
@@ -288,35 +332,42 @@ export function FrpSubmittalsPage() {
 
   function addTrimItems(items: FrpItem[]) {
     updateDraft((d) => {
+      const enabled = d.auto_label !== false;
       const existing = d.items.filter(frpItemHasContent);
-      const merged = [...existing, ...items];
-      return { ...d, items: merged.length ? merged : [emptyFrpItem()] };
+      const labeled = items.map((item, i) =>
+        enabled ? { ...item, label: frpRowAutoLabel(existing.length + i) } : item,
+      );
+      const merged = [...existing, ...labeled];
+      return {
+        ...d,
+        items: withMaybeAutoLabels(merged.length ? merged : [emptyFrpItem()], enabled),
+      };
     });
     setStatus(`Added ${items.length} trim item(s). Save to keep changes.`);
   }
 
   const submittalPdfFilename = useMemo(
-    () => frpSubmittalFilename(frpPrint.job_name, frpPrint.job_number, draft.submittal_number),
-    [frpPrint.job_name, frpPrint.job_number, draft.submittal_number],
+    () =>
+      frpSubmittalFilename(frpPrint.job_name, frpPrint.job_number, draft.submittal_number, draft.spec_section),
+    [frpPrint.job_name, frpPrint.job_number, draft.submittal_number, draft.spec_section],
   );
 
   if (loading || catalogLoading) return <p className="muted">Loading FRP submittal…</p>;
   if (!catalog) return <p className="muted">FRP catalog unavailable.</p>;
 
   return (
-    <div className="stack">
-      <div className="row-between">
+    <div className="stack frp-submittal-page">
+      <div className="stack frp-submittal-page-header">
         <div>
           <h2>FRP</h2>
-          <p className="muted small">
-            FRP items and submittal PDFs. Material orders →{" "}
-            <Link to={`/projects/${projectId}/orders`}>Orders</Link>.
-          </p>
           {hasDistinctFrpContract(project) && (
             <p className="muted small">Contract: {frpJobLabel(project)}.</p>
           )}
         </div>
-        <div className="row-gap wrap">
+        <div className="row-gap wrap frp-submittal-header-actions">
+          <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
+            History
+          </button>
           <button
             type="button"
             className="btn btn-outline-accent"
@@ -359,78 +410,83 @@ export function FrpSubmittalsPage() {
         </div>
       )}
 
-      <section className="card stack">
-        <div className="grid-2">
-          <label>
-            Submittal #
-            <input
-              type="number"
-              min={1}
-              value={draft.submittal_number}
-              disabled={draftLocked}
-              onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
-            />
-          </label>
-          <SubmittalRevisionField
-            revisionNumber={draft.revision_number}
-            locked={draftLocked}
-            onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
-          />
-          <label>
-            Date
-            <DateInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })} />
-          </label>
-          <SubmittalIssueStatusSelect
-            value={draft.issue_status}
-            onChange={(issue_status) => setDraft({ ...draft, issue_status })}
-          />
-          <SubmittalPackageTypeSelect
-            value={draft.package_type}
-            options={FRP_PACKAGE_TYPE_OPTIONS}
-            disabled={draftLocked}
-            onChange={(package_type) =>
-              updateDraft((d) => ({
-                ...d,
-                package_type,
-                subject: frpSubjectForPackage(package_type),
-              }))
-            }
-          />
-        </div>
-        <label>
-          Subject
-          <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
-        </label>
-        <RevisionNoteField
-          revisionNumber={draft.revision_number}
-          value={draft.revision_note ?? ""}
-          onChange={(revision_note) => setDraft({ ...draft, revision_note })}
-        />
-      </section>
+      <FrpSubmittalMetaPanel
+        draft={draft}
+        draftLocked={draftLocked}
+        packageTypeOptions={FRP_PACKAGE_TYPE_OPTIONS}
+        onSubmittalNumberChange={(submittal_number) => setDraft({ ...draft, submittal_number })}
+        onIssueStatusChange={(issue_status) => setDraft({ ...draft, issue_status })}
+        onDateChange={(date) => setDraft({ ...draft, date })}
+        onPackageTypeChange={(package_type) =>
+          updateDraft((d) => ({
+            ...d,
+            package_type,
+            subject: frpSubjectForPackage(package_type),
+          }))
+        }
+        onSubjectChange={(subject) => setDraft({ ...draft, subject })}
+        onSpecSectionChange={(spec_section) => setDraft({ ...draft, spec_section })}
+        onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
+        onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
+      />
 
-      <section className="card frp-items-section">
-        <div className="frp-items-toolbar row-gap wrap">
-          <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
-            History
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() =>
-              updateDraft((d) => ({
-                ...d,
-                items: [...d.items.filter(frpItemHasContent), emptyFrpItem()],
-              }))
-            }
-          >
-            Add
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setTrimOpen(true)}>
-            Add trim
-          </button>
+      <section className="card stack frp-items-section">
+        <div className="row-between frp-items-toolbar">
+          <div>
+            <h3>FRP items ({draft.items.length})</h3>
+          </div>
+          <div className="frp-items-toolbar-actions">
+            <label className="check frp-auto-label">
+              <input
+                type="checkbox"
+                checked={autoLabel}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  updateDraft((d) => ({
+                    ...d,
+                    auto_label: enabled,
+                    items: enabled ? applyFrpAutoLabels(d.items) : d.items,
+                  }));
+                }}
+              />
+              Auto-label by order
+            </label>
+            <div className="paint-add-buttons">
+              <button
+                type="button"
+                className="btn btn-primary btn-small"
+                onClick={() =>
+                  updateDraft((d) => {
+                    const enabled = d.auto_label !== false;
+                    const row = emptyFrpItem();
+                    if (enabled) row.label = frpRowAutoLabel(d.items.filter(frpItemHasContent).length);
+                    const next = [...d.items.filter(frpItemHasContent), row];
+                    return { ...d, items: withMaybeAutoLabels(next, enabled) };
+                  })
+                }
+              >
+                + Add row
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => setTrimOpen(true)}
+              >
+                + Add trim
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="frp-items-list">
+        <div className="frp-items-list" role="table" aria-label="FRP items">
+          <div className="frp-items-header" role="row">
+            <span className="frp-row-handle-spacer" aria-hidden />
+            <span className="frp-col-head frp-col-label">Label</span>
+            <span className="frp-col-head frp-col-mfr">Manufacturer</span>
+            <span className="frp-col-head frp-col-product">Product</span>
+            <span className="frp-col-head frp-col-color">Color</span>
+            <span className="frp-col-head frp-col-head-actions" aria-hidden />
+          </div>
           {draft.items.map((item, index) => (
             <FrpItemRow
               key={index}
@@ -438,21 +494,57 @@ export function FrpSubmittalsPage() {
               index={index}
               total={draft.items.length}
               catalog={catalog}
+              autoLabel={autoLabel}
+              dragging={dragFrom === index}
+              dragOver={dragOver === index}
               onChange={(patch) => patchItem(index, patch)}
-              onMoveUp={() =>
-                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index - 1) }))
-              }
-              onMoveDown={() =>
-                updateDraft((d) => ({ ...d, items: moveItem(d.items, index, index + 1) }))
-              }
+              onDragStart={() => setDragFrom(index)}
+              onDragOver={(e: DragEvent) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOver(index);
+              }}
+              onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
+              onDrop={() => {
+                if (dragFrom !== null && dragFrom !== index) reorderItems(dragFrom, index);
+                setDragFrom(null);
+                setDragOver(null);
+              }}
+              onDragEnd={() => {
+                setDragFrom(null);
+                setDragOver(null);
+              }}
               onRemove={() =>
                 updateDraft((d) => {
                   const next = d.items.filter((_, i) => i !== index);
-                  return { ...d, items: next.length ? next : [emptyFrpItem()] };
+                  return {
+                    ...d,
+                    items: withMaybeAutoLabels(
+                      next.length ? next : [emptyFrpItem()],
+                      d.auto_label !== false,
+                    ),
+                  };
                 })
               }
             />
           ))}
+        </div>
+
+        <div className="row-between frp-items-footer">
+          <p className="muted small frp-items-drag-hint">
+            {autoLabel ? "Drag ⠿ to reorder · labels follow order" : "Drag ⠿ to reorder"}
+          </p>
+          <p
+            className={`small frp-items-readiness${
+              itemsReadiness.gaps > 0
+                ? " frp-items-readiness--warn"
+                : itemsReadiness.count > 0
+                  ? " frp-items-readiness--ok"
+                  : ""
+            }`}
+          >
+            {itemsReadiness.summaryLine}
+          </p>
         </div>
       </section>
 

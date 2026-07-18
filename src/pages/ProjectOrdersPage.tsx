@@ -602,10 +602,10 @@ export function ProjectOrdersPage() {
           </p>
         </div>
         <div className="row-gap wrap">
-          <Link className="btn btn-ghost" to={`/projects/${projectId}/wallcovering`}>
+          <Link className="btn btn-ghost" to={`/projects/${projectId}/submittals/wallcovering`}>
             Wallcovering
           </Link>
-          <Link className="btn btn-ghost" to={`/projects/${projectId}/frp`}>
+          <Link className="btn btn-ghost" to={`/projects/${projectId}/submittals/frp`}>
             FRP
           </Link>
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void persistAll()}>

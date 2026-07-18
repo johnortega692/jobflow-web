@@ -3,12 +3,7 @@ export type ProjectModuleId =
   | "rfis"
   | "submittals"
   | "procurement-log"
-  | "sds"
-  | "transmittal"
   | "excel-paste"
-  | "paint"
-  | "wallcovering"
-  | "frp"
   | "orders"
   | "po"
   | "budget"
@@ -31,6 +26,9 @@ export type ProjectNavSection = {
   modules: ProjectModule[];
 };
 
+/** Nested routes under /submittals — not separate sidebar detail pages. */
+export const PROJECT_DETAIL_MODULE_IDS = new Set<ProjectModuleId>(["rfis", "work-orders"]);
+
 export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
   {
     id: "main",
@@ -41,20 +39,9 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     label: "Documents",
     modules: [
       { id: "rfis", label: "RFIs", path: "rfis", ready: true },
-      { id: "submittals", label: "Submittal Log", path: "submittals", ready: true },
-      { id: "sds", label: "Submittal Package", path: "sds", ready: true },
+      { id: "submittals", label: "Submittals", path: "submittals", ready: true },
       { id: "procurement-log", label: "Procurement Log", path: "procurement-log", ready: true, requiresWallcovering: true },
-      { id: "transmittal", label: "Transmittal", path: "transmittal", ready: true },
       { id: "excel-paste", label: "Excel Templates", path: "excel-paste", ready: true },
-    ],
-  },
-  {
-    id: "scopes",
-    label: "Scopes",
-    modules: [
-      { id: "paint", label: "Paint", path: "paint", ready: true },
-      { id: "wallcovering", label: "Wallcovering", path: "wallcovering", ready: true },
-      { id: "frp", label: "FRP", path: "frp", ready: true },
     ],
   },
   {

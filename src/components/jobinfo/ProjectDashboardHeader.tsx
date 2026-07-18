@@ -200,7 +200,7 @@ export function ProjectDashboardHeader({
         <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTrackerEdit}>
           Edit tracker
         </button>
-        <Link to={`/projects/${projectId}/paint`} className="btn btn-ghost btn-sm">
+        <Link to={`/projects/${projectId}/submittals/paint`} className="btn btn-ghost btn-sm">
           Paint
         </Link>
       </div>

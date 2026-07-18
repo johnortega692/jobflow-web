@@ -32,6 +32,7 @@ import { FieldWorkloadPage } from "./pages/field/FieldWorkloadPage";
 import { FieldPaintDashboardPage } from "./pages/field/FieldPaintDashboardPage";
 import { FieldWallcoveringDashboardPage } from "./pages/field/FieldWallcoveringDashboardPage";
 import { CompanyWorkloadPage } from "./pages/CompanyWorkloadPage";
+import { SubmittalsHubLayout } from "./components/submittals/SubmittalsHubLayout";
 
 export default function App() {
   return (
@@ -57,23 +58,31 @@ export default function App() {
               <Route index element={<ProjectOverviewPage />} />
               <Route path="rfis" element={<ProjectRfisPage />} />
               <Route path="rfis/:rfiId" element={<RfiEditorPage />} />
-              <Route path="submittals" element={<SubmittalsPage />} />
+              <Route path="submittals" element={<SubmittalsHubLayout />}>
+                <Route index element={<SubmittalsPage />} />
+                <Route path="paint" element={<PaintSubmittalsPage />} />
+                <Route path="wallcovering" element={<WallcoveringSubmittalsPage />} />
+                <Route path="frp" element={<FrpSubmittalsPage />} />
+                <Route path="package" element={<SdsPacketPage />} />
+                <Route path="transmittal" element={<TransmittalPage />} />
+              </Route>
               <Route path="procurement-log" element={<ProcurementLogPage />} />
-              <Route path="transmittal" element={<TransmittalPage />} />
               <Route path="google-sheets" element={<GoogleSheetsPage />} />
               <Route path="excel-paste" element={<ExcelPasteHelperPage />} />
-              <Route path="paint" element={<PaintSubmittalsPage />} />
               <Route path="approved-brushouts" element={<ApprovedBrushoutsPage />} />
-              <Route path="wallcovering" element={<WallcoveringSubmittalsPage />} />
-              <Route path="frp" element={<FrpSubmittalsPage />} />
               <Route path="track" element={<Navigate to="../orders" replace />} />
               <Route path="po" element={<ProjectPoPage />} />
               <Route path="orders" element={<ProjectOrdersPage />} />
-              <Route path="sds" element={<SdsPacketPage />} />
               <Route path="budget" element={<BudgetPage />} />
               <Route path="billing" element={<BillingPage />} />
               <Route path="work-orders" element={<ProjectWorkOrdersPage />} />
               <Route path="work-orders/:workOrderId" element={<WorkOrderEditorPage />} />
+              {/* Legacy paths → Submittals hub */}
+              <Route path="paint" element={<Navigate to="../submittals/paint" replace />} />
+              <Route path="wallcovering" element={<Navigate to="../submittals/wallcovering" replace />} />
+              <Route path="frp" element={<Navigate to="../submittals/frp" replace />} />
+              <Route path="sds" element={<Navigate to="../submittals/package" replace />} />
+              <Route path="transmittal" element={<Navigate to="../submittals/transmittal" replace />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/projects" replace />} />

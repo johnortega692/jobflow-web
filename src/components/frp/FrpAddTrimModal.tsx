@@ -34,6 +34,7 @@ export function FrpAddTrimModal({ catalog, onAdd, onClose }: Props) {
         ...emptyFrpItem(),
         manufacturer,
         product,
+        unit: "LF",
       })),
     );
     onClose();

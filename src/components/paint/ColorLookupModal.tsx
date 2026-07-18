@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { abbreviateVendorKey } from "../../lib/paintCatalog";
-
-type Match = { display: string; vendor: string };
+import { abbreviateVendorKey, type PaintColorMatch } from "../../lib/paintCatalog";
 
 type Props = {
   query: string;
-  matches: Match[];
-  onSelect: (display: string, vendor: string) => void;
+  matches: PaintColorMatch[];
+  onSelect: (display: string, vendor: string, hex?: string) => void;
   onClose: () => void;
 };
 
@@ -52,7 +50,7 @@ export function ColorLookupModal({ query, matches, onSelect, onClose }: Props) {
       } else if (e.key === "Enter") {
         e.preventDefault();
         const m = filtered[highlight];
-        if (m) onSelect(m.display, m.vendor);
+        if (m) onSelect(m.display, m.vendor, m.hex);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -101,7 +99,7 @@ export function ColorLookupModal({ query, matches, onSelect, onClose }: Props) {
                   aria-selected={i === highlight}
                   className={`color-lookup-item${i === highlight ? " color-lookup-item-active" : ""}`}
                   onMouseEnter={() => setHighlight(i)}
-                  onClick={() => onSelect(m.display, m.vendor)}
+                  onClick={() => onSelect(m.display, m.vendor, m.hex)}
                 >
                   <span className="color-lookup-item-label">{m.display}</span>
                   <span className="color-lookup-item-vendor">{abbreviateVendorKey(m.vendor)}</span>

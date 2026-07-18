@@ -1,19 +1,30 @@
-import { useState } from "react";
-import { extractProductName, type PaintProduct } from "../../lib/paintCatalog";
+import { useMemo, useState } from "react";
+import {
+  extractProductName,
+  formatSheenLabel,
+  manufacturerForProduct,
+  type PaintProduct,
+} from "../../lib/paintCatalog";
+import { paintRowAutoLabel } from "../../lib/paintItemLabels";
 import type { PaintItem } from "../../types/tradeDocuments";
+import { emptyPaintItem } from "../../types/tradeDocuments";
 import { PaintProductSelect, PaintSheenSelect } from "./PaintFieldSelects";
 
 type Props = {
   products: PaintProduct[];
-  productOptions: string[];
   sheenOptions: string[];
-  onAdd: (items: PaintItem[]) => void;
+  autoLabel: boolean;
+  /** Next A/B/C index when auto-label is on (usually current item count). */
+  nextAutoLabelIndex: number;
+  onAdd: (items: PaintItem[], opts: { turnOffAutoLabel: boolean }) => void;
   onClose: () => void;
 };
 
 export function PaintBulkAddModal({
   products,
   sheenOptions,
+  autoLabel,
+  nextAutoLabelIndex,
   onAdd,
   onClose,
 }: Props) {
@@ -25,6 +36,32 @@ export function PaintBulkAddModal({
   const [sheen, setSheen] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const preview = useMemo(() => {
+    const num = parseInt(count, 10);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    const start = parseInt(startAt, 10) || 1;
+    const usePrefix = prefix.trim().length > 0;
+    let firstLabel: string;
+    let lastLabel: string;
+    if (usePrefix) {
+      firstLabel = `${prefix}${start}`;
+      lastLabel = `${prefix}${start + num - 1}`;
+    } else if (autoLabel) {
+      firstLabel = paintRowAutoLabel(nextAutoLabelIndex);
+      lastLabel = paintRowAutoLabel(nextAutoLabelIndex + num - 1);
+    } else {
+      firstLabel = String(start);
+      lastLabel = String(start + num - 1);
+    }
+    const labelPart =
+      num === 1 ? `Creates ${firstLabel}` : `Creates ${firstLabel} … ${lastLabel}`;
+    const parts = [labelPart];
+    const name = productName || extractProductName(productDisplay);
+    if (name) parts.push(name);
+    if (sheen.trim()) parts.push(formatSheenLabel(sheen.trim()));
+    return parts.join(" · ");
+  }, [autoLabel, count, nextAutoLabelIndex, prefix, productDisplay, productName, sheen, startAt]);
+
   function submit() {
     const num = parseInt(count, 10);
     if (!Number.isFinite(num) || num <= 0) {
@@ -32,25 +69,28 @@ export function PaintBulkAddModal({
       return;
     }
     const name = productName || extractProductName(productDisplay);
-    if (!name || !sheen.trim()) {
-      setError("Select both product and sheen.");
-      return;
-    }
+    const mfr = name ? manufacturerForProduct(products, name) : "";
     const start = parseInt(startAt, 10) || 1;
+    const usePrefix = prefix.trim().length > 0;
     const items: PaintItem[] = [];
     for (let i = 0; i < num; i++) {
-      const label = prefix ? `${prefix}${start + i}` : String(start + i);
+      let label: string;
+      if (usePrefix) {
+        label = `${prefix}${start + i}`;
+      } else if (autoLabel) {
+        label = paintRowAutoLabel(nextAutoLabelIndex + i);
+      } else {
+        label = String(start + i);
+      }
       items.push({
+        ...emptyPaintItem(),
         label,
-        floor: "",
-        manufacturer: "",
-        color: "",
+        manufacturer: mfr,
         product: name,
         sheen: sheen.trim(),
-        previous_color: "",
       });
     }
-    onAdd(items);
+    onAdd(items, { turnOffAutoLabel: usePrefix });
     onClose();
   }
 
@@ -79,10 +119,9 @@ export function PaintBulkAddModal({
             <input type="number" min={1} value={startAt} onChange={(e) => setStartAt(e.target.value)} />
           </label>
         </div>
-        <p className="muted small">e.g. prefix &quot;P-&quot; → P-1, P-2…</p>
 
         <label>
-          Product
+          Product (applied to all)
           <PaintProductSelect
             value={productDisplay}
             products={products}
@@ -94,9 +133,11 @@ export function PaintBulkAddModal({
         </label>
 
         <label>
-          Sheen
+          Sheen (applied to all)
           <PaintSheenSelect value={sheen} options={sheenOptions} onChange={setSheen} />
         </label>
+
+        {preview && <p className="muted small paint-bulk-preview">{preview}</p>}
 
         {error && <div className="banner banner-error">{error}</div>}
 

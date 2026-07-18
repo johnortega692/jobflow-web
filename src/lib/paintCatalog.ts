@@ -8,8 +8,9 @@ export const PAINT_PRODUCTS_KEY = "paint_products";
 export const PAINT_SHEENS_KEY = "paint_sheens";
 
 export const PAINT_MANUFACTURER_OPTIONS = ["PPG", "SW", "BM", "DE", "BEHR", "Vista"] as const;
-export type PaintColorEntry = { number: string; name: string };
+export type PaintColorEntry = { number: string; name: string; hex?: string };
 export type PaintColorsDb = Record<string, PaintColorEntry[]>;
+export type PaintColorMatch = { display: string; vendor: string; hex: string };
 
 const PREFIX_MAP: Record<string, string> = {
   BM: "BM",
@@ -151,6 +152,24 @@ export function formatSheenLabel(sheen: string): string {
   return sheen.replace(/,\s*/g, ", ").trim();
 }
 
+/** Compact display names for the paint items sheen column (UI only; stored/PDF keep full values). */
+const SHEEN_COMPACT_LABELS: Record<string, string> = {
+  "Semi-Gloss": "S-G",
+  Eggshell: "Egg",
+};
+
+/** Map a stored sheen value to a compact select label (compounds joined with " · "). */
+export function compactSheenLabel(sheen: string): string {
+  const trimmed = sheen.trim();
+  if (!trimmed) return "";
+  const parts = trimmed
+    .split(/\s*,\s*|\s+and\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!parts.length) return formatSheenLabel(trimmed);
+  return parts.map((part) => SHEEN_COMPACT_LABELS[part] ?? part).join(" · ");
+}
+
 export type ProductSelectGroup = {
   manufacturer: string;
   items: { display: string; product: string }[];
@@ -256,8 +275,8 @@ function collectColorMatches(
   manufacturers: string[],
   term: string,
   full: string,
-): { display: string; vendor: string }[] {
-  const matches: { display: string; vendor: string }[] = [];
+): PaintColorMatch[] {
+  const matches: PaintColorMatch[] = [];
   const seen = new Set<string>();
   for (const mfr of manufacturers) {
     for (const c of colors[mfr] ?? []) {
@@ -266,10 +285,30 @@ function collectColorMatches(
       const key = `${mfr}::${display}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      matches.push({ display, vendor: mfr });
+      matches.push({
+        display,
+        vendor: mfr,
+        hex: normalizePaintHex(c.hex),
+      });
     }
   }
   return matches;
+}
+
+export function normalizePaintHex(raw: string | undefined | null): string {
+  const value = (raw ?? "").trim();
+  if (!value) return "";
+  const hex = value.startsWith("#") ? value : `#${value}`;
+  return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.toLowerCase() : "";
+}
+
+/** Resolve published approximation hex from catalog when color text matches an entry. */
+export function resolvePaintColorHex(colors: PaintColorsDb | null, colorText: string): string {
+  if (!colors) return "";
+  const matches = searchPaintColors(colors, colorText);
+  if (matches.length === 1) return matches[0]!.hex;
+  const exact = matches.find((m) => m.display.toLowerCase() === colorText.trim().toLowerCase());
+  return exact?.hex ?? "";
 }
 
 export function formatColorDisplay(mfrKey: string, entry: PaintColorEntry): string {
@@ -283,7 +322,7 @@ export function searchPaintColors(
   colors: PaintColorsDb,
   query: string,
   _productDisplay?: string,
-): { display: string; vendor: string }[] {
+): PaintColorMatch[] {
   const { vendorKeys, term, full } = parseColorLookupQuery(query);
   if (!full) return [];
 

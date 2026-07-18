@@ -1,28 +1,18 @@
-import { packetPackageNumber, sanitizeFilenamePart } from "./sdsPacketPresets";
+import { companySpecSubmittalFilename, sanitizeFilenamePart } from "./sdsPacketPresets";
 import { normalizeTransmittalNumber } from "./transmittalNumber";
 import type { TradeSubmittalType } from "../types/tradeDocuments";
 
+/** Prefer job number over job name for download filenames (orders, RFI, etc.). */
 export function projectFilenamePart(
   jobName: string,
   jobNumber: string,
   fallback = "Project",
 ): string {
-  return sanitizeFilenamePart(jobName.trim() || jobNumber.trim() || fallback);
+  return sanitizeFilenamePart(jobNumber.trim() || jobName.trim() || fallback);
 }
 
 export function pdfTitleFromFilename(filename: string): string {
   return filename.replace(/\.pdf$/i, "");
-}
-
-const TRADE_SUBMITTAL_SLUG: Record<TradeSubmittalType, string> = {
-  new: "BrushOuts",
-  revised: "Revised",
-  substitution: "Substitution",
-  original: "Original",
-};
-
-function tradeSubmittalSlug(type: TradeSubmittalType): string {
-  return TRADE_SUBMITTAL_SLUG[type] ?? "Submittal";
 }
 
 export function transmittalFilename(
@@ -35,28 +25,26 @@ export function transmittalFilename(
   return `${projectPart}_Transmittal_${numPart}.pdf`;
 }
 
+/** Company format: `003 - 09 91 23 - Interior Painting.pdf` */
 export function paintSubmittalFilename(
-  jobName: string,
-  jobNumber: string,
+  _jobName: string,
+  _jobNumber: string,
   submittalNumber: number,
-  submittalType: TradeSubmittalType,
+  _submittalType: TradeSubmittalType,
+  specSection?: string,
 ): string {
-  const projectPart = projectFilenamePart(jobName, jobNumber);
-  const typePart = tradeSubmittalSlug(submittalType);
-  const numPart = packetPackageNumber(submittalNumber);
-  return `${projectPart}_Paint_Submittal_${typePart}_${numPart}.pdf`;
+  return companySpecSubmittalFilename(submittalNumber, specSection ?? "");
 }
 
+/** Company format: `002 - 09 72 00 - Wall Coverings.pdf` */
 export function wallcoveringSubmittalFilename(
-  jobName: string,
-  jobNumber: string,
+  _jobName: string,
+  _jobNumber: string,
   submittalNumber: number,
-  submittalType: TradeSubmittalType,
+  _submittalType: TradeSubmittalType,
+  specSection?: string,
 ): string {
-  const projectPart = projectFilenamePart(jobName, jobNumber);
-  const typePart = tradeSubmittalSlug(submittalType);
-  const numPart = packetPackageNumber(submittalNumber);
-  return `${projectPart}_Wallcovering_Submittal_${typePart}_${numPart}.pdf`;
+  return companySpecSubmittalFilename(submittalNumber, specSection ?? "");
 }
 
 export function rfiFilename(jobName: string, jobNumber: string, rfiNumber: string): string {
@@ -77,10 +65,14 @@ export function wallcoveringOrderFormFilename(
     : `${projectPart}_Wallcovering_Order_Form.pdf`;
 }
 
-export function frpSubmittalFilename(jobName: string, jobNumber: string, submittalNumber: number): string {
-  const projectPart = projectFilenamePart(jobName, jobNumber);
-  const numPart = packetPackageNumber(submittalNumber);
-  return `${projectPart}_FRP_Submittal_${numPart}.pdf`;
+/** Company format: `001 - 06 60 00 - Plastic Fabrications (FRP).pdf` */
+export function frpSubmittalFilename(
+  _jobName: string,
+  _jobNumber: string,
+  submittalNumber: number,
+  specSection?: string,
+): string {
+  return companySpecSubmittalFilename(submittalNumber, specSection ?? "");
 }
 
 export function frpOrderFormFilename(jobName: string, jobNumber: string, poNumber?: string): string {
@@ -119,4 +111,4 @@ export function procurementLogFilename(jobName: string, jobNumber: string, d = n
   return `${num} ${name} - Procurement Log ${datePart}.pdf`;
 }
 
-export { sdsPacketFilename } from "./sdsPacketPresets";
+export { companySpecSubmittalFilename, sdsPacketFilename } from "./sdsPacketPresets";

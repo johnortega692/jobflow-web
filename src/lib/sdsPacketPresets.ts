@@ -211,9 +211,38 @@ export function packetPackageNumber(submittalNumber: number): string {
   return String(n).padStart(3, "0");
 }
 
+/** Keep spaces/dashes; strip OS-illegal filename characters. */
+function sanitizeCompanyFilenamePart(value: string): string {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Company format: `{Submittal #} - {Spec Section #} - {Spec Name}.pdf`
+ * e.g. `003 - 09 91 23 - Interior Painting.pdf`
+ */
+export function companySpecSubmittalFilename(
+  submittalNumber: number,
+  specSection: string,
+): string {
+  const num = packetPackageNumber(submittalNumber);
+  const raw = specSection.trim().replace(/^Spec\s*Section\s*:?\s*/i, "");
+  const split = raw.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  const code = sanitizeCompanyFilenamePart(split?.[1] ?? "");
+  const name = sanitizeCompanyFilenamePart(split?.[2] ?? (split ? "" : raw));
+
+  if (code && name) return `${num} - ${code} - ${name}.pdf`;
+  if (code) return `${num} - ${code}.pdf`;
+  if (name) return `${num} - ${name}.pdf`;
+  return `${num} - Submittal.pdf`;
+}
+
 export function sdsPacketFilename(
-  jobName: string,
-  jobNumber: string,
+  _jobName: string,
+  _jobNumber: string,
   packet: {
     packet_type: SdsPacketType;
     cover_title: string;
@@ -221,16 +250,7 @@ export function sdsPacketFilename(
     submittal_number: number;
   },
 ): string {
-  const projectPart = sanitizeFilenamePart(jobName.trim() || jobNumber.trim() || "Submittal_Packet");
-  const parts = [projectPart];
-
-  const specPart = specFilenamePart(packet.spec_section);
-  if (specPart) parts.push(specPart);
-
-  parts.push(packetOutputSlug(packet.packet_type, packet.cover_title));
-  parts.push(packetPackageNumber(packet.submittal_number));
-
-  return `${parts.join("_")}.pdf`;
+  return companySpecSubmittalFilename(packet.submittal_number, packet.spec_section);
 }
 
 /** Submittal log type mirrors the selected package preset. */

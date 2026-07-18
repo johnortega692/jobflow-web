@@ -1,3 +1,4 @@
+import type { DragEvent } from "react";
 import { enclosureOutputDescription } from "../../lib/transmittalHelpers";
 import type { TransmittalEnclosure } from "../../types/tradeDocuments";
 
@@ -5,28 +6,57 @@ type Props = {
   row: TransmittalEnclosure;
   index: number;
   showForColumn: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
+  dragging: boolean;
+  dragOver: boolean;
   onChange: (patch: Partial<TransmittalEnclosure>) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onRemove: () => void;
+  onDragStart: () => void;
+  onDragOver: (e: DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 };
 
 export function TransmittalEnclosureRow({
   row,
   showForColumn,
-  canMoveUp,
-  canMoveDown,
+  dragging,
+  dragOver,
   onChange,
-  onMoveUp,
-  onMoveDown,
   onRemove,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
 }: Props) {
   const displayDesc = enclosureOutputDescription(row);
 
   return (
-    <div className="transmittal-enc-row">
+    <div
+      className={`transmittal-enc-row${showForColumn ? " transmittal-enc-row--for" : ""}${dragging ? " transmittal-enc-row--dragging" : ""}${dragOver ? " transmittal-enc-row--dragover" : ""}${row.included ? "" : " transmittal-enc-row--excluded"}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+    >
+      <button
+        type="button"
+        className="transmittal-enc-handle"
+        draggable
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", String(row.id));
+          onDragStart();
+        }}
+        onDragEnd={onDragEnd}
+      >
+        ⋮⋮
+      </button>
       <label className="transmittal-enc-check">
         <input
           type="checkbox"
@@ -35,23 +65,19 @@ export function TransmittalEnclosureRow({
           aria-label="Include on transmittal"
         />
       </label>
-      <input
-        className="transmittal-enc-desc"
-        value={row.description}
-        onChange={(e) => onChange({ description: e.target.value })}
-        title={displayDesc}
-        placeholder="Description"
-      />
+      <span className="transmittal-enc-desc" title={displayDesc}>
+        {displayDesc || "Untitled enclosure"}
+      </span>
       <button
         type="button"
         className={`transmittal-dc-btn${row.digital_copy ? " active" : ""}`}
-        title="Toggle digital copy (appends to PDF description)"
+        title="Stamp digital copy on this enclosure description in the PDF"
+        aria-label="Stamp digital copy"
         aria-pressed={row.digital_copy}
         onClick={() => onChange({ digital_copy: !row.digital_copy })}
       >
         📄
       </button>
-      <span className="transmittal-enc-copies-label">Copies:</span>
       <input
         className="transmittal-enc-copies"
         value={row.copies}
@@ -59,27 +85,23 @@ export function TransmittalEnclosureRow({
         aria-label="Copies"
       />
       {showForColumn && (
-        <>
-          <span className="transmittal-enc-for-label">For:</span>
-          <input
-            className="transmittal-enc-for"
-            value={row.for_field}
-            onChange={(e) => onChange({ for_field: e.target.value })}
-            aria-label="For"
-          />
-        </>
+        <input
+          className="transmittal-enc-for"
+          value={row.for_field}
+          onChange={(e) => onChange({ for_field: e.target.value })}
+          aria-label="For"
+          placeholder="For"
+        />
       )}
-      <div className="transmittal-enc-actions">
-        <button type="button" className="btn btn-secondary btn-icon" disabled={!canMoveUp} onClick={onMoveUp} title="Move up">
-          ↑
-        </button>
-        <button type="button" className="btn btn-secondary btn-icon" disabled={!canMoveDown} onClick={onMoveDown} title="Move down">
-          ↓
-        </button>
-        <button type="button" className="btn btn-secondary btn-icon" onClick={onRemove} title="Remove">
-          ×
-        </button>
-      </div>
+      <button
+        type="button"
+        className="btn btn-ghost btn-small transmittal-enc-remove"
+        onClick={onRemove}
+        title="Remove"
+        aria-label="Remove enclosure"
+      >
+        ×
+      </button>
     </div>
   );
 }

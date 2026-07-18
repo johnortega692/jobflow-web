@@ -220,7 +220,7 @@ export function ApprovedBrushoutsPage() {
             check <strong>Approved</strong> on the ones ready for field use, then save.
           </p>
         </div>
-        <Link className="btn ghost" to={`/projects/${projectId}/paint`}>
+        <Link className="btn ghost" to={`/projects/${projectId}/submittals/paint`}>
           ← Paint submittal
         </Link>
       </div>

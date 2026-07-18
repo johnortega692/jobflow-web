@@ -53,50 +53,12 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <path d="M7 7.5l1.5 1.5L11 6.5" strokeWidth="1.5" />
         </svg>
       );
-    case "sds":
-      return (
-        <svg {...common}>
-          <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
-          <path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" />
-        </svg>
-      );
-    case "transmittal":
-      return (
-        <svg {...common}>
-          <rect x="3" y="5" width="18" height="14" rx="2" />
-          <path d="M3 7l9 6 9-6" />
-          <path d="M14 12h6" />
-          <path d="M17 9.5l2.5 2.5L17 14.5" />
-        </svg>
-      );
     case "excel-paste":
       return (
         <svg {...common}>
           <path d="M7 3h7l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
           <path d="M14 3v5h5" />
           <path d="M8 12h8M8 16h8M8 12v4M12 12v4M16 12v4" />
-        </svg>
-      );
-    case "paint":
-      return (
-        <svg {...common}>
-          <path d="M5 5a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -2" />
-          <path d="M19 6h1a2 2 0 0 1 2 2a5 5 0 0 1 -5 5l-5 0v2" />
-          <path d="M10 16a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1l0 -4" />
-        </svg>
-      );
-    case "wallcovering":
-      return (
-        <svg {...common}>
-          <rect x="4" y="4" width="16" height="16" rx="2" />
-          <path d="M4 8h16M4 12h16M4 16h16M8 4v16M12 4v16M16 4v16" />
-        </svg>
-      );
-    case "frp":
-      return (
-        <svg {...common}>
-          <rect x="4" y="6" width="10" height="14" rx="1.5" />
-          <rect x="10" y="4" width="10" height="14" rx="1.5" />
         </svg>
       );
     case "orders":

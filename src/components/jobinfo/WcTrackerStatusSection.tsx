@@ -381,7 +381,7 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
           <>
             <p className="muted small">
               No wallcovering materials yet. Add lines here or copy from the{" "}
-              <Link to={`/projects/${projectId}/wallcovering`}>Wallcovering</Link> submittal.
+              <Link to={`/projects/${projectId}/submittals/wallcovering`}>Wallcovering</Link> submittal.
             </p>
             <div className="row-gap wrap paint-tracker-toolbar">
               <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>

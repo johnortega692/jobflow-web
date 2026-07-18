@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
 import { FLOOR_ORDER } from "../../lib/printCore";
 import {
   abbreviateVendorKey,
   getProductDisplay,
   searchPaintColors,
   shouldSkipColorLookup,
+  type PaintColorMatch,
   type PaintColorsDb,
   type PaintProduct,
 } from "../../lib/paintCatalog";
@@ -21,10 +22,16 @@ type Props = {
   colors: PaintColorsDb | null;
   showPreviousColor: boolean;
   showFloor: boolean;
+  autoLabel: boolean;
+  dragging: boolean;
+  dragOver: boolean;
   onChange: (patch: Partial<PaintItem>) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onRemove: () => void;
+  onDragStart: () => void;
+  onDragOver: (e: DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 };
 
 function SearchIcon() {
@@ -41,20 +48,26 @@ function SearchIcon() {
 export function PaintItemRow({
   item,
   index,
-  total,
   products,
   sheenOptions,
   colors,
   showPreviousColor,
   showFloor,
+  autoLabel,
+  dragging,
+  dragOver,
   onChange,
-  onMoveUp,
-  onMoveDown,
   onRemove,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+  total,
 }: Props) {
   const [lookupOpen, setLookupOpen] = useState(false);
   const [lookupQuery, setLookupQuery] = useState("");
-  const [lookupMatches, setLookupMatches] = useState<{ display: string; vendor: string }[]>([]);
+  const [lookupMatches, setLookupMatches] = useState<PaintColorMatch[]>([]);
   const [productDisplay, setProductDisplay] = useState(() =>
     item.product ? getProductDisplay(products, item.product) : "",
   );
@@ -72,7 +85,7 @@ export function PaintItemRow({
     setLookupOpen(true);
   }, [colors, item.color]);
 
-  function onColorKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function onColorKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" || e.key === "Tab") {
       if (!shouldSkipColorLookup(item.color)) {
         e.preventDefault();
@@ -82,26 +95,58 @@ export function PaintItemRow({
   }
 
   function onLookupSelect(display: string, vendor: string) {
-    onChange({ color: display, manufacturer: abbreviateVendorKey(vendor) });
+    onChange({
+      color: display,
+      manufacturer: abbreviateVendorKey(vendor),
+    });
     setLookupOpen(false);
     setLookupMatches([]);
   }
 
+  const missingColor = !item.color.trim();
+  const missingSheen = !item.sheen.trim();
+
   return (
     <>
-      <div className="paint-item-row" data-index={index}>
-        <label className="paint-col paint-col-label">
-          <span className="paint-col-head">Label</span>
+      <div
+        className={`paint-item-row${dragging ? " paint-item-row--dragging" : ""}${dragOver ? " paint-item-row--dragover" : ""}`}
+        data-index={index}
+        role="row"
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={(e) => {
+          e.preventDefault();
+          onDrop();
+        }}
+      >
+        <button
+          type="button"
+          className="paint-row-handle"
+          draggable
+          aria-label={`Reorder row ${index + 1}`}
+          title="Drag to reorder"
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", String(index));
+            onDragStart();
+          }}
+          onDragEnd={onDragEnd}
+        >
+          ⠿
+        </button>
+
+        <div className="paint-col paint-col-label" role="cell">
           <input
             value={item.label}
+            readOnly={autoLabel}
+            className={autoLabel ? "readonly" : undefined}
             onChange={(e) => onChange({ label: e.target.value })}
             aria-label={`Label row ${index + 1}`}
           />
-        </label>
+        </div>
 
         {showFloor && (
-          <label className="paint-col paint-col-floor">
-            <span className="paint-col-head">Floor</span>
+          <div className="paint-col paint-col-floor" role="cell">
             <select
               className="paint-field-select"
               value={item.floor}
@@ -115,14 +160,14 @@ export function PaintItemRow({
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         )}
 
-        <label className="paint-col paint-col-color">
-          <span className="paint-col-head">Color</span>
-          <div className="paint-color-field">
+        <div className="paint-col paint-col-color" role="cell">
+          <div className={`paint-color-field${missingColor ? " paint-color-field--warn" : ""}`}>
             <input
               value={item.color}
+              placeholder="⚠ Add color"
               onChange={(e) => onChange({ color: e.target.value })}
               onKeyDown={onColorKeyDown}
               aria-label={`Color row ${index + 1}`}
@@ -139,21 +184,19 @@ export function PaintItemRow({
               <SearchIcon />
             </button>
           </div>
-        </label>
+        </div>
 
         {showPreviousColor && (
-          <label className="paint-col paint-col-prev">
-            <span className="paint-col-head">Prev color</span>
+          <div className="paint-col paint-col-prev" role="cell">
             <input
               value={item.previous_color}
               onChange={(e) => onChange({ previous_color: e.target.value })}
               aria-label={`Previous color row ${index + 1}`}
             />
-          </label>
+          </div>
         )}
 
-        <label className="paint-col paint-col-product">
-          <span className="paint-col-head">Product</span>
+        <div className="paint-col paint-col-product" role="cell">
           <PaintProductSelect
             value={productDisplay}
             products={products}
@@ -163,43 +206,28 @@ export function PaintItemRow({
               onChange({ product: productName, manufacturer });
             }}
           />
-        </label>
+        </div>
 
-        <label className="paint-col paint-col-sheen">
-          <span className="paint-col-head">Sheen</span>
+        <div className="paint-col paint-col-sheen" role="cell">
           <PaintSheenSelect
             value={item.sheen}
             options={sheenOptions}
+            emptyLabel="⚠ Sheen"
+            emptyTitle="⚠ Select sheen"
+            className={missingSheen ? "paint-field-select--warn" : undefined}
             ariaLabel={`Sheen row ${index + 1}`}
             onChange={(sheen) => onChange({ sheen })}
           />
-        </label>
+        </div>
 
-        <div className="paint-row-actions" aria-label={`Row ${index + 1} actions`}>
-          <button
-            type="button"
-            className="btn btn-icon btn-small"
-            disabled={index === 0}
-            onClick={onMoveUp}
-            title="Move up"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            className="btn btn-icon btn-small"
-            disabled={index >= total - 1}
-            onClick={onMoveDown}
-            title="Move down"
-          >
-            ↓
-          </button>
+        <div className="paint-row-actions" role="cell">
           <button
             type="button"
             className="btn btn-icon btn-small btn-danger-soft"
             disabled={total <= 1}
             onClick={onRemove}
             title="Remove row"
+            aria-label={`Remove row ${index + 1}`}
           >
             ×
           </button>

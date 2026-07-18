@@ -114,7 +114,10 @@ async function readApiJson(res: Response): Promise<{ items?: ExtractedPaintRow[]
   }
 }
 
-export async function extractPaintFromImage(file: File): Promise<ExtractedPaintRow[]> {
+export async function extractPaintFromImage(
+  file: File,
+  signal?: AbortSignal,
+): Promise<ExtractedPaintRow[]> {
   if (file.size > MAX_IMAGE_BYTES) {
     throw new Error(
       "Image is too large for upload. Crop the screenshot or save a smaller copy (under ~3 MB), then try again.",
@@ -125,6 +128,7 @@ export async function extractPaintFromImage(file: File): Promise<ExtractedPaintR
   const res = await authFetch("/api/extract-paint", {
     method: "POST",
     body: JSON.stringify({ image_base64: data, media_type: mediaType }),
+    signal,
   });
   const body = await readApiJson(res);
   if (!res.ok) {

@@ -47,12 +47,20 @@ import {
   buildTransmittalHistoryEntry,
 } from "../lib/transmittalSendHistory";
 import {
+  PRIMARY_TRANSMITTAL_CONTENT_KEYS,
+  TRANSMITTAL_CONTENT_CATEGORIES,
+  applyInferredContentFlags,
+  inferContentKeysFromPending,
+  inferContentKeysFromTransmittal,
+  loadTransmittalContentAutoOn,
+  type TransmittalContentKey,
+} from "../lib/transmittalCategories";
+import {
   addItemsFromPaintHistory,
   addItemsFromWallcoveringHistory,
   appendPendingToEnclosures,
   buildAtticStockFromTransmittal,
   includedLogRowIds,
-  moveEnclosure,
   paintSheetLabel,
   patchEnclosureList,
   pendingItemLabel,
@@ -76,24 +84,6 @@ import type { ProjectForm } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
-const CONTENT_CHECKS: { key: keyof TransmittalData; label: string }[] = [
-  { key: "cb_submittal", label: "Submittal" },
-  { key: "cb_product_data", label: "Product Data" },
-  { key: "cb_samples", label: "Samples" },
-  { key: "cb_shop_drawings", label: "Shop Drawings" },
-  { key: "cb_om_manuals", label: "O&M Manuals" },
-  { key: "cb_plans", label: "Plans" },
-  { key: "cb_letters", label: "Letters" },
-  { key: "cb_specifications", label: "Specifications" },
-  { key: "cb_prints", label: "Prints" },
-  { key: "cb_addenda", label: "Addenda" },
-  { key: "cb_change_orders", label: "Change Orders" },
-  { key: "cb_sds_safety", label: "SDS/Safety" },
-  { key: "cb_arch_drawings", label: "Architectural Drawings" },
-  { key: "cb_invoices", label: "Invoices" },
-  { key: "cb_eng_drawings", label: "Engineering Drawings" },
-];
-
 const DELIVERY_RADIO = ["FedEx", "UPS", "Courier", "Hand Delivered"] as const;
 
 export function TransmittalPage() {
@@ -103,7 +93,9 @@ export function TransmittalPage() {
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
   const [draft, setDraft] = useState<TransmittalData>(defaultTransmittal());
   const [status, setStatus] = useState<string | null>(null);
-  const [pendingSelected, setPendingSelected] = useState<number[]>([]);
+  const [pendingExpanded, setPendingExpanded] = useState(false);
+  const [encDragFrom, setEncDragFrom] = useState<number | null>(null);
+  const [encDragOver, setEncDragOver] = useState<number | null>(null);
   const [customLineOpen, setCustomLineOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sentHistoryOpen, setSentHistoryOpen] = useState(false);
@@ -118,6 +110,8 @@ export function TransmittalPage() {
     null,
   );
   const [remarkTemplateKey, setRemarkTemplateKey] = useState("");
+  const [contentAutoOn, setContentAutoOn] = useState<TransmittalContentKey[]>([]);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
 
   const showContractSwitch = hasTransmittalContractSwitch(project);
   const transmittalJob = useMemo(
@@ -188,6 +182,10 @@ export function TransmittalPage() {
     if (!user?.id) return;
     void loadPaintUserSettings(user.id).then(setUserSettings);
   }, [user?.id]);
+
+  useEffect(() => {
+    void loadTransmittalContentAutoOn().then(setContentAutoOn);
+  }, []);
 
   function patch(patch: Partial<TransmittalData>) {
     setDraft((d) => ({ ...d, ...patch }));
@@ -268,38 +266,43 @@ export function TransmittalPage() {
     setStatus("Refreshed enclosure list from paint and wallcovering tabs.");
   }
 
-  function togglePendingSelect(index: number) {
-    setPendingSelected((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index],
-    );
+  function reorderEnclosure(from: number, to: number) {
+    if (from === to || from < 0 || to < 0) return;
+    setDraft((d) => {
+      if (from >= d.enclosures.length || to >= d.enclosures.length) return d;
+      const enclosures = [...d.enclosures];
+      const [row] = enclosures.splice(from, 1);
+      enclosures.splice(to, 0, row!);
+      return { ...d, enclosures };
+    });
   }
 
-  async function onAddPendingToEnclosures(all = false) {
-    const indices = all
-      ? (draft.pending_submittal_queue ?? []).map((_, i) => i)
-      : pendingSelected;
-    const { transmittal: next, added, skipped } = appendPendingToEnclosures(draft, indices);
-    if (!added && !skipped) {
-      setError(all ? "No pending packages to add." : "Select pending package(s) first.");
+  async function onAddPendingIndices(indices: number[]) {
+    if (!indices.length) {
+      setError("No pending packages to add.");
       return;
     }
-    await persistTransmittal(next);
-    setPendingSelected([]);
-    if (skipped && !added) setStatus("Selected package(s) are already on the enclosure list.");
+    const { transmittal: next, added, skipped } = appendPendingToEnclosures(draft, indices);
+    if (!added && !skipped) {
+      setError("No pending packages to add.");
+      return;
+    }
+    let saved = removePendingItems(next, indices);
+    const inferred = indices.flatMap((i) => {
+      const item = draft.pending_submittal_queue?.[i];
+      return item ? inferContentKeysFromPending(item) : [];
+    });
+    const autoOn = contentAutoOn.length ? contentAutoOn : await loadTransmittalContentAutoOn();
+    saved = applyInferredContentFlags(saved, inferred, autoOn);
+    await persistTransmittal(saved);
+    if (skipped && !added) setStatus("Package(s) were already on the enclosure list.");
     else if (skipped) setStatus(`Added ${added} to enclosures. ${skipped} already on the list.`);
     else setStatus(`Added ${added} package(s) to enclosures.`);
     setError(null);
   }
 
-  async function onRemovePending() {
-    if (!pendingSelected.length) {
-      setError("Select a pending package to remove.");
-      return;
-    }
-    const next = removePendingItems(draft, pendingSelected);
-    await persistTransmittal(next);
-    setPendingSelected([]);
-    setStatus("Removed pending package(s).");
+  async function onAddAllPending() {
+    await onAddPendingIndices((draft.pending_submittal_queue ?? []).map((_, i) => i));
   }
 
   async function onSave() {
@@ -434,167 +437,127 @@ export function TransmittalPage() {
     setRemarkTemplateKey("");
   }
 
+  const inferredContentKeys = useMemo(() => inferContentKeysFromTransmittal(draft), [draft]);
+  const autoAllowed = useMemo(() => new Set(contentAutoOn), [contentAutoOn]);
+  const primaryCategories = TRANSMITTAL_CONTENT_CATEGORIES.filter((c) =>
+    PRIMARY_TRANSMITTAL_CONTENT_KEYS.includes(c.key),
+  );
+  const overflowCategories = TRANSMITTAL_CONTENT_CATEGORIES.filter(
+    (c) => !PRIMARY_TRANSMITTAL_CONTENT_KEYS.includes(c.key),
+  );
+  const visibleCategories = categoriesExpanded
+    ? TRANSMITTAL_CONTENT_CATEGORIES
+    : primaryCategories;
+  const hiddenCategoryCount = overflowCategories.length;
+
+  function toggleContentCategory(key: TransmittalContentKey) {
+    patch({ [key]: !draft[key] });
+  }
+
   if (loading) return <p className="muted">Loading transmittal…</p>;
 
   const queue = draft.pending_submittal_queue ?? [];
+  const pendingCount = queue.length;
   const paintHistory = tradeData.paint_submittal_history ?? [];
   const wcHistory = tradeData.wallcovering_submittal_history ?? [];
   const frpHistory = tradeData.frp_submittal_history ?? [];
   const transmittalHistory = tradeData.transmittal_history ?? [];
+  const enclosureCount = draft.enclosures.filter((e) => e.description.trim()).length;
+  const includedEnclosureCount = draft.enclosures.filter(
+    (e) => e.included && e.description.trim(),
+  ).length;
+  const enclosureStatusLabel =
+    enclosureCount === 0
+      ? "0 enclosures"
+      : includedEnclosureCount === enclosureCount
+        ? `${enclosureCount} · all included`
+        : `${enclosureCount} · ${includedEnclosureCount} included`;
+  const PENDING_PREVIEW = 3;
+  const pendingHidden = Math.max(0, queue.length - PENDING_PREVIEW);
+  const visiblePending = pendingExpanded ? queue : queue.slice(0, PENDING_PREVIEW);
+  const allIncluded =
+    enclosureCount > 0 && draft.enclosures.every((e) => !e.description.trim() || e.included);
+  const buildSummary =
+    pendingCount > 0
+      ? `${includedEnclosureCount} enclosure${includedEnclosureCount === 1 ? "" : "s"} · ${pendingCount} pending not added`
+      : `${includedEnclosureCount} enclosure${includedEnclosureCount === 1 ? "" : "s"} · ready`;
 
   return (
     <div className="stack transmittal-page">
-      <div className="row-between">
-        <div>
-          <h2>Transmittal</h2>
-          <p className="muted small">
-            Cover letter, enclosures, email relay, attic stock orders, and submittal log stamping.
-          </p>
-        </div>
-        <div className="row-gap wrap">
-          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => void onGenerate()}>
-            Download PDF
-          </button>
-        </div>
-      </div>
-
-      <p className="sds-filename-preview muted small">
-        PDF filename: <code>{outputFilename}</code>
-      </p>
-
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
 
-      <section className="card stack transmittal-generate-section">
-        <div className="row-gap wrap transmittal-generate-row">
-          <button type="button" className="btn btn-secondary" onClick={onEmailRelay}>
-            Email Relay
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={pullFromJobInfo}>
-            From Job Info
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={onOrderAtticStock}>
-            Order Attic Stock
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setSentHistoryOpen(true)}>
-            Transmittal history{transmittalHistory.length ? ` (${transmittalHistory.length})` : ""}
-          </button>
-        </div>
-        <p className="muted small">
-          Check <strong>Include Paint sheet</strong> and <strong>Combine into one PDF</strong> to merge the
-          transmittal cover with the paint submittal table. Issued history is used when available; otherwise
-          the current Paint tab draft is included.
-        </p>
-        <div className="transmittal-sheet-row row-gap wrap">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.include_paint_sheet}
-              onChange={(e) => patchIncludePaintSheet(e.target.checked)}
-            />
-            Include Paint sheet
-          </label>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("paint")}>
-            Choose…
-          </button>
-          <span className="muted small">{paintSheetLabel(draft.paint_submittal_nums)}</span>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.include_wc_sheet}
-              onChange={(e) => patchIncludeWcSheet(e.target.checked)}
-            />
-            Include Wallcovering sheet
-          </label>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("wallcovering")}>
-            Choose…
-          </button>
-          <span className="muted small">{paintSheetLabel(draft.wc_submittal_nums)}</span>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.include_frp_sheet}
-              onChange={(e) => patchIncludeFrpSheet(e.target.checked)}
-            />
-            Include FRP sheet
-          </label>
-          <button type="button" className="btn btn-secondary btn-small" onClick={() => setSheetPicker("frp")}>
-            Choose…
-          </button>
-          <span className="muted small">{paintSheetLabel(draft.frp_submittal_nums)}</span>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.combine_enclosures}
-              onChange={(e) => patchCombineEnclosures(e.target.checked)}
-            />
-            Combine into one PDF
-          </label>
-        </div>
-      </section>
+      <div className="row-gap wrap transmittal-tools-row">
+        <h2 className="transmittal-tools-title">Transmittal</h2>
+        <button type="button" className="btn btn-secondary btn-small" onClick={onEmailRelay}>
+          Email Relay
+        </button>
+        <button type="button" className="btn btn-secondary btn-small" onClick={onOrderAtticStock}>
+          Order Attic Stock
+        </button>
+        <button type="button" className="btn btn-secondary btn-small" onClick={() => setSentHistoryOpen(true)}>
+          Transmittal history{transmittalHistory.length ? ` (${transmittalHistory.length})` : ""}
+        </button>
+        <button type="button" className="btn btn-secondary btn-small" onClick={() => setHistoryOpen(true)}>
+          Submittal History
+        </button>
+      </div>
 
+      <div className="transmittal-setup-grid">
+        <div className="stack transmittal-main">
       <section className="card stack transmittal-section">
-        <p className="transmittal-section-label">RECIPIENT &amp; SUBJECT</p>
-        <div className="transmittal-header-grid">
-          <div className="stack">
-            <label>
-              Attn:
-              <input value={draft.to_name} onChange={(e) => patch({ to_name: e.target.value })} />
-            </label>
-            <label>
-              GC Name:
-              <input value={draft.gc_name} onChange={(e) => patch({ gc_name: e.target.value })} />
-            </label>
-            <label>
-              Address:
-              <textarea
-                rows={3}
-                value={draft.to_address}
-                onChange={(e) => patch({ to_address: e.target.value })}
-              />
-            </label>
+        <div className="transmittal-section-heading row-between wrap">
+          <p className="transmittal-section-label">RECIPIENT &amp; SUBJECT</p>
+          <div className="transmittal-job-heading row-gap wrap">
+            <p className="transmittal-job-context muted small">
+              {[transmittalJob.job_number.trim(), transmittalJob.job_name.trim()]
+                .filter(Boolean)
+                .join(" · ") || "Job # / name from Job Info"}
+            </p>
+            <button type="button" className="btn btn-secondary btn-small" onClick={pullFromJobInfo}>
+              From Job Info
+            </button>
           </div>
-          <div className="stack transmittal-header-right">
-            {showContractSwitch && (
-              <TradeContractTabs
-                project={project}
-                value={draft.contract}
-                onChange={onContractChange}
-              />
-            )}
-            <div className="transmittal-meta-row">
-              <label>
-                Date:
-                <DateInput value={draft.date} onChange={(v) => patch({ date: v })} />
-              </label>
-              <label className="transmittal-meta-job-number">
-                Job #:
-                <input value={transmittalJob.job_number} readOnly className="readonly" />
-              </label>
-              <label className="transmittal-meta-number">
-                Transmittal #:
-                <input
-                  value={draft.transmittal_number}
-                  onChange={(e) => patchTransmittalNumber(e.target.value)}
-                  onBlur={normalizeActiveTransmittalNumber}
-                  placeholder="TR-001"
-                />
-              </label>
-              <label className="transmittal-meta-subject">
-                Subject:
-                <input value={draft.subject} onChange={(e) => patch({ subject: e.target.value })} />
-              </label>
-            </div>
+        </div>
+        <div className="transmittal-header-grid">
+          <label>
+            Attn
+            <input value={draft.to_name} onChange={(e) => patch({ to_name: e.target.value })} />
+          </label>
+          <label>
+            GC Company
+            <input value={draft.gc_name} onChange={(e) => patch({ gc_name: e.target.value })} />
+          </label>
+          <label>
+            Address
+            <textarea
+              className="transmittal-address-field"
+              rows={3}
+              value={draft.to_address}
+              onChange={(e) => patch({ to_address: e.target.value })}
+            />
+          </label>
+          <label>
+            Phone
+            <input value={draft.to_phone} onChange={(e) => patch({ to_phone: e.target.value })} />
+          </label>
+          <label>
+            Subject
+            <input value={draft.subject} onChange={(e) => patch({ subject: e.target.value })} />
+          </label>
+          <div className="transmittal-meta-pair">
             <label>
-              Job Name:
-              <input value={transmittalJob.job_name} readOnly className="readonly" />
+              Date
+              <DateInput value={draft.date} onChange={(v) => patch({ date: v })} />
             </label>
             <label>
-              Phone:
-              <input value={draft.to_phone} onChange={(e) => patch({ to_phone: e.target.value })} />
+              Transmittal #
+              <input
+                value={draft.transmittal_number}
+                onChange={(e) => patchTransmittalNumber(e.target.value)}
+                onBlur={normalizeActiveTransmittalNumber}
+                placeholder="TR-001"
+              />
             </label>
           </div>
         </div>
@@ -659,180 +622,225 @@ export function TransmittalPage() {
       </section>
 
       <section className="card stack transmittal-section">
-        <p className="transmittal-section-label">WE ARE TRANSMITTING THE FOLLOWING TO YOU:</p>
-        <div className="check-grid">
-          {CONTENT_CHECKS.map(({ key, label }) => (
-            <label key={key} className="check">
-              <input
-                type="checkbox"
-                checked={Boolean(draft[key])}
-                onChange={(e) => patch({ [key]: e.target.checked })}
-              />
-              {label}
-            </label>
-          ))}
+        <div className="transmittal-section-heading row-between wrap">
+          <p className="transmittal-section-label">Transmitting categories</p>
+          <span className="muted small">Auto-set from enclosures · click to override</span>
         </div>
-      </section>
-
-      <section className="card stack transmittal-section">
-        <p className="transmittal-section-label">
-          PENDING FOR NEXT SEND — double-click or Add to enclosures; Generate Transmittal stamps
-          SUBMIT on checked rows
-        </p>
-        <div className="transmittal-pending-panel">
-          <div className="transmittal-pending-list" role="listbox" aria-multiselectable="true">
-            {!queue.length ? (
-              <p className="muted small transmittal-pending-empty">
-                No pending packages — build a submittal package or print a paint/wallcovering
-                submittal with transmittal options checked to queue items here.
-              </p>
-            ) : (
-              queue.map((item, index) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="option"
-                  aria-selected={pendingSelected.includes(index)}
-                  className={`transmittal-pending-item${pendingSelected.includes(index) ? " selected" : ""}`}
-                  onClick={() => togglePendingSelect(index)}
-                  onDoubleClick={async () => {
-                    const { transmittal: next, added } = appendPendingToEnclosures(draft, [index]);
-                    if (added) {
-                      await persistTransmittal(next);
-                      setStatus("Added pending package to enclosures.");
-                    }
-                  }}
-                >
-                  {pendingItemLabel(item)}
-                </button>
-              ))
-            )}
-          </div>
-          <div className="transmittal-pending-actions stack">
+        <div className="transmittal-category-pills" role="group" aria-label="Transmitting categories">
+          {visibleCategories.map(({ key, label }) => {
+            const on = Boolean(draft[key]);
+            const isAuto = on && autoAllowed.has(key) && inferredContentKeys.has(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`transmittal-category-pill${on ? " is-on" : ""}${isAuto ? " is-auto" : ""}`}
+                aria-pressed={on}
+                onClick={() => toggleContentCategory(key)}
+              >
+                <span>{label}</span>
+                {isAuto && <span className="transmittal-category-pill-auto">auto</span>}
+              </button>
+            );
+          })}
+          {!categoriesExpanded && hiddenCategoryCount > 0 && (
             <button
               type="button"
-              className="btn btn-warning"
-              onClick={() => void onAddPendingToEnclosures(false)}
+              className="transmittal-category-pill transmittal-category-pill--more"
+              onClick={() => setCategoriesExpanded(true)}
             >
-              Add to enclosures
+              + {hiddenCategoryCount} more
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void onAddPendingToEnclosures(true)}>
-              Add all
+          )}
+          {categoriesExpanded && (
+            <button
+              type="button"
+              className="transmittal-category-pill transmittal-category-pill--more"
+              onClick={() => setCategoriesExpanded(false)}
+            >
+              Show less
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => void onRemovePending()}>
-              Remove
+          )}
+        </div>
+      </section>
+
+      <section className="card stack transmittal-section transmittal-enclosures-panel">
+        <div className="transmittal-enc-panel-header">
+          <div className="transmittal-enc-panel-title-row">
+            <p className="transmittal-section-label">ENCLOSURES</p>
+            <span className="muted small">{enclosureStatusLabel}</span>
+          </div>
+          <div className="transmittal-enc-panel-tools row-gap wrap">
+            <label className="check transmittal-enc-inline-check">
+              <input
+                type="checkbox"
+                checked={draft.include_paint_floor}
+                onChange={(e) => patch({ include_paint_floor: e.target.checked })}
+              />
+              Floor paint
+            </label>
+            <label className="check transmittal-enc-inline-check">
+              <input
+                type="checkbox"
+                checked={draft.include_wc_floor}
+                onChange={(e) => patch({ include_wc_floor: e.target.checked })}
+              />
+              Floor WC
+            </label>
+            <label className="check transmittal-enc-inline-check">
+              <input
+                type="checkbox"
+                checked={draft.show_for_column}
+                onChange={(e) => patch({ show_for_column: e.target.checked })}
+              />
+              &quot;For&quot; column
+            </label>
+            <button type="button" className="btn btn-secondary btn-small" onClick={onRefreshEnclosures}>
+              Refresh
             </button>
+            <button type="button" className="btn btn-primary btn-small" onClick={() => setCustomLineOpen(true)}>
+              + Add item
+            </button>
+          </div>
+        </div>
+
+        {queue.length > 0 && (
+          <div className="transmittal-pending-strip">
+            <div className="transmittal-pending-strip-head">
+              <span className="muted small">Suggested from pending</span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => void onAddAllPending()}
+              >
+                Add all
+              </button>
+            </div>
+            <ul className="transmittal-pending-strip-list">
+              {visiblePending.map((item) => {
+                const index = queue.indexOf(item);
+                return (
+                  <li key={item.id} className="transmittal-pending-strip-item">
+                    <span className="transmittal-pending-strip-label">{pendingItemLabel(item)}</span>
+                    <button
+                      type="button"
+                      className="btn btn-warning btn-small"
+                      onClick={() => void onAddPendingIndices([index])}
+                    >
+                      Add
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {!pendingExpanded && pendingHidden > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small transmittal-pending-more"
+                onClick={() => setPendingExpanded(true)}
+              >
+                + {pendingHidden} more…
+              </button>
+            )}
+            {pendingExpanded && queue.length > PENDING_PREVIEW && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small transmittal-pending-more"
+                onClick={() => setPendingExpanded(false)}
+              >
+                Show less
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="transmittal-enc-table">
+          <div
+            className={`transmittal-enc-header${draft.show_for_column ? " transmittal-enc-header--for" : ""}`}
+          >
+            <span className="transmittal-enc-handle-spacer" aria-hidden />
+            <label className="transmittal-enc-check" title="Include all / none">
+              <input
+                type="checkbox"
+                checked={allIncluded}
+                disabled={!enclosureCount}
+                onChange={(e) => {
+                  const included = e.target.checked;
+                  setDraft((d) => ({
+                    ...d,
+                    enclosures: d.enclosures.map((row) => ({ ...row, included })),
+                  }));
+                }}
+                aria-label="Include all enclosures"
+              />
+            </label>
+            <span className="muted small">Description</span>
+            <span
+              className="muted small transmittal-enc-stamp-head"
+              title="Stamp digital copy on this enclosure description in the PDF"
+            >
+              Stamp
+            </span>
+            <span className="muted small">Copies</span>
+            {draft.show_for_column && <span className="muted small">For</span>}
+            <span className="transmittal-enc-remove-spacer" aria-hidden />
+          </div>
+          <div className="transmittal-enc-list">
+            {draft.enclosures.map((row, index) => (
+              <TransmittalEnclosureRow
+                key={row.id}
+                row={row}
+                index={index}
+                showForColumn={draft.show_for_column}
+                dragging={encDragFrom === index}
+                dragOver={encDragOver === index && encDragFrom !== index}
+                onChange={(p) => patchEnclosure(index, p)}
+                onDragStart={() => setEncDragFrom(index)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (encDragOver !== index) setEncDragOver(index);
+                }}
+                onDragLeave={() => {
+                  if (encDragOver === index) setEncDragOver(null);
+                }}
+                onDrop={() => {
+                  if (encDragFrom != null) reorderEnclosure(encDragFrom, index);
+                  setEncDragFrom(null);
+                  setEncDragOver(null);
+                }}
+                onDragEnd={() => {
+                  setEncDragFrom(null);
+                  setEncDragOver(null);
+                }}
+                onRemove={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    enclosures:
+                      d.enclosures.length > 1
+                        ? d.enclosures.filter((_, i) => i !== index)
+                        : [{ ...emptyEnclosure() }],
+                  }))
+                }
+              />
+            ))}
           </div>
         </div>
       </section>
 
       <section className="card stack transmittal-section">
-        <p className="transmittal-section-label">
-          LIST OF ENCLOSURES (SELECT AND REORDER; INCLUDE ONLY CHECKED)
-        </p>
-        <div className="transmittal-enc-toolbar row-gap wrap">
-          <button type="button" className="btn btn-primary btn-small" onClick={onRefreshEnclosures}>
-            Refresh
-          </button>
-          <button type="button" className="btn btn-primary btn-small" onClick={() => setCustomLineOpen(true)}>
-            Add Item
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-small"
-            onClick={() =>
-              setDraft((d) => ({
-                ...d,
-                enclosures: d.enclosures.map((e) => ({ ...e, included: true })),
-              }))
-            }
-          >
-            Include all
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-small"
-            onClick={() =>
-              setDraft((d) => ({
-                ...d,
-                enclosures: d.enclosures.map((e) => ({ ...e, included: false })),
-              }))
-            }
-          >
-            Exclude all
-          </button>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.include_paint_floor}
-              onChange={(e) => patch({ include_paint_floor: e.target.checked })}
-            />
-            Include Floor paint
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.include_wc_floor}
-              onChange={(e) => patch({ include_wc_floor: e.target.checked })}
-            />
-            Include Floor WC
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.show_for_column}
-              onChange={(e) => patch({ show_for_column: e.target.checked })}
-            />
-            Show For column
-          </label>
-        </div>
-        <div className="transmittal-enc-list">
-          {draft.enclosures.map((row, index) => (
-            <TransmittalEnclosureRow
-              key={row.id}
-              row={row}
-              index={index}
-              showForColumn={draft.show_for_column}
-              canMoveUp={index > 0}
-              canMoveDown={index < draft.enclosures.length - 1}
-              onChange={(p) => patchEnclosure(index, p)}
-              onMoveUp={() =>
-                setDraft((d) => ({ ...d, enclosures: moveEnclosure(d.enclosures, index, -1) }))
-              }
-              onMoveDown={() =>
-                setDraft((d) => ({ ...d, enclosures: moveEnclosure(d.enclosures, index, 1) }))
-              }
-              onRemove={() =>
-                setDraft((d) => ({
-                  ...d,
-                  enclosures:
-                    d.enclosures.length > 1
-                      ? d.enclosures.filter((_, i) => i !== index)
-                      : [{ ...emptyEnclosure() }],
-                }))
-              }
-            />
-          ))}
-        </div>
-      </section>
-
-      <button type="button" className="btn btn-primary btn-small transmittal-history-btn" onClick={() => setHistoryOpen(true)}>
-        Submittal History
-      </button>
-
-      <section className="card stack transmittal-section">
-        <p className="transmittal-section-label">REMARKS</p>
-        <label>
-          Remark template
+        <div className="transmittal-section-heading row-between wrap">
+          <p className="transmittal-section-label">REMARKS</p>
           <select
+            className="transmittal-remark-insert"
             value={remarkTemplateKey}
+            aria-label="Insert remark template"
             onChange={(e) => {
               const id = e.target.value;
               setRemarkTemplateKey(id);
               if (id) applyRemarkTemplate(id);
             }}
           >
-            <option value="">Choose a remark template…</option>
+            <option value="">Insert template…</option>
             {remarkTemplateGroups().map(({ group, templates }) => (
               <optgroup key={group} label={group}>
                 {templates.map((t) => (
@@ -843,28 +851,133 @@ export function TransmittalPage() {
               </optgroup>
             ))}
           </select>
-        </label>
-        <label>
-          Remarks
-          <textarea
-            rows={4}
-            value={draft.remarks}
-            onChange={(e) => patch({ remarks: e.target.value })}
-          />
-        </label>
-        <label>
-          Copies To:
-          <input value={draft.copies_to} onChange={(e) => patch({ copies_to: e.target.value })} />
-        </label>
-        <label>
-          By:
-          <input
-            value={draft.signer_name}
-            onChange={(e) => patch({ signer_name: e.target.value })}
-            placeholder={profile.name || "From Settings"}
-          />
-        </label>
+        </div>
+        <textarea
+          rows={4}
+          value={draft.remarks}
+          onChange={(e) => patch({ remarks: e.target.value })}
+          placeholder="Remarks"
+          aria-label="Remarks"
+        />
+        <div className="transmittal-remarks-meta grid-2">
+          <label>
+            Copies to
+            <input value={draft.copies_to} onChange={(e) => patch({ copies_to: e.target.value })} />
+          </label>
+          <label>
+            By
+            <input
+              value={draft.signer_name}
+              onChange={(e) => patch({ signer_name: e.target.value })}
+              placeholder={profile.name || "From Settings"}
+            />
+          </label>
+        </div>
       </section>
+        </div>
+
+        <aside className="card stack transmittal-build-rail">
+          <h3>Build transmittal</h3>
+          {showContractSwitch && (
+            <TradeContractTabs
+              project={project}
+              value={draft.contract}
+              onChange={onContractChange}
+            />
+          )}
+          <div className="stack transmittal-build-checks">
+            <div className="transmittal-build-sheet-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={draft.include_paint_sheet}
+                  onChange={(e) => patchIncludePaintSheet(e.target.checked)}
+                />
+                Include Paint sheet
+              </label>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small transmittal-sheet-pick-btn"
+                onClick={() => setSheetPicker("paint")}
+                title="Choose paint sheet(s)"
+              >
+                {draft.paint_submittal_nums.length
+                  ? paintSheetLabel(draft.paint_submittal_nums)
+                  : "Choose…"}
+                <span aria-hidden> ▾</span>
+              </button>
+            </div>
+            <div className="transmittal-build-sheet-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={draft.include_wc_sheet}
+                  onChange={(e) => patchIncludeWcSheet(e.target.checked)}
+                />
+                Include WC sheet
+              </label>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small transmittal-sheet-pick-btn"
+                onClick={() => setSheetPicker("wallcovering")}
+                title="Choose wallcovering sheet(s)"
+              >
+                {draft.wc_submittal_nums.length
+                  ? paintSheetLabel(draft.wc_submittal_nums)
+                  : "Choose…"}
+                <span aria-hidden> ▾</span>
+              </button>
+            </div>
+            <div className="transmittal-build-sheet-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={draft.include_frp_sheet}
+                  onChange={(e) => patchIncludeFrpSheet(e.target.checked)}
+                />
+                Include FRP sheet
+              </label>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small transmittal-sheet-pick-btn"
+                onClick={() => setSheetPicker("frp")}
+                title="Choose FRP sheet(s)"
+              >
+                {draft.frp_submittal_nums.length
+                  ? paintSheetLabel(draft.frp_submittal_nums)
+                  : "Choose…"}
+                <span aria-hidden> ▾</span>
+              </button>
+            </div>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.combine_enclosures}
+                onChange={(e) => patchCombineEnclosures(e.target.checked)}
+              />
+              Combine into one PDF
+            </label>
+          </div>
+          <div className="sds-options-actions stack transmittal-build-actions">
+            <p className="sds-filename-preview muted small">
+              PDF filename: <code>{outputFilename}</code>
+            </p>
+            <p
+              className={`sds-readiness-line small${pendingCount ? " sds-readiness-line--warn" : enclosureCount ? " sds-readiness-line--ok" : ""}`}
+            >
+              {buildSummary}
+            </p>
+            <div className="stack transmittal-build-buttons">
+              <button type="button" className="btn btn-primary" onClick={() => void onGenerate()}>
+                Download PDF
+              </button>
+              <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
+                {saving ? "Saving…" : "Save draft"}
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
 
       {customLineOpen && (
         <TransmittalCustomLineModal

@@ -19,6 +19,11 @@ import {
 } from "../lib/submittalLogService";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import {
+  applyInferredContentFlags,
+  inferContentKeysFromText,
+  loadTransmittalContentAutoOn,
+} from "../lib/transmittalCategories";
+import {
   applyTransmittalContractIfDistinct,
   hasTransmittalContractSwitch,
   transmittalPrintInfo,
@@ -153,25 +158,16 @@ export function SubmittalsPage() {
       copies: "1",
       log_row_id: row.id,
     }));
-    let cb_product_data = transmittal.cb_product_data;
-    let cb_samples = transmittal.cb_samples;
-    let cb_sds_safety = transmittal.cb_sds_safety;
-    let cb_submittal = transmittal.cb_submittal;
-    for (const row of selectedRows) {
-      const st = row.submittal_type.toLowerCase();
-      if (st.includes("product data")) cb_product_data = true;
-      if (st.includes("color") || st.includes("sample")) cb_samples = true;
-      if (st.includes("product data")) cb_sds_safety = true;
-      cb_submittal = true;
-    }
     let nextTransmittal = {
       ...transmittal,
-      cb_product_data,
-      cb_samples,
-      cb_sds_safety,
-      cb_submittal,
       enclosures: [...existing, ...additions],
     };
+    const inferred: ReturnType<typeof inferContentKeysFromText> = [];
+    for (const row of selectedRows) {
+      inferred.push(...inferContentKeysFromText(`${row.submittal_type} ${row.notes ?? ""}`));
+    }
+    const autoOn = await loadTransmittalContentAutoOn();
+    nextTransmittal = applyInferredContentFlags(nextTransmittal, inferred, autoOn);
     const inferredContracts = new Set(
       selectedRows
         .map((row) => scopeToContract(row.scope))

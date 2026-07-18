@@ -23,6 +23,8 @@ export const ORG_SETTINGS_KEYS = [
   "work_order_fonts",
   "company_labor_rates",
   "budget_library",
+  "spec_sections",
+  "transmittal_content_auto_on",
 ] as const;
 
 /** Per-user settings (each account keeps their own row). */
