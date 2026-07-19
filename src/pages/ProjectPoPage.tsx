@@ -27,6 +27,56 @@ function formatSubmittedAt(iso: string): string {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+function PoReceivedFieldIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+      <path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+      <path d="M5 17h-2v-4m-1 -8h11v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5" />
+      <path d="M3 9l4 0" />
+    </svg>
+  );
+}
+
+function PoCompletedIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M3 5a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1l0 -10" />
+      <path d="M7 20h10" />
+      <path d="M9 16v4" />
+      <path d="M15 16v4" />
+      <path d="M9 12v-4" />
+      <path d="M12 12v-1" />
+      <path d="M15 12v-2" />
+      <path d="M12 12v-1" />
+    </svg>
+  );
+}
+
 export function ProjectPoPage() {
   const { project, projectId } = useOutletContext<Ctx>();
   const [rows, setRows] = useState<FieldToolsPoDispatchRow[]>([]);
@@ -150,10 +200,26 @@ export function ProjectPoPage() {
       <div className="po-tracker-intro">
         <p className="muted small">
           PO numbers issued from <strong>Field Tools</strong> and <strong>Material orders</strong>{" "}
-          for this job (shared sequence, e.g. 1058-002). Check <strong>Received Field</strong> when
-          the foreman sends a packing slip photo, and <strong>Completed</strong> after the PO is
-          entered in FSI.
+          for this job (shared sequence, e.g. 1058-002).
         </p>
+        <ul className="po-tracker-legend">
+          <li>
+            <span className="po-tracker-legend-icon" aria-hidden="true">
+              <PoReceivedFieldIcon size={15} />
+            </span>
+            <span>
+              Check <strong>Received Field</strong> when the foreman sends a packing slip photo
+            </span>
+          </li>
+          <li>
+            <span className="po-tracker-legend-icon" aria-hidden="true">
+              <PoCompletedIcon size={15} />
+            </span>
+            <span>
+              and <strong>Completed</strong> after the PO is entered in FSI.
+            </span>
+          </li>
+        </ul>
         {jobLookups.length > 0 && (
           <p className="muted small">
             Tracking POs for{" "}
@@ -220,8 +286,18 @@ export function ProjectPoPage() {
                 <th>Vendor</th>
                 <th>By</th>
                 <th>Needed</th>
-                <th className="po-tracker-check-col">Received Field</th>
-                <th className="po-tracker-check-col">Completed</th>
+                <th className="po-tracker-check-col" title="Received Field">
+                  <span className="po-tracker-th-icon">
+                    <PoReceivedFieldIcon size={18} />
+                  </span>
+                  <span className="sr-only">Received Field</span>
+                </th>
+                <th className="po-tracker-check-col" title="Completed">
+                  <span className="po-tracker-th-icon">
+                    <PoCompletedIcon size={18} />
+                  </span>
+                  <span className="sr-only">Completed</span>
+                </th>
                 <th className="po-tracker-action-col"> </th>
               </tr>
             </thead>

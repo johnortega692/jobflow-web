@@ -101,3 +101,52 @@ export function BudgetIconSplit() {
     </svg>
   );
 }
+
+export function BudgetIconAutoPush() {
+  return (
+    <svg {...iconProps}>
+      <path d="M8 2.5v2.2" />
+      <path d="M8 11.3v2.2" />
+      <path d="M2.5 8h2.2" />
+      <path d="M11.3 8h2.2" />
+      <path d="M4.1 4.1l1.5 1.5" />
+      <path d="M10.4 10.4l1.5 1.5" />
+      <path d="M11.9 4.1l-1.5 1.5" />
+      <path d="M5.6 10.4l-1.5 1.5" />
+      <circle cx="8" cy="8" r="2.1" />
+    </svg>
+  );
+}
+
+export function BudgetIconImport() {
+  return (
+    <svg {...iconProps}>
+      <path d="M8 9.5v-7" />
+      <path d="M5.5 5 8 2.5 10.5 5" />
+      <path d="M3 11.5v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1" />
+    </svg>
+  );
+}
+
+export function BudgetIconExcel() {
+  return (
+    <svg {...iconProps}>
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.2" />
+      <path d="M2.5 6h11" />
+      <path d="M2.5 9.5h11" />
+      <path d="M6.5 2.5v11" />
+      <path d="M10 2.5v11" />
+    </svg>
+  );
+}
+
+export function BudgetIconPdf() {
+  return (
+    <svg {...iconProps}>
+      <path d="M4.5 2.5h5l3 3v8a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" />
+      <path d="M9.5 2.5v3h3" />
+      <path d="M5.5 10.5h5" />
+      <path d="M5.5 8h5" />
+    </svg>
+  );
+}

@@ -44,6 +44,22 @@ function ProjectLayoutShell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("jobflow.project.nav-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function setNavCollapsedPersist(next: boolean) {
+    setNavCollapsed(next);
+    try {
+      localStorage.setItem("jobflow.project.nav-collapsed", next ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -83,7 +99,11 @@ function ProjectLayoutShell() {
     !mod.requiresWallcovering || projectHasWallcovering(project.jobInfo);
 
   return (
-    <div className={`project-shell${navOpen ? " project-shell--nav-open" : ""}`}>
+    <div
+      className={`project-shell${navOpen ? " project-shell--nav-open" : ""}${
+        navCollapsed ? " project-shell--nav-collapsed" : ""
+      }`}
+    >
       {navOpen && (
         <button
           type="button"
@@ -93,12 +113,38 @@ function ProjectLayoutShell() {
         />
       )}
 
+      {navCollapsed ? (
+        <button
+          type="button"
+          className="project-nav-expand"
+          title="Show panel"
+          aria-label="Show panel"
+          aria-expanded={false}
+          aria-controls="project-sidebar"
+          onClick={() => setNavCollapsedPersist(false)}
+        >
+          »
+        </button>
+      ) : null}
+
       <aside id="project-sidebar" className="project-sidebar" aria-label="Project navigation">
         <div className="project-sidebar-header">
-          <p className="project-sidebar-job">{project.job_number}</p>
-          <p className="project-sidebar-name" title={project.job_name}>
-            {project.job_name}
-          </p>
+          <div className="project-sidebar-header-main">
+            <p className="project-sidebar-job">{project.job_number}</p>
+            <p className="project-sidebar-name" title={project.job_name}>
+              {project.job_name}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="project-nav-collapse"
+            title="Hide panel"
+            aria-label="Hide panel"
+            aria-expanded={true}
+            onClick={() => setNavCollapsedPersist(true)}
+          >
+            «
+          </button>
         </div>
 
         <nav className="project-nav" aria-label="Project modules">

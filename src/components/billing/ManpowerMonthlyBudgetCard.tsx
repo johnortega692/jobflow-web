@@ -18,6 +18,7 @@ import {
   type DerivedMonthHours,
 } from "../../lib/manpowerHours";
 import type { ProjectBillingData } from "../../types/projectBilling";
+import { ManpowerHeaderCalculatorIcon } from "./ManpowerHeaderPillIcons";
 
 type Props = {
   billing: ProjectBillingData;
@@ -62,7 +63,6 @@ export function ManpowerMonthlyBudgetCard({
       "billing-manpower-month-col",
       "num",
       "billing-manpower-month-col--clickable",
-      m.key === thisMonth ? "billing-manpower-month-col--current" : "",
       monthBeyondContract(m.weekStartIsos, weeks, contractEndWeekIndex)
         ? "billing-manpower-week-col--beyond-contract"
         : "",
@@ -86,9 +86,7 @@ export function ManpowerMonthlyBudgetCard({
       {endDateHint ? (
         <p className="banner banner-warn billing-manpower-end-hint">{endDateHint}</p>
       ) : (
-        <p className="muted small billing-manpower-end-hint">
-          Click a month to open the cost calculator · current month highlighted ({currentMonthLabel()})
-        </p>
+        <p className="muted small billing-manpower-caption">current month: {currentMonthLabel()}</p>
       )}
 
       <div className="billing-manpower-scroll" tabIndex={0} aria-label="Monthly hours — scroll horizontally">
@@ -100,11 +98,12 @@ export function ManpowerMonthlyBudgetCard({
                 <th key={m.key} className={monthHeaderClass(m)}>
                   <button
                     type="button"
-                    className="billing-manpower-month-button"
+                    className={`billing-manpower-header-pill${m.key === thisMonth ? " billing-manpower-header-pill--current" : ""}`}
                     onClick={() => onOpenMonth(m)}
                     title={`Calculate cost & billable for ${m.label}`}
                     aria-label={`Open cost calculator for ${m.label}`}
                   >
+                    <ManpowerHeaderCalculatorIcon />
                     {m.label}
                   </button>
                 </th>
@@ -118,12 +117,7 @@ export function ManpowerMonthlyBudgetCard({
                 Planned (hrs)
               </td>
               {months.map((m) => (
-                <td
-                  key={m.key}
-                  className={`billing-manpower-month-col num billing-manpower-planned-cell${
-                    m.key === thisMonth ? " billing-manpower-month-col--current" : ""
-                  }`}
-                >
+                <td key={m.key} className="billing-manpower-month-col num billing-manpower-planned-cell">
                   {formatHoursCompact(m.hours)}
                 </td>
               ))}
@@ -134,10 +128,7 @@ export function ManpowerMonthlyBudgetCard({
                 Man-weeks
               </td>
               {months.map((m) => (
-                <td
-                  key={m.key}
-                  className={`billing-manpower-month-col num${m.key === thisMonth ? " billing-manpower-month-col--current" : ""}`}
-                >
+                <td key={m.key} className="billing-manpower-month-col num">
                   {formatManWeeksCompact(m.hours)}
                 </td>
               ))}
@@ -148,12 +139,7 @@ export function ManpowerMonthlyBudgetCard({
                 Cost (calc)
               </td>
               {monthTotals.map((t, i) => (
-                <td
-                  key={months[i].key}
-                  className={`billing-manpower-month-col num${
-                    months[i].key === thisMonth ? " billing-manpower-month-col--current" : ""
-                  }`}
-                >
+                <td key={months[i].key} className="billing-manpower-month-col num">
                   <button
                     type="button"
                     className="billing-budget-value-button"
@@ -171,12 +157,7 @@ export function ManpowerMonthlyBudgetCard({
                 Billable (calc)
               </td>
               {monthTotals.map((t, i) => (
-                <td
-                  key={months[i].key}
-                  className={`billing-manpower-month-col num${
-                    months[i].key === thisMonth ? " billing-manpower-month-col--current" : ""
-                  }`}
-                >
+                <td key={months[i].key} className="billing-manpower-month-col num">
                   <button
                     type="button"
                     className="billing-budget-value-button"
@@ -198,10 +179,7 @@ export function ManpowerMonthlyBudgetCard({
                 return months.map((m) => {
                   running += m.hours;
                   return (
-                    <td
-                      key={m.key}
-                      className={`billing-manpower-month-col num${m.key === thisMonth ? " billing-manpower-month-col--current" : ""}`}
-                    >
+                    <td key={m.key} className="billing-manpower-month-col num">
                       {formatHoursCompact(running)}
                     </td>
                   );
@@ -212,10 +190,6 @@ export function ManpowerMonthlyBudgetCard({
           </tbody>
         </table>
       </div>
-
-      <p className="muted small billing-manpower-caption">
-        Cost and billable rows are calculator estimates (browser only) · project stores hours only
-      </p>
     </section>
   );
 }

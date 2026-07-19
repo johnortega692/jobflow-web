@@ -463,7 +463,7 @@ export function PaintSubmittalsPage() {
         </div>
 
       <p className="sds-filename-preview muted small">
-        PDF filename: <code>{submittalPdfFilename}</code>
+        Filename: <code>{submittalPdfFilename}</code>
       </p>
 
       {error && <div className="banner banner-error">{error}</div>}

@@ -781,11 +781,7 @@ export function ProjectOrdersPage() {
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
 
-      <div
-        className="projects-list-filters project-orders-scope-filters"
-        role="group"
-        aria-label="Filter by scope"
-      >
+      <div className="filter-chips project-orders-scope-filters" role="group" aria-label="Filter by scope">
         {(
           [
             ["all", "All"],
@@ -796,9 +792,7 @@ export function ProjectOrdersPage() {
           <button
             key={id}
             type="button"
-            className={`projects-list-sort-btn projects-list-filter-btn${
-              scopeFilter === id ? " projects-list-filter-btn--active" : ""
-            }`}
+            className={`filter-chip${scopeFilter === id ? " filter-chip--active" : ""}`}
             aria-pressed={scopeFilter === id}
             onClick={() => setScopeFilter(id)}
           >

@@ -21,11 +21,12 @@ export function ContractListFilter({ project, value, onChange, label = "Show" }:
   const contracts = availableTransmittalContracts(project);
 
   return (
-    <div className="row-gap wrap contract-list-filter">
-      <span className="muted small">{label}</span>
+    <div className="filter-chips contract-list-filter" role="group" aria-label={label}>
+      <span className="muted small filter-chips-label">{label}</span>
       <button
         type="button"
-        className={`btn btn-sm${value === "all" ? " btn-secondary" : " btn-ghost"}`}
+        className={`filter-chip${value === "all" ? " filter-chip--active" : ""}`}
+        aria-pressed={value === "all"}
         onClick={() => onChange("all")}
       >
         All
@@ -34,7 +35,8 @@ export function ContractListFilter({ project, value, onChange, label = "Show" }:
         <button
           key={contract}
           type="button"
-          className={`btn btn-sm${value === contract ? " btn-secondary" : " btn-ghost"}`}
+          className={`filter-chip${value === contract ? " filter-chip--active" : ""}`}
+          aria-pressed={value === contract}
           onClick={() => onChange(contract)}
         >
           {TRANSMITTAL_CONTRACT_LABELS[contract]}

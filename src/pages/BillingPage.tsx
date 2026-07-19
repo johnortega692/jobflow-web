@@ -148,10 +148,6 @@ export function BillingPage() {
           onClose={closeCalculator}
         />
       ) : null}
-
-      <p className="muted small billing-manpower-caption">
-        Hours saved to the project · cost/billable calculator stays in this browser only
-      </p>
     </div>
   );
 }

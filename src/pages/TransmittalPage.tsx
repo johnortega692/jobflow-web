@@ -959,7 +959,7 @@ export function TransmittalPage() {
           </div>
           <div className="sds-options-actions stack transmittal-build-actions">
             <p className="sds-filename-preview muted small">
-              PDF filename: <code>{outputFilename}</code>
+              Filename: <code>{outputFilename}</code>
             </p>
             <p
               className={`sds-readiness-line small${pendingCount ? " sds-readiness-line--warn" : enclosureCount ? " sds-readiness-line--ok" : ""}`}

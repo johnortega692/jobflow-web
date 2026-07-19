@@ -37,7 +37,6 @@ export function MonthBudgetCalculatorModal({
   const [materialCostDraft, setMaterialCostDraft] = useState("");
   const [materialBillableDraft, setMaterialBillableDraft] = useState("");
   const [billableTouched, setBillableTouched] = useState(false);
-  const [ratesOpen, setRatesOpen] = useState(false);
 
   useEffect(() => {
     const saved = loadMonthMaterial(projectId, monthKey);
@@ -96,10 +95,15 @@ export function MonthBudgetCalculatorModal({
     return Number.isFinite(n) && n >= 0 ? n : 0;
   }
 
+  const marginLabel =
+    totals.billable > 0
+      ? `${formatMoney0(totals.margin)} · ${formatPct0(marginPct)}`
+      : formatMoney0(totals.margin);
+
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="modal card stack billing-week-editor-modal"
+        className="modal card stack billing-month-calculator-modal"
         role="dialog"
         aria-labelledby="billing-month-calculator-title"
         onClick={(e) => e.stopPropagation()}
@@ -117,87 +121,103 @@ export function MonthBudgetCalculatorModal({
           Calculator only — amounts stay in this browser, not saved to the project.
         </p>
 
-        <div className="billing-week-editor-grid">
-          <div className="billing-week-editor-readout">
-            <span className="muted small">Planned hours</span>
-            <strong>{formatHoursCompact(plannedHours)}</strong>
-            <span className="muted small">{formatManWeeksCompact(plannedHours)} man-weeks</span>
+        <div className="billing-calc-stat-strip">
+          <div className="billing-calc-stat-tile">
+            <span className="billing-calc-stat-label">Planned</span>
+            <strong className="billing-calc-stat-value">{formatHoursCompact(plannedHours)}</strong>
+            <span className="billing-calc-stat-sub muted">
+              {formatManWeeksCompact(plannedHours)} man-weeks
+            </span>
           </div>
-          <div className="billing-week-editor-readout">
-            <span className="muted small">Blended cost/hr</span>
-            <strong>{formatMoney0(blendedCostRate(rates))}</strong>
+          <div className="billing-calc-stat-tile">
+            <span className="billing-calc-stat-label">Blended cost/hr</span>
+            <strong className="billing-calc-stat-value">{formatMoney0(blendedCostRate(rates))}</strong>
           </div>
-          <div className="billing-week-editor-readout">
-            <span className="muted small">Blended bill/hr</span>
-            <strong>{formatMoney0(blendedBillRate(rates))}</strong>
-          </div>
-          <div className="billing-week-editor-readout">
-            <span className="muted small">Labor cost</span>
-            <strong>{formatMoney0(totals.laborCost)}</strong>
-          </div>
-          <div className="billing-week-editor-readout">
-            <span className="muted small">Labor billable</span>
-            <strong>{formatMoney0(totals.laborBillable)}</strong>
-          </div>
-          <label>
-            Material cost
-            <input
-              type="number"
-              min={0}
-              step={100}
-              className="billing-num-input"
-              value={materialCostDraft}
-              placeholder="0"
-              onChange={(e) => updateMaterialCost(e.target.value)}
-            />
-          </label>
-          <label>
-            Material billable
-            <input
-              type="number"
-              min={0}
-              step={100}
-              className="billing-num-input"
-              value={materialBillableDraft}
-              placeholder="0"
-              onChange={(e) => updateMaterialBillable(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="billing-week-editor-totals billing-month-calculator-totals">
-          <div>
-            <span className="muted small">Month total cost</span>
-            <strong>{formatMoney0(totals.cost)}</strong>
-          </div>
-          <div>
-            <span className="muted small">Month total billable</span>
-            <strong>{formatMoney0(totals.billable)}</strong>
-          </div>
-          <div>
-            <span className="muted small">Margin</span>
-            <strong>
-              {formatMoney0(totals.margin)}
-              {totals.billable > 0 ? ` · ${formatPct0(marginPct)}` : ""}
-            </strong>
+          <div className="billing-calc-stat-tile">
+            <span className="billing-calc-stat-label">Blended bill/hr</span>
+            <strong className="billing-calc-stat-value">{formatMoney0(blendedBillRate(rates))}</strong>
           </div>
         </div>
 
-        <div className="stack billing-month-calculator-rates">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm billing-month-calculator-rates-toggle"
-            onClick={() => setRatesOpen((open) => !open)}
-            aria-expanded={ratesOpen}
-          >
-            {ratesOpen ? "Hide labor rates" : "Edit labor rates (calculator)"}
-          </button>
-          {ratesOpen ? (
-            <div className="table-wrap">
-              <table className="billing-table">
+        <div className="billing-calc-ledger" role="table" aria-label="Cost and billable">
+          <div className="billing-calc-ledger-row billing-calc-ledger-row--head" role="row">
+            <span className="billing-calc-ledger-label" role="columnheader" />
+            <span className="billing-calc-ledger-cell" role="columnheader">
+              Cost
+            </span>
+            <span className="billing-calc-ledger-cell" role="columnheader">
+              Billable
+            </span>
+          </div>
+          <div className="billing-calc-ledger-row" role="row">
+            <span className="billing-calc-ledger-label" role="rowheader">
+              Labor
+            </span>
+            <span className="billing-calc-ledger-cell billing-calc-ledger-value" role="cell">
+              {formatMoney0(totals.laborCost)}
+            </span>
+            <span className="billing-calc-ledger-cell billing-calc-ledger-value" role="cell">
+              {formatMoney0(totals.laborBillable)}
+            </span>
+          </div>
+          <div className="billing-calc-ledger-row billing-calc-ledger-row--material" role="row">
+            <span className="billing-calc-ledger-label" role="rowheader">
+              Material
+            </span>
+            <span className="billing-calc-ledger-cell" role="cell">
+              <input
+                type="number"
+                min={0}
+                step={100}
+                className="billing-calc-ledger-input"
+                value={materialCostDraft}
+                placeholder="0"
+                aria-label="Material cost"
+                onChange={(e) => updateMaterialCost(e.target.value)}
+              />
+            </span>
+            <span className="billing-calc-ledger-cell" role="cell">
+              <input
+                type="number"
+                min={0}
+                step={100}
+                className="billing-calc-ledger-input"
+                value={materialBillableDraft}
+                placeholder="0"
+                aria-label="Material billable"
+                onChange={(e) => updateMaterialBillable(e.target.value)}
+              />
+            </span>
+          </div>
+          <div className="billing-calc-ledger-row billing-calc-ledger-row--total" role="row">
+            <span className="billing-calc-ledger-label" role="rowheader">
+              Month total
+            </span>
+            <span className="billing-calc-ledger-cell billing-calc-ledger-value" role="cell">
+              {formatMoney0(totals.cost)}
+            </span>
+            <span className="billing-calc-ledger-cell billing-calc-ledger-value" role="cell">
+              {formatMoney0(totals.billable)}
+            </span>
+          </div>
+        </div>
+
+        <div className="billing-calc-margin-bar" role="status">
+          <span className="billing-calc-margin-label">Margin</span>
+          <strong className="billing-calc-margin-value">{marginLabel}</strong>
+        </div>
+
+        <details className="billing-calc-rates">
+          <summary className="billing-calc-rates-summary">
+            <span className="billing-calc-rates-chevron" aria-hidden="true" />
+            Labor rates ({rates.length} {rates.length === 1 ? "class" : "classes"})
+          </summary>
+          <div className="billing-calc-rates-body stack">
+            <div className="billing-calc-rates-table-wrap">
+              <table className="billing-calc-rates-table">
                 <thead>
                   <tr>
-                    <th>Class</th>
+                    <th className="billing-calc-rates-class-col">Class</th>
                     <th className="num">Cost/hr</th>
                     <th className="num">Bill/hr</th>
                     <th className="num">Crew mix</th>
@@ -207,8 +227,9 @@ export function MonthBudgetCalculatorModal({
                 <tbody>
                   {rates.map((r) => (
                     <tr key={r.id}>
-                      <td>
+                      <td className="billing-calc-rates-class-col">
                         <input
+                          className="billing-calc-rates-class-input"
                           value={r.className}
                           placeholder="Class name"
                           onChange={(e) => patchRate(r.id, { className: e.target.value })}
@@ -218,6 +239,7 @@ export function MonthBudgetCalculatorModal({
                         <input
                           type="number"
                           min={0}
+                          className="billing-calc-rates-num-input"
                           value={r.costRate === 0 ? "" : r.costRate}
                           placeholder="0"
                           onChange={(e) => patchRate(r.id, { costRate: num(e.target.value) })}
@@ -227,6 +249,7 @@ export function MonthBudgetCalculatorModal({
                         <input
                           type="number"
                           min={0}
+                          className="billing-calc-rates-num-input"
                           value={r.billRate === 0 ? "" : r.billRate}
                           placeholder="0"
                           onChange={(e) => patchRate(r.id, { billRate: num(e.target.value) })}
@@ -236,6 +259,7 @@ export function MonthBudgetCalculatorModal({
                         <input
                           type="number"
                           min={0}
+                          className="billing-calc-rates-num-input"
                           value={r.crewMix === 0 ? "" : r.crewMix}
                           placeholder="0"
                           onChange={(e) => patchRate(r.id, { crewMix: num(e.target.value) })}
@@ -244,7 +268,7 @@ export function MonthBudgetCalculatorModal({
                       <td>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-small"
+                          className="btn btn-ghost btn-small billing-calc-rates-remove"
                           onClick={() => {
                             setRates((rows) => {
                               const next = rows.filter((x) => x.id !== r.id);
@@ -261,38 +285,38 @@ export function MonthBudgetCalculatorModal({
                   ))}
                 </tbody>
               </table>
-              <div className="row-gap wrap">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    setRates((rows) => {
-                      const next = [
-                        ...rows,
-                        { id: newCalculatorLaborRateId(), className: "", costRate: 0, billRate: 0, crewMix: 1 },
-                      ];
-                      saveCalculatorLaborRates(projectId, next);
-                      return next;
-                    });
-                  }}
-                >
-                  Add class
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    const next = defaultCalculatorLaborRates();
-                    saveCalculatorLaborRates(projectId, next);
-                    setRates(next);
-                  }}
-                >
-                  Reset to defaults
-                </button>
-              </div>
             </div>
-          ) : null}
-        </div>
+            <div className="row-gap wrap">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setRates((rows) => {
+                    const next = [
+                      ...rows,
+                      { id: newCalculatorLaborRateId(), className: "", costRate: 0, billRate: 0, crewMix: 1 },
+                    ];
+                    saveCalculatorLaborRates(projectId, next);
+                    return next;
+                  });
+                }}
+              >
+                Add class
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  const next = defaultCalculatorLaborRates();
+                  saveCalculatorLaborRates(projectId, next);
+                  setRates(next);
+                }}
+              >
+                Reset to defaults
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   );

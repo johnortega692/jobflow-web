@@ -57,6 +57,15 @@ export function formatCostCodeRecord(rec: CostCodeRecord): string {
   return desc ? `${code} - ${desc}` : code;
 }
 
+/** Remove "(…)" segments from display labels (e.g. cost-code notes). */
+export function stripParentheticals(text: string): string {
+  return text
+    .replace(/\s*\([^)]*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\/\s+/g, " / ")
+    .trim();
+}
+
 export function costCodeRecordKey(rec: CostCodeRecord): string {
   return `${fmtCell(rec.cost_code)}|${fmtCell(rec.cost_class)}`;
 }
@@ -78,14 +87,41 @@ export function formatCostCode(code: string, lib: BudgetLibrary, costClass?: str
   return c;
 }
 
-export function bucketLabel(bucket: BudgetBucket, index: number, lib: BudgetLibrary): string {
-  const codePart = formatCostCode(bucket.cost_code, lib, bucket.cost_class);
-  let base = `#${index + 1}: ${codePart} / Class ${bucket.cost_class}`;
-  const template = bucket.template_type ?? "";
-  if (template && TEMPLATE_LABELS[template]) {
-    base += ` (${TEMPLATE_LABELS[template]})`;
+export function formatCostClassPart(
+  costClass: string,
+  lib: BudgetLibrary,
+  templateType?: string | null,
+): string {
+  const cls = fmtCell(costClass) || "?";
+  let name = "";
+  for (const rec of lib.cost_classes) {
+    if (fmtCell(rec.cost_class) === cls) {
+      name = fmtCell(rec.description);
+      break;
+    }
   }
-  return base;
+  if (!name && templateType && TEMPLATE_LABELS[templateType]) {
+    name = TEMPLATE_LABELS[templateType];
+  }
+  name = name.replace(/\s*\(class\s+\d+\)\s*$/i, "").trim();
+  // Drop leading "Class N" if already present in the description
+  name = name.replace(new RegExp(`^class\\s*${cls}\\s*`, "i"), "").trim();
+  return name ? `Class ${cls} ${name}` : `Class ${cls}`;
+}
+
+export function bucketLabel(
+  bucket: BudgetBucket,
+  index: number,
+  lib: BudgetLibrary,
+  opts?: { showTemplate?: boolean; showIndex?: boolean },
+): string {
+  const codePart = stripParentheticals(formatCostCode(bucket.cost_code, lib, bucket.cost_class));
+  const classPart = stripParentheticals(
+    formatCostClassPart(bucket.cost_class, lib, bucket.template_type),
+  );
+  const showIndex = opts?.showIndex !== false;
+  const base = showIndex ? `#${index + 1}: ${codePart} / ${classPart}` : `${codePart} / ${classPart}`;
+  return stripParentheticals(base);
 }
 
 export function codeType(rec: CostCodeRecord): string {
@@ -417,11 +453,16 @@ export function computeManpowerBudgetHours(
   };
 }
 
-export function bucketDisplay(bucketId: string, buckets: BudgetBucket[], lib: BudgetLibrary): string {
+export function bucketDisplay(
+  bucketId: string,
+  buckets: BudgetBucket[],
+  lib: BudgetLibrary,
+  opts?: { showTemplate?: boolean; showIndex?: boolean },
+): string {
   if (!bucketId.trim()) return "";
   const idx = parseInt(bucketId, 10);
   if (Number.isNaN(idx) || idx < 0 || idx >= buckets.length) return bucketId;
-  return bucketLabel(buckets[idx], idx, lib);
+  return bucketLabel(buckets[idx], idx, lib, opts);
 }
 
 function lineMatchesRule(line: BudgetScanLine, rule: (typeof AUTO_PUSH_RULES)[0]): boolean {

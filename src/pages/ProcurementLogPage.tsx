@@ -131,7 +131,7 @@ export function ProcurementLogPage() {
       )}
 
       <p className="sds-filename-preview muted small">
-        PDF filename: <code>{pdfFilename}</code>
+        Filename: <code>{pdfFilename}</code>
       </p>
 
       <section className="card stack procurement-log-meta">

@@ -18,6 +18,8 @@ import {
   type ManpowerPhaseId,
   type ProjectBillingData,
 } from "../../types/projectBilling";
+import { ManpowerHeaderPencilIcon } from "./ManpowerHeaderPillIcons";
+import { ManpowerWeekDetailModal } from "./ManpowerWeekDetailModal";
 
 type Props = {
   billing: ProjectBillingData;
@@ -62,6 +64,7 @@ export function ManpowerPlanCard({
   const endDateLabel = formatJobDateLabel(projectEndIso);
   const [editing, setEditing] = useState<string | null>(null);
   const [draftHours, setDraftHours] = useState("");
+  const [detailWeek, setDetailWeek] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,6 +75,7 @@ export function ManpowerPlanCard({
     async (phaseId: ManpowerPhaseId, weekStartIso: string, raw: string) => {
       const n = raw.trim() === "" ? 0 : Number(raw);
       const hours = Number.isFinite(n) && n >= 0 ? n : 0;
+      // Flat week edit clears any day breakdown for this phase/week.
       const nextCells = withCellHours(billing.manpowerCells, phaseId, weekStartIso, hours);
       const next = { ...billing, manpowerCells: nextCells };
       onBillingChange(next);
@@ -79,6 +83,14 @@ export function ManpowerPlanCard({
       await onPersistQuiet(next);
     },
     [billing, onBillingChange, onPersistQuiet],
+  );
+
+  const saveWeekDetail = useCallback(
+    async (next: ProjectBillingData) => {
+      onBillingChange(next);
+      return onPersistQuiet(next);
+    },
+    [onBillingChange, onPersistQuiet],
   );
 
   async function addWeek() {
@@ -118,7 +130,15 @@ export function ManpowerPlanCard({
                       : ""
                   }`}
                 >
-                  {weekColumnLabel(w)}
+                  <button
+                    type="button"
+                    className="billing-manpower-header-pill"
+                    onClick={() => setDetailWeek(w)}
+                    title={`Plan daily hours for week of ${weekColumnLabel(w)}`}
+                  >
+                    <ManpowerHeaderPencilIcon />
+                    {weekColumnLabel(w)}
+                  </button>
                 </th>
               ))}
               <th className="billing-manpower-sticky billing-manpower-total-col num">Man-wks</th>
@@ -228,8 +248,18 @@ export function ManpowerPlanCard({
         })}
       </div>
       <p className="muted small billing-manpower-caption">
-        Cells = planned hours that week (halves OK, e.g. 20 = ½ man-week) · man-week = {HOURS_PER_MAN_WEEK} hrs
+        cells = week hours · man-week = {HOURS_PER_MAN_WEEK} hrs
       </p>
+
+      {detailWeek ? (
+        <ManpowerWeekDetailModal
+          weekStartIso={detailWeek}
+          billing={billing}
+          saving={saving}
+          onClose={() => setDetailWeek(null)}
+          onSave={saveWeekDetail}
+        />
+      ) : null}
     </section>
   );
 }

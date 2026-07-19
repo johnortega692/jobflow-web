@@ -136,8 +136,21 @@ export const PUSH_COLS = [
   "Notes",
 ] as const;
 
-/** Line-item columns shown in the Budget Maker table (exports still include Notes). */
-export const BUDGET_LINE_TABLE_COLS = PUSH_COLS.filter((c) => c !== "Notes");
+/** Line-item columns shown in the Budget Maker table (exports still include hidden fields). */
+export const BUDGET_LINE_TABLE_COLS = PUSH_COLS.filter(
+  (c) =>
+    c !== "Notes" &&
+    c !== "Quantity" &&
+    c !== "UoM" &&
+    c !== "Unit Cost" &&
+    c !== "Category",
+);
+
+/** Display labels for Budget Maker table headers (field keys stay unchanged). */
+export const BUDGET_LINE_TABLE_LABELS: Partial<Record<(typeof PUSH_COLS)[number], string>> = {
+  "PDF Code": "Code",
+  "Man Hours": "Hours",
+};
 
 export const SUMMARY_COLS = [
   "Work Item",

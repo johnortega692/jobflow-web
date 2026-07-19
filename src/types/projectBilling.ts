@@ -20,8 +20,13 @@ export type ManpowerPhase = {
 export type ManpowerCell = {
   phaseId: ManpowerPhaseId;
   weekStartIso: string;
-  /** Planned labor hours for this phase during this week. */
+  /** Planned labor hours for this phase during this week (sum of dayHours when set). */
   hours: number;
+  /**
+   * Optional Mon–Sun daily hours for this week.
+   * When present, `hours` should equal the sum of the seven values.
+   */
+  dayHours?: number[];
 };
 
 export type ManpowerPeriodActual = {
@@ -108,6 +113,13 @@ function normalizeManpowerPhases(raw: unknown): ManpowerPhase[] {
   return MANPOWER_PHASE_DEFS.map((def) => byId.get(def.id) ?? normalizeManpowerPhase(null, def));
 }
 
+function normalizeDayHours(raw: unknown): number[] | undefined {
+  if (!Array.isArray(raw) || raw.length !== 7) return undefined;
+  const days = raw.map((v) => num(v));
+  if (days.every((h) => h <= 0)) return undefined;
+  return days;
+}
+
 function normalizeManpowerCell(raw: unknown): ManpowerCell | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -115,9 +127,18 @@ function normalizeManpowerCell(raw: unknown): ManpowerCell | null {
   if (!MANPOWER_PHASE_IDS.has(phaseId)) return null;
   const weekStartIso = str(o.weekStartIso).trim();
   if (!weekStartIso) return null;
-  const hours = o.hours !== undefined ? num(o.hours) : num(o.crewCount) * HOURS_PER_MAN_WEEK;
+  const dayHours = normalizeDayHours(o.dayHours);
+  const hoursFromDays = dayHours ? dayHours.reduce((sum, h) => sum + h, 0) : 0;
+  const hours =
+    dayHours && hoursFromDays > 0
+      ? hoursFromDays
+      : o.hours !== undefined
+        ? num(o.hours)
+        : num(o.crewCount) * HOURS_PER_MAN_WEEK;
   if (hours <= 0) return null;
-  return { phaseId: phaseId as ManpowerPhaseId, weekStartIso, hours };
+  const cell: ManpowerCell = { phaseId: phaseId as ManpowerPhaseId, weekStartIso, hours };
+  if (dayHours) cell.dayHours = dayHours;
+  return cell;
 }
 
 function normalizeManpowerCells(raw: unknown): ManpowerCell[] {

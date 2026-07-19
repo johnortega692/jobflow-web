@@ -100,11 +100,10 @@ export function WorkOrderEditorPage() {
   const [totalPositions, setTotalPositions] = useState<WorkOrderTotalPositions>(defaultTotalPositions());
   const [showScanBoxes, setShowScanBoxes] = useState(false);
   const [selectedScanBox, setSelectedScanBox] = useState<ScanBoxKind | null>(null);
-  const [materialCategory, setMaterialCategory] = useState("");
+  const [materialQty, setMaterialQty] = useState("1");
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState("");
-  const [materialQty, setMaterialQty] = useState("1");
   const [parkingAmount, setParkingAmount] = useState("");
   const [supervisionHours, setSupervisionHours] = useState("");
   const [supervisionRate, setSupervisionRate] = useState("");
@@ -115,6 +114,7 @@ export function WorkOrderEditorPage() {
   const [deleting, setDeleting] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [detectionToast, setDetectionToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"controls" | "setup" | "materials" | "other">("controls");
@@ -137,16 +137,6 @@ export function WorkOrderEditorPage() {
   );
 
   const totals = useMemo(() => computeWorkOrderTotals(form), [form]);
-
-  const materialCategories = useMemo(() => {
-    const cats = new Set(materials.map((m) => m.category || "General"));
-    return Array.from(cats).sort((a, b) => a.localeCompare(b));
-  }, [materials]);
-
-  const filteredMaterials = useMemo(() => {
-    if (!materialCategory) return materials;
-    return materials.filter((m) => (m.category || "General") === materialCategory);
-  }, [materials, materialCategory]);
 
   async function applyEnhanceToBackground(pristineUrl: string, enhance: WorkOrderFormData["scan_enhance"]) {
     const enhanced = await applyScanEnhanceToDataUrl(pristineUrl, enhance);
@@ -218,7 +208,7 @@ export function WorkOrderEditorPage() {
       }
 
       if (parts.length) {
-        setNotice(`${parts.join(" and ")} detected from document`);
+        setDetectionToast(`${parts.join(" and ")} detected from document`);
       } else if (opts.force) {
         setError(
           "Could not detect EWO # or date on this document. Adjust scan regions or enter values manually.",
@@ -451,11 +441,11 @@ export function WorkOrderEditorPage() {
     setField("overlay_color", fonts.overlay_color);
   }
 
-  function onAddMaterialToCanvas() {
+  function onAddMaterialToCanvas(): boolean {
     const mat = materials.find((m) => m.name === selectedMaterial);
     if (!mat) {
       setError("Select a material from your library (Settings → Work orders).");
-      return;
+      return false;
     }
     const qty = Number(materialQty) || 1;
     setError(null);
@@ -467,6 +457,8 @@ export function WorkOrderEditorPage() {
       yOffset: form.overlays.length * 28,
     });
     setOverlays(addOverlays(form.overlays, [overlay]));
+    setSelectedMaterial("");
+    return true;
   }
 
   function onAddLaborToCanvas() {
@@ -704,7 +696,11 @@ export function WorkOrderEditorPage() {
       setOcrBusy(true);
       try {
         const job = await ocrJobFromBackground(backgroundUrl, scanBoxes);
-        if (job) setNotice((prev) => `${prev ? `${prev} · ` : ""}Job ${job} detected`);
+        if (job) {
+          setDetectionToast((prev) =>
+            prev ? `${prev} · Job ${job} detected` : `Job ${job} detected from document`,
+          );
+        }
       } catch {
         // Job detection is optional
       } finally {
@@ -814,7 +810,7 @@ export function WorkOrderEditorPage() {
     if (!workOrderId || !projectId) return;
     if (
       !window.confirm(
-        `Delete EWO #${ewoNumber}? This removes the work order and any uploaded PDF/image.`,
+        `Delete EWO ${ewoNumber}? This can't be undone.`,
       )
     ) {
       return;
@@ -852,11 +848,13 @@ export function WorkOrderEditorPage() {
 
   return (
     <div className="ewo-editor-page">
-      <div className="page-header">
-        <div>
+      <div className="ewo-editor-shell">
+      <div className="page-header ewo-editor-header">
+        <div className="ewo-editor-header-left">
           <p className="breadcrumb">
             <Link to="/projects">Projects</Link> /{" "}
-            <Link to={`/projects/${projectId}/work-orders`}>{contractJob.job_number || project.job_number}</Link> / EWO {ewoNumber}
+            <Link to={`/projects/${projectId}/work-orders`}>{contractJob.job_number || project.job_number}</Link> / EWO{" "}
+            {ewoNumber}
           </p>
           <h1>EWO {ewoNumber}</h1>
           {hasTransmittalContractSwitch(project) && (
@@ -867,8 +865,8 @@ export function WorkOrderEditorPage() {
             />
           )}
         </div>
-        <div className="row-gap wrap">
-          {savedAt && <span className="muted small">Saved {savedAt}</span>}
+        <div className="ewo-editor-header-actions">
+          {savedAt && <span className="muted small ewo-editor-saved">Saved {savedAt}</span>}
           <input
             ref={uploadRef}
             type="file"
@@ -883,17 +881,15 @@ export function WorkOrderEditorPage() {
             type="button"
             className="btn btn-secondary"
             disabled={uploading}
+            title={form.source_storage_path ? "Replace work order" : undefined}
             onClick={() => uploadRef.current?.click()}
           >
-            {uploading
-              ? "Uploading…"
-              : form.source_storage_path
-                ? "Replace work order"
-                : "Upload work order"}
+            {uploading ? "Uploading…" : form.source_storage_path ? "Replace" : "Upload work order"}
           </button>
           <button type="button" className="btn btn-secondary" onClick={() => setOptionsOpen(true)}>
             Options
           </button>
+          <span className="ewo-header-divider" aria-hidden="true" />
           <button
             type="button"
             className="btn btn-secondary"
@@ -905,16 +901,32 @@ export function WorkOrderEditorPage() {
           <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void onSave()}>
             {saving ? "Saving…" : "Save EWO"}
           </button>
+          <span className="ewo-header-divider" aria-hidden="true" />
           <button
             type="button"
-            className="btn btn-ghost btn-danger-soft"
+            className="ewo-header-delete"
             disabled={deleting || saving}
             onClick={() => void onDelete()}
           >
-            {deleting ? "Deleting…" : "Delete EWO"}
+            {deleting ? "Deleting…" : "Delete EWO…"}
           </button>
         </div>
       </div>
+
+      {detectionToast && (
+        <div className="ewo-detection-toast" role="status">
+          <span className="ewo-detection-toast-dot" aria-hidden="true" />
+          <span className="ewo-detection-toast-text">{detectionToast}</span>
+          <button
+            type="button"
+            className="ewo-detection-toast-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setDetectionToast(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {error && <div className="banner banner-error">{error}</div>}
       {notice && <div className="banner banner-ok">{notice}</div>}
@@ -967,10 +979,6 @@ export function WorkOrderEditorPage() {
           onSelectOverlay={setSelectedOverlayId}
           onRemoveSelectedOverlay={onRemoveSelectedOverlay}
           materials={materials}
-          materialCategories={materialCategories}
-          materialCategory={materialCategory}
-          onMaterialCategoryChange={setMaterialCategory}
-          filteredMaterials={filteredMaterials}
           selectedMaterial={selectedMaterial}
           onSelectedMaterialChange={setSelectedMaterial}
           materialQty={materialQty}
@@ -1014,6 +1022,7 @@ export function WorkOrderEditorPage() {
             scanSetupHint={scanSetupHint}
           />
         </div>
+      </div>
       </div>
 
       <WorkOrderOptionsModal

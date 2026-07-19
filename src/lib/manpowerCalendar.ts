@@ -2,6 +2,8 @@ import { isoDateToDisplay, parseFlexibleDate, toIsoDateValue } from "./dateInput
 import type { ManpowerCell, ManpowerPhaseId } from "../types/projectBilling";
 
 export const HOURS_PER_MAN_WEEK = 40;
+/** One crew member working one day. */
+export const HOURS_PER_CREW_DAY = 8;
 export const DEFAULT_MANPOWER_WEEK_COUNT = 8;
 
 function localFromParts(y: number, m: number, d: number): Date {
@@ -131,6 +133,86 @@ export function withCellHours(
 ): ManpowerCell[] {
   const next = cells.filter((c) => !(c.phaseId === phaseId && c.weekStartIso === weekStartIso));
   if (hours > 0) next.push({ phaseId, weekStartIso, hours });
+  return next;
+}
+
+/** Seven ISO dates Mon–Sun for a Monday week start. */
+export function weekDayIsos(mondayIso: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const [y, m, d] = mondayIso.split("-").map(Number);
+    const date = localFromParts(y!, m! - 1, d!);
+    date.setDate(date.getDate() + i);
+    return isoLocal(date);
+  });
+}
+
+const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+/** Short weekday + M/D for each day in the week. */
+export function weekDayColumnLabels(mondayIso: string): { weekday: string; dateLabel: string; iso: string }[] {
+  return weekDayIsos(mondayIso).map((iso, i) => {
+    const [, m, d] = iso.split("-").map(Number);
+    return { weekday: WEEKDAY_SHORT[i]!, dateLabel: `${m}/${d}`, iso };
+  });
+}
+
+export function emptyDayHours(): number[] {
+  return [0, 0, 0, 0, 0, 0, 0];
+}
+
+/** Day breakdown for a cell; seeds Monday when only a week total exists. */
+export function cellDayHours(
+  cells: ManpowerCell[],
+  phaseId: ManpowerPhaseId,
+  weekStartIso: string,
+): number[] {
+  const cell = cells.find((c) => c.phaseId === phaseId && c.weekStartIso === weekStartIso);
+  if (!cell) return emptyDayHours();
+  if (cell.dayHours && cell.dayHours.length === 7) {
+    return cell.dayHours.map((h) => (h > 0 ? h : 0));
+  }
+  if (cell.hours > 0) {
+    const days = emptyDayHours();
+    days[0] = cell.hours;
+    return days;
+  }
+  return emptyDayHours();
+}
+
+export function sumDayHours(dayHours: number[]): number {
+  return dayHours.reduce((sum, h) => sum + (Number.isFinite(h) && h > 0 ? h : 0), 0);
+}
+
+export function withCellDayHours(
+  cells: ManpowerCell[],
+  phaseId: ManpowerPhaseId,
+  weekStartIso: string,
+  dayHours: number[],
+): ManpowerCell[] {
+  const normalized = emptyDayHours().map((_, i) => {
+    const n = dayHours[i] ?? 0;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  });
+  const hours = sumDayHours(normalized);
+  const next = cells.filter((c) => !(c.phaseId === phaseId && c.weekStartIso === weekStartIso));
+  if (hours > 0) {
+    const cell: ManpowerCell = { phaseId, weekStartIso, hours };
+    if (normalized.some((h) => h > 0)) cell.dayHours = normalized;
+    next.push(cell);
+  }
+  return next;
+}
+
+/** Replace all phase day breakdowns for one week; week totals follow the day sums. */
+export function withWeekDayHours(
+  cells: ManpowerCell[],
+  weekStartIso: string,
+  byPhase: Record<ManpowerPhaseId, number[]>,
+): ManpowerCell[] {
+  let next = cells.filter((c) => c.weekStartIso !== weekStartIso);
+  for (const phaseId of Object.keys(byPhase) as ManpowerPhaseId[]) {
+    next = withCellDayHours(next, phaseId, weekStartIso, byPhase[phaseId] ?? emptyDayHours());
+  }
   return next;
 }
 

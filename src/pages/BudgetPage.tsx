@@ -3,9 +3,13 @@ import { useOutletContext } from "react-router-dom";
 import { BudgetSplitLineModal } from "../components/budget/BudgetSplitLineModal";
 import {
   BudgetIconAdd,
+  BudgetIconAutoPush,
   BudgetIconClear,
   BudgetIconDuplicate,
+  BudgetIconExcel,
   BudgetIconHide,
+  BudgetIconImport,
+  BudgetIconPdf,
   BudgetIconPush,
   BudgetIconRemove,
   BudgetIconSelectAll,
@@ -57,8 +61,7 @@ import {
   normalizeBudgetMaker,
   parseBudgetNumber,
   BUDGET_LINE_TABLE_COLS,
-  BUDGET_LINE_CATEGORIES,
-  BUDGET_UOM_OPTIONS,
+  BUDGET_LINE_TABLE_LABELS,
   type BudgetLibrary,
   type BudgetMakerData,
   type BudgetScanLine,
@@ -324,10 +327,12 @@ export function BudgetPage() {
       const contractLabel = TRANSMITTAL_CONTRACT_LABELS[activeContract];
       return (
         <span
-          className="budget-manpower-push-locked muted small"
+          className="budget-manpower-status-pill"
+          role="status"
           title={`${contractLabel} budget hours were sent to Manpower Cal (one-time push per contract)`}
         >
-          {contractLabel} Manpower pushed{" "}
+          <span className="budget-manpower-status-dot" aria-hidden="true" />
+          Manpower: {contractLabel} Manpower pushed{" "}
           {new Date(priorPush.pushed_at).toLocaleString()}
           {priorPush.hours != null ? ` · ${priorPush.hours.toFixed(1)} hrs` : ""}
           {incl != null ? (incl ? " · incl. supervision" : " · field only") : ""}
@@ -339,7 +344,7 @@ export function BudgetPage() {
     const contractLabel = TRANSMITTAL_CONTRACT_LABELS[activeContract];
 
     return (
-      <>
+      <div className="budget-manpower-push-actions">
         <label className="checkbox-inline budget-manpower-supervision-opt">
           <input
             type="checkbox"
@@ -363,7 +368,7 @@ export function BudgetPage() {
             ? "Pushing to Manpower…"
             : `Push ${pushHours ? pushHours.toFixed(1) : "0"} hrs (${contractLabel})`}
         </button>
-      </>
+      </div>
     );
   }
 
@@ -575,35 +580,38 @@ export function BudgetPage() {
       {error && <div className="banner banner-error">{error}</div>}
 
       <div className="stack budget-maker-page">
-        <div className="row-between wrap">
-          <div>
-            <h2>Budget Maker</h2>
+        {savedAt && (
+          <div className="row-gap wrap budget-maker-page-header">
+            <span className="muted small">Saved {savedAt}</span>
           </div>
-          <div className="row-gap wrap">
-            {savedAt && <span className="muted small">Saved {savedAt}</span>}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowBuckets(true)}>
-              Buckets…
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void handleSave()}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-            {manpowerPushControl()}
-          </div>
-        </div>
+        )}
 
         <section
-          className={`card stack${pdfDragOver ? " budget-lines-section-dragover" : ""}`}
+          className={`card stack budget-tools-card${pdfDragOver ? " budget-lines-section-dragover" : ""}`}
           onDragEnter={onPdfDragEnter}
           onDragOver={onPdfDragOver}
           onDragLeave={onPdfDragLeave}
           onDrop={onPdfDrop}
         >
-          <div className="row-gap wrap">
+          <div className="budget-tools-row budget-tools-row--primary">
+            <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void handleSave()}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowBuckets(true)}>
+              Buckets…
+            </button>
+            <span className="budget-tools-spacer" aria-hidden="true" />
+            {manpowerPushControl()}
+          </div>
+
+          <div className="budget-tools-row">
             <label
-              className="btn btn-primary btn-sm"
+              className="btn btn-secondary btn-sm budget-toolbar-btn"
               style={scanning ? { opacity: 0.65, pointerEvents: "none" } : undefined}
+              title="Import a Job Cost Summary PDF into line items"
             >
-              {scanning ? "Scanning…" : "Open PDF"}
+              <BudgetIconImport />
+              {scanning ? "Scanning…" : "Import PDF"}
               <input
                 ref={pdfRef}
                 type="file"
@@ -616,8 +624,41 @@ export function BudgetPage() {
                 onChange={(e) => void onPdfFile(e.target.files?.[0] ?? null)}
               />
             </label>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={runAutoPush}>
-              Auto-push
+            <span className="budget-tools-divider" aria-hidden="true" />
+            <div className="budget-attached-cluster" role="group" aria-label="Export">
+              <span className="budget-attached-cluster-label">Export</span>
+              <button type="button" className="budget-attached-cluster-btn" onClick={exportExcel}>
+                <BudgetIconExcel />
+                Excel
+              </button>
+              <button type="button" className="budget-attached-cluster-btn" onClick={() => void exportPdf()}>
+                <BudgetIconPdf />
+                Budget PDF
+              </button>
+              <button type="button" className="budget-attached-cluster-btn" onClick={() => void exportHoursPdf()}>
+                <BudgetIconPdf />
+                Hours PDF
+              </button>
+            </div>
+            <button
+              type="button"
+              className={`budget-toggle-chip${draft.combine_cost_codes_on_export !== false ? " budget-toggle-chip--on" : ""}`}
+              aria-pressed={draft.combine_cost_codes_on_export !== false}
+              onClick={() =>
+                patch({ combine_cost_codes_on_export: draft.combine_cost_codes_on_export === false })
+              }
+            >
+              <span className="budget-toggle-chip-dot" aria-hidden="true" />
+              Combine same codes
+            </button>
+            <button
+              type="button"
+              className={`budget-toggle-chip${draft.hide_zero_amounts ? " budget-toggle-chip--on" : ""}`}
+              aria-pressed={draft.hide_zero_amounts}
+              onClick={() => patch({ hide_zero_amounts: !draft.hide_zero_amounts })}
+            >
+              <span className="budget-toggle-chip-dot" aria-hidden="true" />
+              Hide $0 rows
             </button>
             {hiddenCount > 0 && (
               <button
@@ -628,37 +669,12 @@ export function BudgetPage() {
                 Unhide all ({hiddenCount})
               </button>
             )}
-            <span className="paint-action-sep" aria-hidden="true" />
-            <button type="button" className="btn btn-secondary btn-sm" onClick={exportExcel}>
-              Excel
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void exportPdf()}>
-              Budget PDF
-            </button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void exportHoursPdf()}>
-              Hours PDF
-            </button>
-            <label className="checkbox-inline budget-export-combine">
-              <input
-                type="checkbox"
-                checked={draft.combine_cost_codes_on_export !== false}
-                onChange={(e) => patch({ combine_cost_codes_on_export: e.target.checked })}
-              />
-              Combine same codes
-            </label>
-            <label className="checkbox-inline">
-              <input
-                type="checkbox"
-                checked={draft.hide_zero_amounts}
-                onChange={(e) => patch({ hide_zero_amounts: e.target.checked })}
-              />
-              Hide $0 rows
-            </label>
           </div>
-          <p className="sds-filename-preview muted small">
-            Budget PDF: <code>{budgetPdfName}</code>
+
+          <p className="budget-save-as-line">
+            Will save as: <code>{budgetPdfName}</code>
             {" · "}
-            Hours PDF: <code>{budgetHoursPdfName}</code>
+            <code>{budgetHoursPdfName}</code>
           </p>
         </section>
 
@@ -722,97 +738,131 @@ export function BudgetPage() {
           onDragLeave={onPdfDragLeave}
           onDrop={onPdfDrop}
         >
-          <div className="row-between wrap">
-            <div className="row-gap wrap budget-line-toolbar">
-              <button type="button" className="btn btn-success btn-sm btn-with-icon" onClick={addLine}>
+          <div className="budget-line-toolbar">
+            <div className="budget-toolbar-group">
+              <button type="button" className="btn btn-success btn-sm budget-toolbar-btn" onClick={addLine}>
                 <BudgetIconAdd />
                 Add
               </button>
-              <button type="button" className="btn btn-secondary btn-sm btn-with-icon" onClick={duplicateSelectedLines}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm budget-toolbar-btn"
+                onClick={duplicateSelectedLines}
+                disabled={selectedLineIds.size === 0}
+              >
                 <BudgetIconDuplicate />
                 Dupe
               </button>
+            </div>
+
+            <span className="budget-toolbar-divider" aria-hidden="true" />
+
+            <div className="budget-toolbar-group">
               <button
                 type="button"
-                className="btn btn-secondary btn-sm btn-icon"
+                className="btn btn-secondary btn-sm budget-toolbar-btn"
                 onClick={selectAllVisibleLines}
-                disabled={!visibleLines.length}
-                title={
-                  visibleLines.length && visibleLines.every((l) => selectedLineIds.has(l.id))
-                    ? "Clear selection"
-                    : "Select all"
-                }
-                aria-label={
-                  visibleLines.length && visibleLines.every((l) => selectedLineIds.has(l.id))
-                    ? "Clear selection"
-                    : "Select all"
-                }
               >
                 <BudgetIconSelectAll />
+                {visibleLines.length > 0 && visibleLines.every((l) => selectedLineIds.has(l.id))
+                  ? "Clear all"
+                  : "Select all"}
               </button>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm btn-icon"
+                className="btn btn-secondary btn-sm budget-toolbar-btn"
                 onClick={hideSelected}
-                title="Hide selected"
-                aria-label="Hide selected"
+                disabled={selectedLineIds.size === 0}
               >
                 <BudgetIconHide />
+                Hide
               </button>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm btn-icon"
+                className="btn btn-secondary btn-sm budget-toolbar-btn budget-toolbar-btn--danger"
                 onClick={removeSelectedLines}
-                title="Remove selected"
-                aria-label="Remove selected"
+                disabled={selectedLineIds.size === 0}
               >
                 <BudgetIconRemove />
+                Delete
               </button>
-              <span className="paint-action-sep" aria-hidden="true" />
-              <label className="budget-inline-label">
-                <select
-                  aria-label="Target bucket"
-                  value={String(targetBucket)}
-                  onChange={(e) => setTargetBucket(parseInt(e.target.value, 10))}
-                  disabled={!draft.buckets.length}
-                >
-                  {draft.buckets.map((b, i) => (
-                    <option key={i} value={String(i)}>
-                      {bucketLabel(b, i, lib)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span className="paint-action-sep" aria-hidden="true" />
-              <button type="button" className="btn btn-secondary btn-sm btn-with-icon" onClick={pushSelected}>
+            </div>
+
+            <span className="budget-toolbar-divider" aria-hidden="true" />
+
+            <div className="budget-attached-cluster" role="group" aria-label="Bucket actions">
+              <span className="budget-attached-cluster-label">Bucket</span>
+              <select
+                className="budget-bucket-cluster-select"
+                aria-label="Target bucket"
+                value={String(targetBucket)}
+                onChange={(e) => setTargetBucket(parseInt(e.target.value, 10))}
+                disabled={!draft.buckets.length}
+              >
+                {draft.buckets.map((b, i) => (
+                  <option key={i} value={String(i)}>
+                    {bucketLabel(b, i, lib, { showIndex: false, showTemplate: false })}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="budget-attached-cluster-btn budget-attached-cluster-btn--push"
+                onClick={pushSelected}
+                disabled={selectedLineIds.size === 0}
+              >
                 <BudgetIconPush />
                 Push
               </button>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm btn-icon"
+                className="budget-attached-cluster-btn"
                 onClick={clearSelectedBuckets}
-                title="Clear selected buckets"
-                aria-label="Clear selected buckets"
+                disabled={selectedLineIds.size === 0}
+                title="Clear bucket assignment"
               >
                 <BudgetIconClear />
+                Clear
               </button>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm btn-icon"
+                className="budget-attached-cluster-btn"
                 onClick={openSplitDialog}
                 disabled={selectedLineIds.size !== 1 || !draft.buckets.length}
-                title="Split one selected line across buckets"
-                aria-label="Split line"
+                title="Split one line across buckets"
               >
                 <BudgetIconSplit />
+                Split
               </button>
             </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm budget-toolbar-btn"
+              onClick={runAutoPush}
+              title="Auto-assign lines to buckets using rules"
+            >
+              <BudgetIconAutoPush />
+              Auto-push
+            </button>
+
+            {selectedLineIds.size > 0 && (
+              <span className="budget-selection-chip">
+                {selectedLineIds.size} selected
+                <button
+                  type="button"
+                  className="budget-selection-chip-clear"
+                  onClick={() => setSelectedLineIds(new Set())}
+                >
+                  clear
+                </button>
+              </span>
+            )}
           </div>
 
           {!draft.lines.length && (
             <p className="muted budget-drop-hint">
-              Drag and drop a Job Cost Summary PDF here, use <strong>Open PDF</strong>, or click{" "}
+              Drag and drop a Job Cost Summary PDF here, use <strong>Import PDF</strong>, or click{" "}
               <strong>Add</strong> to enter job cost items by hand.
             </p>
           )}
@@ -823,12 +873,8 @@ export function BudgetPage() {
                 <colgroup>
                   <col className="budget-col-check" />
                   <col className="budget-col-bucket" />
-                  <col className="budget-col-category" />
                   <col className="budget-col-code" />
                   <col className="budget-col-desc" />
-                  <col className="budget-col-qty" />
-                  <col className="budget-col-uom" />
-                  <col className="budget-col-unitcost" />
                   <col className="budget-col-amount" />
                   <col className="budget-col-hours" />
                 </colgroup>
@@ -836,7 +882,7 @@ export function BudgetPage() {
                   <tr>
                     <th></th>
                     {BUDGET_LINE_TABLE_COLS.map((c) => (
-                      <th key={c}>{c}</th>
+                      <th key={c}>{BUDGET_LINE_TABLE_LABELS[c] ?? c}</th>
                     ))}
                   </tr>
                 </thead>
@@ -855,21 +901,7 @@ export function BudgetPage() {
                           }}
                         />
                       </td>
-                      <td>{bucketDisplay(line.Bucket, draft.buckets, lib)}</td>
-                      <td>
-                        <select
-                          className="budget-cell-input"
-                          value={line.Category}
-                          onChange={(e) => patchLine(line.id, { Category: e.target.value })}
-                        >
-                          <option value="">—</option>
-                          {BUDGET_LINE_CATEGORIES.map((cat) => (
-                            <option key={cat} value={cat}>
-                              {cat}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
+                      <td>{bucketDisplay(line.Bucket, draft.buckets, lib, { showTemplate: false, showIndex: false })}</td>
                       <td>
                         <input
                           className="budget-cell-input budget-cell-code"
@@ -884,31 +916,6 @@ export function BudgetPage() {
                           value={line.Description}
                           onChange={(e) => patchLine(line.id, { Description: e.target.value })}
                           placeholder="Description"
-                        />
-                      </td>
-                      <td className="num">
-                        <input
-                          className="budget-cell-input budget-cell-num"
-                          value={line.Quantity ?? ""}
-                          onChange={(e) => patchLine(line.id, { Quantity: parseBudgetNumber(e.target.value) })}
-                          placeholder="0"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="budget-cell-input budget-cell-uom"
-                          value={line.UoM}
-                          onChange={(e) => patchLine(line.id, { UoM: e.target.value.toUpperCase() })}
-                          list="budget-uom-options"
-                          placeholder="EA"
-                        />
-                      </td>
-                      <td className="num">
-                        <input
-                          className="budget-cell-input budget-cell-num"
-                          value={line["Unit Cost"] ?? ""}
-                          onChange={(e) => patchLine(line.id, { "Unit Cost": parseBudgetNumber(e.target.value) })}
-                          placeholder="0"
                         />
                       </td>
                       <td className="num">
@@ -931,11 +938,6 @@ export function BudgetPage() {
                   ))}
                 </tbody>
               </table>
-              <datalist id="budget-uom-options">
-                {BUDGET_UOM_OPTIONS.map((uom) => (
-                  <option key={uom} value={uom} />
-                ))}
-              </datalist>
             </div>
           )}
         </section>

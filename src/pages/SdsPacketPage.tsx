@@ -418,7 +418,7 @@ export function SdsPacketPage() {
           </div>
           <div className="sds-options-actions stack">
             <p className="sds-filename-preview muted small">
-              PDF filename: <code>{outputFilename}</code>
+              Filename: <code>{outputFilename}</code>
             </p>
             <p
               className={`sds-readiness-line small${readiness.gaps.length ? " sds-readiness-line--warn" : readiness.sectionCount ? " sds-readiness-line--ok" : ""}`}

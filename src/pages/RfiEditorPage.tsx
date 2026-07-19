@@ -718,7 +718,7 @@ export function RfiEditorPage() {
               </label>
             </div>
             <p className="sds-filename-preview muted small">
-              <code>{outputFilename}</code>
+              Filename: <code>{outputFilename}</code>
             </p>
             <ul className="rfi-readiness-list" aria-label="PDF readiness">
               {readiness.map((item) => {

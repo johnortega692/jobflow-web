@@ -6,6 +6,7 @@ import {
   type TransmittalContract,
 } from "../../lib/jobInfo";
 import type { ProjectForm } from "../../types/database";
+import { SegmentedControl } from "../SegmentedControl";
 
 type Props = {
   project: Pick<ProjectForm, "job_number" | "job_name" | "jobInfo">;
@@ -23,20 +24,16 @@ export function TradeContractTabs({ project, value, onChange, showJobLabel = fal
   return (
     <div className="transmittal-contract-row">
       <span className="muted small transmittal-contract-label">Contract</span>
-      <div className="job-tracker-tabs transmittal-contract-tabs" role="tablist">
-        {contracts.map((contract) => (
-          <button
-            key={contract}
-            type="button"
-            role="tab"
-            aria-selected={value === contract}
-            className={`job-tracker-tab${value === contract ? " job-tracker-tab--active" : ""}`}
-            onClick={() => onChange(contract)}
-          >
-            {TRANSMITTAL_CONTRACT_LABELS[contract]}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        className="transmittal-contract-tabs"
+        aria-label="Contract"
+        options={contracts.map((contract) => ({
+          value: contract,
+          label: TRANSMITTAL_CONTRACT_LABELS[contract],
+        }))}
+        value={value}
+        onChange={onChange}
+      />
       {showJobLabel && (
         <span className="muted small">
           {job.job_number}
