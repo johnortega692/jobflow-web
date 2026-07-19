@@ -14,8 +14,8 @@ import {
 } from "./pdfDrawCore";
 import {
   RFI_ACTION_LABELS,
-  RFI_EFFECT_LABELS,
   RFI_REASON_LABELS,
+  formatRfiImpactSummary,
 } from "./rfiFormLabels";
 import type { RfiPrintInput } from "./rfiPrint";
 import { rfiLetterheadContactLines } from "./rfiPrint";
@@ -287,13 +287,6 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
         { checked: form.action_approval, label: RFI_ACTION_LABELS.action_approval },
       ],
     },
-    {
-      title: "PROBABLE EFFECT",
-      items: RFI_EFFECT_LABELS.map(({ key, label }) => ({
-        checked: Boolean(form[key]),
-        label,
-      })),
-    },
   ];
 
   colDefs.forEach((col, index) => {
@@ -312,6 +305,27 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
       itemY = drawCheckboxItem(page, cx, itemY, item.checked, item.label, font, cbColW - cbPad * 2);
     }
   });
+
+  // Impact column (replaces probable-effect checkboxes)
+  {
+    const impactColX = cbX + 2 * cbColW;
+    page.drawLine({
+      start: { x: impactColX, y: formTop - formRow1H },
+      end: { x: impactColX, y: formTop },
+      thickness: 1,
+      color: TEXT,
+    });
+    const cx = impactColX + cbPad;
+    const maxW = cbColW - cbPad * 2;
+    page.drawText("IMPACT", { x: cx, y: cbY, size: FS_HDR, font: bold, color: TEXT });
+    let itemY = cbY - 12;
+    const impactLines = wrapLines(formatRfiImpactSummary(form), font, FS_SM, maxW);
+    for (const line of impactLines) {
+      if (itemY < formTop - formRow1H + 4) break;
+      page.drawText(line, { x: cx, y: itemY, size: FS_SM, font, color: TEXT });
+      itemY -= 10;
+    }
+  }
 
   const fromName =
     form.from_name.trim() || (branding.pdfShow.signer_name ? branding.signerName : "");
@@ -365,7 +379,12 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
   if (form.pdf_show_response) {
     page.drawText("RESPONSE:", { x: M, y: y - FS, size: 8.5, font: bold, color: TEXT });
     y -= 12;
-    y = drawLinedBox(page, M, y, contentW, 137, "", font);
+    y = drawLinedBox(page, M, y, contentW, 100, "", font);
+    const respLineY = y - 4;
+    const respHalf = (contentW - 16) / 2;
+    drawSignatureBlock(page, M, respHalf, respLineY, "", "RESPONDED BY", font, bold);
+    drawSignatureBlock(page, M + respHalf + 16, respHalf, respLineY, "", "DATE", font, bold);
+    y = respLineY - 36;
   }
 
   const sigTop = Math.min(y - 28, 108);

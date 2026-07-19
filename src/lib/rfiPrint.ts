@@ -1,8 +1,8 @@
 import type { Project, RfiFormData } from "../types/database";
 import {
   RFI_ACTION_LABELS,
-  RFI_EFFECT_LABELS,
   RFI_REASON_LABELS,
+  formatRfiImpactSummary,
 } from "./rfiFormLabels";
 import { esc, pdfSignerDisplayName, printHtml, type PrintBranding } from "./printCore";
 import { pdfTitleFromFilename, rfiFilename } from "./pdfFilenames";
@@ -193,8 +193,8 @@ export function buildRfiPrintHtml(
               <div class="cb-item">${cb(form.action_approval)}${RFI_ACTION_LABELS.action_approval}</div>
             </td>
             <td>
-              <div class="cb-hdr">PROBABLE EFFECT</div>
-              ${RFI_EFFECT_LABELS.map(({ key, label }) => `<div class="cb-item">${cb(form[key])}${label}</div>`).join("")}
+              <div class="cb-hdr">IMPACT</div>
+              <div class="cb-item" style="white-space:normal;line-height:1.35;">${esc(formatRfiImpactSummary(form))}</div>
             </td>
           </tr>
         </table>
@@ -231,7 +231,13 @@ export function buildRfiPrintHtml(
   ${
     form.pdf_show_response
       ? `<div class="sec-lbl">RESPONSE:</div>
-  <div class="lined-box resp-box">${wlines("", 10)}</div>`
+  <div class="lined-box resp-box">${wlines("", 7)}</div>
+  <table class="sig-tbl" style="margin-top:4px;">
+    <tr>
+      <td style="width:60%;"><div class="sig-line"></div>RESPONDED BY</td>
+      <td style="width:40%;"><div class="sig-line"></div>DATE</td>
+    </tr>
+  </table>`
       : ""
   }
   <table class="sig-tbl">

@@ -110,37 +110,36 @@ export function RfiAttachmentsSection({
       <div className="rfi-attachments-layout">
         <div className="rfi-attachments-checks stack">
           <p className="muted small">Listed on PDF</p>
-          <label className="check">
+          <div className="rfi-chip-row rfi-attachments-chip-row" role="group" aria-label="Listed on PDF">
+            {(
+              [
+                { key: "attach_photos" as const, label: "Field photo(s)" },
+                { key: "attach_markup" as const, label: "Marked-up PDF / clouded drawing" },
+                { key: "attach_submittal" as const, label: "Submittal / product data sheet" },
+              ] as const
+            ).map(({ key, label }) => {
+              const selected = form[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`rfi-chip${selected ? " rfi-chip--selected" : ""}`}
+                  aria-pressed={selected}
+                  onClick={() => setField(key, !selected)}
+                >
+                  {selected ? <span className="rfi-chip-check" aria-hidden="true">✓</span> : null}
+                  {label}
+                </button>
+              );
+            })}
             <input
-              type="checkbox"
-              checked={form.attach_photos}
-              onChange={(e) => setField("attach_photos", e.target.checked)}
-            />
-            Field photo(s)
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={form.attach_markup}
-              onChange={(e) => setField("attach_markup", e.target.checked)}
-            />
-            Marked-up PDF / clouded drawing
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={form.attach_submittal}
-              onChange={(e) => setField("attach_submittal", e.target.checked)}
-            />
-            Submittal / product data sheet
-          </label>
-          <label>
-            Other attachment note
-            <input
+              className="rfi-attachments-other-input"
               value={form.attach_other}
               onChange={(e) => setField("attach_other", e.target.value)}
+              placeholder="Other attachment note"
+              aria-label="Other attachment note"
             />
-          </label>
+          </div>
         </div>
 
         <div className="rfi-attachments-upload stack">

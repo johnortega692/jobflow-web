@@ -2,6 +2,7 @@ import type { Database, Json } from "./database.generated";
 export type { Database, Json };
 import type { JobInfoData } from "./jobInfo";
 import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
+import { normalizeRfiImpactFields } from "../lib/rfiFormLabels";
 
 export type RfiAttachedFile = {
   id: string;
@@ -42,6 +43,8 @@ export interface RfiFormData {
   attach_submittal: boolean;
   attach_other: string;
   attached_files: RfiAttachedFile[];
+  /** Set when status is Closed; cleared on reopen. Used by the RFI log. */
+  closed_date: string;
   /** Billing contract identity for this RFI */
   contract: TransmittalContract;
 }
@@ -62,8 +65,8 @@ export const defaultRfiFormData = (): RfiFormData => {
     spec_ref: "",
     drawing_ref: "",
     detail_no: "",
-    cost_change: "TBD",
-    sched_change: "TBD",
+    cost_change: "",
+    sched_change: "",
     question: "",
     solution_text: "",
     impact_notes: "",
@@ -86,6 +89,7 @@ export const defaultRfiFormData = (): RfiFormData => {
     attach_submittal: false,
     attach_other: "",
     attached_files: [],
+    closed_date: "",
     contract: "paint",
   };
 };
@@ -116,7 +120,7 @@ export function normalizeRfiFormData(raw: unknown): RfiFormData {
   const base = defaultRfiFormData();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
   const o = raw as Record<string, unknown>;
-  return {
+  return normalizeRfiImpactFields({
     ...base,
     rfi_date: typeof o.rfi_date === "string" ? o.rfi_date : base.rfi_date,
     due_date: typeof o.due_date === "string" ? o.due_date : base.due_date,
@@ -150,8 +154,9 @@ export function normalizeRfiFormData(raw: unknown): RfiFormData {
     attach_markup: rfiBool(o.attach_markup, base.attach_markup),
     attach_submittal: rfiBool(o.attach_submittal, base.attach_submittal),
     attached_files: normalizeRfiAttachedFiles(o.attached_files ?? base.attached_files),
+    closed_date: typeof o.closed_date === "string" ? o.closed_date : base.closed_date,
     contract: normalizeTransmittalContract(o.contract),
-  };
+  });
 }
 
 export function rfiContractFromData(raw: unknown): TransmittalContract {
