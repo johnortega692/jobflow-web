@@ -70,7 +70,7 @@ export const defaultRfiFormData = (): RfiFormData => {
     question: "",
     solution_text: "",
     impact_notes: "",
-    pdf_show_solution: true,
+    pdf_show_solution: false,
     pdf_show_response: true,
     reason_insufficient: false,
     reason_conflict: false,
