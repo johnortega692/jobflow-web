@@ -488,7 +488,6 @@ export function TransmittalPage() {
       {status && <div className="banner banner-ok">{status}</div>}
 
       <div className="row-gap wrap transmittal-tools-row">
-        <h2 className="transmittal-tools-title">Transmittal</h2>
         <button type="button" className="btn btn-secondary btn-small" onClick={onEmailRelay}>
           Email Relay
         </button>

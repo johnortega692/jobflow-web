@@ -127,7 +127,7 @@ export function ProjectRfisPage() {
   }
 
   return (
-    <section className="card stack">
+    <section className="card stack project-rfis-page">
       <div className="row-between" style={{ marginBottom: "1rem" }}>
         <div>
           <h2>RFIs</h2>

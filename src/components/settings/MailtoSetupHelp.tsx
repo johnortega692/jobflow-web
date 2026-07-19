@@ -29,7 +29,7 @@ export function MailtoSetupHelp({ compact = false, method = "gmail" }: Props) {
     <section className="stack mailto-setup-help settings-mailto-panel">
       <h2>Email on computers</h2>
       <p className="muted small">
-        <strong>Email vendor</strong> and transmittal relay copy <strong>formatted HTML</strong> to your clipboard,
+        <strong>Order Brushouts</strong> and transmittal relay copy <strong>formatted HTML</strong> to your clipboard,
         then open an <strong>empty</strong> compose window (to, cc, subject only). Press <strong>Ctrl+V</strong> in
         the message body for tables and signature — not plain text.
       </p>
@@ -125,7 +125,7 @@ export function MailtoSetupHelp({ compact = false, method = "gmail" }: Props) {
           <h3 className="mailto-setup-help-subhead">Quick test</h3>
           <p className="muted small">
             On a project dashboard, click a contact&apos;s <strong>email</strong> link. Gmail compose should open in a{" "}
-            <strong>new tab</strong>. Then try <strong>Email vendor</strong> in JobFlow — compose should also open in a
+            <strong>new tab</strong>. Then try <strong>Order Brushouts</strong> in JobFlow — compose should also open in a
             new tab; press <strong>Ctrl+V</strong> for HTML.
           </p>
           <p className="muted small">

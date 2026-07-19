@@ -132,6 +132,11 @@ export function jobFullAddressOneLine(
   return jobFullAddressLines(project, info).join(", ");
 }
 
+/** Architect street + city/state/zip from Job Setup. */
+export function jobArchitectAddressOneLine(info: Pick<JobInfoData, "architect_address" | "architect_city_state_zip">): string {
+  return [info.architect_address.trim(), info.architect_city_state_zip.trim()].filter(Boolean).join(", ");
+}
+
 export type ProjectPrintInfo = {
   job_number: string;
   job_name: string;

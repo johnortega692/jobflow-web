@@ -249,8 +249,6 @@ export function SdsPacketPage() {
 
   return (
     <div className="stack sds-packet-page">
-      <h2>Submittal package</h2>
-
       {error && <div className="banner banner-error">{error}</div>}
       {success && <div className="banner banner-ok">{success}</div>}
       {buildProgress && (
@@ -261,7 +259,6 @@ export function SdsPacketPage() {
 
       <div className="sds-setup-grid">
         <div className="card stack sds-cover-panel">
-          <h3>Cover &amp; project info</h3>
           {showContractSwitch && (
             <TradeContractTabs
               project={project}

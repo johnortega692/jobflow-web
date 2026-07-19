@@ -427,11 +427,7 @@ export function PaintSubmittalsPage() {
 
   return (
     <div className="stack paint-submittal-page">
-      <div className="row-between">
-        <div>
-          <h2>Paint submittals</h2>
-        </div>
-        <div className="row-gap wrap paint-submittal-header-actions">
+      <div className="row-gap wrap paint-submittal-header-actions">
           <div className="row-gap wrap">
             <button
               type="button"
@@ -465,7 +461,6 @@ export function PaintSubmittalsPage() {
             </button>
           </div>
         </div>
-      </div>
 
       <p className="sds-filename-preview muted small">
         PDF filename: <code>{submittalPdfFilename}</code>
@@ -483,7 +478,7 @@ export function PaintSubmittalsPage() {
 
       <section className="card paint-action-row">
         <button type="button" className="btn btn-secondary" onClick={() => setEmailOpen(true)}>
-          Email vendor
+          Order Brushouts
         </button>
         <label className="check paint-action-check">
           <input

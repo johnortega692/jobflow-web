@@ -736,7 +736,7 @@ export function emptyFrpItem(): FrpItem {
 }
 
 export function emptyTrackItem(): TrackItem {
-  return { type: "", product: "", mat_code: "", quantity: "", unit: "EA", order: false };
+  return { type: "", product: "", mat_code: "", quantity: "", unit: "LF", order: false };
 }
 
 export function emptyEnclosure(): TransmittalEnclosure {

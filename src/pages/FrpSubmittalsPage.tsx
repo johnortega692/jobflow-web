@@ -4,9 +4,12 @@ import { FrpAddTrimModal } from "../components/frp/FrpAddTrimModal";
 import { FrpItemRow } from "../components/frp/FrpItemRow";
 import { FrpSubmittalMetaPanel } from "../components/frp/FrpSubmittalMetaPanel";
 import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal";
+import { WcOrderSamplesModal } from "../components/wallcovering/WcOrderSamplesModal";
+import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import type { FrpCatalog } from "../lib/frpCatalog";
 import { loadFrpCatalog } from "../lib/frpCatalog";
+import { loadContactDirectory } from "../lib/contactDirectory";
 import {
   applyFrpAutoLabels,
   frpItemsReadiness,
@@ -20,6 +23,9 @@ import {
   frpJobNumber,
   frpPrintInfo,
   hasDistinctFrpContract,
+  icbiProjectManager,
+  jobArchitectAddressOneLine,
+  jobFullAddressOneLine,
 } from "../lib/jobInfo";
 import { frpSubmittalFilename } from "../lib/pdfFilenames";
 import {
@@ -33,9 +39,11 @@ import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
 import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
 import { queuePendingItem } from "../lib/transmittalHelpers";
+import { orderedFrpItems } from "../lib/wcSampleOrderEmail";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
 import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext";
+import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
   defaultFrpSubmittal,
@@ -66,6 +74,7 @@ function frpItemHasContent(item: FrpItem): boolean {
 }
 
 export function FrpSubmittalsPage() {
+  const { user } = useAuth();
   const { branding } = useLetterhead();
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
@@ -78,6 +87,8 @@ export function FrpSubmittalsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const [vendors, setVendors] = useState<MaterialVendor[]>([]);
+  const [samplesOpen, setSamplesOpen] = useState(false);
 
   const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
   const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
@@ -141,12 +152,27 @@ export function FrpSubmittalsPage() {
     };
   }, [setError]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    void loadContactDirectory(user.id).then((d) => setVendors(d.material_vendors));
+  }, [user?.id]);
+
   const draftLocked = submittalDraftIsLocked(draft);
   const autoLabel = draft.auto_label !== false;
   const frpPrint = useMemo(() => frpPrintInfo(project, project.jobInfo), [project]);
   const frpNum = frpJobNumber(project);
   const frpName = frpJobName(project);
   const itemsReadiness = useMemo(() => frpItemsReadiness(draft.items), [draft.items]);
+  const sampleItems = useMemo(() => orderedFrpItems(draft.items), [draft.items]);
+
+  function startOrderSamples() {
+    if (!sampleItems.length) {
+      setError('Check the "Order" box on items to include in sample requests.');
+      return;
+    }
+    setError(null);
+    setSamplesOpen(true);
+  }
 
   function updateDraft(updater: (d: FrpSubmittalData) => FrpSubmittalData) {
     setDraft((current) => {
@@ -358,12 +384,9 @@ export function FrpSubmittalsPage() {
   return (
     <div className="stack frp-submittal-page">
       <div className="stack frp-submittal-page-header">
-        <div>
-          <h2>FRP</h2>
-          {hasDistinctFrpContract(project) && (
-            <p className="muted small">Contract: {frpJobLabel(project)}.</p>
-          )}
-        </div>
+        {hasDistinctFrpContract(project) && (
+          <p className="muted small">Contract: {frpJobLabel(project)}.</p>
+        )}
         <div className="row-gap wrap frp-submittal-header-actions">
           <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
             History
@@ -409,6 +432,12 @@ export function FrpSubmittalsPage() {
           change items, or update issue status below.
         </div>
       )}
+
+      <section className="card paint-action-row">
+        <button type="button" className="btn btn-secondary" onClick={startOrderSamples}>
+          Order samples
+        </button>
+      </section>
 
       <FrpSubmittalMetaPanel
         draft={draft}
@@ -561,6 +590,20 @@ export function FrpSubmittalsPage() {
           onLoadFrp={loadHistoryItems}
           onDelete={(n, r) => void onDeleteHistory(n, r)}
           onClose={() => setHistoryOpen(false)}
+        />
+      )}
+
+      {samplesOpen && (
+        <WcOrderSamplesModal
+          jobNumber={project.job_number}
+          jobName={project.job_name}
+          jobLocation={jobFullAddressOneLine(project, project.jobInfo)}
+          architect={project.architect}
+          specifierAddress={jobArchitectAddressOneLine(project.jobInfo)}
+          pmName={icbiProjectManager(project.jobInfo)}
+          items={sampleItems}
+          vendors={vendors}
+          onClose={() => setSamplesOpen(false)}
         />
       )}
     </div>

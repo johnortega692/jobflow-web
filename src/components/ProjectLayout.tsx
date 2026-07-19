@@ -149,7 +149,7 @@ function ProjectLayoutShell() {
           >
             {navOpen ? "Close menu" : activeModule.label}
           </button>
-          {!isDetailView && activeModule.id !== "submittals" && (
+          {!isDetailView && activeModule.id !== "submittals" && activeModule.id !== "orders" && (
             <div className="page-header project-page-header">
               <h1>{activeModule.label}</h1>
             </div>

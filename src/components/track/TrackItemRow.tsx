@@ -1,3 +1,4 @@
+import type { DragEvent } from "react";
 import type { TrackCatalog } from "../../lib/trackCatalog";
 import {
   findMatCodeForProduct,
@@ -5,14 +6,10 @@ import {
   stripProductPrefix,
   trackProductsForType,
 } from "../../lib/trackCatalog";
-import {
-  MATERIAL_ORDER_UNITS,
-  type TrackItem,
-  type TrackItemType,
-  type MaterialOrderUnit,
-} from "../../types/tradeDocuments";
+import type { TrackItem, TrackItemType, MaterialOrderUnit } from "../../types/tradeDocuments";
 
 const TRACK_TYPES: TrackItemType[] = ["Track", "Infill"];
+const FWP_UNITS: MaterialOrderUnit[] = ["LF", "EA"];
 
 type Props = {
   item: TrackItem;
@@ -20,11 +17,20 @@ type Props = {
   total: number;
   catalog: TrackCatalog;
   usage: Record<string, number>;
+  dragging: boolean;
+  dragOver: boolean;
   onChange: (patch: Partial<TrackItem>) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onRemove: () => void;
+  onDragStart: () => void;
+  onDragOver: (e: DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 };
+
+function qtyInputValue(raw: string): string {
+  return raw.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+}
 
 export function TrackItemRow({
   item,
@@ -32,13 +38,20 @@ export function TrackItemRow({
   total,
   catalog,
   usage,
+  dragging,
+  dragOver,
   onChange,
-  onMoveUp,
-  onMoveDown,
   onRemove,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
 }: Props) {
   const productOptions = item.type ? trackProductsForType(catalog, item.type, usage) : [];
-  const unitValue = (item.unit?.trim() || "EA") as MaterialOrderUnit;
+  const unitValue = (FWP_UNITS.includes((item.unit?.trim() || "LF") as MaterialOrderUnit)
+    ? item.unit?.trim() || "LF"
+    : "LF") as MaterialOrderUnit;
 
   function onTypeChange(type: TrackItemType) {
     onChange({ type, product: "", mat_code: "" });
@@ -51,13 +64,34 @@ export function TrackItemRow({
   }
 
   return (
-    <div className="track-item-block">
-      <div className="track-item-row" data-index={index}>
-        <span className="track-row-num" aria-hidden="true">
-          {index + 1}.
-        </span>
-        <label className="track-check">
-          <span className="paint-col-head">Order</span>
+    <div
+      className={`fwp-item-block${dragging ? " fwp-item-block--dragging" : ""}${dragOver ? " fwp-item-block--dragover" : ""}`}
+      data-index={index}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+    >
+      <div className="fwp-item-row" role="row">
+        <button
+          type="button"
+          className="fwp-row-handle"
+          draggable
+          aria-label={`Reorder row ${index + 1}`}
+          title="Drag to reorder"
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", String(index));
+            onDragStart();
+          }}
+          onDragEnd={onDragEnd}
+        >
+          ⠿
+        </button>
+
+        <label className="fwp-check" role="cell">
           <input
             type="checkbox"
             checked={item.order}
@@ -65,11 +99,12 @@ export function TrackItemRow({
             aria-label={`Order row ${index + 1}`}
           />
         </label>
-        <label className="track-col track-col--type">
-          <span className="paint-col-head">Type</span>
+
+        <div className="fwp-col fwp-col-type" role="cell">
           <select
             value={item.type}
             onChange={(e) => onTypeChange(e.target.value as TrackItemType)}
+            aria-label={`Type row ${index + 1}`}
           >
             <option value="">—</option>
             {TRACK_TYPES.map((t) => (
@@ -78,13 +113,14 @@ export function TrackItemRow({
               </option>
             ))}
           </select>
-        </label>
-        <label className="track-col track-col--product">
-          <span className="paint-col-head">Product</span>
+        </div>
+
+        <div className="fwp-col fwp-col-product" role="cell">
           <select
             value={item.product}
             onChange={(e) => onProductChange(e.target.value)}
             disabled={!item.type}
+            aria-label={`Product row ${index + 1}`}
           >
             <option value="">—</option>
             {productOptions.map((opt) => (
@@ -93,63 +129,49 @@ export function TrackItemRow({
               </option>
             ))}
           </select>
-        </label>
-        <label className="track-col track-col--code">
-          <span className="paint-col-head">Mat code</span>
+        </div>
+
+        <div className="fwp-col fwp-col-code" role="cell">
           <input
             value={item.mat_code ? matCodeDisplay(item.mat_code, catalog) : ""}
             readOnly
             tabIndex={-1}
             aria-readonly="true"
+            aria-label={`Mat code row ${index + 1}`}
           />
-        </label>
-        <label className="track-col track-col--qty">
-          <span className="paint-col-head">Qty</span>
+        </div>
+
+        <div className="fwp-qty-group" role="cell">
           <input
-            value={item.quantity}
-            onChange={(e) => onChange({ quantity: e.target.value })}
+            className="fwp-qty-input"
             inputMode="decimal"
+            value={item.quantity}
+            placeholder="Qty"
+            onChange={(e) => onChange({ quantity: qtyInputValue(e.target.value) })}
+            aria-label={`Quantity row ${index + 1}`}
           />
-        </label>
-        <label className="track-col track-col--unit">
-          <span className="paint-col-head">Unit</span>
           <select
+            className="fwp-unit-select"
             value={unitValue}
             onChange={(e) => onChange({ unit: e.target.value as MaterialOrderUnit })}
             aria-label={`Unit row ${index + 1}`}
           >
-            {MATERIAL_ORDER_UNITS.map((u) => (
+            {FWP_UNITS.map((u) => (
               <option key={u} value={u}>
                 {u}
               </option>
             ))}
           </select>
-        </label>
-        <div className="track-row-actions">
+        </div>
+
+        <div className="fwp-row-actions" role="cell">
           <button
             type="button"
-            className="btn btn-secondary btn-icon"
-            onClick={onMoveUp}
-            disabled={index === 0}
-            aria-label="Move up"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-icon"
-            onClick={onMoveDown}
-            disabled={index >= total - 1}
-            aria-label="Move down"
-          >
-            ↓
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-icon"
+            className="btn btn-icon btn-small btn-danger-soft"
             onClick={onRemove}
             disabled={total <= 1}
-            aria-label="Remove row"
+            title="Remove row"
+            aria-label={`Remove row ${index + 1}`}
           >
             ×
           </button>

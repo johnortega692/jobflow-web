@@ -38,7 +38,7 @@ export function wallcoveringItemsToOrderForm(
       color: i.color,
       quantity: i.qty,
       unit: i.unit?.trim() || "EA",
-      notes: i.notes,
+      notes: i.notes.trim(),
       vendor,
     }));
 }
@@ -50,6 +50,7 @@ export async function downloadWallcoveringOrderForm(
 ): Promise<void> {
   const po = job.po_number?.trim() ?? "";
   const filename = wallcoveringOrderFormFilename(job.project_name, job.job_number, po);
+  const includeNotes = job.items.some((item) => item.notes.trim());
   await downloadOrderFormPdf({
     filename,
     branding,
@@ -63,21 +64,27 @@ export async function downloadWallcoveringOrderForm(
     ],
     detailsSectionTitle: "MATERIAL DETAILS",
     table: {
-      columns: ["#", "Product", "Manufacturer", "Color/Pattern", "Qty", "Unit", "Notes"],
-      colWeights: [5, 22, 16, 14, 10, 8, 25],
-      aligns: ["left", "left", "left", "left", "right", "left", "left"],
+      columns: includeNotes
+        ? ["#", "Product", "Manufacturer", "Color/Pattern", "Qty", "Unit", "Notes"]
+        : ["#", "Product", "Manufacturer", "Color/Pattern", "Qty", "Unit"],
+      colWeights: includeNotes ? [5, 22, 16, 14, 10, 8, 25] : [5, 28, 20, 19, 14, 14],
+      aligns: includeNotes
+        ? ["left", "left", "left", "left", "right", "left", "left"]
+        : ["left", "left", "left", "left", "right", "left"],
       borders: "rows",
       padY: 9,
       headerPadY: 5,
-      rows: job.items.map((item, i) => [
-        String(i + 1),
-        item.product,
-        item.manufacturer,
-        item.color,
-        item.quantity,
-        item.unit,
-        item.notes,
-      ]),
+      rows: job.items.map((item, i) => {
+        const base = [
+          String(i + 1),
+          item.product,
+          item.manufacturer,
+          item.color,
+          item.quantity,
+          item.unit,
+        ];
+        return includeNotes ? [...base, item.notes.trim()] : base;
+      }),
     },
     deliverySettings,
   });

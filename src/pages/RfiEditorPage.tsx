@@ -243,7 +243,7 @@ export function RfiEditorPage() {
   if (!project) return <p className="banner banner-error">{error ?? "Not found"}</p>;
 
   return (
-    <div className="page">
+    <div className="page rfi-editor-page">
       <div className="page-header">
         <div>
           <p className="breadcrumb">

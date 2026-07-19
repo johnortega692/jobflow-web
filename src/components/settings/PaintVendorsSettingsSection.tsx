@@ -93,7 +93,7 @@ export function PaintVendorsSettingsSection({
       <section className="stack">
         <h2>Compose email</h2>
         <p className="muted small">
-          How <strong>Email vendor</strong>, transmittal relay, and sample-order emails open on your computer.
+          How <strong>Order Brushouts</strong>, transmittal relay, and sample-order emails open on your computer.
           Saved to your account.
         </p>
         <label>
@@ -120,7 +120,7 @@ export function PaintVendorsSettingsSection({
         <section className="stack">
           <h2>Paint vendors</h2>
           <p className="muted small">
-            Used when you click <strong>Email vendor</strong> on paint submittals, transmittals, and brush-out
+            Used when you click <strong>Order Brushouts</strong> on paint submittals, transmittals, and brush-out
             requests. Uses your <strong>Compose email</strong> choice above. Shared company list (admin
             edits); overrides the default vendors.json list.
           </p>

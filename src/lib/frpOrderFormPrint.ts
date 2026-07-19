@@ -43,7 +43,7 @@ export function frpItemsToOrderForm(
         trim_size: isTrim ? i.trim_size : "",
         quantity: i.quantity,
         unit: i.unit?.trim() || "EA",
-        notes: i.notes,
+        notes: i.notes.trim(),
       };
     });
 }
@@ -55,11 +55,14 @@ export async function downloadFrpOrderForm(
 ): Promise<void> {
   const po = job.po_number?.trim() ?? "";
   const filename = frpOrderFormFilename(job.project_name, job.job_number, po);
+  const includeNotes = job.items.some((item) => item.notes.trim());
   await downloadOrderFormPdf({
     filename,
     branding,
     title: MATERIAL_PURCHASE_ORDER_TITLE,
     poNumber: po,
+    landscape: true,
+    narrowMargins: true,
     infoRows: [
       { label: "Project", value: job.project_name },
       { label: "Delivery Address", value: job.delivery_address },
@@ -68,23 +71,32 @@ export async function downloadFrpOrderForm(
     ],
     detailsSectionTitle: "ORDER DETAILS",
     table: {
-      columns: ["#", "Product", "Manufacturer", "Color", "Panel Size", "Length", "Qty", "Unit", "Notes"],
-      colWeights: [4, 16, 12, 10, 10, 10, 8, 8, 22],
-      aligns: ["left", "left", "left", "left", "left", "left", "right", "left", "left"],
+      columns: includeNotes
+        ? ["#", "Product", "Manufacturer", "Color", "Panel Size", "Length", "Qty", "Unit", "Notes"]
+        : ["#", "Product", "Manufacturer", "Color", "Panel Size", "Length", "Qty", "Unit"],
+      colWeights: includeNotes
+        ? [3, 28, 22, 10, 8, 6, 4, 5, 14]
+        : [3, 34, 28, 11, 8, 6, 4, 6],
+      aligns: includeNotes
+        ? ["left", "left", "left", "left", "left", "left", "right", "left", "left"]
+        : ["left", "left", "left", "left", "left", "left", "right", "left"],
       borders: "rows",
       padY: 9,
       headerPadY: 5,
-      rows: job.items.map((item, i) => [
-        String(i + 1),
-        item.product,
-        item.manufacturer,
-        item.color,
-        item.panel_size,
-        item.trim_size,
-        item.quantity,
-        item.unit,
-        item.notes,
-      ]),
+      fontSize: 10,
+      rows: job.items.map((item, i) => {
+        const base = [
+          String(i + 1),
+          item.product,
+          item.manufacturer,
+          item.color,
+          item.panel_size,
+          item.trim_size,
+          item.quantity,
+          item.unit,
+        ];
+        return includeNotes ? [...base, item.notes.trim()] : base;
+      }),
     },
     deliverySettings,
   });

@@ -162,6 +162,52 @@ export async function listMaterialOrderPosForJobs(
     }));
 }
 
+export type MaterialOrderPoHistoryEntry = {
+  poNumber: string;
+  scope: MaterialOrderPoScope;
+  vendorLabel: string;
+  deliveryAddress: string;
+  createdAt: string;
+};
+
+/** Unique POs for a project (newest first) — for regenerating order PDFs. */
+export async function listMaterialOrderPoHistoryForProject(
+  projectId: string,
+): Promise<MaterialOrderPoHistoryEntry[]> {
+  const id = projectId.trim();
+  if (!id) return [];
+
+  const { data, error } = await supabase
+    .from("jobflow_material_order_pos" as never)
+    .select("po_number, scope, vendor_label, delivery_address, created_at")
+    .eq("project_id" as never, id)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  const seen = new Set<string>();
+  const out: MaterialOrderPoHistoryEntry[] = [];
+  for (const row of (data ?? []) as Array<{
+    po_number?: string;
+    scope?: MaterialOrderPoScope;
+    vendor_label?: string;
+    delivery_address?: string;
+    created_at?: string;
+  }>) {
+    const poNumber = String(row.po_number ?? "").trim();
+    if (!poNumber || seen.has(poNumber)) continue;
+    seen.add(poNumber);
+    out.push({
+      poNumber,
+      scope: row.scope ?? "wallcovering",
+      vendorLabel: String(row.vendor_label ?? "").trim(),
+      deliveryAddress: String(row.delivery_address ?? "").trim(),
+      createdAt: String(row.created_at ?? ""),
+    });
+  }
+  return out;
+}
+
 export async function updateMaterialOrderPoTracking(
   id: string,
   patch: { receivedField?: boolean; completed?: boolean },

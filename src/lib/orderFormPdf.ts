@@ -30,6 +30,8 @@ export type OrderFormPdfTable = {
   borders?: "grid" | "rows";
   padY?: number;
   headerPadY?: number;
+  /** Table body + header text size. Defaults to body/date size (10). */
+  fontSize?: number;
 };
 
 export type OrderFormPdfOptions = {
@@ -39,11 +41,27 @@ export type OrderFormPdfOptions = {
   title?: string;
   /** Sequential PO e.g. 1058-002 — shown as badge + info row. */
   poNumber?: string;
+  /** Letter landscape (wider table). Default portrait. */
+  landscape?: boolean;
+  /** Tighter page margins (~0.25in). Default uses shared letter margins. */
+  narrowMargins?: boolean;
   infoRows: { label: string; value: string }[];
   detailsSectionTitle: string;
   table: OrderFormPdfTable;
   deliverySettings?: DeliverySchedulingSettings;
 };
+
+/** ~0.25in — matches RFI / tight print layouts. */
+const NARROW_MARGIN_X = 18;
+const NARROW_MARGIN_TOP = 18;
+const NARROW_MARGIN_BOTTOM = 24;
+
+/** Body text size — matches the date line. Title + company letterhead stay larger/smaller. */
+const BODY_SIZE = 10;
+const BODY_LINE = 13;
+const TITLE_SIZE = 16;
+const COMPANY_NAME_SIZE = 14;
+const COMPANY_CONTACT_SIZE = 9;
 
 /**
  * Purchase / material order form PDF (pdf-lib download — same path as paint submittals).
@@ -55,21 +73,29 @@ export async function buildOrderFormPdfBytes(
     branding,
     title = MATERIAL_PURCHASE_ORDER_TITLE,
     poNumber,
+    landscape = false,
+    narrowMargins = false,
     infoRows,
     detailsSectionTitle,
     table,
     deliverySettings = DEFAULT_DELIVERY_SCHEDULING,
   } = options;
   const ds = deliverySettings;
+  const marginX = narrowMargins ? NARROW_MARGIN_X : PDF_MARGIN_X;
+  const marginTop = narrowMargins ? NARROW_MARGIN_TOP : PDF_MARGIN_TOP;
+  const marginBottom = narrowMargins ? NARROW_MARGIN_BOTTOM : PDF_MARGIN_BOTTOM;
   const doc = await PDFDocument.create();
   const { font, bold } = await createLetterPdfFonts(doc);
   const logo = await embedLogoImage(doc, branding.logoUrl);
-  let page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
+  const pageSize: [number, number] = landscape
+    ? [LETTER_HEIGHT, LETTER_WIDTH]
+    : [LETTER_WIDTH, LETTER_HEIGHT];
+  let page = doc.addPage(pageSize);
   const pageWidth = page.getWidth();
   const centerX = pageWidth / 2;
-  const contentWidth = pageWidth - PDF_MARGIN_X * 2;
-  const footerTop = PDF_MARGIN_BOTTOM;
-  let y = page.getHeight() - PDF_MARGIN_TOP;
+  const contentWidth = pageWidth - marginX * 2;
+  const footerTop = marginBottom;
+  let y = page.getHeight() - marginTop;
 
   if (logo) {
     const maxW = 280;
@@ -80,13 +106,13 @@ export async function buildOrderFormPdfBytes(
     page.drawImage(logo, { x: centerX - lw / 2, y: y - lh, width: lw, height: lh });
     y -= lh + 8;
   } else if (branding.companyName.trim()) {
-    drawCenteredText(page, branding.companyName, centerX, y - 14, bold, 14);
-    y -= 22;
+    drawCenteredText(page, branding.companyName, centerX, y - COMPANY_NAME_SIZE, bold, COMPANY_NAME_SIZE);
+    y -= COMPANY_NAME_SIZE + 8;
   }
 
   page.drawLine({
-    start: { x: PDF_MARGIN_X, y },
-    end: { x: pageWidth - PDF_MARGIN_X, y },
+    start: { x: marginX, y },
+    end: { x: pageWidth - marginX, y },
     thickness: 1.5,
     color: TEXT,
   });
@@ -94,14 +120,23 @@ export async function buildOrderFormPdfBytes(
 
   const contact = (branding.companyContactLine || branding.companyInfo).trim();
   if (contact) {
-    y = drawCenteredWrappedText(page, contact, centerX, y, contentWidth, font, 9, 12);
+    y = drawCenteredWrappedText(
+      page,
+      contact,
+      centerX,
+      y,
+      contentWidth,
+      font,
+      COMPANY_CONTACT_SIZE,
+      COMPANY_CONTACT_SIZE + 3,
+    );
     y -= 14;
   }
 
   page.drawText(formatLongDate(), {
-    x: PDF_MARGIN_X,
-    y: y - 10,
-    size: 10,
+    x: marginX,
+    y: y - BODY_SIZE,
+    size: BODY_SIZE,
     font,
     color: TEXT,
   });
@@ -109,12 +144,12 @@ export async function buildOrderFormPdfBytes(
   const po = poNumber?.trim() ?? "";
   if (po) {
     const badge = `PO# ${po}`;
-    const badgeSize = 11;
+    const badgeSize = BODY_SIZE;
     const badgePadX = 10;
     const badgePadY = 5;
     const badgeW = bold.widthOfTextAtSize(badge, badgeSize) + badgePadX * 2;
     const badgeH = badgeSize + badgePadY * 2;
-    const badgeX = pageWidth - PDF_MARGIN_X - badgeW;
+    const badgeX = pageWidth - marginX - badgeW;
     const badgeY = y - badgeH;
     page.drawRectangle({
       x: badgeX,
@@ -133,11 +168,11 @@ export async function buildOrderFormPdfBytes(
   }
   y -= 28;
 
-  drawCenteredText(page, title, centerX, y - 14, bold, 16);
-  const titleW = bold.widthOfTextAtSize(title, 16);
+  drawCenteredText(page, title, centerX, y - TITLE_SIZE, bold, TITLE_SIZE);
+  const titleW = bold.widthOfTextAtSize(title, TITLE_SIZE);
   page.drawLine({
-    start: { x: centerX - titleW / 2, y: y - 18 },
-    end: { x: centerX + titleW / 2, y: y - 18 },
+    start: { x: centerX - titleW / 2, y: y - TITLE_SIZE - 4 },
+    end: { x: centerX + titleW / 2, y: y - TITLE_SIZE - 4 },
     thickness: 1,
     color: TEXT,
   });
@@ -146,20 +181,20 @@ export async function buildOrderFormPdfBytes(
   for (const row of infoRows) {
     const line = `${row.label}: ${row.value}`.trim();
     if (!line || line === `${row.label}:`) continue;
-    y = drawWrappedText(page, line, PDF_MARGIN_X, y, contentWidth, font, 11, 15);
+    y = drawWrappedText(page, line, marginX, y, contentWidth, font, BODY_SIZE, BODY_LINE);
     y -= 2;
   }
   y -= 8;
 
   let state: PdfTableState = { doc, page, y, font, bold };
-  state = drawSectionTitle(state, detailsSectionTitle, footerTop);
+  state = drawSectionTitle(state, detailsSectionTitle, footerTop, marginX, marginTop);
 
   if (!table.rows.length) {
-    state = ensureSpace(state, 28, footerTop);
+    state = ensureSpace(state, 28, footerTop, marginTop);
     state.page.drawText("No items have been added to this order form yet.", {
-      x: PDF_MARGIN_X,
-      y: state.y - 11,
-      size: 11,
+      x: marginX,
+      y: state.y - BODY_SIZE,
+      size: BODY_SIZE,
       font,
       color: MUTED,
     });
@@ -167,47 +202,47 @@ export async function buildOrderFormPdfBytes(
   } else {
     state = drawDataTable(
       state,
-      PDF_MARGIN_X,
+      marginX,
       table.columns,
       table.colWeights,
       table.rows,
-      9,
+      table.fontSize ?? BODY_SIZE,
       footerTop,
-      { aligns: table.aligns, borders: table.borders, padY: table.padY, headerPadY: table.headerPadY },
+      { aligns: table.aligns, borders: table.borders, padY: table.padY, headerPadY: table.headerPadY, marginTop },
     );
   }
 
-  state = drawSectionTitle(state, "DELIVERY SCHEDULING INFORMATION", footerTop);
+  state = drawSectionTitle(state, "DELIVERY SCHEDULING INFORMATION", footerTop, marginX, marginTop);
 
   type DeliveryLine =
     | { kind: "text"; text: string; bold?: boolean; size?: number }
     | { kind: "labeled"; label: string; value: string; size?: number };
 
   const deliveryLines: DeliveryLine[] = [
-    { kind: "text", text: "Warehouse Contact Info:", bold: true, size: 11 },
+    { kind: "text", text: "Warehouse Contact Info:", bold: true, size: BODY_SIZE },
     {
       kind: "text",
       text: `  o  ${ds.warehouse_contact_name} - ${ds.warehouse_contact_email} - Cell: ${ds.warehouse_contact_cell}`,
-      size: 10,
+      size: BODY_SIZE,
     },
-    { kind: "text", text: `  o  Main Office: ${ds.warehouse_main_office}`, size: 10 },
-    { kind: "labeled", label: "Receiving Hours:", value: ds.receiving_hours, size: 11 },
-    { kind: "labeled", label: "Dock Restrictions:", value: ds.dock_restrictions, size: 11 },
-    { kind: "labeled", label: "Is a lift gate needed?", value: ds.lift_gate_needed, size: 11 },
-    { kind: "text", text: "", size: 10 },
-    { kind: "text", text: ds.closing_note, size: 10 },
+    { kind: "text", text: `  o  Main Office: ${ds.warehouse_main_office}`, size: BODY_SIZE },
+    { kind: "labeled", label: "Receiving Hours:", value: ds.receiving_hours, size: BODY_SIZE },
+    { kind: "labeled", label: "Dock Restrictions:", value: ds.dock_restrictions, size: BODY_SIZE },
+    { kind: "labeled", label: "Is a lift gate needed?", value: ds.lift_gate_needed, size: BODY_SIZE },
+    { kind: "text", text: "", size: BODY_SIZE },
+    { kind: "text", text: ds.closing_note, size: BODY_SIZE },
   ];
 
   for (const entry of deliveryLines) {
-    const size = entry.size ?? 10;
+    const size = entry.size ?? BODY_SIZE;
     if (entry.kind === "text") {
       const useBold = Boolean(entry.bold);
       const lines = wrapLines(entry.text, useBold ? state.bold : state.font, size, contentWidth);
       for (const wrapped of lines.length ? lines : [""]) {
-        state = ensureSpace(state, size + 4, footerTop);
+        state = ensureSpace(state, size + 4, footerTop, marginTop);
         if (wrapped) {
           state.page.drawText(wrapped, {
-            x: PDF_MARGIN_X,
+            x: marginX,
             y: state.y - size,
             size,
             font: useBold ? state.bold : state.font,
@@ -226,10 +261,10 @@ export async function buildOrderFormPdfBytes(
     const valueLines = value ? wrapLines(value, state.font, size, valueMax) : [""];
 
     valueLines.forEach((wrapped, index) => {
-      state = ensureSpace(state, size + 4, footerTop);
+      state = ensureSpace(state, size + 4, footerTop, marginTop);
       if (index === 0) {
         state.page.drawText(label, {
-          x: PDF_MARGIN_X,
+          x: marginX,
           y: state.y - size,
           size,
           font: state.bold,
@@ -237,7 +272,7 @@ export async function buildOrderFormPdfBytes(
         });
         if (wrapped) {
           state.page.drawText(wrapped, {
-            x: PDF_MARGIN_X + labelWidth,
+            x: marginX + labelWidth,
             y: state.y - size,
             size,
             font: state.font,
@@ -246,7 +281,7 @@ export async function buildOrderFormPdfBytes(
         }
       } else if (wrapped) {
         state.page.drawText(wrapped, {
-          x: PDF_MARGIN_X + labelWidth,
+          x: marginX + labelWidth,
           y: state.y - size,
           size,
           font: state.font,
@@ -258,7 +293,7 @@ export async function buildOrderFormPdfBytes(
   }
 
   // Signature in normal flow (~20pt after closing paragraph), not page-bottom anchored.
-  state = drawOrderThankYouInFlow(state, branding, footerTop);
+  state = drawOrderThankYouInFlow(state, branding, footerTop, marginX, marginTop);
 
   return doc.save();
 }
@@ -278,21 +313,23 @@ function drawOrderThankYouInFlow(
   state: PdfTableState,
   branding: PrintBranding,
   contentBottom: number,
+  marginX: number,
+  marginTop: number,
 ): PdfTableState {
   const lines = orderThankYouLines(branding);
-  const lineHeight = 14;
-  const thankYouSize = 11;
-  const signerSize = 10.5;
+  const lineHeight = BODY_LINE;
+  const thankYouSize = BODY_SIZE;
+  const signerSize = BODY_SIZE;
   const gapAfterClosing = 20;
   const gapAfterThankYou = 18;
   const blockHeight =
     gapAfterClosing + thankYouSize + gapAfterThankYou + Math.max(lines.length, 1) * lineHeight;
 
-  let next = ensureSpace(state, blockHeight, contentBottom);
+  let next = ensureSpace(state, blockHeight, contentBottom, marginTop);
   next = { ...next, y: next.y - gapAfterClosing };
 
   next.page.drawText("Thank you,", {
-    x: PDF_MARGIN_X,
+    x: marginX,
     y: next.y - thankYouSize,
     size: thankYouSize,
     font: next.bold,
@@ -302,7 +339,7 @@ function drawOrderThankYouInFlow(
 
   for (const line of lines) {
     next.page.drawText(line, {
-      x: PDF_MARGIN_X,
+      x: marginX,
       y: next.y - signerSize,
       size: signerSize,
       font: next.font,
@@ -332,37 +369,48 @@ function drawCenteredWrappedText(
   return y;
 }
 
-function drawSectionTitle(state: PdfTableState, title: string, footerTop: number): PdfTableState {
+function drawSectionTitle(
+  state: PdfTableState,
+  title: string,
+  footerTop: number,
+  marginX: number,
+  marginTop: number,
+): PdfTableState {
   const height = 22;
-  let next = ensureSpace(state, height + 8, footerTop);
+  let next = ensureSpace(state, height + 8, footerTop, marginTop);
   const pageWidth = next.page.getWidth();
-  const width = pageWidth - PDF_MARGIN_X * 2;
+  const width = pageWidth - marginX * 2;
   next.page.drawRectangle({
-    x: PDF_MARGIN_X,
+    x: marginX,
     y: next.y - height,
     width,
     height,
     color: rgb(0.94, 0.94, 0.94),
   });
   next.page.drawRectangle({
-    x: PDF_MARGIN_X,
+    x: marginX,
     y: next.y - height,
     width: 4,
     height,
     color: rgb(0.2, 0.2, 0.2),
   });
   next.page.drawText(title, {
-    x: PDF_MARGIN_X + 12,
+    x: marginX + 12,
     y: next.y - height + 6,
-    size: 11,
+    size: BODY_SIZE,
     font: next.bold,
     color: TEXT,
   });
   return { ...next, y: next.y - height - 10 };
 }
 
-function ensureSpace(state: PdfTableState, need: number, footerTop: number): PdfTableState {
+function ensureSpace(
+  state: PdfTableState,
+  need: number,
+  footerTop: number,
+  marginTop: number,
+): PdfTableState {
   if (state.y - need >= footerTop) return state;
-  const page = state.doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
-  return { ...state, page, y: page.getHeight() - PDF_MARGIN_TOP };
+  const page = state.doc.addPage([state.page.getWidth(), state.page.getHeight()]);
+  return { ...state, page, y: page.getHeight() - marginTop };
 }

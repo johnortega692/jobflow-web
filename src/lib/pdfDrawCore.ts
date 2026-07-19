@@ -222,6 +222,8 @@ export type PdfTableDrawOptions = {
   padY?: number;
   /** Vertical padding inside header row; defaults to `padY` (use a smaller value for a shorter header). */
   headerPadY?: number;
+  /** Top margin when starting a continuation page. Defaults to `PDF_MARGIN_TOP`. */
+  marginTop?: number;
 };
 
 export function drawDataTable(
@@ -239,6 +241,7 @@ export function drawDataTable(
   const aligns = options.aligns ?? [];
   const padY = options.padY ?? (borders === "rows" ? 9 : 3);
   const headerPadY = options.headerPadY ?? padY;
+  const pageTop = options.marginTop ?? PDF_MARGIN_TOP;
   const rowHeight = fontSize + padY * 2;
   const headerHeight = fontSize + headerPadY * 2;
   let { doc, page, y, font, bold } = state;
@@ -249,8 +252,8 @@ export function drawDataTable(
 
   function newPageIfNeeded(need: number) {
     if (y - need >= contentBottom) return;
-    page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
-    y = page.getHeight() - PDF_MARGIN_TOP;
+    page = doc.addPage([page.getWidth(), page.getHeight()]);
+    y = page.getHeight() - pageTop;
   }
 
   function cellTextX(

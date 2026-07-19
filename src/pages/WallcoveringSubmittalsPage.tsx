@@ -6,7 +6,10 @@ import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal
 import { WallcoveringBulkAddModal } from "../components/wallcovering/WallcoveringBulkAddModal";
 import { WallcoveringItemRow } from "../components/wallcovering/WallcoveringItemRow";
 import { WallcoveringSubmittalMetaPanel } from "../components/wallcovering/WallcoveringSubmittalMetaPanel";
+import { WcOrderSamplesModal } from "../components/wallcovering/WcOrderSamplesModal";
+import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
+import { loadContactDirectory } from "../lib/contactDirectory";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
@@ -33,13 +36,18 @@ import {
 } from "../lib/wcItemLabels";
 import {
   applyTransmittalContractIfDistinct,
+  icbiProjectManager,
+  jobArchitectAddressOneLine,
+  jobFullAddressOneLine,
   wcPrintInfo,
 } from "../lib/jobInfo";
+import { orderedWallcoveringItems } from "../lib/wcSampleOrderEmail";
 import { downloadWallcoveringSubmittal } from "../lib/wallcoveringSubmittalPrint";
 import { wallcoveringSubmittalFilename } from "../lib/pdfFilenames";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
 import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext";
+import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
   defaultTransmittal,
@@ -74,6 +82,7 @@ function normalizeWcDraft(raw: WallcoveringSubmittalData): WallcoveringSubmittal
 }
 
 export function WallcoveringSubmittalsPage() {
+  const { user } = useAuth();
   const { branding } = useLetterhead();
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
@@ -87,6 +96,8 @@ export function WallcoveringSubmittalsPage() {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [savedTrackItem, setSavedTrackItem] = useState<WallcoveringItem | null>(null);
+  const [vendors, setVendors] = useState<MaterialVendor[]>([]);
+  const [samplesOpen, setSamplesOpen] = useState(false);
 
   const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
   const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
@@ -133,6 +144,11 @@ export function WallcoveringSubmittalsPage() {
     }
   }, [loading, tradeData.wallcovering_submittal, tradeData.wallcovering_submittal_history, syncBaseline]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    void loadContactDirectory(user.id).then((d) => setVendors(d.material_vendors));
+  }, [user?.id]);
+
   const showPreviousColor = draft.submittal_type === "substitution";
   const wcPrint = useMemo(() => wcPrintInfo(project, project.jobInfo), [project]);
   const draftLocked = submittalDraftIsLocked(draft);
@@ -141,6 +157,7 @@ export function WallcoveringSubmittalsPage() {
   const hasTrack = Boolean(draft.got_track) || draft.items.some(isTrackInfillItem);
   const contentCount = wcContentItems(draft.items).length;
   const itemsReadiness = useMemo(() => wcItemsReadiness(draft.items), [draft.items]);
+  const sampleItems = useMemo(() => orderedWallcoveringItems(draft.items), [draft.items]);
 
   function updateDraft(updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) {
     setDraft((current) => {
@@ -325,6 +342,15 @@ export function WallcoveringSubmittalsPage() {
     setStatus(checked ? "Submittal marked ordered." : "Submittal ordered cleared.");
   }
 
+  function startOrderSamples() {
+    if (!sampleItems.length) {
+      setError('Check the "Order" box on items to include in sample requests.');
+      return;
+    }
+    setError(null);
+    setSamplesOpen(true);
+  }
+
   async function onCopyToTracker() {
     setTrackerBusy(true);
     setError(null);
@@ -414,11 +440,7 @@ export function WallcoveringSubmittalsPage() {
 
   return (
     <div className="stack wc-submittal-page">
-      <div className="row-between">
-        <div>
-          <h2>Wallcovering submittals</h2>
-        </div>
-        <div className="row-gap wrap">
+      <div className="row-gap wrap">
           <button
             type="button"
             className="btn btn-outline-accent"
@@ -448,7 +470,6 @@ export function WallcoveringSubmittalsPage() {
             Download PDF
           </button>
         </div>
-      </div>
 
       <p className="sds-filename-preview muted small">
         PDF filename: <code>{submittalPdfFilename}</code>
@@ -466,6 +487,9 @@ export function WallcoveringSubmittalsPage() {
 
       <section className="card wc-action-bar">
         <div className="wc-main-buttons row-gap wrap">
+          <button type="button" className="btn btn-secondary" onClick={startOrderSamples}>
+            Order samples
+          </button>
           <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
             Submittal history…
           </button>
@@ -703,6 +727,20 @@ export function WallcoveringSubmittalsPage() {
               `Editing Submittal #${String(next.submittal_number).padStart(3, "0")} Rev ${next.revision_number} (draft). Save or issue when ready.`,
             );
           }}
+        />
+      )}
+
+      {samplesOpen && (
+        <WcOrderSamplesModal
+          jobNumber={project.job_number}
+          jobName={project.job_name}
+          jobLocation={jobFullAddressOneLine(project, project.jobInfo)}
+          architect={project.architect}
+          specifierAddress={jobArchitectAddressOneLine(project.jobInfo)}
+          pmName={icbiProjectManager(project.jobInfo)}
+          items={sampleItems}
+          vendors={vendors}
+          onClose={() => setSamplesOpen(false)}
         />
       )}
     </div>

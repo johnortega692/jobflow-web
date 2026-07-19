@@ -344,7 +344,7 @@ export function BrushOutRequestPage() {
           Link to job…
         </button>
         <button type="button" className="btn btn-warning" onClick={openEmail}>
-          Email vendor (brush-outs)
+          Order Brushouts
         </button>
         {draft.linked_job_key && (
           <Link className="btn btn-secondary" to={`/projects/${draft.linked_job_key}/submittals/paint`}>

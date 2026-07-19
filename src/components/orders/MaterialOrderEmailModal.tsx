@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
+import type { DeliverySchedulingSettings } from "../../lib/deliverySettings";
 import {
   DEFAULT_EMAIL_SIGNATURE,
   resolveEmailSignatureLogoUrl,
   type EmailSignatureSettings,
 } from "../../lib/emailSignature";
+import {
+  buildMaterialOrderEmailHtmlBody,
+  buildMaterialOrderEmailPlainBody,
+  buildMaterialOrderEmailSubject,
+  type MaterialOrderEmailItem,
+  type MaterialOrderEmailType,
+} from "../../lib/materialOrderEmail";
 import {
   composeEmailButtonLabel,
   loadPaintUserSettings,
@@ -15,60 +23,51 @@ import {
   copyHtmlToClipboard,
   openGmailComposeWithHtml,
 } from "../../lib/paintVendorEmail";
-import {
-  buildWcSampleOrderHtmlBody,
-  buildWcSampleOrderPlainBody,
-  buildWcSampleOrderSubject,
-  type WcSampleOrderItem,
-} from "../../lib/wcSampleOrderEmail";
 import type { MaterialVendor } from "../../types/contactDirectory";
 
 type Props = {
+  materialType: MaterialOrderEmailType;
   jobNumber: string;
   jobName: string;
-  jobLocation: string;
-  architect: string;
-  /** From Job Setup architect address fields. */
-  specifierAddress?: string;
-  /** ICBI PM from Job Setup. */
-  pmName?: string;
-  items: WcSampleOrderItem[];
+  poNumber: string;
+  deliveryAddress: string;
+  specifier: string;
+  items: MaterialOrderEmailItem[];
+  delivery: DeliverySchedulingSettings;
   vendors: MaterialVendor[];
+  /** Download order PDF(s) for the selected vendor before compose. */
+  onDownloadPdfs: (vendor: MaterialVendor) => Promise<void>;
   onClose: () => void;
 };
 
-export function WcOrderSamplesModal({
+export function MaterialOrderEmailModal({
+  materialType,
   jobNumber,
   jobName,
-  jobLocation,
-  architect,
-  specifierAddress = "",
-  pmName = "",
+  poNumber,
+  deliveryAddress,
+  specifier,
   items,
+  delivery,
   vendors,
+  onDownloadPdfs,
   onClose,
 }: Props) {
   const { user } = useAuth();
   const { settings, branding } = useLetterhead();
-  const companyAddress = (settings.company_address || branding.companyAddress || "")
-    .trim()
-    .replace(/\s*\n\s*/g, ", ");
   const [vendorIdx, setVendorIdx] = useState<number | "">("");
-  const [address, setAddress] = useState(companyAddress);
-  const [subject, setSubject] = useState(() => buildWcSampleOrderSubject(jobNumber, jobName));
+  const [subject, setSubject] = useState(() =>
+    buildMaterialOrderEmailSubject(materialType, jobNumber, jobName),
+  );
   const [includeSignature, setIncludeSignature] = useState(false);
   const [signature, setSignature] = useState<EmailSignatureSettings>(DEFAULT_EMAIL_SIGNATURE);
   const [composeEmailMethod, setComposeEmailMethod] = useState<ComposeEmailMethod>("gmail");
   const [message, setMessage] = useState<string | null>(null);
-  const [openingCompose, setOpeningCompose] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (companyAddress && !address.trim()) setAddress(companyAddress);
-  }, [companyAddress, address]);
-
-  useEffect(() => {
-    setSubject(buildWcSampleOrderSubject(jobNumber, jobName));
-  }, [jobNumber, jobName]);
+    setSubject(buildMaterialOrderEmailSubject(materialType, jobNumber, jobName));
+  }, [materialType, jobNumber, jobName]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -87,41 +86,44 @@ export function WcOrderSamplesModal({
     branding.logoUrl,
   );
 
+  const manufacturer = items[0]?.manufacturer.trim() || "";
+
   const emailParams = useMemo(() => {
     if (!vendor) return null;
     return {
-      vendor: vendor.name || vendor.products || "Team",
-      jobNumber: jobNumber.trim(),
-      jobName: jobName.trim(),
-      jobLocation: jobLocation.trim(),
-      architect: architect.trim(),
-      specifierAddress: specifierAddress.trim(),
-      shippingAddress: address,
-      pmName: pmName.trim(),
+      materialType,
+      jobNumber,
+      jobName,
+      poNumber,
+      deliveryAddress,
+      specifier,
+      manufacturer,
       items,
+      delivery,
       signature: activeSignature,
       logoUrl: effectiveLogoUrl,
     };
   }, [
     vendor,
+    materialType,
     jobNumber,
     jobName,
-    jobLocation,
-    architect,
-    specifierAddress,
-    address,
-    pmName,
+    poNumber,
+    deliveryAddress,
+    specifier,
+    manufacturer,
     items,
+    delivery,
     activeSignature,
     effectiveLogoUrl,
   ]);
 
   const plainBody = useMemo(
-    () => (emailParams ? buildWcSampleOrderPlainBody(emailParams) : ""),
+    () => (emailParams ? buildMaterialOrderEmailPlainBody(emailParams) : ""),
     [emailParams],
   );
   const htmlBody = useMemo(
-    () => (emailParams ? buildWcSampleOrderHtmlBody(emailParams) : ""),
+    () => (emailParams ? buildMaterialOrderEmailHtmlBody(emailParams) : ""),
     [emailParams],
   );
 
@@ -133,9 +135,10 @@ export function WcOrderSamplesModal({
 
   async function openCompose() {
     if (!vendor || !emailParams) return;
-    setOpeningCompose(true);
+    setBusy(true);
     setMessage(null);
     try {
+      await onDownloadPdfs(vendor);
       const to = vendor.email.trim() ? [vendor.email.trim()] : [];
       await openGmailComposeWithHtml({
         to,
@@ -149,13 +152,13 @@ export function WcOrderSamplesModal({
       });
       setMessage(
         composeEmailMethod === "mailto"
-          ? "Opened in your mail app — paste HTML into the body if needed."
-          : "Gmail opened — paste HTML into the body (Ctrl+V).",
+          ? "PDF downloaded and mail app opened — attach the PDF, then paste HTML into the body."
+          : "PDF downloaded and Gmail opened — attach the PDF, then paste HTML (Ctrl+V).",
       );
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not open compose.");
+      setMessage(e instanceof Error ? e.message : "Could not prepare order email.");
     } finally {
-      setOpeningCompose(false);
+      setBusy(false);
     }
   }
 
@@ -164,11 +167,11 @@ export function WcOrderSamplesModal({
       <div
         className="modal card paint-email-modal paint-email-modal--sticky-actions"
         role="dialog"
-        aria-labelledby="wc-samples-title"
+        aria-labelledby="material-order-email-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="paint-email-modal-scroll stack">
-          <h2 id="wc-samples-title">Order samples</h2>
+          <h2 id="material-order-email-title">Email order</h2>
 
           <label>
             Vendor
@@ -180,7 +183,9 @@ export function WcOrderSamplesModal({
                 setVendorIdx(next === "" ? "" : Number(next));
               }}
             >
-              <option value="">{vendors.length ? "Select vendor…" : "No material vendors in Settings"}</option>
+              <option value="">
+                {vendors.length ? "Select vendor…" : "No material vendors in Settings"}
+              </option>
               {vendors.map((v, i) => (
                 <option key={`${v.email}-${v.name}-${i}`} value={i}>
                   {v.name}
@@ -190,30 +195,6 @@ export function WcOrderSamplesModal({
               ))}
             </select>
           </label>
-
-          <label>
-            Ship samples to
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder={companyAddress || "Company address from Settings"}
-            />
-          </label>
-          <div className="row-between wrap paint-email-ship-hint">
-            <p className="muted small" style={{ margin: 0 }}>
-              Defaults to company address from Settings — edit if shipping elsewhere.
-            </p>
-            {companyAddress && address.trim() !== companyAddress && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() => setAddress(companyAddress)}
-              >
-                Reset to company
-              </button>
-            )}
-          </div>
 
           <label>
             Subject
@@ -238,28 +219,32 @@ export function WcOrderSamplesModal({
               }}
             />
             <p className="muted small">
-              Formatted HTML is copied automatically — compose opens <strong>empty</strong>. Click in the body and press{" "}
-              <strong>Ctrl+V</strong>
-              {includeSignature ? " for the message and signature" : ""}. Use <strong>Copy HTML</strong> to copy again.
+              Order PDF downloads first — attach it in your email. Formatted HTML is copied
+              automatically; compose opens <strong>empty</strong> — press <strong>Ctrl+V</strong> in
+              the body.
             </p>
           </div>
 
-          {message && <div className="banner banner-ok">{message}</div>}
+          {message && (
+            <div className={`banner ${message.toLowerCase().includes("could not") ? "banner-error" : "banner-ok"}`}>
+              {message}
+            </div>
+          )}
         </div>
 
         <div className="paint-email-modal-sticker row-gap wrap">
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!vendor || openingCompose}
+            disabled={!vendor || busy}
             onClick={() => void openCompose()}
           >
-            {openingCompose ? "Opening…" : composeEmailButtonLabel(composeEmailMethod)}
+            {busy ? "Preparing…" : composeEmailButtonLabel(composeEmailMethod)}
           </button>
-          <button type="button" className="btn btn-secondary" disabled={!vendor} onClick={() => void copyHtml()}>
+          <button type="button" className="btn btn-secondary" disabled={!vendor || busy} onClick={() => void copyHtml()}>
             Copy HTML
           </button>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
             Close
           </button>
         </div>

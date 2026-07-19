@@ -249,7 +249,7 @@ export function EmailVendorModal({
         aria-labelledby="email-vendor-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="email-vendor-title">Email vendor</h2>
+        <h2 id="email-vendor-title">{isAtticStock ? "Email vendor" : "Order Brushouts"}</h2>
 
         <label>
           Vendor

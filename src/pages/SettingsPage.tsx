@@ -4,7 +4,6 @@ import { CompletedProjectsSettingsSection } from "../components/settings/Complet
 import { BudgetCatalogSettingsSection } from "../components/settings/BudgetCatalogSettingsSection";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
-import { ManpowerCalSettingsSection } from "../components/settings/ManpowerCalSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
 import { PaintVendorsSettingsSection } from "../components/settings/PaintVendorsSettingsSection";
 import { SpecSectionsSettingsSection } from "../components/settings/SpecSectionsSettingsSection";
@@ -41,7 +40,6 @@ const SETTINGS_TABS = [
   { id: "paint-vendors", label: "Paint vendors" },
   { id: "email-signature", label: "Email signature" },
   { id: "tracker-schedules", label: "Schedules" },
-  { id: "manpower", label: "Manpower" },
   { id: "work-orders", label: "Work orders" },
 ] as const;
 
@@ -747,13 +745,6 @@ export function SettingsPage() {
           onDirtyChange={onTrackerSchedulesDirty}
           onBindActions={(actions) => bindSectionActions("tracker-schedules", actions)}
         />
-      </div>
-
-      <div
-        className={`card stack settings-form settings-tab-panel${activeTab === "manpower" ? "" : " settings-tab-panel--hidden"}`}
-        aria-hidden={activeTab !== "manpower"}
-      >
-        <ManpowerCalSettingsSection />
       </div>
 
       <div
