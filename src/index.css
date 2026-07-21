@@ -801,6 +801,24 @@ label {
   width: 9.5rem;
 }
 
+.project-orders-col-complete {
+  width: 2.5rem;
+}
+
+.project-orders-complete-cell {
+  text-align: center;
+}
+
+.project-orders-th-complete {
+  text-align: center;
+}
+
+.project-orders-complete-icon {
+  display: inline-block;
+  vertical-align: middle;
+  color: var(--muted, #6b7280);
+}
+
 .project-orders-notes-input {
   width: 100%;
   min-width: 0;
@@ -1615,12 +1633,45 @@ th {
 
 .procurement-log-scroll {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .procurement-log-table {
   width: 100%;
+  min-width: 900px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.82rem;
+}
+
+/* Column widths (fixed layout): narrow labels/dates, wide Product and Notes.
+   Sums to 100%: 6 + 21 + 7 + 9 + 9 + 8 + 12 + 28. */
+.procurement-log-table .plog-col-finish {
+  width: 6%;
+}
+
+.procurement-log-table .plog-col-product {
+  width: 21%;
+}
+
+.procurement-log-table .plog-col-lead {
+  width: 7%;
+}
+
+.procurement-log-table .plog-col-date {
+  width: 9%;
+}
+
+.procurement-log-table .plog-col-ship {
+  width: 8%;
+}
+
+.procurement-log-table .plog-col-tracking {
+  width: 12%;
+}
+
+.procurement-log-table .plog-col-notes {
+  width: 28%;
 }
 
 .procurement-log-table th,
@@ -1629,11 +1680,25 @@ th {
   padding: 0.45rem 0.5rem;
   vertical-align: top;
   text-align: left;
+  /* Fixed layout: cells can't grow, so text must wrap — never clip or split mid-word. */
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-overflow: clip;
 }
 
 .procurement-log-table th {
   background: var(--surface2);
   font-weight: 600;
+}
+
+/* Labels and dates stay on one line; Product/Tracking/Notes wrap in their columns */
+.procurement-log-table td:nth-child(1),
+.procurement-log-table td:nth-child(3),
+.procurement-log-table td:nth-child(4),
+.procurement-log-table td:nth-child(5),
+.procurement-log-table td:nth-child(6) {
   white-space: nowrap;
 }
 
@@ -1644,6 +1709,7 @@ th {
 .procurement-log-empty {
   text-align: center;
   padding: 1.5rem !important;
+  white-space: normal !important;
 }
 
 .po-tracker-intro p {
@@ -7969,6 +8035,50 @@ input.readonly {
   min-width: min(100%, 16rem);
 }
 
+.job-dashboard-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.job-dashboard-edit-info-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.6rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: opacity 160ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.job-dashboard-edit-info-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* Hover-reveal is pointer-only; touch devices always see the button. */
+@media (hover: hover) {
+  .job-dashboard-edit-info-btn {
+    opacity: 0;
+  }
+
+  .job-dashboard-header:hover .job-dashboard-edit-info-btn,
+  .job-dashboard-edit-info-btn:focus-visible {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-dashboard-edit-info-btn {
+    transition: none;
+  }
+}
+
 .job-dashboard-heading--large {
   font-size: 1.65rem;
   font-weight: 700;
@@ -8303,10 +8413,54 @@ input.readonly {
   gap: 0.65rem;
 }
 
-.job-tracker-tabs--editor {
+/* Material Tracker page: full-width underline tabs (same treatment as Submittals hub). */
+.job-tracker-tabs--underline {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.job-tracker-tabs--underline .job-tracker-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  margin: 0 0 -0.5px;
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.job-tracker-tabs--underline .job-tracker-tab:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+.job-tracker-tabs--underline .job-tracker-tab--active {
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+  border-bottom-color: var(--accent);
+}
+
+.job-tracker-tabs--underline .job-tracker-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .job-activity-list--compact {
@@ -9338,17 +9492,331 @@ a.job-tracker-tab {
   background: linear-gradient(to top, var(--surface) 70%, transparent);
 }
 
-.wc-tracker-editor-panel {
-  width: min(560px, 100vw);
-}
-
-.wc-tracker-editor-body {
-  gap: 1rem;
-}
-
 .wc-tracker-list-toolbar {
   align-items: center;
   margin-bottom: 0.35rem;
+}
+
+/* In-place expanding row editor */
+.wc-tracker-line-row {
+  cursor: pointer;
+}
+
+.wc-tracker-line-row:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.wc-tracker-line-row--open td {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom-color: transparent;
+}
+
+.wc-tracker-row-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.wc-tracker-row-chevron:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.wc-tracker-row-chevron:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wc-tracker-row-chevron svg {
+  transition: transform 0.15s ease;
+}
+
+.wc-tracker-row-chevron--open svg {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wc-tracker-row-chevron svg {
+    transition: none;
+  }
+}
+
+.wc-tracker-editor-row td {
+  padding: 0.9rem 0.85rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.wc-tracker-inline-editor {
+  gap: 0.85rem;
+}
+
+.wc-tracker-inline-editor-footer {
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Numbered stage stepper: single band, toggles right-aligned on the same row */
+.wc-stage-stepper-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.wc-stage-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.wc-stage-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.55rem 0.22rem 0.28rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.wc-stage-step:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.wc-stage-step:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wc-stage-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.wc-stage-step--done {
+  color: var(--text);
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.wc-stage-step--done .wc-stage-step-num {
+  background: rgba(34, 197, 94, 0.25);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #7ee2a8;
+}
+
+.wc-stage-step--current {
+  color: var(--text);
+  border-color: rgba(79, 140, 255, 0.6);
+  background: rgba(79, 140, 255, 0.14);
+}
+
+.wc-stage-step--current .wc-stage-step-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.wc-stage-stepper-extras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.85rem;
+  margin-left: auto;
+}
+
+.wc-stage-stepper-extras .paint-tracker-flag {
+  white-space: nowrap;
+}
+
+/* WC editor: flag switches row under the dates */
+.wc-tracker-editor-flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.1rem;
+}
+
+/* Switch-style flag toggles (extras slot beside the stepper) */
+.flag-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.flag-switch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.flag-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.flag-switch-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.flag-switch-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.flag-switch--on .flag-switch-knob {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+.flag-switch--on .flag-switch-label {
+  color: var(--text);
+}
+
+.flag-switch--ok.flag-switch--on .flag-switch-track {
+  background: rgba(34, 197, 94, 0.55);
+  border-color: rgba(34, 197, 94, 0.7);
+}
+
+.flag-switch--accent.flag-switch--on .flag-switch-track {
+  background: rgba(79, 140, 255, 0.6);
+  border-color: rgba(79, 140, 255, 0.75);
+}
+
+.flag-switch--warn.flag-switch--on .flag-switch-track {
+  background: rgba(240, 180, 41, 0.6);
+  border-color: rgba(240, 180, 41, 0.75);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flag-switch-track,
+  .flag-switch-knob {
+    transition: none;
+  }
+}
+
+/* Material Tracker page: cap content width (all tabs) */
+.material-tracker-page {
+  width: 100%;
+  max-width: 900px;
+}
+
+/* Unified 4-column editor grid (2 columns on narrow) */
+.wc-tracker-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+
+.wc-tracker-editor-grid .wc-col-2 {
+  grid-column: span 2;
+}
+
+.wc-tracker-editor-grid .wc-col-3 {
+  grid-column: span 3;
+}
+
+.wc-tracker-editor-grid .wc-col-4 {
+  grid-column: 1 / -1;
+}
+
+.wc-tracker-editor-grid textarea {
+  resize: vertical;
+}
+
+@media (max-width: 820px) {
+  .wc-tracker-editor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wc-tracker-editor-grid .wc-col-2,
+  .wc-tracker-editor-grid .wc-col-3 {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Collapsed secondary group */
+.wc-tracker-editor-more {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+
+.wc-tracker-editor-more summary {
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wc-tracker-editor-more summary:hover {
+  color: var(--text);
+}
+
+.wc-tracker-editor-more[open] summary {
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.wc-tracker-editor-more-body {
+  padding: 0.75rem;
+}
+
+.wc-tracker-delete-btn:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .wc-tracker-list-wrap {
@@ -9389,7 +9857,8 @@ a.job-tracker-tab {
   white-space: nowrap;
 }
 
-.wc-tracker-list .pill {
+.wc-tracker-list .pill,
+.wc-tracker-overall-status .pill {
   display: inline-block;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
@@ -9398,34 +9867,106 @@ a.job-tracker-tab {
   white-space: nowrap;
 }
 
-.wc-tracker-list .pill-not-started {
+.wc-tracker-list .pill-not-started,
+.wc-tracker-overall-status .pill-not-started {
   background: rgba(229, 115, 115, 0.18);
   color: #f48fb1;
 }
 
-.wc-tracker-list .pill-submittal-ordered {
+.wc-tracker-list .pill-submittal-ordered,
+.wc-tracker-overall-status .pill-submittal-ordered {
   background: rgba(255, 152, 0, 0.18);
   color: #ffb74d;
 }
 
-.wc-tracker-list .pill-submitted {
+.wc-tracker-list .pill-submitted,
+.wc-tracker-overall-status .pill-submitted {
   background: rgba(25, 118, 210, 0.2);
   color: #64b5f6;
 }
 
-.wc-tracker-list .pill-approved {
+.wc-tracker-list .pill-approved,
+.wc-tracker-overall-status .pill-approved {
   background: rgba(249, 198, 0, 0.15);
   color: #ffd54f;
 }
 
-.wc-tracker-list .pill-material-ordered {
+.wc-tracker-list .pill-field-measure,
+.wc-tracker-overall-status .pill-field-measure {
+  background: rgba(38, 166, 154, 0.18);
+  color: #4db6ac;
+}
+
+.wc-tracker-list .pill-shops,
+.wc-tracker-overall-status .pill-shops {
+  background: rgba(126, 87, 194, 0.2);
+  color: #b39ddb;
+}
+
+.wc-tracker-list .pill-material-ordered,
+.wc-tracker-overall-status .pill-material-ordered {
   background: rgba(63, 81, 181, 0.22);
   color: #9fa8da;
 }
 
-.wc-tracker-list .pill-delivered {
+.wc-tracker-list .pill-delivered,
+.wc-tracker-overall-status .pill-delivered {
   background: rgba(67, 160, 71, 0.2);
   color: #81c784;
+}
+
+.wc-tracker-list .pill-revision,
+.wc-tracker-overall-status .pill-revision {
+  background: rgba(255, 193, 7, 0.18);
+  color: #ffd54f;
+}
+
+.wc-tracker-overall-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wc-tracker-list select.wc-tracker-status-select {
+  appearance: none;
+  width: auto;
+  margin: 0;
+  border: 1px solid transparent;
+  padding: 0.15rem 1.15rem 0.15rem 0.45rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  color-scheme: dark;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.4rem center;
+}
+
+.wc-tracker-list select.wc-tracker-status-select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.wc-tracker-list select.wc-tracker-status-select:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.wc-tracker-list select.wc-tracker-status-select:focus {
+  outline: none;
+}
+
+.wc-tracker-list select.wc-tracker-status-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wc-tracker-list select.wc-tracker-status-select option {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
 }
 
 .submittal-log-toolbar {

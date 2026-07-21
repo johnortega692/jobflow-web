@@ -179,7 +179,7 @@ export function ProjectStartupItemsCard({
 
       <p className="muted small job-startup-config-link">
         <button type="button" className="link-btn" onClick={onConfigureStartup ?? onOpenJobSetup}>
-          Configure items · Job setup
+          Configure items · Job info
         </button>
       </p>
     </div>

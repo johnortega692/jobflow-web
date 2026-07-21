@@ -2,13 +2,13 @@ export type ProjectModuleId =
   | "overview"
   | "rfis"
   | "submittals"
-  | "procurement-log"
   | "excel-paste"
   | "orders"
   | "po"
   | "budget"
   | "billing"
-  | "work-orders";
+  | "work-orders"
+  | "material-tracker";
 
 export type ProjectModule = {
   id: ProjectModuleId;
@@ -40,7 +40,6 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     modules: [
       { id: "rfis", label: "RFIs", path: "rfis", ready: true },
       { id: "submittals", label: "Submittals", path: "submittals", ready: true },
-      { id: "procurement-log", label: "Procurement Log", path: "procurement-log", ready: true, requiresWallcovering: true },
       { id: "excel-paste", label: "Excel Templates", path: "excel-paste", ready: true },
     ],
   },
@@ -56,6 +55,7 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     id: "tracking",
     label: "Tracking",
     modules: [
+      { id: "material-tracker", label: "Material Tracker", path: "material-tracker", ready: true },
       { id: "budget", label: "Budget Maker", path: "budget", ready: true },
       { id: "billing", label: "Manpower", path: "billing", ready: true },
       { id: "work-orders", label: "Work Orders", path: "work-orders", ready: true },

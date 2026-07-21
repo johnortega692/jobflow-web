@@ -824,6 +824,8 @@
 .field-dashboard .pill-ordered { background: #fff3e0; color: #e65100; }
 .field-dashboard .pill-submitted { background: #e3f2fd; color: #1565c0; }
 .field-dashboard .pill-approved { background: #e8f5e9; color: #1b5e20; }
+.field-dashboard .pill-field-measure { background: #e0f7fa; color: #00695c; }
+.field-dashboard .pill-shops { background: #ede7f6; color: #4527a0; }
 .field-dashboard .pill-material-ordered { background: #e8eaf6; color: #283593; }
 .field-dashboard .pill-delivered { background: #e8f5e9; color: #1b5e20; }
 .field-dashboard .pill-match { background: #e8f5e9; color: #1b5e20; }
@@ -842,6 +844,8 @@
 .field-dashboard .dot-submittal-ordered { background: #ff9800; }
 .field-dashboard .dot-submitted { background: #1976d2; }
 .field-dashboard .dot-approved { background: #f9c600; }
+.field-dashboard .dot-field-measure { background: #26a69a; }
+.field-dashboard .dot-shops { background: #7e57c2; }
 .field-dashboard .dot-material-ordered { background: #3f51b5; }
 .field-dashboard .dot-delivered { background: #43a047; }
 

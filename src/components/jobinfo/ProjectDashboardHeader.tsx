@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { GcContactLine } from "./GcContactLine";
 import { DashboardTablerIcon } from "./DashboardTablerIcon";
 import {
@@ -28,11 +27,9 @@ type ContactSlot = {
 
 type Props = {
   project: ProjectForm;
-  projectId: string;
   attentionCount: number;
   paintTracker: PaintTrackerState;
   onOpenJobSetup: () => void;
-  onOpenTrackerEdit: () => void;
 };
 
 function displayName(name: string): string {
@@ -42,11 +39,9 @@ function displayName(name: string): string {
 
 export function ProjectDashboardHeader({
   project,
-  projectId,
   attentionCount,
   paintTracker,
   onOpenJobSetup,
-  onOpenTrackerEdit,
 }: Props) {
   const [expandedContact, setExpandedContact] = useState<string | null>(null);
   const [showAllContacts, setShowAllContacts] = useState(false);
@@ -90,7 +85,30 @@ export function ProjectDashboardHeader({
           {project.job_number || "—"}
           {project.contractor ? ` · ${project.contractor}` : ""}
         </p>
-        <h2 className="job-dashboard-heading job-dashboard-heading--large">{project.job_name || "Untitled project"}</h2>
+        <div className="job-dashboard-heading-row">
+          <h2 className="job-dashboard-heading job-dashboard-heading--large">{project.job_name || "Untitled project"}</h2>
+          <button
+            type="button"
+            className="job-dashboard-edit-info-btn"
+            onClick={onOpenJobSetup}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+              <path d="M13.5 6.5l4 4" />
+            </svg>
+            Edit job info
+          </button>
+        </div>
 
         <div className="job-dashboard-pills" role="list">
           {attentionCount > 0 && (
@@ -191,18 +209,6 @@ export function ProjectDashboardHeader({
         <div className="job-dashboard-header-divider" />
 
         <SubmittalPipelineStepper tracker={paintTracker} />
-      </div>
-
-      <div className="row-gap wrap job-dashboard-actions">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenJobSetup}>
-          Job setup
-        </button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTrackerEdit}>
-          Edit tracker
-        </button>
-        <Link to={`/projects/${projectId}/submittals/paint`} className="btn btn-ghost btn-sm">
-          Paint
-        </Link>
       </div>
     </header>
   );

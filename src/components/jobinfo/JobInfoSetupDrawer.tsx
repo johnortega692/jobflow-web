@@ -252,7 +252,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
       <aside className="job-info-drawer-panel" aria-labelledby="job-info-drawer-title">
         <header className="job-info-drawer-header row-between wrap">
           <div>
-            <h2 id="job-info-drawer-title">Job setup</h2>
+            <h2 id="job-info-drawer-title">Job info</h2>
           </div>
           <div className="row-gap wrap job-info-drawer-header-actions">
             {savedAt && <span className="muted small">Saved {savedAt}</span>}
@@ -279,7 +279,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
           </div>
         )}
 
-        <div className="job-info-drawer-tabs" role="tablist" aria-label="Job setup sections">
+        <div className="job-info-drawer-tabs" role="tablist" aria-label="Job info sections">
           <button
             type="button"
             role="tab"

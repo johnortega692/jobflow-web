@@ -3,8 +3,10 @@ import { paintTrackerJobLabel, projectHasWallcovering, wcTrackerJobLabel } from 
 import type { ProjectForm } from "../../types/database";
 import { PaintTrackerStatusSection } from "./PaintTrackerStatusSection";
 import { WcTrackerStatusSection } from "./WcTrackerStatusSection";
+import { ProcurementLogPanel } from "./ProcurementLogPanel";
 
-type TrackerTab = "paint" | "wallcovering";
+/** "log" (procurement log) is editor-mode only and requires wallcovering. */
+export type TrackerTab = "paint" | "wallcovering" | "log";
 
 type Props = {
   project: ProjectForm;
@@ -13,13 +15,31 @@ type Props = {
   onProjectUpdate?: (project: ProjectForm) => void;
   /** Hide status pills in editor (pipeline card shows them read-only). */
   editorMode?: boolean;
+  /** Tab to open on first render (deep links). */
+  initialTab?: TrackerTab;
+  /** Notified when the user switches tabs. */
+  onTabChange?: (tab: TrackerTab) => void;
 };
 
-export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectUpdate, editorMode }: Props) {
+export function JobTrackerPanel({
+  project,
+  projectId,
+  onOpenJobSetup,
+  onProjectUpdate,
+  editorMode,
+  initialTab,
+  onTabChange,
+}: Props) {
   const hasWc = projectHasWallcovering(project.jobInfo);
-  const [tab, setTab] = useState<TrackerTab>("paint");
+  const [tab, setTab] = useState<TrackerTab>(initialTab ?? "paint");
 
-  const activeTab = tab === "wallcovering" && hasWc ? "wallcovering" : "paint";
+  const activeTab: TrackerTab =
+    tab === "wallcovering" && hasWc ? "wallcovering" : tab === "log" && hasWc && editorMode ? "log" : "paint";
+
+  function selectTab(next: TrackerTab) {
+    setTab(next);
+    onTabChange?.(next);
+  }
 
   return (
     <section className={editorMode ? "stack job-dashboard-tracker job-dashboard-tracker--editor" : "card job-dashboard-tracker"}>
@@ -35,7 +55,7 @@ export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectU
               aria-selected={activeTab === "paint"}
               aria-controls="job-tracker-panel-paint"
               className={`job-tracker-tab${activeTab === "paint" ? " job-tracker-tab--active" : ""}`}
-              onClick={() => setTab("paint")}
+              onClick={() => selectTab("paint")}
             >
               Paint
             </button>
@@ -47,7 +67,7 @@ export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectU
                 aria-selected={activeTab === "wallcovering"}
                 aria-controls="job-tracker-panel-wc"
                 className={`job-tracker-tab${activeTab === "wallcovering" ? " job-tracker-tab--active" : ""}`}
-                onClick={() => setTab("wallcovering")}
+                onClick={() => selectTab("wallcovering")}
               >
                 Wallcovering
               </button>
@@ -58,7 +78,7 @@ export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectU
       )}
 
       {editorMode && hasWc && (
-        <div className="job-tracker-tabs job-tracker-tabs--editor" role="tablist" aria-label="Tracker sheet">
+        <div className="job-tracker-tabs job-tracker-tabs--underline" role="tablist" aria-label="Tracker sheet">
           <button
             type="button"
             role="tab"
@@ -66,7 +86,7 @@ export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectU
             aria-selected={activeTab === "paint"}
             aria-controls="job-tracker-panel-paint"
             className={`job-tracker-tab${activeTab === "paint" ? " job-tracker-tab--active" : ""}`}
-            onClick={() => setTab("paint")}
+            onClick={() => selectTab("paint")}
           >
             Paint
           </button>
@@ -77,16 +97,29 @@ export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectU
             aria-selected={activeTab === "wallcovering"}
             aria-controls="job-tracker-panel-wc"
             className={`job-tracker-tab${activeTab === "wallcovering" ? " job-tracker-tab--active" : ""}`}
-            onClick={() => setTab("wallcovering")}
+            onClick={() => selectTab("wallcovering")}
           >
             Wallcovering
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="job-tracker-tab-log"
+            aria-selected={activeTab === "log"}
+            aria-controls="job-tracker-panel-log"
+            className={`job-tracker-tab${activeTab === "log" ? " job-tracker-tab--active" : ""}`}
+            onClick={() => selectTab("log")}
+          >
+            Log
           </button>
         </div>
       )}
 
-      <p className="muted small job-tracker-job-label">
-        {activeTab === "paint" ? paintTrackerJobLabel(project) : wcTrackerJobLabel(project)}
-      </p>
+      {activeTab !== "log" && (
+        <p className="muted small job-tracker-job-label">
+          {activeTab === "paint" ? paintTrackerJobLabel(project) : wcTrackerJobLabel(project)}
+        </p>
+      )}
 
       {activeTab === "paint" ? (
         <div id="job-tracker-panel-paint" role="tabpanel" aria-labelledby="job-tracker-tab-paint">
@@ -98,7 +131,7 @@ export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectU
             showStatusPills={!editorMode}
           />
         </div>
-      ) : (
+      ) : activeTab === "wallcovering" ? (
         <div id="job-tracker-panel-wc" role="tabpanel" aria-labelledby="job-tracker-tab-wc">
           <WcTrackerStatusSection
             project={project}
@@ -106,6 +139,10 @@ export function JobTrackerPanel({ project, projectId, onOpenJobSetup, onProjectU
             onOpenJobSetup={onOpenJobSetup}
             onProjectUpdate={onProjectUpdate}
           />
+        </div>
+      ) : (
+        <div id="job-tracker-panel-log" role="tabpanel" aria-labelledby="job-tracker-tab-log">
+          <ProcurementLogPanel project={project} projectId={projectId} onProjectUpdate={onProjectUpdate} />
         </div>
       )}
     </section>

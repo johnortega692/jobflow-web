@@ -32,6 +32,8 @@ export type WcTrackerLineState = {
   panels: boolean;
   ordered: boolean;
   sentForApproval: boolean;
+  revision: boolean;
+  revisionNotes: string;
   approved: boolean;
   fieldMeasurement: boolean;
   shops: boolean;
@@ -65,6 +67,8 @@ export const defaultWcTrackerLineFields = (): Omit<WcTrackerLineState, "id" | "l
   panels: false,
   ordered: false,
   sentForApproval: false,
+  revision: false,
+  revisionNotes: "",
   approved: false,
   fieldMeasurement: false,
   shops: false,
@@ -134,6 +138,8 @@ export function normalizeWcTrackerLine(raw: unknown, fallbackId: string): WcTrac
     panels: Boolean(o.panels),
     ordered: Boolean(o.ordered),
     sentForApproval: Boolean(o.sentForApproval),
+    revision: Boolean(o.revision),
+    revisionNotes: String(o.revisionNotes ?? defaults.revisionNotes),
     approved: Boolean(o.approved),
     fieldMeasurement: Boolean(o.fieldMeasurement),
     shops: Boolean(o.shops),

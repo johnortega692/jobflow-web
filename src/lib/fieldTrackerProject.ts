@@ -73,7 +73,6 @@ export type FieldWcItemRow = {
   panels: boolean;
   revisionNotes: string;
   line: WcTrackerLineState;
-  tracker: WcTrackerState;
 };
 
 function wcNameFromItem(item: WallcoveringItem): string {
@@ -168,7 +167,6 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
 export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
   if (!projectHasWallcovering(project.jobInfo)) return [];
   const trade = parseProjectTradeData(project.data as Json);
-  const tracker = resolveWcTracker(trade);
   const lines = resolveWcTrackerLines(trade);
   const j = project.jobInfo;
   const jobNumber = wcTrackerJobNumber(project);
@@ -182,14 +180,13 @@ export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
     pm: icbiProjectManager(j),
     wallcoveringName: line.wallcoveringName,
     label: line.label,
-    status: wcFieldStatus(line, tracker),
+    status: wcFieldStatus(line),
     installDate: line.installDate,
     dropbox: line.dropbox,
     imageUrl: line.imageUrl,
     panels: line.panels,
-    revisionNotes: tracker.revisionNotes.trim(),
+    revisionNotes: line.revisionNotes.trim(),
     line,
-    tracker,
   }));
 }
 

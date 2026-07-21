@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
+import { FlagSwitch, StageStepper } from "./StageStepper";
 import { addDaysToTodayDisplay } from "../../lib/dateInputUtils";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLetterhead } from "../../contexts/LetterheadContext";
@@ -439,37 +440,53 @@ export function PaintTrackerStatusSection({
         </div>
 
         <p className="muted small paint-tracker-subsection">Submittal status</p>
-        <div className="paint-tracker-flags">
-          <TrackerCheckbox
-            label="Submittal ordered"
-            checked={tracker.submittalOrdered}
-            disabled={saving}
-            onChange={(v) => patchTracker({ submittalOrdered: v })}
-          />
-          <TrackerCheckbox
-            label="Submitted for approval"
-            checked={tracker.submittedForApproval}
-            disabled={saving}
-            onChange={(v) =>
-              patchTracker(
-                v
-                  ? { submittedForApproval: true, followUp: addDaysToTodayDisplay(14) }
-                  : { submittedForApproval: false },
-              )
-            }
-          />
-          <TrackerCheckbox
-            label="Revision"
-            checked={tracker.revision}
-            disabled={saving}
-            onChange={(v) => patchTracker({ revision: v })}
-          />
-          <TrackerCheckbox
-            label="Approved"
-            checked={tracker.approved}
-            disabled={saving}
-            onChange={(v) => patchTracker({ approved: v })}
-          />
+        <div className="wc-stage-stepper-row">
+          {(() => {
+            // Same three independent booleans the checkboxes wrote; a tap toggles
+            // its flag exactly as the old checkbox did (incl. the follow-up side
+            // effect on Submitted for approval).
+            const flags = [tracker.submittalOrdered, tracker.submittedForApproval, tracker.approved];
+            const currentIdx = flags.lastIndexOf(true);
+            const stages = [
+              { key: "ordered", label: "Submittal ordered" },
+              { key: "submitted", label: "Submitted for approval" },
+              { key: "approved", label: "Approved" },
+            ];
+            return (
+              <StageStepper
+                ariaLabel="Submittal status"
+                disabled={saving}
+                items={stages.map((s, i) => ({
+                  key: s.key,
+                  label: s.label,
+                  state: !flags[i] ? "todo" : i === currentIdx ? "current" : "done",
+                  title: `Toggle: ${s.label}`,
+                }))}
+                onSelect={(key) => {
+                  if (key === "ordered") {
+                    patchTracker({ submittalOrdered: !tracker.submittalOrdered });
+                  } else if (key === "submitted") {
+                    patchTracker(
+                      tracker.submittedForApproval
+                        ? { submittedForApproval: false }
+                        : { submittedForApproval: true, followUp: addDaysToTodayDisplay(14) },
+                    );
+                  } else {
+                    patchTracker({ approved: !tracker.approved });
+                  }
+                }}
+              />
+            );
+          })()}
+          <div className="wc-stage-stepper-extras">
+            <FlagSwitch
+              label="Revision"
+              tone="warn"
+              checked={tracker.revision}
+              disabled={saving}
+              onChange={(v) => patchTracker({ revision: v })}
+            />
+          </div>
         </div>
 
         <p className="muted small">

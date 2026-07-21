@@ -44,6 +44,9 @@ import {
 } from "../lib/trackCatalog";
 import { downloadTrackOrderForm, trackItemsToOrderForm } from "../lib/trackOrderFormPrint";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
+import { resolveWcTrackerLines, saveWcTrackerLines } from "../lib/fieldTrackerProject";
+import { applyWcLineStage } from "../lib/fieldTrackerStatus";
+import type { WcTrackerLineState } from "../types/fieldTracker";
 import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
@@ -158,6 +161,28 @@ function normalizeTrackDraft(raw: TrackSubmittalData): TrackSubmittalData {
   return { ...defaultTrackSubmittal(), ...raw, items };
 }
 
+/** Match an order row to its Material Tracker line: label first, then full name, then derived id. */
+function findWcTrackerLine(
+  lines: WcTrackerLineState[],
+  row: UnifiedOrderRow,
+): WcTrackerLineState | undefined {
+  const label = row.label.trim().toLowerCase();
+  if (label) {
+    const byLabel = lines.find((l) => l.label.trim().toLowerCase() === label);
+    if (byLabel) return byLabel;
+  }
+  const name = [row.manufacturer, row.product, row.color]
+    .filter((p) => p.trim())
+    .join(" ")
+    .trim()
+    .toLowerCase();
+  if (name) {
+    const byName = lines.find((l) => l.wallcoveringName.trim().toLowerCase() === name);
+    if (byName) return byName;
+  }
+  return lines.find((l) => l.id === `submittal-${row.index}`);
+}
+
 function buildUnifiedRows(wc: WallcoveringSubmittalData, frp: FrpSubmittalData): UnifiedOrderRow[] {
   const rows: UnifiedOrderRow[] = [];
   wc.items.forEach((item, index) => {
@@ -212,6 +237,9 @@ export function ProjectOrdersPage() {
   );
   const [status, setStatus] = useState<string | null>(null);
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+  /** Material Tracker lines — the "order complete" column reads/writes materialOrder. */
+  const [wcLines, setWcLines] = useState<WcTrackerLineState[]>([]);
+  const [completeSaving, setCompleteSaving] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
 
@@ -230,8 +258,9 @@ export function ProjectOrdersPage() {
       setWcDraft(normalizeWcDraft(tradeData.wallcovering_submittal ?? defaultWallcoveringSubmittal()));
       setFrpDraft(normalizeFrpDraft(tradeData.frp_submittal ?? defaultFrpSubmittal()));
       setTrackDraft(normalizeTrackDraft(tradeData.track_submittal ?? defaultTrackSubmittal()));
+      setWcLines(resolveWcTrackerLines(tradeData));
     }
-  }, [loading, tradeData.frp_submittal, tradeData.track_submittal, tradeData.wallcovering_submittal]);
+  }, [loading, tradeData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -399,6 +428,40 @@ export function ProjectOrdersPage() {
         items: d.items.map((item, i) => (frpIndexes.has(i) ? { ...item, order } : item)),
       }));
     }
+  }
+
+  /** Mark a WC item's material order complete — writes the tracker line's materialOrder stage. */
+  async function toggleOrderComplete(row: UnifiedOrderRow, complete: boolean) {
+    const line = findWcTrackerLine(wcLines, row);
+    if (!line) {
+      setError("No matching wallcovering line in Material Tracker for this item.");
+      return;
+    }
+    const nextLine = complete
+      ? applyWcLineStage(line, "Material Ordered")
+      : { ...line, materialOrder: false, delivered: false };
+    const nextLines = wcLines.map((l) => (l.id === line.id ? nextLine : l));
+    const prevLines = wcLines;
+    setWcLines(nextLines);
+    setCompleteSaving(true);
+    const label = line.label.trim() || line.wallcoveringName.trim() || "Line";
+    const err = await saveWcTrackerLines(
+      projectId,
+      nextLines,
+      complete ? `Material order complete: ${label}` : `Material order cleared: ${label}`,
+    );
+    setCompleteSaving(false);
+    if (err) {
+      setError(err);
+      setWcLines(prevLines);
+      return;
+    }
+    setError(null);
+    setStatus(
+      complete
+        ? `${label} marked Material Ordered in Material Tracker.`
+        : `${label} material order cleared in Material Tracker.`,
+    );
   }
 
   function setQty(scope: OrderScope, index: number, qty: string) {
@@ -822,6 +885,7 @@ export function ProjectOrdersPage() {
               <col className="project-orders-col-color" />
               <col className="project-orders-col-qty" />
               <col className="project-orders-col-notes" />
+              <col className="project-orders-col-complete" />
             </colgroup>
             <thead>
               <tr>
@@ -845,6 +909,29 @@ export function ProjectOrdersPage() {
                 <th>Color / code</th>
                 <th>Qty</th>
                 <th>Notes</th>
+                <th
+                  className="project-orders-th-complete"
+                  title="Order complete — marks the line Material Ordered in Material Tracker"
+                >
+                  <svg
+                    className="project-orders-complete-icon"
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    role="img"
+                    aria-label="Order complete"
+                  >
+                    <path d="M5 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+                    <path d="M15 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+                    <path d="M5 17h-2v-4m-1 -8h11v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5" />
+                    <path d="M3 9l4 0" />
+                  </svg>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -905,6 +992,31 @@ export function ProjectOrdersPage() {
                       onChange={(e) => setNotes(row.scope, row.index, e.target.value)}
                       aria-label={`Notes for ${row.product || row.label || "line"}`}
                     />
+                  </td>
+                  <td className="project-orders-complete-cell">
+                    {row.scope === "wallcovering" ? (
+                      (() => {
+                        const line = findWcTrackerLine(wcLines, row);
+                        return (
+                          <label className="check project-orders-check">
+                            <input
+                              type="checkbox"
+                              checked={line?.materialOrder ?? false}
+                              disabled={completeSaving || !line}
+                              title={
+                                line
+                                  ? "Order complete — sets Material Ordered in Material Tracker"
+                                  : "No matching Material Tracker line"
+                              }
+                              onChange={(e) => void toggleOrderComplete(row, e.target.checked)}
+                              aria-label={`Order complete for ${row.product || row.label || "line"}`}
+                            />
+                          </label>
+                        );
+                      })()
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

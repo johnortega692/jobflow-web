@@ -5,7 +5,6 @@ import { ProtectedRoute } from "./components/Layout";
 import { ProjectLayout } from "./components/ProjectLayout";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
-import { ProcurementLogPage } from "./pages/ProcurementLogPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectRfisPage } from "./pages/ProjectRfisPage";
 import { RfiEditorPage } from "./pages/RfiEditorPage";
@@ -19,6 +18,7 @@ import { ExcelPasteHelperPage } from "./pages/ExcelPasteHelperPage";
 import { BudgetPage } from "./pages/BudgetPage";
 import { BillingPage } from "./pages/BillingPage";
 import { ProjectWorkOrdersPage } from "./pages/ProjectWorkOrdersPage";
+import { MaterialTrackerPage } from "./pages/MaterialTrackerPage";
 import { WorkOrderEditorPage } from "./pages/WorkOrderEditorPage";
 import { FrpSubmittalsPage } from "./pages/FrpSubmittalsPage";
 import { ApprovedBrushoutsPage } from "./pages/ApprovedBrushoutsPage";
@@ -66,7 +66,8 @@ export default function App() {
                 <Route path="package" element={<SdsPacketPage />} />
                 <Route path="transmittal" element={<TransmittalPage />} />
               </Route>
-              <Route path="procurement-log" element={<ProcurementLogPage />} />
+              {/* Legacy: procurement log now lives in Material Tracker → Log tab */}
+              <Route path="procurement-log" element={<Navigate to="../material-tracker?tab=log" replace />} />
               <Route path="google-sheets" element={<GoogleSheetsPage />} />
               <Route path="excel-paste" element={<ExcelPasteHelperPage />} />
               <Route path="approved-brushouts" element={<ApprovedBrushoutsPage />} />
@@ -77,6 +78,7 @@ export default function App() {
               <Route path="billing" element={<BillingPage />} />
               <Route path="work-orders" element={<ProjectWorkOrdersPage />} />
               <Route path="work-orders/:workOrderId" element={<WorkOrderEditorPage />} />
+              <Route path="material-tracker" element={<MaterialTrackerPage />} />
               {/* Legacy paths → Submittals hub */}
               <Route path="paint" element={<Navigate to="../submittals/paint" replace />} />
               <Route path="wallcovering" element={<Navigate to="../submittals/wallcovering" replace />} />

@@ -1,165 +1,281 @@
+import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { buildProcurementLogRowsFromLines, type ProcurementLogRow } from "./procurementLog";
-import { esc, formatLongDate, logoBlock, printHtml, type PrintBranding } from "./printCore";
-import { pdfTitleFromFilename, procurementLogFilename } from "./pdfFilenames";
-import type { WcTrackerLineState } from "../types/fieldTracker";
+import { formatLongDate, type PrintBranding } from "./printCore";
+import { procurementLogFilename } from "./pdfFilenames";
+import { downloadPdfBytes } from "./pdfDownload";
+import {
+  createLetterPdfFonts,
+  drawBrandingSignatureFooter,
+  drawCenteredText,
+  embedLogoImage,
+  LETTER_HEIGHT,
+  LETTER_WIDTH,
+  measureBrandingSignatureFooterHeight,
+  MUTED,
+  PDF_MARGIN_TOP,
+  PDF_MARGIN_X,
+  TEXT,
+  wrapLines,
+} from "./pdfDrawCore";
 
-const CSS = `
-@page { size: landscape letter; margin: 0.35in 0.45in; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: Calibri, Arial, sans-serif; font-size: 9pt; line-height: 1.35; color: #000; }
-.header-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-.header-table td { border: none; vertical-align: top; padding: 0; }
-.hdr-logo { width: 52%; }
-.hdr-contact { width: 48%; text-align: right; font-size: 9pt; line-height: 1.5; color: #222; padding-top: 2px; }
-.hdr-contact p { margin: 0; }
-.logo-frame img { max-width: 300px; max-height: 72px; height: auto; display: block; }
-.logo-text {
-  font-family: "Times New Roman", Georgia, serif;
-  font-weight: bold;
-  font-size: 15pt;
-  line-height: 1.12;
-  text-align: left;
-  max-width: 300px;
-}
-.header-rule { border: none; border-top: 1px solid #000; margin: 10px 0 12px; height: 0; }
-.job-grid { width: 100%; border-collapse: collapse; margin-bottom: 14px; table-layout: fixed; }
-.job-grid td { border: none; vertical-align: top; width: 33.33%; padding: 0 12px 0 0; }
-.job-label {
-  font-size: 7.5pt;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 3px;
-}
-.job-value { font-size: 11pt; font-weight: bold; color: #000; }
-.proc-title {
-  background: #1a2332;
-  color: #fff;
-  text-align: center;
-  font-weight: bold;
-  font-size: 11pt;
-  padding: 8px 8px;
-  margin: 0 0 0;
-  letter-spacing: 0.06em;
-}
-table.data { width: 100%; border-collapse: collapse; margin-top: 0; }
-th {
-  background: #f0f0f0;
-  color: #000;
-  font-weight: bold;
-  font-size: 8.5pt;
-  padding: 6px 5px;
-  border: 1px solid #bbb;
-  text-align: left;
-  vertical-align: bottom;
-}
-td {
-  padding: 5px;
-  border: 1px solid #ccc;
-  vertical-align: top;
-  font-size: 8.5pt;
-  word-break: break-word;
-}
-tr:nth-child(even) td { background: #f3f3f3; }
-.col-finish { width: 7%; }
-.col-product { width: 22%; }
-.col-lead { width: 9%; }
-.col-date { width: 9%; }
-.col-track { width: 14%; }
-.col-notes { width: 22%; }
-.empty { text-align: center; color: #666; font-style: italic; padding: 24px; }
-`;
+// Landscape letter — the 8-column log needs the width.
+const PAGE_W = LETTER_HEIGHT;
+const PAGE_H = LETTER_WIDTH;
 
-function procurementContactHtml(branding: PrintBranding): string {
-  const addrLines = branding.companyAddress
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const lines: string[] = [...addrLines];
+const HEADER_BG = rgb(0.2, 0.2, 0.2);
+const ROW_ALT = rgb(0.98, 0.98, 0.98);
+const BORDER = rgb(0.85, 0.85, 0.85);
 
-  const phone = branding.companyPhone.trim();
-  const license = branding.companyLicense.trim();
-  const meta: string[] = [];
-  if (phone) meta.push(/^office\s*:/i.test(phone) ? phone : `Office: ${phone}`);
-  if (license) {
-    if (/^license\s*#/i.test(license) || /^license/i.test(license)) meta.push(license);
-    else meta.push(`License #${license.replace(/^#/, "")}`);
+const COLUMNS = [
+  "Finish",
+  "Product",
+  "Lead Time (Wks)",
+  "Approval Received",
+  "Date Ordered",
+  "Ship Date",
+  "Received/Tracking",
+  "Notes",
+];
+const COL_WEIGHTS = [7, 20, 7, 9, 9, 9, 13, 26];
+
+const FONT_SIZE = 8.5;
+const LINE_H = FONT_SIZE + 3;
+const PAD_X = 4;
+const PAD_Y = 4;
+const CONTENT_BOTTOM = 40;
+
+type TableCtx = {
+  doc: PDFDocument;
+  page: PDFPage;
+  y: number;
+  font: PDFFont;
+  bold: PDFFont;
+  colWidths: number[];
+  usable: number;
+};
+
+function rowCellLines(cells: string[], font: PDFFont, colWidths: number[]): string[][] {
+  return cells.map((cell, i) => {
+    const lines = wrapLines(cell, font, FONT_SIZE, colWidths[i]! - PAD_X * 2);
+    return lines.length ? lines : [""];
+  });
+}
+
+/** Dark header band matching the submittal table style. */
+function drawHeaderRow(ctx: TableCtx): void {
+  const lines = rowCellLines(COLUMNS, ctx.bold, ctx.colWidths);
+  const height = Math.max(...lines.map((l) => l.length)) * LINE_H + PAD_Y * 2;
+  ctx.page.drawRectangle({
+    x: PDF_MARGIN_X,
+    y: ctx.y - height,
+    width: ctx.usable,
+    height,
+    color: HEADER_BG,
+  });
+  let x = PDF_MARGIN_X;
+  lines.forEach((cellLines, i) => {
+    cellLines.forEach((line, li) => {
+      ctx.page.drawText(line, {
+        x: x + PAD_X,
+        y: ctx.y - PAD_Y - (li + 1) * LINE_H + 3,
+        size: FONT_SIZE,
+        font: ctx.bold,
+        color: rgb(1, 1, 1),
+      });
+    });
+    x += ctx.colWidths[i]!;
+  });
+  ctx.y -= height;
+}
+
+function drawBodyRow(ctx: TableCtx, cells: string[], alt: boolean): void {
+  const lines = rowCellLines(cells, ctx.font, ctx.colWidths);
+  const height = Math.max(...lines.map((l) => l.length)) * LINE_H + PAD_Y * 2;
+
+  if (ctx.y - height < CONTENT_BOTTOM) {
+    ctx.page = ctx.doc.addPage([PAGE_W, PAGE_H]);
+    ctx.y = ctx.page.getHeight() - PDF_MARGIN_TOP;
+    drawHeaderRow(ctx);
   }
-  if (meta.length) lines.push(meta.join(" | "));
 
-  if (!lines.length) return "";
-  return lines.map((line) => `<p>${esc(line)}</p>`).join("");
-}
-
-function tableRows(lines: ProcurementLogRow[]): string {
-  if (!lines.length) {
-    return `<tr><td colspan="8" class="empty">No wallcovering materials found for this job.</td></tr>`;
+  if (alt) {
+    ctx.page.drawRectangle({
+      x: PDF_MARGIN_X,
+      y: ctx.y - height,
+      width: ctx.usable,
+      height,
+      color: ROW_ALT,
+    });
   }
-  return lines
-    .map(
-      (row) => `<tr>
-      <td class="col-finish">${esc(row.finish)}</td>
-      <td class="col-product">${esc(row.product)}</td>
-      <td class="col-lead">${esc(row.leadTime)}</td>
-      <td class="col-date">${esc(row.approvalReceived)}</td>
-      <td class="col-date">${esc(row.dateOrdered)}</td>
-      <td class="col-date">${esc(row.shipDate)}</td>
-      <td class="col-track">${esc(row.dateReceivedTracking)}</td>
-      <td class="col-notes">${esc(row.notes)}</td>
-    </tr>`,
-    )
-    .join("");
+
+  let x = PDF_MARGIN_X;
+  lines.forEach((cellLines, i) => {
+    ctx.page.drawRectangle({
+      x,
+      y: ctx.y - height,
+      width: ctx.colWidths[i]!,
+      height,
+      borderColor: BORDER,
+      borderWidth: 0.25,
+    });
+    cellLines.forEach((line, li) => {
+      if (!line) return;
+      ctx.page.drawText(line, {
+        x: x + PAD_X,
+        y: ctx.y - PAD_Y - (li + 1) * LINE_H + 3,
+        size: FONT_SIZE,
+        font: ctx.font,
+        color: TEXT,
+      });
+    });
+    x += ctx.colWidths[i]!;
+  });
+  ctx.y -= height;
 }
 
-export function buildProcurementLogHtml(options: {
+function rowToCells(row: ProcurementLogRow): string[] {
+  return [
+    row.finish,
+    row.product,
+    row.leadTime,
+    row.approvalReceived,
+    row.dateOrdered,
+    row.shipDate,
+    row.dateReceivedTracking,
+    row.notes,
+  ];
+}
+
+export async function buildProcurementLogPdfBytes(options: {
   jobNumber: string;
   jobName: string;
-  lines: WcTrackerLineState[];
+  lines: import("../types/fieldTracker").WcTrackerLineState[];
   branding: PrintBranding;
   lastUpdate?: Date;
-}): string {
+}): Promise<Uint8Array> {
   const { jobNumber, jobName, lines, branding, lastUpdate = new Date() } = options;
   const logRows = buildProcurementLogRowsFromLines(lines);
-  const logoHtml = logoBlock(branding, branding.companyName);
-  const contactHtml = procurementContactHtml(branding);
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Procurement Log</title>
-<style>${CSS}</style></head><body>
-<table class="header-table"><tr>
-  <td class="hdr-logo"><div class="logo-frame">${logoHtml}</div></td>
-  <td class="hdr-contact">${contactHtml}</td>
-</tr></table>
-<hr class="header-rule">
-<table class="job-grid"><tr>
-  <td><div class="job-label">Job Number</div><div class="job-value">${esc(jobNumber)}</div></td>
-  <td><div class="job-label">Project</div><div class="job-value">${esc(jobName)}</div></td>
-  <td><div class="job-label">Last Update</div><div class="job-value">${esc(formatLongDate(lastUpdate))}</div></td>
-</tr></table>
-<div class="proc-title">PROCUREMENT LOG</div>
-<table class="data">
-  <thead><tr>
-    <th class="col-finish">Finish</th>
-    <th class="col-product">Product</th>
-    <th class="col-lead">Lead Time in Weeks</th>
-    <th class="col-date">Approval Received</th>
-    <th class="col-date">Date Ordered</th>
-    <th class="col-date">Ship Date</th>
-    <th class="col-track">Date Received/Tracking</th>
-    <th class="col-notes">Notes</th>
-  </tr></thead>
-  <tbody>${tableRows(logRows)}</tbody>
-</table>
-</body></html>`;
+  const doc = await PDFDocument.create();
+  const { font, bold } = await createLetterPdfFonts(doc);
+  const logo = await embedLogoImage(doc, branding.logoUrl);
+  let page = doc.addPage([PAGE_W, PAGE_H]);
+  const pageWidth = page.getWidth();
+  const centerX = pageWidth / 2;
+  const contentWidth = pageWidth - PDF_MARGIN_X * 2;
+  let y = page.getHeight() - PDF_MARGIN_TOP;
+
+  // Letterhead header — same layout as the submittal export.
+  if (logo) {
+    const maxW = 280;
+    const maxH = 72;
+    const scale = Math.min(maxW / logo.width, maxH / logo.height, 1);
+    const lw = logo.width * scale;
+    const lh = logo.height * scale;
+    page.drawImage(logo, { x: centerX - lw / 2, y: y - lh, width: lw, height: lh });
+    y -= lh + 8;
+  } else if (branding.companyName.trim()) {
+    drawCenteredText(page, branding.companyName, centerX, y - 14, bold, 14);
+    y -= 22;
+  }
+
+  page.drawLine({
+    start: { x: PDF_MARGIN_X, y },
+    end: { x: pageWidth - PDF_MARGIN_X, y },
+    thickness: 1.5,
+    color: TEXT,
+  });
+
+  const companyFontSize = 8;
+  let companyY = y - 1.5 / 2 - 3 - companyFontSize * 0.72;
+  const companyLine = (branding.companyContactLine || branding.companyInfo).trim();
+  if (companyLine) {
+    for (const line of wrapLines(companyLine, font, companyFontSize, contentWidth)) {
+      drawCenteredText(page, line, centerX, companyY, font, companyFontSize, MUTED);
+      companyY -= 11;
+    }
+    y = companyY - 4;
+  } else {
+    y -= 3 + 1.5 / 2;
+  }
+
+  const detailFontSize = 10;
+  const detailLineHeight = 13;
+
+  page.drawText(`Date: ${formatLongDate(lastUpdate)}`, {
+    x: PDF_MARGIN_X,
+    y: y - detailFontSize,
+    size: detailFontSize,
+    font,
+    color: TEXT,
+  });
+  y -= detailLineHeight + 8;
+
+  // Centered underlined title — matches the submittal export.
+  const title = "Procurement Log";
+  const titleSize = 16;
+  drawCenteredText(page, title, centerX, y - titleSize, bold, titleSize);
+  const titleW = bold.widthOfTextAtSize(title, titleSize);
+  page.drawLine({
+    start: { x: centerX - titleW / 2, y: y - titleSize - 2 },
+    end: { x: centerX + titleW / 2, y: y - titleSize - 2 },
+    thickness: 0.75,
+    color: TEXT,
+  });
+  y -= titleSize + 18;
+
+  const infoLines = [
+    `Project: ${jobName.trim()}`,
+    ...(jobNumber.trim() ? [`Project Number: ${jobNumber.trim()}`] : []),
+    `Last Update: ${formatLongDate(lastUpdate)}`,
+  ];
+  for (const line of infoLines) {
+    page.drawText(line, {
+      x: PDF_MARGIN_X,
+      y: y - detailFontSize,
+      size: detailFontSize,
+      font,
+      color: TEXT,
+    });
+    y -= detailLineHeight;
+  }
+  y -= 10;
+
+  const weightSum = COL_WEIGHTS.reduce((a, b) => a + b, 0);
+  const colWidths = COL_WEIGHTS.map((w) => (contentWidth * w) / weightSum);
+  const ctx: TableCtx = { doc, page, y, font, bold, colWidths, usable: contentWidth };
+
+  drawHeaderRow(ctx);
+  if (!logRows.length) {
+    ctx.page.drawText("No wallcovering materials found for this job.", {
+      x: PDF_MARGIN_X,
+      y: ctx.y - 14,
+      size: 10,
+      font,
+      color: MUTED,
+    });
+    ctx.y -= 24;
+  } else {
+    logRows.forEach((row, i) => drawBodyRow(ctx, rowToCells(row), i % 2 === 1));
+  }
+
+  const footerNeed = measureBrandingSignatureFooterHeight(branding) + 10;
+  if (ctx.y < footerNeed) {
+    ctx.page = doc.addPage([PAGE_W, PAGE_H]);
+    ctx.y = ctx.page.getHeight() - PDF_MARGIN_TOP;
+  }
+  drawBrandingSignatureFooter(ctx.page, pageWidth, font, bold, branding);
+
+  return doc.save();
 }
 
-export function printProcurementLog(options: {
+export async function downloadProcurementLogPdf(options: {
   jobNumber: string;
   jobName: string;
-  lines: WcTrackerLineState[];
+  lines: import("../types/fieldTracker").WcTrackerLineState[];
   branding: PrintBranding;
   lastUpdate?: Date;
-}): void {
-  const filename = procurementLogFilename(options.jobName, options.jobNumber);
-  printHtml(buildProcurementLogHtml(options), pdfTitleFromFilename(filename), options.branding.logoUrl);
+}): Promise<void> {
+  const bytes = await buildProcurementLogPdfBytes(options);
+  downloadPdfBytes(bytes, procurementLogFilename(options.jobName, options.jobNumber));
 }

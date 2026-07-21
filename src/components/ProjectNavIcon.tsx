@@ -45,14 +45,6 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <rect x="5" y="4" width="14" height="16" rx="2" />
         </svg>
       );
-    case "procurement-log":
-      return (
-        <svg {...common}>
-          <rect x="4" y="3" width="16" height="18" rx="2" />
-          <path d="M8 7h8M8 11h8M8 15h5" />
-          <path d="M7 7.5l1.5 1.5L11 6.5" strokeWidth="1.5" />
-        </svg>
-      );
     case "excel-paste":
       return (
         <svg {...common}>
@@ -99,6 +91,13 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <rect x="5" y="3" width="14" height="18" rx="2" />
           <path d="M9 8h6M9 12h6M9 16h4" />
           <path d="M8.5 8.5l1 1 2.5-2.5" strokeWidth="1.5" />
+        </svg>
+      );
+    case "material-tracker":
+      return (
+        <svg {...common}>
+          <path d="M12 3l9 5-9 5-9-5 9-5z" />
+          <path d="M3 13l9 5 9-5" />
         </svg>
       );
     default:

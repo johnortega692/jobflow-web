@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { JobInfoSetupDrawer } from "../components/jobinfo/JobInfoSetupDrawer";
-import { JobTrackerEditModal } from "../components/jobinfo/JobTrackerEditModal";
 import { ProjectActivityPanel } from "../components/jobinfo/ProjectActivityPanel";
 import { ProjectStartupChecklist } from "../components/jobinfo/ProjectStartupChecklist";
 import { ProjectDashboardHeader } from "../components/jobinfo/ProjectDashboardHeader";
@@ -25,10 +24,10 @@ type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectFor
 
 export function ProjectOverviewPage() {
   const { project: initial, projectId, setProject: setProjectCtx } = useOutletContext<Ctx>();
+  const navigate = useNavigate();
   const [project, setProject] = useState(initial);
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupInitialTab, setSetupInitialTab] = useState<"info" | "startup">("info");
-  const [trackerEditOpen, setTrackerEditOpen] = useState(false);
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [startupItems, setStartupItems] = useState(() => parseDashboardStartupItems(initial));
   const [startupFocus, setStartupFocus] = useState<{ group: StartupChecklistGroup; itemId: string } | null>(null);
@@ -62,6 +61,13 @@ export function ProjectOverviewPage() {
     setSetupOpen(true);
   }
 
+  const openMaterialTracker = useCallback(
+    (tab: "paint" | "wallcovering" = "paint") => {
+      navigate(`/projects/${projectId}/material-tracker${tab === "wallcovering" ? "?tab=wallcovering" : ""}`);
+    },
+    [navigate, projectId],
+  );
+
   function onSaved(next: ProjectForm) {
     setProject(next);
     setProjectCtx(next);
@@ -90,7 +96,7 @@ export function ProjectOverviewPage() {
     () => [
       {
         id: "job-setup",
-        label: "Job setup",
+        label: "Job info",
         value: `${jobSetupCounts.done}/${jobSetupCounts.total}`,
         onClick: () => openJobSetup("info"),
       },
@@ -104,27 +110,25 @@ export function ProjectOverviewPage() {
         id: "submittal",
         label: "Submittal",
         value: submittalStage,
-        onClick: () => setTrackerEditOpen(true),
+        onClick: () => openMaterialTracker("paint"),
       },
       {
         id: "follow-up",
         label: "Follow up",
         value: paintTracker.followUp.trim() || "Not set",
-        onClick: () => setTrackerEditOpen(true),
+        onClick: () => openMaterialTracker("paint"),
       },
     ],
-    [jobSetupCounts, startupCounts, submittalStage, paintTracker.followUp],
+    [jobSetupCounts, startupCounts, submittalStage, paintTracker.followUp, openMaterialTracker],
   );
 
   return (
     <div className="stack job-dashboard">
       <ProjectDashboardHeader
         project={project}
-        projectId={projectId}
         attentionCount={attentionItems.length}
         paintTracker={paintTracker}
         onOpenJobSetup={() => openJobSetup("info")}
-        onOpenTrackerEdit={() => setTrackerEditOpen(true)}
       />
 
       <NeedsAttentionStrip items={attentionItems} onItemClick={onAttentionItem} />
@@ -144,15 +148,6 @@ export function ProjectOverviewPage() {
           refreshKey={activityRefreshKey}
         />
       </div>
-
-      <JobTrackerEditModal
-        open={trackerEditOpen}
-        project={project}
-        projectId={projectId}
-        onClose={() => setTrackerEditOpen(false)}
-        onOpenJobSetup={() => openJobSetup("info")}
-        onProjectUpdate={onSaved}
-      />
 
       <JobInfoSetupDrawer
         open={setupOpen}

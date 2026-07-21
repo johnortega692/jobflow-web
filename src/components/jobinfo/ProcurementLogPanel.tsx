@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
-import { useLetterhead } from "../contexts/LetterheadContext";
-import { buildProcurementLogRowsFromLines } from "../lib/procurementLog";
-import { printProcurementLog } from "../lib/procurementLogPrint";
-import { procurementLogFilename } from "../lib/pdfFilenames";
-import { projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "../lib/jobInfo";
-import { reloadProject, resolveWcTrackerLines } from "../lib/fieldTrackerProject";
-import { parseProjectTradeData } from "../types/tradeDocuments";
-import type { ProjectForm, Json } from "../types/database";
+import { Link } from "react-router-dom";
+import { useLetterhead } from "../../contexts/LetterheadContext";
+import { buildProcurementLogRowsFromLines } from "../../lib/procurementLog";
+import { downloadProcurementLogPdf } from "../../lib/procurementLogPrint";
+import { procurementLogFilename } from "../../lib/pdfFilenames";
+import { projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "../../lib/jobInfo";
+import { reloadProject, resolveWcTrackerLines } from "../../lib/fieldTrackerProject";
+import { parseProjectTradeData } from "../../types/tradeDocuments";
+import type { ProjectForm, Json } from "../../types/database";
 
-type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectForm) => void };
+type Props = {
+  project: ProjectForm;
+  projectId: string;
+  onProjectUpdate?: (project: ProjectForm) => void;
+};
 
-export function ProcurementLogPage() {
-  const { project, projectId, setProject } = useOutletContext<Ctx>();
+/** Read-only procurement log (WC tracker lines) with Refresh + branded PDF export. */
+export function ProcurementLogPanel({ project, projectId, onProjectUpdate }: Props) {
   const { branding } = useLetterhead();
   const [refreshing, setRefreshing] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -38,11 +42,11 @@ export function ProcurementLogPage() {
   const refreshFromDatabase = useCallback(async () => {
     const next = await reloadProject(projectId);
     if (next) {
-      setProject(next);
+      onProjectUpdate?.(next);
       setLoadedAt(new Date());
     }
     return next;
-  }, [projectId, setProject]);
+  }, [projectId, onProjectUpdate]);
 
   const onRefresh = useCallback(async () => {
     if (!hasWallcovering) return;
@@ -53,15 +57,15 @@ export function ProcurementLogPage() {
     if (!next) setError("Could not reload project data.");
   }, [hasWallcovering, refreshFromDatabase]);
 
-  function onExportPdf() {
+  async function onExportPdf() {
     if (!logRows.length) {
-      setError("No materials to export. Add wallcovering lines in Job Tracker first.");
+      setError("No materials to export. Add wallcovering lines in the Wallcovering tab first.");
       return;
     }
     setPrinting(true);
     setError(null);
     try {
-      printProcurementLog({
+      await downloadProcurementLogPdf({
         jobNumber,
         jobName,
         lines: trackerLines,
@@ -77,12 +81,10 @@ export function ProcurementLogPage() {
 
   if (!hasWallcovering) {
     return (
-      <div className="stack">
-        <p className="banner banner-warn">
-          Enable <strong>Wallcovering</strong> in{" "}
-          <Link to={`/projects/${projectId}`}>job setup</Link> to use the procurement log.
-        </p>
-      </div>
+      <p className="banner banner-warn">
+        Enable <strong>Wallcovering</strong> in{" "}
+        <Link to={`/projects/${projectId}`}>job setup</Link> to use the procurement log.
+      </p>
     );
   }
 
@@ -91,18 +93,9 @@ export function ProcurementLogPage() {
       {error && <div className="banner banner-error">{error}</div>}
 
       <div className="row-between wrap">
-        <div>
-          <p className="muted small">
-            Built from wallcovering tracker data saved in JobFlow. Edit lines on the project dashboard
-            under <strong>Job Tracker → Wallcovering</strong>.
-          </p>
-          {loadedAt && (
-            <p className="muted small">
-              Last refreshed {loadedAt.toLocaleString()} · {logRows.length} material
-              {logRows.length === 1 ? "" : "s"}
-            </p>
-          )}
-        </div>
+        <p className="sds-filename-preview muted small">
+          Filename: <code>{pdfFilename}</code>
+        </p>
         <div className="row-gap wrap">
           <button
             type="button"
@@ -116,9 +109,9 @@ export function ProcurementLogPage() {
             type="button"
             className="btn btn-primary btn-sm"
             disabled={refreshing || printing || !logRows.length}
-            onClick={onExportPdf}
+            onClick={() => void onExportPdf()}
           >
-            {printing ? "Opening…" : "Export PDF"}
+            {printing ? "Exporting…" : "Export PDF"}
           </button>
         </div>
       </div>
@@ -130,10 +123,6 @@ export function ProcurementLogPage() {
         </p>
       )}
 
-      <p className="sds-filename-preview muted small">
-        Filename: <code>{pdfFilename}</code>
-      </p>
-
       <section className="card stack procurement-log-meta">
         <p>
           <strong>Job Number:</strong> {jobNumber || "—"}
@@ -143,7 +132,9 @@ export function ProcurementLogPage() {
         </p>
         <p>
           <strong>Last Update:</strong>{" "}
-          {loadedAt ? loadedAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—"}
+          {loadedAt
+            ? `${loadedAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}, ${loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${logRows.length} material${logRows.length === 1 ? "" : "s"}`
+            : "—"}
         </p>
       </section>
 
@@ -154,6 +145,16 @@ export function ProcurementLogPage() {
         ) : (
           <div className="procurement-log-scroll">
             <table className="procurement-log-table">
+              <colgroup>
+                <col className="plog-col-finish" />
+                <col className="plog-col-product" />
+                <col className="plog-col-lead" />
+                <col className="plog-col-date" />
+                <col className="plog-col-date" />
+                <col className="plog-col-ship" />
+                <col className="plog-col-tracking" />
+                <col className="plog-col-notes" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Finish</th>
@@ -162,7 +163,7 @@ export function ProcurementLogPage() {
                   <th>Approval Received</th>
                   <th>Date Ordered</th>
                   <th>Ship Date</th>
-                  <th>Date Received/Tracking</th>
+                  <th>Date Received / Tracking</th>
                   <th>Notes</th>
                 </tr>
               </thead>
@@ -170,9 +171,8 @@ export function ProcurementLogPage() {
                 {logRows.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="muted procurement-log-empty">
-                      No wallcovering materials yet. Add lines in{" "}
-                      <strong>Job Tracker → Wallcovering</strong> on the project dashboard, or copy from
-                      the submittal.
+                      No wallcovering materials yet. Add lines in the <strong>Wallcovering</strong> tab, or
+                      copy from the submittal.
                     </td>
                   </tr>
                 ) : (
