@@ -110,6 +110,8 @@ function paintDataFromHistory(entry: SubmittalHistoryEntry): PaintSubmittalData 
     submittal_type: submittalType,
     subject: paintSubjectForPackage(packageType, submittalType),
     spec_section: entry.spec_section,
+    spec_section_secondary: entry.spec_section_secondary,
+    spec_section_secondary_label: entry.spec_section_secondary_label,
     date: entry.date,
     items: entry.items as PaintItem[],
     revision_note: entry.revision_note,

@@ -1,9 +1,12 @@
 import { DateInput } from "../DateInput";
 import { RevisionNoteField } from "../submittals/RevisionNoteField";
-import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
+import { SpecSectionsChipField } from "../submittals/SpecSectionsChipField";
 import { SubmittalIssueStatusPill } from "../submittals/SubmittalIssueStatusPill";
 import { SubmittalPackageTypeSelect } from "../submittals/SubmittalPackageTypeSelect";
 import {
+  addWcSpecSection,
+  MAX_PAINT_SPEC_SECTIONS,
+  removeWcSpecSection,
   WALLCOVERING_SUBMITTAL_TYPES,
   type SubmittalIssueStatus,
   type SubmittalPackageCategory,
@@ -23,7 +26,7 @@ type Props = {
   onPackageTypeChange: (value: SubmittalPackageCategory) => void;
   onTypeChange: (value: TradeSubmittalType) => void;
   onSubjectChange: (value: string) => void;
-  onSpecSectionChange: (value: string) => void;
+  onSpecSectionsChange: (updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) => void;
   onRevisionNoteChange: (value: string) => void;
   onCreateNextRevision?: () => void;
 };
@@ -42,7 +45,7 @@ export function WallcoveringSubmittalMetaPanel({
   onPackageTypeChange,
   onTypeChange,
   onSubjectChange,
-  onSpecSectionChange,
+  onSpecSectionsChange,
   onRevisionNoteChange,
   onCreateNextRevision,
 }: Props) {
@@ -121,15 +124,25 @@ export function WallcoveringSubmittalMetaPanel({
             ))}
           </select>
         </label>
-        <label>
-          Spec section
-          <SpecSectionSelect
-            value={draft.spec_section}
-            disabled={draftLocked}
-            onChange={onSpecSectionChange}
-          />
-        </label>
-        <label className="wc-submittal-meta-subject">
+      </div>
+
+      <div className="paint-submittal-meta-spec-subject-row">
+        <SpecSectionsChipField
+          selected={draft.spec_sections ?? []}
+          disabled={draftLocked}
+          maxSections={MAX_PAINT_SPEC_SECTIONS}
+          onAdd={(section) => onSpecSectionsChange((d) => addWcSpecSection(d, section))}
+          onRemove={(index) =>
+            onSpecSectionsChange((d) => {
+              const first = removeWcSpecSection(d, index);
+              if (first.ok) return first.draft;
+              if (!window.confirm(first.message)) return d;
+              const second = removeWcSpecSection(d, index, { confirmed: true });
+              return second.ok ? second.draft : d;
+            })
+          }
+        />
+        <label className="paint-submittal-meta-subject-field">
           Subject
           <input value={draft.subject} onChange={(e) => onSubjectChange(e.target.value)} />
         </label>

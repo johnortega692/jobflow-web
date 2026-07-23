@@ -116,6 +116,7 @@ export function PaintItemRow({
         onDragLeave={onDragLeave}
         onDrop={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           onDrop();
         }}
       >
@@ -124,7 +125,7 @@ export function PaintItemRow({
           className="paint-row-handle"
           draggable
           aria-label={`Reorder row ${index + 1}`}
-          title="Drag to reorder"
+          title="Drag to reorder or move between tables"
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = "move";
             e.dataTransfer.setData("text/plain", String(index));

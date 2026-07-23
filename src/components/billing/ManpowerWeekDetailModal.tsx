@@ -176,7 +176,9 @@ export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose
                   <tr key={def.id}>
                     <td
                       className="billing-week-detail-phase-col billing-manpower-phase-name"
-                      style={{ borderLeftColor: colors.border }}
+                      style={{
+                        borderLeftColor: `var(--mp-phase-border-${def.id}, ${colors.border})`,
+                      }}
                     >
                       {def.name}
                     </td>
@@ -196,7 +198,11 @@ export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose
                       </td>
                     ))}
                     <td className="billing-week-detail-total-col num">
-                      <strong style={{ color: colors.text }}>{formatCrew(crewTotal)}</strong>
+                      <strong
+                        style={{ color: `var(--mp-phase-text-${def.id}, ${colors.text})` }}
+                      >
+                        {formatCrew(crewTotal)}
+                      </strong>
                     </td>
                     <td className="billing-week-detail-total-col num">
                       <span className="muted">{formatHours(crewToHours(crewTotal))}</span>

@@ -54,8 +54,13 @@ import {
   defaultWallcoveringSubmittal,
   emptyWallcoveringItem,
   normalizeWallcoveringSubmittal,
+  paintSpecSectionShortLabel,
   WALLCOVERING_PACKAGE_TYPE_OPTIONS,
+  wcDualSpecEnabled,
+  wcItemSpecScope,
   wcSubjectForPackage,
+  withWcSpecSections,
+  type PaintItemSpecScope,
   type SubmittalHistoryEntry,
   type TradeSubmittalType,
   type WallcoveringItem,
@@ -95,6 +100,7 @@ export function WallcoveringSubmittalsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const [dragOverScope, setDragOverScope] = useState<PaintItemSpecScope | null>(null);
   const [savedTrackItem, setSavedTrackItem] = useState<WallcoveringItem | null>(null);
   const [vendors, setVendors] = useState<MaterialVendor[]>([]);
   const [samplesOpen, setSamplesOpen] = useState(false);
@@ -158,6 +164,25 @@ export function WallcoveringSubmittalsPage() {
   const contentCount = wcContentItems(draft.items).length;
   const itemsReadiness = useMemo(() => wcItemsReadiness(draft.items), [draft.items]);
   const sampleItems = useMemo(() => orderedWallcoveringItems(draft.items), [draft.items]);
+  const secondaryOn = wcDualSpecEnabled(draft);
+  const secondaryLabel = paintSpecSectionShortLabel(draft.spec_sections?.[1] ?? "");
+  const secondarySection = draft.spec_sections?.[1] ?? "";
+  const leadSection = draft.spec_sections?.[0] ?? draft.spec_section;
+
+  const primaryIndexed = useMemo(
+    () =>
+      draft.items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => !secondaryOn || wcItemSpecScope(item) === "primary"),
+    [draft.items, secondaryOn],
+  );
+  const secondaryIndexed = useMemo(
+    () =>
+      draft.items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => !isTrackInfillItem(item) && wcItemSpecScope(item) === "secondary"),
+    [draft.items],
+  );
 
   function updateDraft(updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) {
     setDraft((current) => {
@@ -188,12 +213,80 @@ export function WallcoveringSubmittalsPage() {
     return enabled ? applyWcAutoLabels(items) : items;
   }
 
+  function clearDragState() {
+    setDragFrom(null);
+    setDragOver(null);
+    setDragOverScope(null);
+  }
+
+  function addWcRow(scope: PaintItemSpecScope = "primary") {
+    updateDraft((d) => {
+      const enabled = d.auto_label !== false;
+      const content = wcContentItems(d.items);
+      const row = emptyWallcoveringItem();
+      row.spec_scope = scope;
+      if (enabled) row.label = wcRowAutoLabel(content.length);
+      const track = d.items.find(isTrackInfillItem);
+      const next = track ? [...content, row, track] : [...content, row];
+      // Keep secondary rows after primary content but before track when dual.
+      if (scope === "secondary" && track) {
+        const withoutTrack = next.filter((i) => !isTrackInfillItem(i));
+        const primary = withoutTrack.filter((i) => wcItemSpecScope(i) === "primary");
+        const secondary = withoutTrack.filter((i) => wcItemSpecScope(i) === "secondary");
+        return {
+          ...d,
+          items: withMaybeAutoLabels([...primary, ...secondary, track], enabled),
+        };
+      }
+      return { ...d, items: withMaybeAutoLabels(next, enabled) };
+    });
+  }
+
+  /** Move a content row into a CSI table. Track/infill always stays primary. */
+  function moveItemToScope(from: number, scope: PaintItemSpecScope) {
+    updateDraft((d) => {
+      const current = d.items[from];
+      if (!current || isTrackInfillItem(current)) return d;
+      if (wcItemSpecScope(current) === scope) return d;
+
+      const without = d.items.filter((_, i) => i !== from);
+      const moved = { ...current, spec_scope: scope };
+      let insertAt = without.length;
+
+      for (let i = without.length - 1; i >= 0; i--) {
+        const row = without[i]!;
+        if (isTrackInfillItem(row)) continue;
+        if (wcItemSpecScope(row) === scope) {
+          insertAt = i + 1;
+          break;
+        }
+      }
+
+      if (!without.some((item) => !isTrackInfillItem(item) && wcItemSpecScope(item) === scope)) {
+        if (scope === "primary") {
+          const firstSecondary = without.findIndex(
+            (item) => !isTrackInfillItem(item) && wcItemSpecScope(item) === "secondary",
+          );
+          insertAt = firstSecondary >= 0 ? firstSecondary : without.findIndex(isTrackInfillItem);
+          if (insertAt < 0) insertAt = without.length;
+        } else {
+          const trackAt = without.findIndex(isTrackInfillItem);
+          insertAt = trackAt >= 0 ? trackAt : without.length;
+        }
+      }
+
+      const next = [...without];
+      next.splice(insertAt, 0, moved);
+      return { ...d, items: withMaybeAutoLabels(withTrackRowLast(next), d.auto_label !== false) };
+    });
+  }
+
   function patchItem(index: number, patch: Partial<WallcoveringItem>) {
     updateDraft((d) => {
       const enabled = d.auto_label !== false;
       const items = d.items.map((item, i) => {
         if (i !== index) return item;
-        if (isTrackInfillItem(item)) return { ...item, ...patch, label: "" };
+        if (isTrackInfillItem(item)) return { ...item, ...patch, label: "", spec_scope: "primary" as const };
         return { ...item, ...patch };
       });
       const floorForced = typeof patch.floor === "string" && patch.floor.trim().length > 0;
@@ -208,9 +301,103 @@ export function WallcoveringSubmittalsPage() {
   function reorderContentItems(from: number, to: number) {
     updateDraft((d) => {
       if (isTrackInfillItem(d.items[from]!) || isTrackInfillItem(d.items[to]!)) return d;
-      const moved = withTrackRowLast(moveItem(d.items, from, to));
+      const targetScope = wcItemSpecScope(d.items[to]!);
+      const scoped = d.items.map((item, i) =>
+        i === from ? { ...item, spec_scope: targetScope } : item,
+      );
+      const moved = withTrackRowLast(moveItem(scoped, from, to));
       return { ...d, items: withMaybeAutoLabels(moved, d.auto_label !== false) };
     });
+  }
+
+  function renderWcItemsTable(
+    indexedRows: { item: WallcoveringItem; index: number }[],
+    options: {
+      ariaLabel: string;
+      scope: PaintItemSpecScope;
+      emptyHint?: string;
+    },
+  ) {
+    return (
+      <div
+        className={`wc-items-list${
+          dragFrom !== null && dragOverScope === options.scope ? " wc-items-list--scope-dragover" : ""
+        }`}
+        role="table"
+        aria-label={options.ariaLabel}
+        onDragOver={(e: DragEvent) => {
+          if (dragFrom === null) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDragOverScope(options.scope);
+        }}
+        onDragLeave={(e: DragEvent) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setDragOverScope((cur) => (cur === options.scope ? null : cur));
+          }
+        }}
+        onDrop={(e: DragEvent) => {
+          e.preventDefault();
+          if (dragFrom !== null) moveItemToScope(dragFrom, options.scope);
+          clearDragState();
+        }}
+      >
+        <div className="wc-items-header" role="row">
+          <span className="wc-row-handle-spacer" aria-hidden />
+          <span className="wc-col-head wc-col-label">Label</span>
+          <span className="wc-col-head wc-col-mfr">Manufacturer</span>
+          <span className="wc-col-head wc-col-product">Product</span>
+          {showPreviousColor && <span className="wc-col-head wc-col-prev">Previous</span>}
+          <span className="wc-col-head wc-col-color">Color / Pattern</span>
+          <span className="wc-col-head wc-col-head-actions" aria-hidden />
+        </div>
+        {indexedRows.map(({ item, index }) => (
+          <WallcoveringItemRow
+            key={index}
+            item={item}
+            index={index}
+            totalContent={contentCount}
+            showPreviousColor={showPreviousColor}
+            autoLabel={autoLabel}
+            showFloor={showFloor && options.scope === "primary"}
+            dragging={dragFrom === index}
+            dragOver={dragOver === index}
+            onChange={(patch) => patchItem(index, patch)}
+            onDragStart={() => setDragFrom(index)}
+            onDragOver={(e: DragEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = "move";
+              if (!isTrackInfillItem(item)) {
+                setDragOver(index);
+                setDragOverScope(options.scope);
+              }
+            }}
+            onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
+            onDrop={() => {
+              if (dragFrom !== null && dragFrom !== index) reorderContentItems(dragFrom, index);
+              clearDragState();
+            }}
+            onDragEnd={clearDragState}
+            onRemove={() =>
+              updateDraft((d) => {
+                const filtered =
+                  d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items;
+                return {
+                  ...d,
+                  items: withMaybeAutoLabels(withTrackRowLast(filtered), d.auto_label !== false),
+                };
+              })
+            }
+          />
+        ))}
+        {indexedRows.length === 0 && options.emptyHint ? (
+          <div className="wc-items-drop-empty" role="status">
+            {options.emptyHint}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   function onGotTrackChange(checked: boolean) {
@@ -238,7 +425,12 @@ export function WallcoveringSubmittalsPage() {
 
   function loadHistoryItems(items: WallcoveringItem[], replace: boolean) {
     const mapped = items.length
-      ? items.map((i) => ({ ...emptyWallcoveringItem(), ...i, order: i.order ?? false }))
+      ? items.map((i) => ({
+          ...emptyWallcoveringItem(),
+          ...i,
+          order: i.order ?? false,
+          spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
+        }))
       : [emptyWallcoveringItem()];
     updateDraft((d) => ({
       ...d,
@@ -405,15 +597,17 @@ export function WallcoveringSubmittalsPage() {
       return;
     }
     setSavedTrackItem(null);
-    setDraft({
+    const nextBase = {
       ...createNewSubmittalPackageDraft(draft, history),
-      submittal_type: "new",
+      submittal_type: "new" as const,
       subject: wcSubjectForPackage(draft.package_type, "new"),
       auto_label: true,
       items: applyWcAutoLabels([emptyWallcoveringItem()]),
       got_track: false,
       show_floor: false,
-    });
+    };
+    const leadOnly = (draft.spec_sections?.[0] ?? draft.spec_section)?.trim();
+    setDraft(withWcSpecSections(nextBase, leadOnly ? [leadOnly] : ["09 72 00 - Wall Coverings"]));
     setStatus("New submittal package started (Rev 0, draft).");
   }
 
@@ -528,7 +722,7 @@ export function WallcoveringSubmittalsPage() {
         }
         onTypeChange={setType}
         onSubjectChange={(subject) => setDraft({ ...draft, subject })}
-        onSpecSectionChange={(spec_section) => setDraft({ ...draft, spec_section })}
+        onSpecSectionsChange={updateDraft}
         onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
         onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
       />
@@ -561,6 +755,7 @@ export function WallcoveringSubmittalsPage() {
                 }}
               />
               Show floor
+              {secondaryOn ? <span className="muted"> (primary table only)</span> : null}
             </label>
             <label className="check wc-got-track">
               <input
@@ -577,90 +772,90 @@ export function WallcoveringSubmittalsPage() {
               />
               Auto-label by order
             </label>
-            <div className="paint-add-buttons">
-              <button
-                type="button"
-                className="btn btn-primary btn-small"
-                onClick={() =>
-                  updateDraft((d) => {
-                    const enabled = d.auto_label !== false;
-                    const content = wcContentItems(d.items);
-                    const row = emptyWallcoveringItem();
-                    if (enabled) row.label = wcRowAutoLabel(content.length);
-                    const track = d.items.find(isTrackInfillItem);
-                    const next = track ? [...content, row, track] : [...content, row];
-                    return { ...d, items: withMaybeAutoLabels(next, enabled) };
-                  })
-                }
-              >
-                + Add row
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-small"
-                onClick={() => setBulkOpen(true)}
-              >
-                Add multiple…
-              </button>
-            </div>
+            {!secondaryOn && (
+              <div className="paint-add-buttons">
+                <button type="button" className="btn btn-primary btn-small" onClick={() => addWcRow("primary")}>
+                  + Add row
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  onClick={() => setBulkOpen(true)}
+                >
+                  Add multiple…
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="wc-items-list" role="table" aria-label="Wallcovering items">
-          <div className="wc-items-header" role="row">
-            <span className="wc-row-handle-spacer" aria-hidden />
-            <span className="wc-col-head wc-col-label">Label</span>
-            <span className="wc-col-head wc-col-mfr">Manufacturer</span>
-            <span className="wc-col-head wc-col-product">Product</span>
-            {showPreviousColor && <span className="wc-col-head wc-col-prev">Previous</span>}
-            <span className="wc-col-head wc-col-color">Color / Pattern</span>
-            <span className="wc-col-head wc-col-head-actions" aria-hidden />
-          </div>
-          {draft.items.map((item, index) => (
-            <WallcoveringItemRow
-              key={index}
-              item={item}
-              index={index}
-              totalContent={contentCount}
-              showPreviousColor={showPreviousColor}
-              autoLabel={autoLabel}
-              showFloor={showFloor}
-              dragging={dragFrom === index}
-              dragOver={dragOver === index}
-              onChange={(patch) => patchItem(index, patch)}
-              onDragStart={() => setDragFrom(index)}
-              onDragOver={(e: DragEvent) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                if (!isTrackInfillItem(item)) setDragOver(index);
-              }}
-              onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
-              onDrop={() => {
-                if (dragFrom !== null && dragFrom !== index) reorderContentItems(dragFrom, index);
-                setDragFrom(null);
-                setDragOver(null);
-              }}
-              onDragEnd={() => {
-                setDragFrom(null);
-                setDragOver(null);
-              }}
-              onRemove={() =>
-                updateDraft((d) => {
-                  const filtered =
-                    d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items;
-                  return {
-                    ...d,
-                    items: withMaybeAutoLabels(withTrackRowLast(filtered), d.auto_label !== false),
-                  };
-                })
-              }
-            />
-          ))}
-        </div>
+        {secondaryOn ? (
+          <>
+            <div className="paint-items-scope-block">
+              <div className="paint-items-scope-heading">
+                <div>
+                  <h4>Primary · {leadSection || "Spec section"}</h4>
+                  <p className="muted small">
+                    {primaryIndexed.filter(({ item }) => !isTrackInfillItem(item)).length} line(s)
+                    {hasTrack ? " + track" : ""}
+                  </p>
+                </div>
+                <div className="paint-add-buttons">
+                  <button type="button" className="btn btn-primary btn-small" onClick={() => addWcRow("primary")}>
+                    + Add row
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    onClick={() => setBulkOpen(true)}
+                  >
+                    Add multiple…
+                  </button>
+                </div>
+              </div>
+              {renderWcItemsTable(primaryIndexed, {
+                ariaLabel: "Primary wallcovering items",
+                scope: "primary",
+                emptyHint: "Drop rows here for the primary spec",
+              })}
+            </div>
+
+            <div className="paint-items-scope-block">
+              <div className="paint-items-scope-heading">
+                <div>
+                  <h4>
+                    {secondaryLabel} · {secondarySection}
+                  </h4>
+                  <p className="muted small">{secondaryIndexed.length} line(s) · no floor column</p>
+                </div>
+                <div className="paint-add-buttons">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-small"
+                    onClick={() => addWcRow("secondary")}
+                  >
+                    + Add row
+                  </button>
+                </div>
+              </div>
+              {renderWcItemsTable(secondaryIndexed, {
+                ariaLabel: `${secondaryLabel} wallcovering items`,
+                scope: "secondary",
+                emptyHint: `Drag ⠿ rows here from primary for ${secondaryLabel}`,
+              })}
+            </div>
+          </>
+        ) : (
+          renderWcItemsTable(primaryIndexed, {
+            ariaLabel: "Wallcovering items",
+            scope: "primary",
+          })
+        )}
 
         <div className="row-between wc-items-footer">
           <p className="muted small wc-items-drag-hint">
             {autoLabel ? "Drag ⠿ to reorder · labels follow order" : "Drag ⠿ to reorder"}
+            {secondaryOn ? " · drag between tables for 2nd spec" : ""}
             {hasTrack ? " · track row stays last" : ""}
           </p>
           <p

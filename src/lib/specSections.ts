@@ -5,6 +5,8 @@ import { loadRawUserSettings, patchOrgSettings, removeUserSettingsKeys } from ".
 export const SPEC_SECTIONS_KEY = "spec_sections";
 
 export const DEFAULT_PAINT_SPEC_SECTION = "09 91 23 - Interior Painting";
+/** Default CSI when enabling optional 2nd paint spec (exterior). */
+export const DEFAULT_PAINT_SECONDARY_SPEC_SECTION = "09 91 13 - Exterior Painting";
 export const DEFAULT_WC_SPEC_SECTION = "09 72 00 - Wall Coverings";
 export const DEFAULT_FRP_SPEC_SECTION = "06 60 00 - Plastic Fabrications (FRP)";
 
@@ -99,6 +101,23 @@ export function specSectionSelectOptions(sections: string[], current: string): s
   if (!value) return sections;
   if (sections.includes(value)) return sections;
   return [value, ...sections];
+}
+
+/** Ensure exterior (or other) CSI is present in the list used by Spec section dropdowns. */
+export function withEnsuredSpecSection(sections: string[], section: string): string[] {
+  const value = section.trim();
+  if (!value) return sections;
+  if (sections.includes(value)) return sections;
+  return [...sections, value];
+}
+
+/** Short table/banner label from a CSI string like "09 91 13 - Exterior Painting". */
+export function specSectionShortLabel(section: string, fallback = "Secondary"): string {
+  const raw = section.trim();
+  if (!raw) return fallback;
+  const parts = raw.split(/\s*[-–—]\s*/);
+  const title = parts.length > 1 ? parts.slice(1).join(" – ").trim() : "";
+  return title || raw || fallback;
 }
 
 /**

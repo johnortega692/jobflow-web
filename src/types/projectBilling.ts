@@ -141,7 +141,7 @@ function normalizeManpowerCell(raw: unknown): ManpowerCell | null {
   return cell;
 }
 
-function normalizeManpowerCells(raw: unknown): ManpowerCell[] {
+export function normalizeManpowerCells(raw: unknown): ManpowerCell[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(normalizeManpowerCell).filter((r): r is ManpowerCell => Boolean(r));
 }

@@ -13,6 +13,8 @@ import {
   sectionIncludedDocuments,
   sectionHasAnyAttachment,
   sectionsGroupedByCategory,
+  sdsPacketSpecSectionsLabel,
+  sortSdsSectionsBySpec,
   tocAttachmentLabel,
   tocSectionTitle,
   type SdsSectionCategory,
@@ -375,8 +377,9 @@ async function addCoverPage(
     ["Job Number", project.job_number || "—"],
     ["Project Address", project.job_address || "—"],
   ];
-  if (packet.spec_section.trim()) {
-    coverRows.push(["Spec Section", packet.spec_section.trim()]);
+  const coverSpecs = sdsPacketSpecSectionsLabel(packet.sections);
+  if (coverSpecs) {
+    coverRows.push([coverSpecs.includes(";") ? "Spec Sections" : "Spec Section", coverSpecs]);
   }
   coverRows.push(
     ["Categories", categoriesInPacket(packet.sections).join(", ") || "—"],
@@ -503,7 +506,7 @@ function addMaterialSummaryPage(
   const tableLeft = tableMargin;
   const tableWidth = w - tableMargin * 2;
 
-  const showSpec = Boolean(packet.spec_section.trim());
+  const showSpec = packet.sections.some((s) => s.spec_section.trim());
   const cols = showSpec
     ? [
         "#",
@@ -546,13 +549,16 @@ function addMaterialSummaryPage(
   }
   y -= 16;
 
-  const grouped = sectionsGroupedByCategory(packet.sections);
+  const ordered = sortSdsSectionsBySpec(packet.sections);
   let rowNum = 0;
-  let lastCategory: SdsSectionCategory | null = null;
+  let lastBand: string | null = null;
 
-  for (const section of grouped) {
-    if (section.category !== lastCategory) {
-      lastCategory = section.category;
+  for (const section of ordered) {
+    const band = showSpec
+      ? section.spec_section.trim() || "(No spec section)"
+      : section.category;
+    if (band !== lastBand) {
+      lastBand = band;
       const headerBottom = y - 12;
       page.drawRectangle({
         x: tableLeft,
@@ -563,7 +569,7 @@ function addMaterialSummaryPage(
         borderColor: rgb(0.7, 0.7, 0.7),
         borderWidth: 0.5,
       });
-      page.drawText(section.category.toUpperCase(), {
+      page.drawText(band.toUpperCase(), {
         x: tableLeft + 4,
         y: y - 10,
         size: 7,
@@ -574,7 +580,7 @@ function addMaterialSummaryPage(
     }
 
     rowNum += 1;
-    const specCell = packet.spec_section.trim() || "—";
+    const specCell = section.spec_section.trim() || "—";
     const row = showSpec
       ? [
           String(rowNum),
@@ -910,7 +916,7 @@ function insertTableOfContents(
   const tocPageCount = Math.max(1, Math.ceil(tocEntries.length / rowsPerPage));
 
   for (let p = 0; p < tocPageCount; p++) {
-    doc.insertPage(tocInsertIndex + p);
+    doc.insertPage(tocInsertIndex + p, LETTER);
   }
 
   let topLevelNum = 0;
@@ -989,7 +995,7 @@ export async function buildSdsPacketPdf(
     throw new Error("Each section needs at least one file attachment (product data, SDS, warranty, etc.).");
   }
 
-  const groupedSections = sectionsGroupedByCategory(packet.sections);
+  const groupedSections = sortSdsSectionsBySpec(packet.sections);
 
   const totalSteps =
     (packet.include_cover ? 1 : 0) +

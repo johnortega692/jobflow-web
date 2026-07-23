@@ -9,6 +9,7 @@ import {
   type SdsAttachmentKind,
 } from "../../lib/sdsSectionModel";
 import type { SdsSection, SdsSectionCategory } from "../../types/tradeDocuments";
+import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
 
 type Props = {
   mode: "add" | "edit";
@@ -136,6 +137,13 @@ export function SdsSectionEditorModal({
                   </option>
                 ))}
               </select>
+            </label>
+            <label>
+              Spec section
+              <SpecSectionSelect
+                value={section.spec_section}
+                onChange={(spec_section) => patch({ spec_section })}
+              />
             </label>
             <label>
               Manufacturer

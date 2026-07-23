@@ -1,4 +1,3 @@
-import { parseSpecSectionForLog } from "./submittalLogHelpers";
 import type { SdsPacketData, SdsSectionCategory } from "../types/tradeDocuments";
 
 const CATEGORY_TO_LOG_SCOPE: Partial<Record<SdsSectionCategory, string>> = {
@@ -14,7 +13,7 @@ const CATEGORY_TO_LOG_SCOPE: Partial<Record<SdsSectionCategory, string>> = {
   "Misc Finish": "Finishes",
 };
 
-/** Derive submittal log scope from section categories, then spec section. */
+/** Derive submittal log scope from section categories (not packet-level CSI). */
 export function sdsPacketLogScope(packet: SdsPacketData): string {
   const categories = [
     ...new Set(packet.sections.map((s) => s.category).filter(Boolean)),
@@ -25,5 +24,5 @@ export function sdsPacketLogScope(packet: SdsPacketData): string {
   }
   if (categories.length > 1) return "Finishes";
 
-  return parseSpecSectionForLog(packet.spec_section).scope;
+  return "Finishes";
 }

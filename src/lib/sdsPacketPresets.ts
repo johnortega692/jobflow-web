@@ -241,16 +241,32 @@ export function companySpecSubmittalFilename(
 }
 
 export function sdsPacketFilename(
-  _jobName: string,
-  _jobNumber: string,
+  jobName: string,
+  jobNumber: string,
   packet: {
     packet_type: SdsPacketType;
     cover_title: string;
-    spec_section: string;
+    spec_section?: string;
     submittal_number: number;
+    sections?: { spec_section?: string }[];
   },
 ): string {
-  return companySpecSubmittalFilename(packet.submittal_number, packet.spec_section);
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const row of packet.sections ?? []) {
+    const value = row.spec_section?.trim() ?? "";
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    unique.push(value);
+  }
+  // Exactly one CSI → include; 0 or 2+ → blank (no fake lead).
+  const specForName =
+    unique.length === 1 ? unique[0]! : unique.length === 0 ? (packet.spec_section?.trim() ?? "") : "";
+  const base = companySpecSubmittalFilename(packet.submittal_number, specForName);
+  const jobNo = sanitizeCompanyFilenamePart(jobNumber);
+  const jobNm = sanitizeCompanyFilenamePart(jobName);
+  const prefix = [jobNo, jobNm].filter(Boolean).join(" - ");
+  return prefix ? `${prefix} - ${base}` : base;
 }
 
 /** Submittal log type mirrors the selected package preset. */

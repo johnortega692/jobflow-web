@@ -54,6 +54,12 @@ export function issueSubmittalDraft(
       packageType: issued.package_type,
       date: issued.date,
       specSection: issued.spec_section,
+      ...(scope === "paint" && "spec_section_secondary" in issued
+        ? {
+            specSectionSecondary: issued.spec_section_secondary,
+            specSectionSecondaryLabel: issued.spec_section_secondary_label,
+          }
+        : {}),
     },
   );
   return { draft: issued, history: nextHistory };

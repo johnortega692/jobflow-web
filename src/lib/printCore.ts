@@ -122,27 +122,6 @@ export function submittalProjectInfoHtml(project: {
     .join("");
 }
 
-const PERSONAL_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "yahoo.com",
-  "hotmail.com",
-  "outlook.com",
-  "live.com",
-  "icloud.com",
-  "me.com",
-  "aol.com",
-  "msn.com",
-]);
-
-/** Company website label for PDF/email footers (e.g. ironwoodcb.com from signer email). */
-export function companyWebsiteFromEmail(email: string): string {
-  const match = email.trim().match(/@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/);
-  if (!match) return "";
-  const domain = match[1].toLowerCase();
-  if (PERSONAL_EMAIL_DOMAINS.has(domain)) return "";
-  return domain;
-}
-
 export function submittalFooterSignerLines(branding: PrintBranding): string[] {
   const lines: string[] = [];
   if (branding.pdfShow.signer_name && branding.footerName.trim()) lines.push(branding.footerName.trim());
@@ -154,8 +133,6 @@ export function submittalFooterSignerLines(branding: PrintBranding): string[] {
 export function submittalFooterCompanyLines(branding: PrintBranding): string[] {
   const lines: string[] = [];
   if (branding.pdfShow.company_name && branding.companyName.trim()) lines.push(branding.companyName.trim());
-  const website = companyWebsiteFromEmail(branding.footerEmail);
-  if (website) lines.push(website);
   return lines;
 }
 

@@ -12,7 +12,13 @@ import {
 } from "./printCore";
 import { pdfTitleFromFilename, wallcoveringSubmittalFilename } from "./pdfFilenames";
 import type { ProjectPrintInfo } from "./jobInfo";
-import type { WallcoveringItem, WallcoveringSubmittalData } from "../types/tradeDocuments";
+import {
+  paintSpecSectionShortLabel,
+  wcDualSpecEnabled,
+  wcItemSpecScope,
+  type WallcoveringItem,
+  type WallcoveringSubmittalData,
+} from "../types/tradeDocuments";
 import { downloadTradeSubmittalPdf, type SubmittalPdfFloorSection } from "./tradeSubmittalPdf";
 import { isTrackInfillItem } from "./wcTrackInfill";
 
@@ -135,48 +141,85 @@ function wcTableHead(substitution: boolean): string {
         </tr>`;
 }
 
+function wcPrintableItems(items: WallcoveringItem[]): WallcoveringItem[] {
+  return items.filter(
+    (i) =>
+      !isTrackInfillItem(i) &&
+      i.include_in_submittal !== false &&
+      (i.manufacturer.trim() || i.color.trim() || i.label.trim()),
+  );
+}
+
+function wcSectionColumns(substitution: boolean): Pick<SubmittalPdfFloorSection, "columns" | "colWeights"> {
+  return substitution
+    ? {
+        columns: ["#", "Label", "Previous", "New Color", "Manufacturer", "Product", "Qty"],
+        colWeights: [0.05, 0.1, 0.2, 0.2, 0.18, 0.17, 0.1],
+      }
+    : {
+        columns: ["#", "Manufacturer", "Product", "Color", "Label", "Qty"],
+        colWeights: [0.05, 0.22, 0.22, 0.26, 0.15, 0.1],
+      };
+}
+
+function wcItemRowsForPdf(items: WallcoveringItem[], substitution: boolean): string[][] {
+  return items.map((item, i) => {
+    if (substitution) {
+      return [
+        String(i + 1),
+        item.label.trim(),
+        item.previous_color.trim(),
+        item.color.trim(),
+        item.manufacturer.trim(),
+        item.product.trim(),
+        item.qty.trim(),
+      ];
+    }
+    return [
+      String(i + 1),
+      item.manufacturer.trim(),
+      item.product.trim(),
+      item.color.trim(),
+      item.label.trim(),
+      item.qty.trim(),
+    ];
+  });
+}
+
 export function buildWallcoveringSubmittalSections(
   data: WallcoveringSubmittalData,
 ): SubmittalPdfFloorSection[] {
   const substitution = data.submittal_type === "substitution";
-  const groups = groupByFloor(
-    data.items.filter(
-      (i) =>
-        !isTrackInfillItem(i) &&
-        i.include_in_submittal !== false &&
-        (i.manufacturer.trim() || i.color.trim() || i.label.trim()),
-    ),
-  );
-  return groups.map(([floor, items]) => ({
-    floorLabel: floor || undefined,
-    columns: substitution
-      ? ["#", "Label", "Previous", "New Color", "Manufacturer", "Product", "Qty"]
-      : ["#", "Manufacturer", "Product", "Color", "Label", "Qty"],
-    colWeights: substitution
-      ? [0.05, 0.1, 0.2, 0.2, 0.18, 0.17, 0.1]
-      : [0.05, 0.22, 0.22, 0.26, 0.15, 0.1],
-    rows: items.map((item, i) => {
-      if (substitution) {
-        return [
-          String(i + 1),
-          item.label.trim(),
-          item.previous_color.trim(),
-          item.color.trim(),
-          item.manufacturer.trim(),
-          item.product.trim(),
-          item.qty.trim(),
-        ];
-      }
-      return [
-        String(i + 1),
-        item.manufacturer.trim(),
-        item.product.trim(),
-        item.color.trim(),
-        item.label.trim(),
-        item.qty.trim(),
-      ];
-    }),
-  }));
+  const cols = wcSectionColumns(substitution);
+  const items = wcPrintableItems(data.items);
+  const secondaryOn = wcDualSpecEnabled(data);
+  const primaryItems = secondaryOn
+    ? items.filter((i) => wcItemSpecScope(i) === "primary")
+    : items;
+  const secondaryItems = secondaryOn
+    ? items.filter((i) => wcItemSpecScope(i) === "secondary")
+    : [];
+
+  const primaryGroups = groupByFloor(primaryItems);
+
+  const sections: SubmittalPdfFloorSection[] = primaryGroups
+    .filter(([, floorItems]) => floorItems.length > 0)
+    .map(([floor, floorItems]) => ({
+      floorLabel: floor || undefined,
+      ...cols,
+      rows: wcItemRowsForPdf(floorItems, substitution),
+    }));
+
+  if (secondaryItems.length) {
+    sections.push({
+      bannerSubject: paintSpecSectionShortLabel(data.spec_sections?.[1] ?? ""),
+      bannerSpec: data.spec_sections?.[1],
+      ...cols,
+      rows: wcItemRowsForPdf(secondaryItems, substitution),
+    });
+  }
+
+  return sections;
 }
 
 export async function downloadWallcoveringSubmittal(
@@ -213,27 +256,48 @@ export function buildWallcoveringSubmittalHtml(
   saveFilename?: string,
 ): string {
   const substitution = data.submittal_type === "substitution";
-  const groups = groupByFloor(
-    data.items.filter(
-      (i) =>
-        !isTrackInfillItem(i) &&
-        i.include_in_submittal !== false &&
-        (i.manufacturer.trim() || i.color.trim() || i.label.trim()),
-    ),
-  );
-  const bodyTables =
-    groups.length === 0
-      ? `<div style="text-align:center;color:#999;font-style:italic;padding:30px;">No wallcovering items.</div>`
-      : groups
+  const items = wcPrintableItems(data.items);
+  const secondaryOn = wcDualSpecEnabled(data);
+  const primaryItems = secondaryOn
+    ? items.filter((i) => wcItemSpecScope(i) === "primary")
+    : items;
+  const secondaryItems = secondaryOn
+    ? items.filter((i) => wcItemSpecScope(i) === "secondary")
+    : [];
+
+  const primaryGroups = groupByFloor(primaryItems);
+
+  const primaryTables =
+    primaryGroups.length === 0 || primaryItems.length === 0
+      ? ""
+      : primaryGroups
+          .filter(([, floorItems]) => floorItems.length > 0)
           .map(
-            ([floor, items]) => `
+            ([floor, floorItems]) => `
       ${floor ? `<div class="floor-section-title">${esc(floor.toUpperCase())}</div>` : ""}
       <table>
         <thead>${wcTableHead(substitution)}</thead>
-        <tbody>${wcRows(items, substitution)}</tbody>
+        <tbody>${wcRows(floorItems, substitution)}</tbody>
       </table>`,
           )
           .join("");
+
+  const secondaryTables =
+    secondaryItems.length === 0
+      ? ""
+      : `${submittalSubjectSpecBannerHtml(
+          paintSpecSectionShortLabel(data.spec_sections?.[1] ?? ""),
+          data.spec_sections?.[1] ?? "",
+        )}
+      <table>
+        <thead>${wcTableHead(substitution)}</thead>
+        <tbody>${wcRows(secondaryItems, substitution)}</tbody>
+      </table>`;
+
+  const bodyTables =
+    !primaryTables && !secondaryTables
+      ? `<div style="text-align:center;color:#999;font-style:italic;padding:30px;">No wallcovering items.</div>`
+      : `${primaryTables}${secondaryTables}`;
 
   const pageTitle = pdfTitleFromFilename(saveFilename ?? "Wallcovering_Submittal");
 

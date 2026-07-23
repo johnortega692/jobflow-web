@@ -80,6 +80,7 @@ export function normalizeSdsSection(raw: LegacySection | null | undefined): SdsS
   const section: SdsSection = {
     id: raw.id?.trim() || base.id,
     category,
+    spec_section: typeof raw.spec_section === "string" ? raw.spec_section.trim() : "",
     manufacturer: raw.manufacturer?.trim() ?? "",
     product: raw.product?.trim() ?? "",
     finish_type: sanitizeFinishType(raw.finish_type ?? raw.sheen_type ?? ""),
@@ -114,6 +115,7 @@ function emptySdsSectionInternal(): SdsSection {
   return {
     id: crypto.randomUUID(),
     category: "Paint",
+    spec_section: "",
     manufacturer: "",
     product: "",
     finish_type: "",
@@ -122,6 +124,58 @@ function emptySdsSectionInternal(): SdsSection {
     intended_use: "",
     attachments: {},
   };
+}
+
+/** Unique CSIs in first-seen order after sort-by-spec. */
+export function uniqueSdsSpecSections(sections: SdsSection[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const section of sortSdsSectionsBySpec(sections)) {
+    const value = section.spec_section.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+/** Cover / notes label: joined unique CSIs, or empty. */
+export function sdsPacketSpecSectionsLabel(sections: SdsSection[]): string {
+  return uniqueSdsSpecSections(sections).join("; ");
+}
+
+/**
+ * Filename CSI token: exactly one unique section CSI, otherwise blank
+ * (never invent a lead when 0 or 2+).
+ */
+export function sdsPacketFilenameSpecSection(sections: SdsSection[]): string {
+  const unique = uniqueSdsSpecSections(sections);
+  return unique.length === 1 ? unique[0]! : "";
+}
+
+/** Sort by CSI (blank last), then category, then product — stable within ties. */
+export function sortSdsSectionsBySpec(sections: SdsSection[]): SdsSection[] {
+  return sections
+    .map((section, index) => ({ section, index }))
+    .sort((a, b) => {
+      const aSpec = a.section.spec_section.trim();
+      const bSpec = b.section.spec_section.trim();
+      const aBlank = !aSpec;
+      const bBlank = !bSpec;
+      if (aBlank !== bBlank) return aBlank ? 1 : -1;
+      const specCmp = aSpec.localeCompare(bSpec, undefined, { sensitivity: "base" });
+      if (specCmp !== 0) return specCmp;
+      const catCmp = a.section.category.localeCompare(b.section.category, undefined, {
+        sensitivity: "base",
+      });
+      if (catCmp !== 0) return catCmp;
+      const prodCmp = a.section.product.localeCompare(b.section.product, undefined, {
+        sensitivity: "base",
+      });
+      if (prodCmp !== 0) return prodCmp;
+      return a.index - b.index;
+    })
+    .map(({ section }) => section);
 }
 
 const LEGACY_CATEGORY_MAP: Record<string, SdsSectionCategory> = {

@@ -26,3 +26,21 @@ export function normalizeJobRoleSlug(raw: string): JobRoleSlug {
 export function userJobRoleIsPm(jobRole: string): boolean {
   return jobRole.trim().toLowerCase() === "pm";
 }
+
+export function userJobRoleIsSuper(jobRole: string): boolean {
+  return jobRole.trim().toLowerCase() === "super";
+}
+
+/** PM or app admin may set start/finish and Add week on Labor Projection. */
+export function canEditManpowerSchedule(jobRole: string, isAdmin: boolean): boolean {
+  if (isAdmin) return true;
+  return userJobRoleIsPm(jobRole);
+}
+
+/**
+ * Cell enter/edit/clear on Labor Projection.
+ * Office: any approved user. Field PIN sessions have no jobRole — always cells-only.
+ */
+export function canEditManpowerCells(_jobRole: string, _isAdmin: boolean): boolean {
+  return true;
+}

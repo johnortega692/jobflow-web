@@ -1,11 +1,14 @@
 import { DateInput } from "../DateInput";
 import { RevisionNoteField } from "../submittals/RevisionNoteField";
-import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
+import { SpecSectionsChipField } from "../submittals/SpecSectionsChipField";
 import { SubmittalIssueStatusPill } from "../submittals/SubmittalIssueStatusPill";
 import { SubmittalPackageTypeSelect } from "../submittals/SubmittalPackageTypeSelect";
 import {
+  addPaintSpecSection,
+  MAX_PAINT_SPEC_SECTIONS,
   PAINT_SUBMITTAL_TYPES,
   PAINT_VENDOR_OPTIONS,
+  removePaintSpecSection,
   type PaintSubmittalData,
   type SubmittalIssueStatus,
   type SubmittalPackageCategory,
@@ -24,7 +27,7 @@ type Props = {
   onPackageTypeChange: (value: SubmittalPackageCategory) => void;
   onTypeChange: (value: TradeSubmittalType) => void;
   onSubjectChange: (value: string) => void;
-  onSpecSectionChange: (value: string) => void;
+  onSpecSectionsChange: (updater: (d: PaintSubmittalData) => PaintSubmittalData) => void;
   onRevisionNoteChange: (value: string) => void;
   onPaintVendorChange: (value: string) => void;
   onCreateNextRevision?: () => void;
@@ -44,7 +47,7 @@ export function PaintSubmittalMetaPanel({
   onPackageTypeChange,
   onTypeChange,
   onSubjectChange,
-  onSpecSectionChange,
+  onSpecSectionsChange,
   onRevisionNoteChange,
   onPaintVendorChange,
   onCreateNextRevision,
@@ -132,15 +135,25 @@ export function PaintSubmittalMetaPanel({
             ))}
           </select>
         </label>
-        <label>
-          Spec section
-          <SpecSectionSelect
-            value={draft.spec_section}
-            disabled={draftLocked}
-            onChange={onSpecSectionChange}
-          />
-        </label>
-        <label>
+      </div>
+
+      <div className="paint-submittal-meta-spec-subject-row">
+        <SpecSectionsChipField
+          selected={draft.spec_sections ?? []}
+          disabled={draftLocked}
+          maxSections={MAX_PAINT_SPEC_SECTIONS}
+          onAdd={(section) => onSpecSectionsChange((d) => addPaintSpecSection(d, section))}
+          onRemove={(index) =>
+            onSpecSectionsChange((d) => {
+              const first = removePaintSpecSection(d, index);
+              if (first.ok) return first.draft;
+              if (!window.confirm(first.message)) return d;
+              const second = removePaintSpecSection(d, index, { confirmed: true });
+              return second.ok ? second.draft : d;
+            })
+          }
+        />
+        <label className="paint-submittal-meta-subject-field">
           Subject
           <input value={draft.subject} onChange={(e) => onSubjectChange(e.target.value)} />
         </label>

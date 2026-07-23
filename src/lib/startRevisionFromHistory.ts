@@ -72,6 +72,8 @@ export function buildRevisionDraftFromHistory(
         submittal_type: submittalType,
         subject: paintSubjectForPackage(package_type, submittalType),
         spec_section: entry.spec_section?.trim() || "09 91 23 - Interior Painting",
+        spec_section_secondary: entry.spec_section_secondary?.trim() || undefined,
+        spec_section_secondary_label: entry.spec_section_secondary_label?.trim() || undefined,
         date: formatToday(),
         items: items.length ? items : [emptyPaintItem()],
         revision_note: note,

@@ -48,10 +48,15 @@ import {
   defaultTransmittal,
   emptyPaintItem,
   normalizePaintSubmittal,
+  paintDualSpecEnabled,
+  paintItemSpecScope,
+  paintSpecSectionShortLabel,
   PAINT_PACKAGE_TYPE_OPTIONS,
   paintSubjectForPackage,
+  withPaintSpecSections,
   type BrushoutPrepLink,
   type PaintItem,
+  type PaintItemSpecScope,
   type PaintSubmittalData,
   type SubmittalHistoryEntry,
   type TradeSubmittalType,
@@ -91,6 +96,7 @@ export function PaintSubmittalsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const [dragOverScope, setDragOverScope] = useState<PaintItemSpecScope | null>(null);
   const [userSettings, setUserSettings] = useState<Awaited<ReturnType<typeof loadPaintUserSettings>> | null>(
     null,
   );
@@ -182,7 +188,26 @@ export function PaintSubmittalsPage() {
   const showPreviousColor = draft.submittal_type === "substitution";
   const draftLocked = submittalDraftIsLocked(draft);
   const autoLabel = draft.auto_label !== false;
+  const secondaryOn = paintDualSpecEnabled(draft);
+  const secondaryLabel = paintSpecSectionShortLabel(draft.spec_sections?.[1] ?? "");
+  const secondarySection = draft.spec_sections?.[1] ?? "";
+  const leadSection = draft.spec_sections?.[0] ?? draft.spec_section;
   const itemsReadiness = useMemo(() => paintItemsReadiness(draft.items), [draft.items]);
+
+  const primaryIndexed = useMemo(
+    () =>
+      draft.items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => !secondaryOn || paintItemSpecScope(item) === "primary"),
+    [draft.items, secondaryOn],
+  );
+  const secondaryIndexed = useMemo(
+    () =>
+      draft.items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => paintItemSpecScope(item) === "secondary"),
+    [draft.items],
+  );
 
   function updateDraft(updater: (d: PaintSubmittalData) => PaintSubmittalData) {
     setDraft((current) => {
@@ -201,6 +226,148 @@ export function PaintSubmittalsPage() {
       submittal_type: t,
       subject: paintSubjectForPackage(d.package_type, t),
     }));
+  }
+
+  function addPaintRow(scope: PaintItemSpecScope = "primary") {
+    updateDraft((d) => {
+      const enabled = d.auto_label !== false;
+      const row = emptyPaintItem();
+      row.spec_scope = scope;
+      if (enabled) row.label = paintRowAutoLabel(d.items.length);
+      return { ...d, items: [...d.items, row] };
+    });
+  }
+
+  function clearDragState() {
+    setDragFrom(null);
+    setDragOver(null);
+    setDragOverScope(null);
+  }
+
+  /** Move a row into a CSI table (append within that scope). Works even when the target table is empty. */
+  function moveItemToScope(from: number, scope: PaintItemSpecScope) {
+    updateDraft((d) => {
+      const current = d.items[from];
+      if (!current) return d;
+      if (paintItemSpecScope(current) === scope) return d;
+
+      const without = d.items.filter((_, i) => i !== from);
+      const moved = { ...current, spec_scope: scope };
+      let insertAt = without.length;
+
+      for (let i = without.length - 1; i >= 0; i--) {
+        if (paintItemSpecScope(without[i]!) === scope) {
+          insertAt = i + 1;
+          break;
+        }
+      }
+
+      if (!without.some((item) => paintItemSpecScope(item) === scope)) {
+        if (scope === "primary") {
+          const firstSecondary = without.findIndex((item) => paintItemSpecScope(item) === "secondary");
+          insertAt = firstSecondary >= 0 ? firstSecondary : without.length;
+        } else {
+          insertAt = without.length;
+        }
+      }
+
+      const next = [...without];
+      next.splice(insertAt, 0, moved);
+      return { ...d, items: withMaybeAutoLabels(next, d.auto_label !== false) };
+    });
+  }
+
+  function renderPaintItemsTable(
+    indexedRows: { item: PaintItem; index: number }[],
+    options: {
+      showFloor: boolean;
+      ariaLabel: string;
+      scope: PaintItemSpecScope;
+      emptyHint?: string;
+    },
+  ) {
+    return (
+      <div
+        className={`paint-items-grid${showPreviousColor ? " paint-items-grid--substitution" : ""}${
+          !options.showFloor ? " paint-items-grid--no-floor" : ""
+        }${dragFrom !== null && dragOverScope === options.scope ? " paint-items-grid--scope-dragover" : ""}`}
+        role="table"
+        aria-label={options.ariaLabel}
+        onDragOver={(e: DragEvent) => {
+          if (dragFrom === null) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDragOverScope(options.scope);
+        }}
+        onDragLeave={(e: DragEvent) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setDragOverScope((cur) => (cur === options.scope ? null : cur));
+          }
+        }}
+        onDrop={(e: DragEvent) => {
+          e.preventDefault();
+          if (dragFrom !== null) moveItemToScope(dragFrom, options.scope);
+          clearDragState();
+        }}
+      >
+        <div className="paint-items-header" role="row">
+          <span className="paint-row-handle-spacer" aria-hidden />
+          <span className="paint-col-head paint-col-label">Label</span>
+          {options.showFloor && <span className="paint-col-head paint-col-floor">Floor</span>}
+          <span className="paint-col-head paint-col-color">Color</span>
+          {showPreviousColor && <span className="paint-col-head paint-col-prev">Previous</span>}
+          <span className="paint-col-head paint-col-product">Product</span>
+          <span className="paint-col-head paint-col-sheen">Sheen</span>
+          <span className="paint-col-head paint-col-head-actions" aria-hidden />
+        </div>
+        {indexedRows.map(({ item, index }) => (
+          <PaintItemRow
+            key={index}
+            item={item}
+            index={index}
+            total={draft.items.length}
+            products={products}
+            sheenOptions={sheens}
+            colors={colors}
+            showPreviousColor={showPreviousColor}
+            showFloor={options.showFloor}
+            autoLabel={autoLabel}
+            dragging={dragFrom === index}
+            dragOver={dragOver === index}
+            onChange={(patch) => patchItem(index, patch)}
+            onDragStart={() => setDragFrom(index)}
+            onDragOver={(e: DragEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = "move";
+              setDragOver(index);
+              setDragOverScope(options.scope);
+            }}
+            onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
+            onDrop={() => {
+              if (dragFrom !== null && dragFrom !== index) reorderItems(dragFrom, index);
+              clearDragState();
+            }}
+            onDragEnd={clearDragState}
+            onRemove={() =>
+              updateDraft((d) => {
+                const filtered =
+                  d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items;
+                return {
+                  ...d,
+                  items: withMaybeAutoLabels(filtered, d.auto_label !== false),
+                };
+              })
+            }
+          />
+        ))}
+        {indexedRows.length === 0 && options.emptyHint ? (
+          <div className="paint-items-drop-empty" role="status">
+            {options.emptyHint}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   function withMaybeAutoLabels(items: PaintItem[], enabled: boolean): PaintItem[] {
@@ -222,7 +389,11 @@ export function PaintSubmittalsPage() {
 
   function reorderItems(from: number, to: number) {
     updateDraft((d) => {
-      const moved = moveItem(d.items, from, to);
+      const targetScope = paintItemSpecScope(d.items[to]!);
+      const scoped = d.items.map((item, i) =>
+        i === from ? { ...item, spec_scope: targetScope } : item,
+      );
+      const moved = moveItem(scoped, from, to);
       return { ...d, items: withMaybeAutoLabels(moved, d.auto_label !== false) };
     });
   }
@@ -244,6 +415,7 @@ export function PaintSubmittalsPage() {
       product: r.product,
       sheen: r.sheen,
       previous_color: "",
+      spec_scope: "primary" as const,
     }));
     updateDraft((d) => {
       const existing = d.items.filter(paintItemHasContent);
@@ -300,6 +472,7 @@ export function PaintSubmittalsPage() {
             packageType: draft.package_type,
             date: draft.date,
             specSection: draft.spec_section,
+            specSectionSecondary: draft.spec_sections?.[1],
           },
         );
       }
@@ -394,13 +567,15 @@ export function PaintSubmittalsPage() {
     ) {
       return;
     }
-    setDraft({
+    const nextBase = {
       ...createNewSubmittalPackageDraft(draft, history),
-      submittal_type: "new",
+      submittal_type: "new" as const,
       subject: paintSubjectForPackage(draft.package_type, "new"),
       auto_label: true,
       items: withMaybeAutoLabels([emptyPaintItem()], true),
-    });
+    };
+    const leadOnly = (draft.spec_sections?.[0] || draft.spec_section || "").trim();
+    setDraft(withPaintSpecSections(nextBase, leadOnly ? [leadOnly] : ["09 91 23 - Interior Painting"]));
     setStatus("New submittal package started (Rev 0, draft).");
   }
 
@@ -522,7 +697,7 @@ export function PaintSubmittalsPage() {
         }
         onTypeChange={setType}
         onSubjectChange={(subject) => setDraft({ ...draft, subject })}
-        onSpecSectionChange={(spec_section) => setDraft({ ...draft, spec_section })}
+        onSpecSectionsChange={updateDraft}
         onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
         onPaintVendorChange={(paint_vendor) => setDraft({ ...draft, paint_vendor })}
         onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
@@ -547,6 +722,7 @@ export function PaintSubmittalsPage() {
                 onChange={(e) => setDraft({ ...draft, show_floor: e.target.checked })}
               />
               Show floor
+              {secondaryOn ? <span className="muted"> (primary table only)</span> : null}
             </label>
             <label className="check paint-floor-toggle">
               <input
@@ -563,98 +739,99 @@ export function PaintSubmittalsPage() {
               />
               Auto-label by order
             </label>
-            <div className="paint-add-buttons">
-              <button
-                type="button"
-                className="btn btn-primary btn-small"
-                onClick={() =>
-                  updateDraft((d) => {
-                    const enabled = d.auto_label !== false;
-                    const row = emptyPaintItem();
-                    if (enabled) row.label = paintRowAutoLabel(d.items.length);
-                    return { ...d, items: [...d.items, row] };
-                  })
-                }
-              >
-                + Add row
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-small"
-                disabled={catalogLoading}
-                onClick={() => setBulkOpen(true)}
-              >
-                Add multiple…
-              </button>
-            </div>
+            {!secondaryOn && (
+              <div className="paint-add-buttons">
+                <button type="button" className="btn btn-primary btn-small" onClick={() => addPaintRow("primary")}>
+                  + Add row
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  disabled={catalogLoading}
+                  onClick={() => setBulkOpen(true)}
+                >
+                  Add multiple…
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {catalogLoading && <p className="muted small">Loading color catalog…</p>}
 
-        <div
-          className={`paint-items-grid${showPreviousColor ? " paint-items-grid--substitution" : ""}${draft.show_floor !== true ? " paint-items-grid--no-floor" : ""}`}
-          role="table"
-          aria-label="Paint items"
-        >
-          <div className="paint-items-header" role="row">
-            <span className="paint-row-handle-spacer" aria-hidden />
-            <span className="paint-col-head paint-col-label">Label</span>
-            {draft.show_floor === true && <span className="paint-col-head paint-col-floor">Floor</span>}
-            <span className="paint-col-head paint-col-color">Color</span>
-            {showPreviousColor && <span className="paint-col-head paint-col-prev">Previous</span>}
-            <span className="paint-col-head paint-col-product">Product</span>
-            <span className="paint-col-head paint-col-sheen">Sheen</span>
-            <span className="paint-col-head paint-col-head-actions" aria-hidden />
-          </div>
-          {draft.items.map((item, index) => (
-            <PaintItemRow
-              key={index}
-              item={item}
-              index={index}
-              total={draft.items.length}
-              products={products}
-              sheenOptions={sheens}
-              colors={colors}
-              showPreviousColor={showPreviousColor}
-              showFloor={draft.show_floor === true}
-              autoLabel={autoLabel}
-              dragging={dragFrom === index}
-              dragOver={dragOver === index}
-              onChange={(patch) => patchItem(index, patch)}
-              onDragStart={() => setDragFrom(index)}
-              onDragOver={(e: DragEvent) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDragOver(index);
-              }}
-              onDragLeave={() => setDragOver((cur) => (cur === index ? null : cur))}
-              onDrop={() => {
-                if (dragFrom !== null && dragFrom !== index) reorderItems(dragFrom, index);
-                setDragFrom(null);
-                setDragOver(null);
-              }}
-              onDragEnd={() => {
-                setDragFrom(null);
-                setDragOver(null);
-              }}
-              onRemove={() =>
-                updateDraft((d) => {
-                  const filtered =
-                    d.items.length > 1 ? d.items.filter((_, i) => i !== index) : d.items;
-                  return {
-                    ...d,
-                    items: withMaybeAutoLabels(filtered, d.auto_label !== false),
-                  };
-                })
-              }
-            />
-          ))}
-        </div>
+        {secondaryOn ? (
+          <>
+            <div className="paint-items-scope-block">
+              <div className="paint-items-scope-heading">
+                <div>
+                  <h4>Primary · {leadSection || "Spec section"}</h4>
+                  <p className="muted small">{primaryIndexed.length} line(s)</p>
+                </div>
+                <div className="paint-add-buttons">
+                  <button type="button" className="btn btn-primary btn-small" onClick={() => addPaintRow("primary")}>
+                    + Add row
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    disabled={catalogLoading}
+                    onClick={() => setBulkOpen(true)}
+                  >
+                    Add multiple…
+                  </button>
+                </div>
+              </div>
+              {renderPaintItemsTable(primaryIndexed, {
+                showFloor: draft.show_floor === true,
+                ariaLabel: "Primary paint items",
+                scope: "primary",
+                emptyHint: "Drop rows here for the primary spec",
+              })}
+            </div>
+
+            <div className="paint-items-scope-block">
+              <div className="paint-items-scope-heading">
+                <div>
+                  <h4>
+                    {secondaryLabel} · {secondarySection}
+                  </h4>
+                  <p className="muted small">{secondaryIndexed.length} line(s) · no floor column</p>
+                </div>
+                <div className="paint-add-buttons">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-small"
+                    onClick={() => addPaintRow("secondary")}
+                  >
+                    + Add row
+                  </button>
+                </div>
+              </div>
+              {renderPaintItemsTable(secondaryIndexed, {
+                showFloor: false,
+                ariaLabel: `${secondaryLabel} paint items`,
+                scope: "secondary",
+                emptyHint: `Drag ⠿ rows here from primary for ${secondaryLabel}`,
+              })}
+            </div>
+          </>
+        ) : (
+          renderPaintItemsTable(primaryIndexed, {
+            showFloor: draft.show_floor === true,
+            ariaLabel: "Paint items",
+            scope: "primary",
+          })
+        )}
 
         <div className="row-between paint-items-footer">
           <p className="muted small paint-items-drag-hint">
-            {autoLabel ? "Drag ⠿ to reorder · labels follow order" : "Drag ⠿ to reorder"}
+            {secondaryOn
+              ? autoLabel
+                ? "Drag ⠿ to reorder or move between primary / exterior tables · labels follow order"
+                : "Drag ⠿ to reorder or move between primary / exterior tables"
+              : autoLabel
+                ? "Drag ⠿ to reorder · labels follow order"
+                : "Drag ⠿ to reorder"}
           </p>
           <p
             className={`small paint-items-readiness${
@@ -710,7 +887,7 @@ export function PaintSubmittalsPage() {
           currentDraft={draft}
           onClose={() => setStartRevisionOpen(false)}
           onStart={(revisedDraft) => {
-            setDraft(revisedDraft as PaintSubmittalData);
+            setDraft(normalizePaintSubmittal(revisedDraft as PaintSubmittalData));
             setStartRevisionOpen(false);
             setStatus(
               `Editing Submittal #${String(revisedDraft.submittal_number).padStart(3, "0")} Rev ${revisedDraft.revision_number} (draft). Save or issue when ready.`,

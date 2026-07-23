@@ -2161,3 +2161,441 @@
     display: none;
   }
 }
+
+/* Labor Projection (Field) — computer + iPad; uses Field --fd-* for light + dark */
+.field-dashboard .field-labor-page {
+  gap: 0.85rem;
+  padding: 0 0 1.25rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  color: var(--fd-text);
+  /* Remap JobFlow .btn / component tokens so they aren't dark-theme on light Field */
+  --bg-elevated: var(--fd-surface);
+  --surface: var(--fd-surface);
+  --surface2: var(--fd-surface2);
+  --border: var(--fd-border);
+  --text: var(--fd-text);
+  --text-secondary: var(--fd-text-soft);
+  --muted: var(--fd-muted);
+  --accent: var(--fd-accent);
+  /* Phase chips: dark text on pastel fills for light mode */
+  --mp-phase-text-prime: #5b21b6;
+  --mp-phase-text-final: #1d4ed8;
+  --mp-phase-text-punch: #0f766e;
+  --mp-phase-bg-prime: rgba(124, 58, 237, 0.16);
+  --mp-phase-bg-final: rgba(37, 99, 235, 0.14);
+  --mp-phase-bg-punch: rgba(13, 148, 136, 0.14);
+  --mp-phase-border-prime: #7c3aed;
+  --mp-phase-border-final: #2563eb;
+  --mp-phase-border-punch: #0d9488;
+}
+
+.field-dashboard.field-dashboard--dark .field-labor-page {
+  --mp-phase-text-prime: #c4b5fd;
+  --mp-phase-text-final: #9ec0ff;
+  --mp-phase-text-punch: #5eead4;
+  --mp-phase-bg-prime: rgba(167, 139, 250, 0.22);
+  --mp-phase-bg-final: rgba(79, 140, 255, 0.2);
+  --mp-phase-bg-punch: rgba(45, 212, 191, 0.18);
+  --mp-phase-border-prime: #a78bfa;
+  --mp-phase-border-final: #4f8cff;
+  --mp-phase-border-punch: #2dd4bf;
+}
+
+.field-dashboard .field-labor-page .btn-secondary {
+  background: var(--fd-surface);
+  border-color: var(--fd-border);
+  color: var(--fd-text-soft);
+  box-shadow: 0 1px 2px var(--fd-shadow);
+}
+
+.field-dashboard .field-labor-page .btn-secondary:hover {
+  border-color: var(--fd-accent);
+  color: var(--fd-accent);
+  filter: none;
+}
+
+.field-dashboard .field-labor-page .btn-ghost,
+.field-dashboard .field-labor-page .field-labor-cal-btn {
+  background: transparent;
+  border-color: var(--fd-border);
+  color: var(--fd-accent);
+}
+
+.field-dashboard .field-labor-page .btn-ghost:hover,
+.field-dashboard .field-labor-page .field-labor-cal-btn:hover {
+  background: color-mix(in srgb, var(--fd-accent) 10%, var(--fd-surface));
+  border-color: color-mix(in srgb, var(--fd-accent) 45%, var(--fd-border));
+  color: var(--fd-accent);
+  filter: none;
+}
+
+.field-dashboard .field-labor-list-header,
+.field-dashboard .field-labor-detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.field-dashboard .field-labor-detail-header {
+  align-items: center;
+}
+
+.field-dashboard .field-labor-detail-identity {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.field-dashboard .field-labor-heading,
+.field-dashboard .field-labor-job-title {
+  margin: 0;
+  color: var(--fd-title);
+}
+
+.field-dashboard .field-labor-heading {
+  font-size: 1.2rem;
+}
+
+.field-dashboard .field-labor-job-title {
+  font-size: 1.1rem;
+  line-height: 1.25;
+}
+
+.field-dashboard .field-labor-list-lead,
+.field-dashboard .field-labor-detail-meta,
+.field-dashboard .field-labor-job-item-dates {
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-labor-list-lead {
+  margin: 0;
+  max-width: 40rem;
+}
+
+.field-dashboard .field-labor-detail-meta {
+  margin: 0.2rem 0 0;
+}
+
+.field-dashboard .field-labor-job-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 0.65rem;
+}
+
+.field-dashboard .field-labor-job-item {
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.95rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--fd-border);
+  background: var(--fd-surface);
+  color: var(--fd-text);
+  box-shadow: 0 1px 2px var(--fd-shadow);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.field-dashboard .field-labor-job-item:hover,
+.field-dashboard .field-labor-job-item:focus-visible {
+  border-color: var(--fd-accent);
+  outline: none;
+}
+
+.field-dashboard .field-labor-job-item-title {
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-labor-job-item-dates {
+  margin-top: -0.2rem;
+}
+
+.field-dashboard .field-labor-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.field-dashboard .field-labor-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--fd-border-soft);
+  background: var(--fd-surface2);
+  min-width: 0;
+}
+
+.field-dashboard .field-labor-stat-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fd-label);
+  line-height: 1.2;
+}
+
+.field-dashboard .field-labor-stat-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-labor-stat-unit {
+  font-size: 0.68rem;
+  color: var(--fd-muted);
+  line-height: 1.2;
+}
+
+.field-dashboard .field-labor-stat-card--under .field-labor-stat-value,
+.field-dashboard .field-labor-stat-card--under .field-labor-stat-status {
+  color: #1e8e3e;
+}
+
+.field-dashboard .field-labor-stat-card--over .field-labor-stat-value,
+.field-dashboard .field-labor-stat-card--over .field-labor-stat-status {
+  color: #d93025;
+}
+
+.field-dashboard .field-labor-stat-card--even .field-labor-stat-value,
+.field-dashboard .field-labor-stat-card--even .field-labor-stat-status {
+  color: var(--fd-accent);
+}
+
+.field-dashboard.field-dashboard--dark .field-labor-stat-card--under .field-labor-stat-value,
+.field-dashboard.field-dashboard--dark .field-labor-stat-card--under .field-labor-stat-status {
+  color: #3dd68c;
+}
+
+.field-dashboard.field-dashboard--dark .field-labor-stat-card--over .field-labor-stat-value,
+.field-dashboard.field-dashboard--dark .field-labor-stat-card--over .field-labor-stat-status {
+  color: #f07178;
+}
+
+.field-dashboard .field-labor-page--detail .field-labor-stat-row {
+  gap: 0.55rem;
+}
+
+.field-dashboard .field-labor-page--detail .field-labor-stat-card {
+  padding: 0.65rem 0.75rem;
+}
+
+.field-dashboard .field-labor-page--detail .field-labor-stat-value {
+  font-size: 1.25rem;
+}
+
+/* Remap office ManpowerPlanCard tokens to Field light/dark */
+.field-dashboard .field-labor-page .billing-manpower-card--field.card {
+  background: var(--fd-surface);
+  border: 1px solid var(--fd-border);
+  color: var(--fd-text);
+  box-shadow: 0 1px 2px var(--fd-shadow);
+  margin-bottom: 0;
+  overflow: visible;
+}
+
+.field-dashboard .field-labor-page .billing-manpower-card--field {
+  --bg-elevated: var(--fd-surface);
+  --surface: var(--fd-surface);
+  --surface2: var(--fd-surface2);
+  --border: var(--fd-border);
+  --text: var(--fd-text);
+  --text-secondary: var(--fd-text-soft);
+  --muted: var(--fd-muted);
+  --accent: var(--fd-accent);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-card--field .billing-card-title,
+.field-dashboard .field-labor-page .billing-manpower-card--field .billing-manpower-week-count,
+.field-dashboard .field-labor-page .billing-manpower-card--field .billing-manpower-caption,
+.field-dashboard .field-labor-page .billing-manpower-card--field .billing-manpower-end-hint {
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-card--field label {
+  color: var(--fd-label);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-card--field input.readonly,
+.field-dashboard .field-labor-page .billing-manpower-card--field .date-input,
+.field-dashboard .field-labor-page .billing-manpower-card--field input {
+  background: var(--fd-input-bg);
+  border-color: var(--fd-border);
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-sticky {
+  background: var(--fd-surface);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-table th {
+  color: var(--fd-muted);
+  border-bottom-color: var(--fd-border-soft);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-table td {
+  border-bottom-color: var(--fd-border-soft);
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-header-pill {
+  background: var(--fd-surface2);
+  border-color: var(--fd-border);
+  color: var(--fd-text-soft);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-header-pill:hover {
+  color: var(--fd-accent);
+  border-color: color-mix(in srgb, var(--fd-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--fd-accent) 10%, var(--fd-surface));
+}
+
+.field-dashboard .field-labor-page .billing-manpower-phase-name {
+  border-left-width: 4px;
+  padding-left: 10px;
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-chip:not(.billing-manpower-chip--empty) {
+  font-weight: 700;
+}
+
+.field-dashboard .field-labor-page .billing-manpower-chip--empty {
+  color: var(--fd-muted);
+  border-color: var(--fd-border);
+  background: var(--fd-surface2);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-cell-input {
+  background: var(--fd-input-bg);
+  border-color: var(--fd-accent);
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-caption {
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-scroll {
+  overflow-x: scroll;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-color: color-mix(in srgb, var(--fd-accent) 55%, var(--fd-border)) var(--fd-surface2);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-scroll::-webkit-scrollbar-track {
+  background: var(--fd-surface2);
+  border-color: var(--fd-border);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fd-accent) 45%, var(--fd-border));
+  border-color: var(--fd-surface2);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-legend-item {
+  color: var(--fd-muted);
+}
+
+/* Daily crew modal opened from Field Labor Projection */
+.field-dashboard .billing-week-detail-modal.card {
+  background: var(--fd-surface);
+  border: 1px solid var(--fd-border);
+  color: var(--fd-text);
+  --bg-elevated: var(--fd-surface);
+  --surface: var(--fd-surface);
+  --surface2: var(--fd-surface2);
+  --border: var(--fd-border);
+  --text: var(--fd-text);
+  --text-secondary: var(--fd-text-soft);
+  --muted: var(--fd-muted);
+  --accent: var(--fd-accent);
+  --mp-phase-text-prime: #5b21b6;
+  --mp-phase-text-final: #1d4ed8;
+  --mp-phase-text-punch: #0f766e;
+  --mp-phase-border-prime: #7c3aed;
+  --mp-phase-border-final: #2563eb;
+  --mp-phase-border-punch: #0d9488;
+}
+
+.field-dashboard.field-dashboard--dark .billing-week-detail-modal.card {
+  --mp-phase-text-prime: #c4b5fd;
+  --mp-phase-text-final: #9ec0ff;
+  --mp-phase-text-punch: #5eead4;
+  --mp-phase-border-prime: #a78bfa;
+  --mp-phase-border-final: #4f8cff;
+  --mp-phase-border-punch: #2dd4bf;
+}
+
+.field-dashboard .billing-week-detail-modal .billing-card-title,
+.field-dashboard .billing-week-detail-modal .muted,
+.field-dashboard .billing-week-detail-modal .billing-manpower-caption {
+  color: var(--fd-muted);
+}
+
+.field-dashboard .billing-week-detail-modal input,
+.field-dashboard .billing-week-detail-modal .billing-week-detail-input {
+  background: var(--fd-input-bg);
+  border-color: var(--fd-border);
+  color: var(--fd-text);
+}
+
+@media (min-width: 900px) {
+  .field-dashboard .field-labor-page--list {
+    gap: 1rem;
+  }
+
+  .field-dashboard .field-labor-job-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 0.75rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .field-dashboard .field-labor-job-item {
+    padding: 1rem 1.1rem;
+  }
+
+  .field-dashboard .field-labor-detail-header .btn,
+  .field-dashboard .field-labor-list-header .btn {
+    min-height: 40px;
+  }
+
+  .field-dashboard .field-labor-stat-value {
+    font-size: 1.15rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .field-dashboard .field-labor-detail-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .field-dashboard .field-labor-cal-btn {
+    align-self: flex-start;
+  }
+
+  .field-dashboard .field-labor-stat-label {
+    font-size: 0.6rem;
+  }
+
+  .field-dashboard .field-labor-stat-value {
+    font-size: 0.95rem;
+  }
+}

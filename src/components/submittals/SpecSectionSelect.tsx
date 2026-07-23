@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { loadSpecSections, specSectionSelectOptions } from "../../lib/specSections";
+import { loadSpecSections, specSectionSelectOptions, withEnsuredSpecSection, DEFAULT_PAINT_SECONDARY_SPEC_SECTION } from "../../lib/specSections";
 
 type Props = {
   value: string;
@@ -18,10 +18,13 @@ export function SpecSectionSelect({ value, onChange, disabled, optional = true, 
     let cancelled = false;
     void loadSpecSections(user?.id)
       .then((list) => {
-        if (!cancelled) setOptions(list);
+        if (!cancelled) {
+          // Keep exterior paint CSI available even if a custom org list omitted it.
+          setOptions(withEnsuredSpecSection(list, DEFAULT_PAINT_SECONDARY_SPEC_SECTION));
+        }
       })
       .catch(() => {
-        if (!cancelled) setOptions([]);
+        if (!cancelled) setOptions([DEFAULT_PAINT_SECONDARY_SPEC_SECTION]);
       });
     return () => {
       cancelled = true;

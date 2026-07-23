@@ -114,7 +114,7 @@ export function CompanyWorkloadCalendar({
       </div>
 
       <p className="field-workload-summary muted small">
-        Read-only rollup from JobFlow manpower plans.{" "}
+        Read-only rollup from JobFlow Labor Projections.{" "}
         {monthStats.totalHours > 0
           ? `${formatPlannedHours(monthStats.totalHours)} planned this month`
           : "No planned hours this month"}

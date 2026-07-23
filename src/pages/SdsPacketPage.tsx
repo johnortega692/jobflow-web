@@ -28,7 +28,11 @@ import {
   SDS_PACKET_TYPES,
   defaultSdsPacket,
   emptySdsSection,
+  leadSpecSection,
+  normalizePaintSubmittal,
   normalizeSdsPacket,
+  normalizeWallcoveringSubmittal,
+  paintItemSpecScope,
   sdsPacketOutputName,
   sdsSectionsFromPaintItems,
   sdsSectionsFromWallcoveringItems,
@@ -36,7 +40,7 @@ import {
   type ProjectTradeData,
 } from "../types/tradeDocuments";
 import type { SdsPacketType } from "../lib/sdsPacketPresets";
-import { SpecSectionSelect } from "../components/submittals/SpecSectionSelect";
+import { sortSdsSectionsBySpec } from "../lib/sdsSectionModel";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
@@ -56,6 +60,7 @@ export function SdsPacketPage() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const [lastSpecSection, setLastSpecSection] = useState("");
 
   useEffect(() => {
     if (!loading) {
@@ -75,24 +80,33 @@ export function SdsPacketPage() {
   );
 
   function replaceSection(section: SdsSection) {
+    if (section.spec_section.trim()) setLastSpecSection(section.spec_section.trim());
     setDraft((d) => ({
       ...d,
-      sections: d.sections.map((s) => (s.id === section.id ? section : s)),
+      sections: sortSdsSectionsBySpec(d.sections.map((s) => (s.id === section.id ? section : s))),
     }));
   }
 
   function addSectionRow(section: SdsSection) {
-    setDraft((d) => ({ ...d, sections: [...d.sections, section] }));
+    if (section.spec_section.trim()) setLastSpecSection(section.spec_section.trim());
+    setDraft((d) => ({
+      ...d,
+      sections: sortSdsSectionsBySpec([...d.sections, section]),
+    }));
   }
 
   function reorderSection(from: number, to: number) {
     if (from === to || from < 0 || to < 0) return;
     setDraft((d) => {
       if (from >= d.sections.length || to >= d.sections.length) return d;
+      const fromSpec = d.sections[from]?.spec_section.trim() ?? "";
+      const toSpec = d.sections[to]?.spec_section.trim() ?? "";
+      // Only allow reorder within the same CSI so sort-by-spec stays stable.
+      if (fromSpec !== toSpec) return d;
       const sections = [...d.sections];
       const [row] = sections.splice(from, 1);
       sections.splice(to, 0, row!);
-      return { ...d, sections };
+      return { ...d, sections: sortSdsSectionsBySpec(sections) };
     });
   }
 
@@ -126,26 +140,42 @@ export function SdsPacketPage() {
   }
 
   function importFromPaint() {
-    const paint = tradeData.paint_submittal;
-    if (!paint?.items.length) {
+    const paint = normalizePaintSubmittal(tradeData.paint_submittal);
+    if (!paint.items.length) {
       setError("Save paint submittal line items first, then import.");
       return;
     }
-    const imported = sdsSectionsFromPaintItems(paint.items);
-    if (!imported.length) {
+    const lead = leadSpecSection(paint);
+    const secondary = paint.spec_sections?.[1]?.trim() ?? "";
+    const imported = paint.items.flatMap((item) => {
+      const scopeSpec =
+        paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead;
+      return sdsSectionsFromPaintItems([item], scopeSpec);
+    });
+    // Dedupe again across scopes (helper already dedupes within one call)
+    const seen = new Set<string>();
+    const unique = imported.filter((row) => {
+      const key = [row.manufacturer, row.product, row.finish_type, row.spec_section]
+        .map((s) => s.trim().toLowerCase())
+        .join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (!unique.length) {
       setError("No products found to import from paint.");
       return;
     }
-    mergeImportedSections(imported, "paint");
+    mergeImportedSections(unique, "paint");
   }
 
   function importFromWallcovering() {
-    const wc = tradeData.wallcovering_submittal;
-    if (!wc?.items.length) {
+    const wc = normalizeWallcoveringSubmittal(tradeData.wallcovering_submittal);
+    if (!wc.items.length) {
       setError("Save wallcovering submittal line items first, then import.");
       return;
     }
-    const imported = sdsSectionsFromWallcoveringItems(wc.items);
+    const imported = sdsSectionsFromWallcoveringItems(wc.items, wc.spec_section);
     if (!imported.length) {
       setError("No products found to import from wallcovering.");
       return;
@@ -156,14 +186,17 @@ export function SdsPacketPage() {
   function mergeImportedSections(imported: SdsSection[], contract?: TransmittalContract) {
     setDraft((d) => ({
       ...d,
-      sections: [...d.sections, ...imported],
+      sections: sortSdsSectionsBySpec([...d.sections, ...imported]),
       ...(contract && showContractSwitch ? { contract } : {}),
     }));
     setError(null);
   }
 
   function openAddSection() {
-    setEditor({ mode: "add", section: emptySdsSection() });
+    setEditor({
+      mode: "add",
+      section: { ...emptySdsSection(), spec_section: lastSpecSection },
+    });
   }
 
   function openEditSection(section: SdsSection) {
@@ -321,14 +354,7 @@ export function SdsPacketPage() {
               />
             </label>
           </div>
-          <div className="grid-2">
-            <label>
-              Spec section <span className="muted small">(optional)</span>
-              <SpecSectionSelect
-                value={draft.spec_section}
-                onChange={(spec_section) => setDraft({ ...draft, spec_section })}
-              />
-            </label>
+          <div className="sds-cover-meta-row">
             <label>
               Date
               <DateInput value={draft.date} onChange={(v) => setDraft({ ...draft, date: v })} />
@@ -341,13 +367,21 @@ export function SdsPacketPage() {
                 placeholder={profile.name || "From Settings → Your profile"}
               />
             </label>
-            <label>
+            <label className="sds-package-num-field">
               Package #
               <input
                 type="number"
                 min={1}
+                max={99}
+                inputMode="numeric"
                 value={draft.submittal_number}
-                onChange={(e) => setDraft({ ...draft, submittal_number: Number(e.target.value) || 1 })}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setDraft({
+                    ...draft,
+                    submittal_number: Number.isFinite(n) ? Math.min(99, Math.max(1, Math.trunc(n))) : 1,
+                  });
+                }}
               />
             </label>
           </div>
@@ -465,7 +499,7 @@ export function SdsPacketPage() {
         {draft.sections.length === 0 ? (
           <p className="muted small sds-sections-empty">
             No sections yet. Click <strong>+ Add Section</strong>, import from a trade tab, or enter
-            products manually.
+            products manually. Set Spec section on each product — the list sorts by CSI.
           </p>
         ) : (
           <ul className="sds-section-list">

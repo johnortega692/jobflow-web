@@ -33,7 +33,6 @@ import {
 } from "../../lib/fieldViewPrefs";
 import { FIELD_COMPACT_MAX_WIDTH, useMediaQuery } from "../../lib/useMediaQuery";
 import type { ProjectForm } from "../../types/database";
-import { openManpowerCalHandoff } from "../../lib/manpowerCalUrl";
 import "../../field-dashboard.css";
 
 type FieldDashboardContextValue = {
@@ -202,7 +201,9 @@ export function FieldDashboardLayout() {
       ? "Installation Calendar"
       : location.pathname.includes("/workload")
         ? "Company Workload"
-        : "Wallcovering Dashboard";
+        : location.pathname.includes("/manpower")
+          ? "Labor Projection"
+          : "Wallcovering Dashboard";
 
   useEffect(() => {
     document.title = `${pageTitle} · Field View`;
@@ -272,10 +273,6 @@ export function FieldDashboardLayout() {
     );
   }
 
-  function handleOpenManpower() {
-    void openManpowerCalHandoff(fieldSession ?? loadFieldViewSession(), toast);
-  }
-
   function handleSignOut() {
     if (user) {
       void signOut();
@@ -326,7 +323,7 @@ export function FieldDashboardLayout() {
               <span>{pageTitle}</span>
             </div>
           </div>
-          {!isMobileNav ? <DesktopNavTabs onOpenManpower={handleOpenManpower} /> : null}
+          {!isMobileNav ? <DesktopNavTabs /> : null}
           <FieldAvatarMenu
             name={avatarName}
             role={avatarRole}
@@ -342,7 +339,7 @@ export function FieldDashboardLayout() {
 
         <Outlet />
 
-        {isMobileNav ? <MobileTabBar onOpenManpower={handleOpenManpower} /> : null}
+        {isMobileNav ? <MobileTabBar /> : null}
       </div>
     </FieldDashboardContext.Provider>
   );

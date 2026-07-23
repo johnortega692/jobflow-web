@@ -5,10 +5,16 @@ import { formatSubmittalDisplayDate } from "../lib/dateInputUtils";
 import { normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
 import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract";
 import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks";
-import { normalizeSdsSection as normalizeSdsSectionRow } from "../lib/sdsSectionModel";
+import { normalizeSdsSection as normalizeSdsSectionRow, sortSdsSectionsBySpec } from "../lib/sdsSectionModel";
 import { applyPaintAutoLabels, paintItemsSuggestAutoLabel } from "../lib/paintItemLabels";
 import { applyFrpAutoLabels, frpItemsSuggestAutoLabel, parseFrpQtyField } from "../lib/frpItemLabels";
 import { applyWcAutoLabels, parseWcQtyField, wcItemsHaveFloor, wcItemsSuggestAutoLabel } from "../lib/wcItemLabels";
+
+/** Paint dual-table model is binary (`primary` | `secondary`); chip UI is capped to match. */
+export const MAX_PAINT_SPEC_SECTIONS = 2;
+
+/** Which CSI table a paint line belongs to when optional 2nd spec is enabled. */
+export type PaintItemSpecScope = "primary" | "secondary";
 
 export type PaintItem = {
   label: string;
@@ -20,6 +26,8 @@ export type PaintItem = {
   product: string;
   sheen: string;
   previous_color: string;
+  /** Defaults to primary. Used when package has an optional 2nd spec. */
+  spec_scope?: PaintItemSpecScope;
 };
 
 /** Order-form unit of measure (vendor-facing). */
@@ -72,6 +80,8 @@ export type WallcoveringItem = {
   include_in_submittal: boolean;
   /** Include in Orders by Vendor / Order Samples */
   order: boolean;
+  /** Defaults to primary. Used when package has an optional 2nd spec. */
+  spec_scope?: PaintItemSpecScope;
 };
 
 export type TradeSubmittalType = "new" | "revised" | "substitution" | "original";
@@ -209,8 +219,25 @@ export type PaintSubmittalData = {
   package_type: SubmittalPackageCategory;
   submittal_type: TradeSubmittalType;
   subject: string;
-  /** CSI / specification section shown on the submittal PDF and transmittal enclosure. */
+  /**
+   * Ordered CSI sections for this package. Index 0 is the lead section.
+   * Paint UI caps at {@link MAX_PAINT_SPEC_SECTIONS} (binary item scopes).
+   * Optional on legacy drafts; {@link normalizePaintSubmittal} always fills it.
+   */
+  spec_sections?: string[];
+  /**
+   * Mirror of `spec_sections[0]` for downstream PDF/log/transmittal readers.
+   * // TODO: remove once downstream reads leadSpecSection()
+   */
   spec_section: string;
+  /**
+   * @deprecated Read-path compat only. Prefer `spec_sections[1]`. No longer written.
+   */
+  spec_section_secondary?: string;
+  /**
+   * @deprecated Never stored custom text; derived from CSI title. Read-path compat only.
+   */
+  spec_section_secondary_label?: string;
   date: string;
   items: PaintItem[];
   /** Why this revision was created — shown on PDF when revision &gt; 0. */
@@ -245,6 +272,9 @@ export type SubmittalHistoryEntry = {
   issue_status?: SubmittalIssueStatus;
   revision_note?: string;
   spec_section?: string;
+  /** Optional 2nd CSI when the issued paint package used dual specs. */
+  spec_section_secondary?: string;
+  spec_section_secondary_label?: string;
   /** Prior revisions are locked once a new revision is created or the package is issued. */
   locked?: boolean;
 };
@@ -256,7 +286,14 @@ export type WallcoveringSubmittalData = {
   package_type: SubmittalPackageCategory;
   submittal_type: TradeSubmittalType;
   subject: string;
-  /** CSI / specification section shown on the submittal PDF and transmittal enclosure. */
+  /**
+   * Ordered CSI sections. Index 0 is lead. Capped at {@link MAX_PAINT_SPEC_SECTIONS}.
+   */
+  spec_sections?: string[];
+  /**
+   * Mirror of `spec_sections[0]` for PDF/log/transmittal.
+   * // TODO: remove once downstream reads leadSpecSection()
+   */
   spec_section: string;
   date: string;
   items: WallcoveringItem[];
@@ -462,6 +499,8 @@ export type { SdsSectionCategory } from "../lib/sdsSectionModel";
 export type SdsSection = {
   id: string;
   category: SdsSectionCategory;
+  /** CSI / specification section for this product row (packet may mix multiple). */
+  spec_section: string;
   manufacturer: string;
   product: string;
   finish_type: string;
@@ -473,6 +512,10 @@ export type SdsSection = {
 
 export type SdsPacketData = {
   packet_type: SdsPacketType;
+  /**
+   * @deprecated Packet-level CSI removed — use each section's `spec_section`.
+   * Kept optional for legacy JSON; normalize migrates onto empty section rows then clears.
+   */
   spec_section: string;
   preparer: string;
   date: string;
@@ -528,6 +571,17 @@ export function normalizeSdsPacket(raw: Partial<SdsPacketData> | undefined): Sds
   const base = defaultSdsPacket();
   if (!raw) return base;
   const packet_type = normalizePacketType(raw.packet_type ?? base.packet_type);
+  const legacyPacketSpec =
+    typeof raw.spec_section === "string" ? raw.spec_section.trim() : "";
+  const sections = Array.isArray(raw.sections)
+    ? raw.sections.map((s) => {
+        const row = normalizeSdsSectionRow(s as Parameters<typeof normalizeSdsSectionRow>[0]);
+        if (!row.spec_section.trim() && legacyPacketSpec) {
+          return { ...row, spec_section: legacyPacketSpec };
+        }
+        return row;
+      })
+    : base.sections;
   return {
     ...base,
     ...raw,
@@ -537,7 +591,8 @@ export function normalizeSdsPacket(raw: Partial<SdsPacketData> | undefined): Sds
       ? defaultCoverPurpose(packet_type)
       : raw.cover_purpose?.trim() || defaultCoverPurpose(packet_type),
     cover_subtitle: "",
-    spec_section: typeof raw.spec_section === "string" ? raw.spec_section.trim() : "",
+    // Packet-level CSI retired — sections own their CSI.
+    spec_section: "",
     include_cover: raw.include_cover ?? base.include_cover,
     include_toc: raw.include_toc ?? base.include_toc,
     include_dividers: raw.include_dividers ?? base.include_dividers,
@@ -546,15 +601,17 @@ export function normalizeSdsPacket(raw: Partial<SdsPacketData> | undefined): Sds
     add_to_submittal_log: raw.add_to_submittal_log ?? base.add_to_submittal_log,
     add_to_transmittal: raw.add_to_transmittal ?? base.add_to_transmittal,
     contract: normalizeTransmittalContract(raw.contract),
-    sections: Array.isArray(raw.sections)
-      ? raw.sections.map((s) => normalizeSdsSectionRow(s as Parameters<typeof normalizeSdsSectionRow>[0]))
-      : base.sections,
+    sections: sortSdsSectionsBySpec(sections),
   };
 }
 
-export function sdsSectionsFromPaintItems(items: PaintItem[]): SdsSection[] {
+export function sdsSectionsFromPaintItems(
+  items: PaintItem[],
+  defaultSpecSection = "",
+): SdsSection[] {
   const seen = new Set<string>();
   const out: SdsSection[] = [];
+  const defaultSpec = defaultSpecSection.trim();
   for (const item of items) {
     if (!item.product.trim() && !item.manufacturer.trim()) continue;
     const key = [item.manufacturer, item.product, item.sheen].map((s) => s.trim().toLowerCase()).join("|");
@@ -566,6 +623,7 @@ export function sdsSectionsFromPaintItems(items: PaintItem[]): SdsSection[] {
     out.push({
       ...emptySdsSection(),
       category: "Paint",
+      spec_section: defaultSpec,
       manufacturer: item.manufacturer.trim(),
       product: item.product.trim(),
       finish_type: item.sheen.trim(),
@@ -577,9 +635,13 @@ export function sdsSectionsFromPaintItems(items: PaintItem[]): SdsSection[] {
   return out;
 }
 
-export function sdsSectionsFromWallcoveringItems(items: WallcoveringItem[]): SdsSection[] {
+export function sdsSectionsFromWallcoveringItems(
+  items: WallcoveringItem[],
+  defaultSpecSection = "",
+): SdsSection[] {
   const seen = new Set<string>();
   const out: SdsSection[] = [];
+  const defaultSpec = defaultSpecSection.trim();
   for (const item of items) {
     if (!item.product.trim() && !item.manufacturer.trim()) continue;
     const key = [item.manufacturer, item.product, item.color]
@@ -594,6 +656,7 @@ export function sdsSectionsFromWallcoveringItems(items: WallcoveringItem[]): Sds
     out.push({
       ...emptySdsSection(),
       category: "Wallcovering",
+      spec_section: defaultSpec,
       manufacturer: item.manufacturer.trim(),
       product: item.product.trim(),
       color: item.color.trim(),
@@ -607,7 +670,10 @@ export function sdsSectionsFromWallcoveringItems(items: WallcoveringItem[]): Sds
 export function sdsPacketOutputName(
   jobName: string,
   jobNumber: string,
-  packet: Pick<SdsPacketData, "packet_type" | "cover_title" | "spec_section" | "submittal_number">,
+  packet: Pick<SdsPacketData, "packet_type" | "cover_title" | "submittal_number"> & {
+    spec_section?: string;
+    sections?: SdsSection[];
+  },
 ): string {
   return sdsPacketFilename(jobName, jobNumber, packet);
 }
@@ -699,7 +765,153 @@ export function emptyPaintItem(): PaintItem {
     product: "",
     sheen: "",
     previous_color: "",
+    spec_scope: "primary",
   };
+}
+
+export function paintItemSpecScope(item: PaintItem): PaintItemSpecScope {
+  return item.spec_scope === "secondary" ? "secondary" : "primary";
+}
+
+function dedupeSpecSections(sections: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of sections) {
+    const value = raw.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+/** Resolve ordered CSI list from new or legacy paint fields. */
+export function normalizePaintSpecSections(
+  raw: Partial<PaintSubmittalData> | null | undefined,
+): string[] {
+  if (Array.isArray(raw?.spec_sections) && raw.spec_sections.length) {
+    return dedupeSpecSections(raw.spec_sections.map((s) => String(s ?? "")));
+  }
+  return dedupeSpecSections([
+    typeof raw?.spec_section === "string" ? raw.spec_section : "",
+    typeof raw?.spec_section_secondary === "string" ? raw.spec_section_secondary : "",
+  ]);
+}
+
+export function leadSpecSection(
+  data: Pick<PaintSubmittalData, "spec_sections" | "spec_section">,
+): string {
+  const lead = data.spec_sections?.[0]?.trim();
+  if (lead) return lead;
+  return data.spec_section?.trim() ?? "";
+}
+
+/** True when a 2nd CSI table should show (chip[1] present). */
+export function paintDualSpecEnabled(data: Pick<PaintSubmittalData, "spec_sections">): boolean {
+  return (data.spec_sections?.length ?? 0) >= 2;
+}
+
+/** Short label derived from CSI title (e.g. "Exterior Painting"). */
+export function paintSpecSectionShortLabel(section: string, fallback = "Secondary"): string {
+  const raw = section.trim();
+  if (!raw) return fallback;
+  const parts = raw.split(/\s*[-–—]\s*/);
+  const title = parts.length > 1 ? parts.slice(1).join(" – ").trim() : "";
+  return title || raw || fallback;
+}
+
+export function paintScopeForSpecIndex(index: number): PaintItemSpecScope | null {
+  if (index === 0) return "primary";
+  if (index === 1) return "secondary";
+  return null;
+}
+
+/**
+ * Persist ordered specs + lead mirror. Does not write secondary legacy fields.
+ * Caps length at {@link MAX_PAINT_SPEC_SECTIONS}.
+ */
+export function withPaintSpecSections(
+  draft: PaintSubmittalData,
+  sections: string[],
+): PaintSubmittalData {
+  const spec_sections = dedupeSpecSections(sections).slice(0, MAX_PAINT_SPEC_SECTIONS);
+  return {
+    ...draft,
+    spec_sections,
+    // TODO: remove once downstream reads leadSpecSection()
+    spec_section: spec_sections[0] ?? "",
+    spec_section_secondary: undefined,
+    spec_section_secondary_label: undefined,
+  };
+}
+
+export type RemovePaintSpecResult =
+  | { ok: true; draft: PaintSubmittalData }
+  | { ok: false; blocked: true; message: string };
+
+/**
+ * Remove a CSI chip. Blocks (with message) when items use that scope unless `confirmed`.
+ * After removal, folds secondary lines to primary when fewer than 2 sections remain.
+ */
+export function removePaintSpecSection(
+  draft: PaintSubmittalData,
+  index: number,
+  options?: { confirmed?: boolean },
+): RemovePaintSpecResult {
+  const sections = [...(draft.spec_sections ?? [])];
+  if (index < 0 || index >= sections.length) {
+    return { ok: true, draft };
+  }
+  const scope = paintScopeForSpecIndex(index);
+  const itemCount =
+    scope == null
+      ? 0
+      : draft.items.filter((item) => paintItemSpecScope(item) === scope).length;
+
+  if (itemCount > 0 && !options?.confirmed) {
+    const label = sections[index] ?? "this section";
+    return {
+      ok: false,
+      blocked: true,
+      message: `${itemCount} paint line(s) are under “${label}”. Remove the section and move those lines to the remaining table?`,
+    };
+  }
+
+  sections.splice(index, 1);
+  let items = draft.items;
+  if (sections.length < 2) {
+    items = items.map((item) =>
+      paintItemSpecScope(item) === "secondary" ? { ...item, spec_scope: "primary" as const } : item,
+    );
+  }
+  return { ok: true, draft: withPaintSpecSections({ ...draft, items }, sections) };
+}
+
+export function addPaintSpecSection(
+  draft: PaintSubmittalData,
+  section: string,
+): PaintSubmittalData {
+  const value = section.trim();
+  if (!value) return draft;
+  const current = draft.spec_sections ?? [];
+  if (current.includes(value) || current.length >= MAX_PAINT_SPEC_SECTIONS) return draft;
+  return withPaintSpecSections(draft, [...current, value]);
+}
+
+/** @deprecated Use paintDualSpecEnabled — kept so untouched print code still compiles. */
+export function paintSecondarySpecEnabled(
+  data: Pick<PaintSubmittalData, "spec_sections" | "spec_section_secondary">,
+): boolean {
+  return paintDualSpecEnabled(data) || Boolean(data.spec_section_secondary?.trim());
+}
+
+/** @deprecated Use paintSpecSectionShortLabel(spec_sections[1]) — kept for untouched print. */
+export function paintSecondarySpecLabel(
+  data: Pick<PaintSubmittalData, "spec_sections" | "spec_section_secondary" | "spec_section_secondary_label">,
+): string {
+  const section =
+    data.spec_sections?.[1]?.trim() || data.spec_section_secondary?.trim() || "";
+  return paintSpecSectionShortLabel(section);
 }
 
 export function emptyWallcoveringItem(): WallcoveringItem {
@@ -716,7 +928,107 @@ export function emptyWallcoveringItem(): WallcoveringItem {
     panels: false,
     include_in_submittal: true,
     order: false,
+    spec_scope: "primary",
   };
+}
+
+export function wcItemSpecScope(item: WallcoveringItem): PaintItemSpecScope {
+  return item.spec_scope === "secondary" ? "secondary" : "primary";
+}
+
+/** Resolve ordered CSI list from wallcovering draft fields. */
+export function normalizeWcSpecSections(
+  raw: Partial<WallcoveringSubmittalData> | null | undefined,
+): string[] {
+  if (Array.isArray(raw?.spec_sections) && raw.spec_sections.length) {
+    return dedupeSpecSections(raw.spec_sections.map((s) => String(s ?? "")));
+  }
+  return dedupeSpecSections([typeof raw?.spec_section === "string" ? raw.spec_section : ""]);
+}
+
+/** True when a 2nd CSI table should show (chip[1] present). */
+export function wcDualSpecEnabled(data: Pick<WallcoveringSubmittalData, "spec_sections">): boolean {
+  return (data.spec_sections?.length ?? 0) >= 2;
+}
+
+/**
+ * Persist ordered specs + lead mirror for wallcovering.
+ * Caps length at {@link MAX_PAINT_SPEC_SECTIONS}.
+ */
+export function withWcSpecSections(
+  draft: WallcoveringSubmittalData,
+  sections: string[],
+): WallcoveringSubmittalData {
+  const spec_sections = dedupeSpecSections(sections).slice(0, MAX_PAINT_SPEC_SECTIONS);
+  return {
+    ...draft,
+    spec_sections,
+    // TODO: remove once downstream reads leadSpecSection()
+    spec_section: spec_sections[0] ?? "",
+  };
+}
+
+export type RemoveWcSpecResult =
+  | { ok: true; draft: WallcoveringSubmittalData }
+  | { ok: false; blocked: true; message: string };
+
+/**
+ * Remove a CSI chip. Blocks when content items use that scope unless `confirmed`.
+ * Track/infill rows are always treated as primary and ignored for the secondary count.
+ * After removal, folds secondary lines to primary when fewer than 2 sections remain.
+ */
+export function removeWcSpecSection(
+  draft: WallcoveringSubmittalData,
+  index: number,
+  options?: { confirmed?: boolean },
+): RemoveWcSpecResult {
+  const sections = [...(draft.spec_sections ?? [])];
+  if (index < 0 || index >= sections.length) {
+    return { ok: true, draft };
+  }
+  const scope = paintScopeForSpecIndex(index);
+  const itemCount =
+    scope == null
+      ? 0
+      : draft.items.filter((item) => {
+          // Track/infill stays with primary; never counts against secondary removal.
+          if (
+            item.product.trim() === "Track and Infill" &&
+            item.manufacturer.trim().toUpperCase() === "APS"
+          ) {
+            return false;
+          }
+          return wcItemSpecScope(item) === scope;
+        }).length;
+
+  if (itemCount > 0 && !options?.confirmed) {
+    const label = sections[index] ?? "this section";
+    return {
+      ok: false,
+      blocked: true,
+      message: `${itemCount} wallcovering line(s) are under “${label}”. Remove the section and move those lines to the remaining table?`,
+    };
+  }
+
+  sections.splice(index, 1);
+  let items = draft.items;
+  if (sections.length < 2) {
+    items = items.map((item) =>
+      wcItemSpecScope(item) === "secondary" ? { ...item, spec_scope: "primary" as const } : item,
+    );
+  }
+  return { ok: true, draft: withWcSpecSections({ ...draft, items }, sections) };
+}
+
+export function addWcSpecSection(
+  draft: WallcoveringSubmittalData,
+  section: string,
+): WallcoveringSubmittalData {
+  const value = section.trim();
+  if (!value) return draft;
+  const current = draft.spec_sections ?? [];
+  if (current.includes(value) || current.length >= MAX_PAINT_SPEC_SECTIONS) return draft;
+  return withWcSpecSections(draft, [...current, value]);
 }
 
 export function emptyFrpItem(): FrpItem {
@@ -808,6 +1120,7 @@ export function normalizeTransmittal(raw: Partial<TransmittalData> | null | unde
 }
 
 export function defaultPaintSubmittal(): PaintSubmittalData {
+  const lead = "09 91 23 - Interior Painting";
   return {
     submittal_number: 1,
     revision_number: 0,
@@ -815,7 +1128,9 @@ export function defaultPaintSubmittal(): PaintSubmittalData {
     package_type: "Paint Brush-Outs / Color Samples",
     submittal_type: "new",
     subject: paintSubjectForType("new"),
-    spec_section: "09 91 23 - Interior Painting",
+    spec_sections: [lead],
+    // TODO: remove once downstream reads leadSpecSection()
+    spec_section: lead,
     date: formatToday(),
     items: applyPaintAutoLabels([emptyPaintItem()]),
     submittal_ordered: false,
@@ -834,14 +1149,17 @@ export const PAINT_VENDOR_OPTIONS = [
 ] as const;
 
 export function defaultWallcoveringSubmittal(): WallcoveringSubmittalData {
+  const lead = "09 72 00 - Wall Coverings";
   return {
     submittal_number: 1,
     revision_number: 0,
     issue_status: "draft",
-    package_type: "Paint Brush-Outs / Color Samples",
+    package_type: "Wallcovering Samples",
     submittal_type: "new",
     subject: wcSubjectForType("new"),
-    spec_section: "09 72 00 - Wall Coverings",
+    spec_sections: [lead],
+    // TODO: remove once downstream reads leadSpecSection()
+    spec_section: lead,
     date: formatToday(),
     items: applyWcAutoLabels([emptyWallcoveringItem()]),
     submittal_ordered: false,
@@ -857,9 +1175,12 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     ...emptyPaintItem(),
     ...i,
     color_hex: typeof i.color_hex === "string" ? i.color_hex.trim() : "",
+    spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
   }));
   const auto_label =
     typeof raw.auto_label === "boolean" ? raw.auto_label : paintItemsSuggestAutoLabel(items);
+  const resolved = normalizePaintSpecSections(raw);
+  const spec_sections = resolved.length ? resolved : [...(base.spec_sections ?? [base.spec_section])];
   return {
     ...base,
     ...raw,
@@ -868,7 +1189,12 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "Paint Brush-Outs / Color Samples", "paint"),
     revision_note: raw.revision_note?.trim() || undefined,
-    spec_section: typeof raw.spec_section === "string" ? raw.spec_section.trim() : base.spec_section,
+    spec_sections,
+    // TODO: remove once downstream reads leadSpecSection()
+    spec_section: spec_sections[0] ?? base.spec_section,
+    // Stop writing legacy secondary fields; keep read-path via normalizePaintSpecSections.
+    spec_section_secondary: undefined,
+    spec_section_secondary_label: undefined,
     show_floor: raw.show_floor === true,
     auto_label,
     brushout_pushed:
@@ -891,6 +1217,7 @@ export function normalizeWallcoveringSubmittal(
       ...emptyWallcoveringItem(),
       ...i,
       order: i.order ?? false,
+      spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
     };
     const parsed = parseWcQtyField(merged.qty, i.unit?.trim() || merged.unit, "LY");
     return { ...merged, qty: parsed.qty, unit: parsed.unit };
@@ -898,6 +1225,8 @@ export function normalizeWallcoveringSubmittal(
   const auto_label =
     typeof raw.auto_label === "boolean" ? raw.auto_label : wcItemsSuggestAutoLabel(items);
   const labeled = auto_label ? applyWcAutoLabels(items) : items;
+  const resolved = normalizeWcSpecSections(raw);
+  const spec_sections = resolved.length ? resolved : [...(base.spec_sections ?? [base.spec_section])];
   return {
     ...base,
     ...raw,
@@ -906,7 +1235,9 @@ export function normalizeWallcoveringSubmittal(
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
     package_type: normalizePackageCategory(raw.package_type, "Wallcovering Samples", "wallcovering"),
     revision_note: raw.revision_note?.trim() || undefined,
-    spec_section: typeof raw.spec_section === "string" ? raw.spec_section.trim() : base.spec_section,
+    spec_sections,
+    // TODO: remove once downstream reads leadSpecSection()
+    spec_section: spec_sections[0] ?? base.spec_section,
     auto_label,
     show_floor: raw.show_floor === true || wcItemsHaveFloor(labeled),
     date: formatSubmittalDisplayDate((raw.date ?? base.date).trim()) || formatToday(),

@@ -28,6 +28,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { BrushOutRequestPage } from "./pages/BrushOutRequestPage";
 import { FieldDashboardLayout } from "./pages/field/FieldDashboardLayout";
 import { FieldCalendarDashboardPage } from "./pages/field/FieldCalendarDashboardPage";
+import { FieldManpowerPlanPage } from "./pages/field/FieldManpowerPlanPage";
 import { FieldWorkloadPage } from "./pages/field/FieldWorkloadPage";
 import { FieldPaintDashboardPage } from "./pages/field/FieldPaintDashboardPage";
 import { FieldWallcoveringDashboardPage } from "./pages/field/FieldWallcoveringDashboardPage";
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="wallcovering" element={<FieldWallcoveringDashboardPage />} />
             <Route path="paint" element={<FieldPaintDashboardPage />} />
             <Route path="calendar" element={<FieldCalendarDashboardPage />} />
+            <Route path="manpower" element={<FieldManpowerPlanPage />} />
             <Route path="workload" element={<FieldWorkloadPage />} />
           </Route>
           <Route element={<ProtectedRoute />}>

@@ -73,6 +73,9 @@ export function SdsSectionListRow({
         <div className="sds-section-row-top">
           <span className="sds-section-row-num muted small">{index + 1}</span>
           <span className="sds-section-row-category muted small">{section.category}</span>
+          {section.spec_section.trim() ? (
+            <span className="sds-section-row-spec muted small">{section.spec_section.trim()}</span>
+          ) : null}
           <strong className="sds-section-row-title">{title}</strong>
         </div>
         {(subline || notes) && (

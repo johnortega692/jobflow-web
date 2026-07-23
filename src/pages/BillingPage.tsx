@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { ManpowerMonthlyBudgetCard } from "../components/billing/ManpowerMonthlyBudgetCard";
 import { ManpowerPlanCard } from "../components/billing/ManpowerPlanCard";
 import { MonthBudgetCalculatorModal } from "../components/billing/MonthBudgetCalculatorModal";
+import { useAuth } from "../contexts/AuthContext";
 import {
   currentMonthLabel,
   formatHoursCompact,
@@ -11,8 +12,12 @@ import {
   manpowerHoursContext,
   type DerivedMonthHours,
 } from "../lib/manpowerHours";
+import { parseProjectDataBlob } from "../lib/jobInfo";
+import { commitProjectUpdate } from "../lib/projectActivity";
 import { saveProjectBillingQuiet } from "../lib/projectBillingStorage";
+import { syncProjectStartDateToManpower } from "../lib/syncProjectStartDate";
 import { supabase } from "../lib/supabase";
+import { canEditManpowerCells, canEditManpowerSchedule } from "../types/jobRoles";
 import { parseProjectBilling, totalPlannedHours, type ProjectBillingData } from "../types/projectBilling";
 import type { ProjectForm } from "../types/database";
 import { normalizeProject } from "../types/database";
@@ -31,6 +36,9 @@ function SummaryCard({ label, value, subtitle }: { label: string; value: string;
 
 export function BillingPage() {
   const { project, projectId, setProject } = useOutletContext<Ctx>();
+  const { isAdmin, jobRole } = useAuth();
+  const canEditSchedule = canEditManpowerSchedule(jobRole, isAdmin);
+  const canEditCells = canEditManpowerCells(jobRole, isAdmin);
 
   const [billing, setBilling] = useState<ProjectBillingData>(() => parseProjectBilling(project.data));
   const [saving, setSaving] = useState(false);
@@ -82,6 +90,58 @@ export function BillingPage() {
     [applyBilling, projectId],
   );
 
+  const persistScheduleDates = useCallback(
+    async (startIso: string, endIso: string) => {
+      if (!canEditSchedule) return false;
+      setSaving(true);
+      setError(null);
+      const { data: row, error: loadErr } = await supabase
+        .from("projects")
+        .select("data")
+        .eq("id", projectId)
+        .single();
+      if (loadErr) {
+        setSaving(false);
+        setError(loadErr.message);
+        return false;
+      }
+      const base = parseProjectDataBlob(row?.data);
+      const prevStart = project.jobInfo.start_date?.trim() ?? "";
+      const jobInfo = {
+        ...project.jobInfo,
+        start_date: startIso,
+        end_date: endIso,
+      };
+      const errMsg = await commitProjectUpdate({
+        projectId,
+        mergeData: { job_info: jobInfo },
+        activity: {
+          action: "job_info_saved",
+          summary: "Labor Projection schedule dates updated",
+        },
+      });
+      setSaving(false);
+      if (errMsg) {
+        setError(errMsg);
+        return false;
+      }
+      setProject({
+        ...project,
+        jobInfo,
+        data: { ...(base as object), job_info: jobInfo } as ProjectForm["data"],
+      });
+      if (startIso.trim() !== prevStart) {
+        try {
+          await syncProjectStartDateToManpower(projectId);
+        } catch {
+          /* best-effort */
+        }
+      }
+      return true;
+    },
+    [canEditSchedule, project, projectId, setProject],
+  );
+
   const projectStartIso = project.jobInfo.start_date ?? "";
   const projectEndIso = project.jobInfo.end_date ?? "";
   const { weekStarts } = manpowerHoursContext(billing, projectStartIso, projectEndIso);
@@ -126,8 +186,11 @@ export function BillingPage() {
         projectStartIso={projectStartIso}
         projectEndIso={projectEndIso}
         saving={saving}
+        canEditSchedule={canEditSchedule}
+        canEditCells={canEditCells}
         onBillingChange={setBilling}
         onPersistQuiet={persistQuiet}
+        onScheduleDatesChange={persistScheduleDates}
       />
 
       <ManpowerMonthlyBudgetCard

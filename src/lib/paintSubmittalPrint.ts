@@ -14,6 +14,11 @@ import { paintSubmittalFilename, pdfTitleFromFilename } from "./pdfFilenames";
 import { paintColorForPrint } from "./paintImageImport";
 import type { ProjectPrintInfo } from "./jobInfo";
 import type { PaintItem, PaintSubmittalData } from "../types/tradeDocuments";
+import {
+  paintItemSpecScope,
+  paintSecondarySpecEnabled,
+  paintSecondarySpecLabel,
+} from "../types/tradeDocuments";
 import { downloadTradeSubmittalPdf, type SubmittalPdfFloorSection } from "./tradeSubmittalPdf";
 
 const SUBMITTAL_CSS = `
@@ -133,39 +138,72 @@ function paintTableHead(isSub: boolean): string {
   </tr>`;
 }
 
+function paintItemRowsForPdf(items: PaintItem[], isSub: boolean): string[][] {
+  return items.map((item, i) => {
+    const displayColor = paintColorForPrint(item.manufacturer, item.color);
+    if (isSub) {
+      return [
+        String(i + 1),
+        item.label.trim(),
+        item.previous_color.trim(),
+        displayColor,
+        item.product.trim(),
+        item.sheen.trim(),
+      ];
+    }
+    return [String(i + 1), displayColor, item.product.trim(), item.sheen.trim(), item.label.trim()];
+  });
+}
+
+function paintSectionColumns(isSub: boolean): Pick<SubmittalPdfFloorSection, "columns" | "colWeights"> {
+  return isSub
+    ? {
+        columns: ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"],
+        colWeights: [0.05, 0.1, 0.22, 0.22, 0.22, 0.19],
+      }
+    : {
+        columns: ["#", "Color", "Product", "Sheen", "Label"],
+        colWeights: [0.05, 0.25, 0.25, 0.25, 0.2],
+      };
+}
+
 export function buildPaintSubmittalSections(
   data: PaintSubmittalData,
 ): SubmittalPdfFloorSection[] {
   const isSub = data.submittal_type === "substitution";
+  const cols = paintSectionColumns(isSub);
   const items = data.items.filter((i) => i.color.trim() || i.label.trim());
-  const groups = data.show_floor === true ? groupByFloor(items) : ([["", items]] as [string, PaintItem[]][]);
-  return groups.map(([floor, floorItems]) => ({
-    floorLabel: data.show_floor === true && floor ? floor : undefined,
-    columns: isSub
-      ? ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"]
-      : ["#", "Color", "Product", "Sheen", "Label"],
-    colWeights: isSub ? [0.05, 0.1, 0.22, 0.22, 0.22, 0.19] : [0.05, 0.25, 0.25, 0.25, 0.2],
-    rows: floorItems.map((item, i) => {
-      const displayColor = paintColorForPrint(item.manufacturer, item.color);
-      if (isSub) {
-        return [
-          String(i + 1),
-          item.label.trim(),
-          item.previous_color.trim(),
-          displayColor,
-          item.product.trim(),
-          item.sheen.trim(),
-        ];
-      }
-      return [
-        String(i + 1),
-        displayColor,
-        item.product.trim(),
-        item.sheen.trim(),
-        item.label.trim(),
-      ];
-    }),
-  }));
+  const secondaryOn = paintSecondarySpecEnabled(data);
+  const primaryItems = secondaryOn
+    ? items.filter((i) => paintItemSpecScope(i) === "primary")
+    : items;
+  const secondaryItems = secondaryOn
+    ? items.filter((i) => paintItemSpecScope(i) === "secondary")
+    : [];
+
+  const primaryGroups =
+    data.show_floor === true
+      ? groupByFloor(primaryItems)
+      : ([["", primaryItems]] as [string, PaintItem[]][]);
+
+  const sections: SubmittalPdfFloorSection[] = primaryGroups
+    .filter(([, floorItems]) => floorItems.length > 0)
+    .map(([floor, floorItems]) => ({
+      floorLabel: data.show_floor === true && floor ? floor : undefined,
+      ...cols,
+      rows: paintItemRowsForPdf(floorItems, isSub),
+    }));
+
+  if (secondaryItems.length) {
+    sections.push({
+      bannerSubject: paintSecondarySpecLabel(data),
+      bannerSpec: data.spec_section_secondary,
+      ...cols,
+      rows: paintItemRowsForPdf(secondaryItems, isSub),
+    });
+  }
+
+  return sections;
 }
 
 export async function downloadPaintSubmittal(
@@ -204,18 +242,41 @@ export function buildPaintSubmittalHtml(
 ): string {
   const isSub = data.submittal_type === "substitution";
   const items = data.items.filter((i) => i.color.trim() || i.label.trim());
-  const groups =
-    data.show_floor === true ? groupByFloor(items) : ([["", items]] as [string, PaintItem[]][]);
-  const bodyTables =
-    groups.length === 0
-      ? `<div style="text-align:center;color:#999;font-style:italic;padding:30px;">No paint items.</div>`
-      : groups
+  const secondaryOn = paintSecondarySpecEnabled(data);
+  const primaryItems = secondaryOn
+    ? items.filter((i) => paintItemSpecScope(i) === "primary")
+    : items;
+  const secondaryItems = secondaryOn
+    ? items.filter((i) => paintItemSpecScope(i) === "secondary")
+    : [];
+
+  const primaryGroups =
+    data.show_floor === true
+      ? groupByFloor(primaryItems)
+      : ([["", primaryItems]] as [string, PaintItem[]][]);
+
+  const primaryTables =
+    primaryGroups.length === 0 || primaryItems.length === 0
+      ? ""
+      : primaryGroups
+          .filter(([, floorItems]) => floorItems.length > 0)
           .map(
             ([floor, floorItems]) => `
       ${data.show_floor === true && floor ? `<div class="floor-section-title">${esc(floor.toUpperCase())}</div>` : ""}
       <table><thead>${paintTableHead(isSub)}</thead><tbody>${paintTableRows(floorItems, isSub)}</tbody></table>`,
           )
           .join("");
+
+  const secondaryTables =
+    secondaryItems.length === 0
+      ? ""
+      : `${submittalSubjectSpecBannerHtml(paintSecondarySpecLabel(data), data.spec_section_secondary ?? "")}
+      <table><thead>${paintTableHead(isSub)}</thead><tbody>${paintTableRows(secondaryItems, isSub)}</tbody></table>`;
+
+  const bodyTables =
+    !primaryTables && !secondaryTables
+      ? `<div style="text-align:center;color:#999;font-style:italic;padding:30px;">No paint items.</div>`
+      : `${primaryTables}${secondaryTables}`;
 
   const pageTitle = pdfTitleFromFilename(saveFilename ?? "Paint_Submittal");
 

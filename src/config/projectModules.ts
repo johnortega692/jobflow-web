@@ -57,7 +57,7 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     modules: [
       { id: "material-tracker", label: "Material Tracker", path: "material-tracker", ready: true },
       { id: "budget", label: "Budget Maker", path: "budget", ready: true },
-      { id: "billing", label: "Manpower", path: "billing", ready: true },
+      { id: "billing", label: "Labor Projection", path: "billing", ready: true },
       { id: "work-orders", label: "Work Orders", path: "work-orders", ready: true },
     ],
   },

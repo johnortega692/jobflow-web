@@ -31,6 +31,9 @@ import {
 
 export type SubmittalPdfFloorSection = {
   floorLabel?: string;
+  /** Optional subject/spec banner drawn immediately before this section (e.g. 2nd CSI). */
+  bannerSubject?: string;
+  bannerSpec?: string;
   columns: string[];
   colWeights: number[];
   rows: string[][];
@@ -183,6 +186,17 @@ export async function buildTradeSubmittalPdfBytes(
   } else {
     for (const section of sections) {
       if (!section.rows.length) continue;
+      if (section.bannerSubject?.trim() || section.bannerSpec?.trim()) {
+        state.y = drawSubjectSpecBanner(
+          state.page,
+          state.y,
+          contentWidth,
+          section.bannerSubject ?? "",
+          section.bannerSpec,
+          state.font,
+          state.bold,
+        );
+      }
       if (section.floorLabel?.trim()) {
         state.page.drawText(section.floorLabel.trim().toUpperCase(), {
           x: PDF_MARGIN_X,

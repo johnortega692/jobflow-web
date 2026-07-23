@@ -40,9 +40,9 @@ export const FIELD_NAV_ITEMS: FieldNavItem[] = [
   },
   {
     id: "manpower",
-    label: "Manpower",
-    shortLabel: "Manpwr",
-    external: true,
+    label: "Labor Projection",
+    shortLabel: "Labor",
+    to: "/field/manpower",
     icon: <FieldNavManpowerIcon />,
   },
   {

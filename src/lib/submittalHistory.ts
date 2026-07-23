@@ -144,6 +144,8 @@ export function normalizeHistoryEntry(raw: SubmittalHistoryEntry): SubmittalHist
     locked: raw.locked ?? isLockedPackageStatus(issue_status),
     revision_note: raw.revision_note?.trim() || undefined,
     spec_section: raw.spec_section?.trim() || undefined,
+    spec_section_secondary: raw.spec_section_secondary?.trim() || undefined,
+    spec_section_secondary_label: raw.spec_section_secondary_label?.trim() || undefined,
     date: raw.date?.trim() ? formatSubmittalDisplayDate(raw.date) : raw.date,
   };
 }
@@ -200,6 +202,8 @@ export function addSubmittalToHistory(
     packageType?: SubmittalPackageCategory;
     date?: string;
     specSection?: string;
+    specSectionSecondary?: string;
+    specSectionSecondaryLabel?: string;
   },
 ): SubmittalHistoryEntry[] {
   const filtered = items.filter((i) => {
@@ -224,6 +228,8 @@ export function addSubmittalToHistory(
     package_type: normalizePackageCategory(options?.packageType, defaultPackage, scope),
     revision_note: options?.revisionNote?.trim() || undefined,
     spec_section: options?.specSection?.trim() || undefined,
+    spec_section_secondary: options?.specSectionSecondary?.trim() || undefined,
+    spec_section_secondary_label: options?.specSectionSecondaryLabel?.trim() || undefined,
     issue_status: issueStatus,
     locked,
   });
