@@ -25,6 +25,8 @@ export type BudgetBucket = {
   cost_class: string;
   template_type?: string;
   notes?: string;
+  /** When true, omit this bucket from the Hours PDF export. */
+  hide_from_hours_pdf?: boolean;
 };
 
 export type BucketTemplate = {

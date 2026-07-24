@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { budgetHoursPdfFilename, budgetPdfFilename, budgetPdfJobTitle } from "./pdfFilenames";
 import {
   buildHoursExportRows,
@@ -7,6 +7,8 @@ import {
   exportFooterText,
   type HoursExportRow,
 } from "./budgetMakerCore";
+import { resolvePrintBranding } from "./letterheadSettings";
+import type { LetterheadSettings } from "../types/letterheadSettings";
 import type { BudgetLibrary, BudgetMakerData } from "../types/budgetMaker";
 
 const HEADER = rgb(68 / 255, 114 / 255, 196 / 255);
@@ -14,9 +16,15 @@ const HIGHLIGHT = rgb(1, 241 / 255, 118 / 255);
 const TOTAL_BG = rgb(231 / 255, 238 / 255, 248 / 255);
 const ROW_ALT = rgb(0.96, 0.96, 0.96);
 const BORDER = rgb(0.75, 0.75, 0.75);
+const RULE = rgb(0.55, 0.55, 0.55);
+const RULE_STRONG = rgb(0.25, 0.25, 0.25);
+const MUTED = rgb(0.4, 0.4, 0.4);
+const GRAND_TOTAL_TEXT = rgb(0, 128 / 255, 0);
 
 const TOTAL_WEIGHTS = [1.6, 2.0, 0.45, 0.55, 0.45, 0.6, 0.35, 1.2];
-const HOURS_WEIGHTS = [1.5, 1.8, 0.55, 0.65, 0.65];
+const HOURS_WEIGHTS = [2.2, 0.55, 0.7, 1.6];
+const HOURS_RIGHT_ALIGN = new Set([1, 2]);
+const HOURS_FOOTER_H = 28;
 
 function downloadPdfBytes(bytes: Uint8Array, filename: string) {
   const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -115,6 +123,7 @@ function drawTable(
     if (style === "normal") fieldStripe += 1;
 
     const useBold = style !== "normal";
+    const textColor = style === "grandtotal" ? GRAND_TOTAL_TEXT : rgb(0, 0, 0);
     let x = margin;
     row.forEach((cell, ci) => {
       page.drawRectangle({
@@ -130,6 +139,7 @@ function drawTable(
         y: y - rowHeight + 3,
         size: fontSize,
         font: useBold ? bold : font,
+        color: textColor,
       });
       x += colWidths[ci];
     });
@@ -185,28 +195,249 @@ export function buildFieldHoursPdfTable(
   const rowKinds: FieldHoursPdfRowKind[] = [];
 
   for (const row of fieldRows) {
-    tableRows.push([row.costCode, row.workItem, row.hours, row.amount, ""]);
+    tableRows.push([row.costCode, row.hours, row.amount, row.notes]);
     rowKinds.push("field");
   }
 
-  tableRows.push(["", "Sub Total Field Used Only", fmtHours(totalHours), fmtMaterial(totalMaterial), fmtHours(totalHours)]);
+  tableRows.push([
+    "Subtotal — field used only",
+    fmtHours(totalHours),
+    fmtMaterial(totalMaterial),
+    "",
+  ]);
   rowKinds.push("subtotal");
 
   for (const row of supervisionRows) {
-    tableRows.push([row.costCode, row.workItem, row.hours, row.amount, ""]);
+    tableRows.push([row.costCode, row.hours, row.amount, row.notes]);
     rowKinds.push("supervision");
   }
 
   tableRows.push([
-    "",
-    "Grand Total",
+    "Grand total",
     fmtHours(grandTotalHours),
     fmtMaterial(totalMaterial),
-    fmtHours(grandTotalHours),
+    "",
   ]);
   rowKinds.push("grandtotal");
 
   return { tableRows, rowKinds };
+}
+
+function hoursPdfCompanyName(): string {
+  try {
+    const raw = localStorage.getItem("jobflow-letterhead-v1");
+    if (raw) {
+      const name = resolvePrintBranding(JSON.parse(raw) as LetterheadSettings).companyName.trim();
+      if (name) return name;
+    }
+  } catch {
+    /* ignore */
+  }
+  return resolvePrintBranding().companyName.trim() || "Ironwood Commercial Builders";
+}
+
+function formatReportDate(d = new Date()): string {
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${mm}/${dd}/${d.getFullYear()}`;
+}
+
+function hoursPdfJobTitle(jobNumber: string, jobName: string): string {
+  const num = jobNumber.trim();
+  const name = jobName.trim();
+  if (num && name) return `${num} — ${name}`;
+  return name || num || "Project";
+}
+
+function drawHoursCellText(
+  page: PDFPage,
+  text: string,
+  x: number,
+  width: number,
+  y: number,
+  font: PDFFont,
+  size: number,
+  color: ReturnType<typeof rgb>,
+  rightAlign: boolean,
+) {
+  const drawn = truncate(text, font, size, width - 4);
+  const textWidth = font.widthOfTextAtSize(drawn, size);
+  page.drawText(drawn, {
+    x: rightAlign ? x + width - 2 - textWidth : x + 2,
+    y,
+    size,
+    font,
+    color,
+  });
+}
+
+function stampHoursPdfFooters(
+  pages: PDFPage[],
+  margin: number,
+  font: PDFFont,
+  footerLeft: string,
+) {
+  const total = pages.length;
+  pages.forEach((page, i) => {
+    const pageWidth = page.getWidth();
+    const y = 14;
+    page.drawText(truncate(footerLeft, font, 8, pageWidth * 0.65), {
+      x: margin,
+      y,
+      size: 8,
+      font,
+      color: MUTED,
+    });
+    const right = `Page ${i + 1} of ${total}`;
+    const rightW = font.widthOfTextAtSize(right, 8);
+    page.drawText(right, {
+      x: pageWidth - margin - rightW,
+      y,
+      size: 8,
+      font,
+      color: MUTED,
+    });
+  });
+}
+
+/** Hours PDF table: horizontal rules only, right-aligned hours/amount (keeps existing colors). */
+function drawHoursFieldTable(
+  doc: PDFDocument,
+  startPage: PDFPage,
+  margin: number,
+  font: PDFFont,
+  bold: PDFFont,
+  fontSize: number,
+  columns: string[],
+  rows: string[][],
+  colWeights: number[],
+  rowKinds: FieldHoursPdfRowKind[],
+  contentTop: number,
+): PDFPage[] {
+  const rowHeight = fontSize + 8;
+  const headerHeight = rowHeight + 2;
+  const pages: PDFPage[] = [startPage];
+  let page = startPage;
+  let pageWidth = page.getWidth();
+  let pageHeight = page.getHeight();
+  let y = pageHeight - contentTop;
+  const bottom = margin + HOURS_FOOTER_H;
+
+  const usable = pageWidth - margin * 2;
+  const weightSum = colWeights.reduce((a, b) => a + b, 0);
+  const colWidths = colWeights.map((w) => (usable * w) / weightSum);
+
+  function drawHRule(atY: number, strong: boolean) {
+    page.drawLine({
+      start: { x: margin, y: atY },
+      end: { x: margin + usable, y: atY },
+      thickness: strong ? 1 : 0.5,
+      color: strong ? RULE_STRONG : RULE,
+    });
+  }
+
+  function drawColHeaders() {
+    if (y - headerHeight < bottom) {
+      page = addPage(doc, true);
+      pages.push(page);
+      pageWidth = page.getWidth();
+      pageHeight = page.getHeight();
+      y = pageHeight - margin;
+    }
+    page.drawRectangle({
+      x: margin,
+      y: y - headerHeight,
+      width: usable,
+      height: headerHeight,
+      color: HEADER,
+    });
+    let x = margin;
+    columns.forEach((col, i) => {
+      drawHoursCellText(
+        page,
+        col,
+        x,
+        colWidths[i],
+        y - headerHeight + 4,
+        bold,
+        fontSize,
+        rgb(1, 1, 1),
+        HOURS_RIGHT_ALIGN.has(i),
+      );
+      x += colWidths[i];
+    });
+    y -= headerHeight;
+  }
+
+  drawColHeaders();
+
+  let fieldStripe = 0;
+  rows.forEach((row, ri) => {
+    const kind = rowKinds[ri] ?? "field";
+    const needsStrongRule = kind === "subtotal" || kind === "grandtotal";
+    if (y - rowHeight < bottom) {
+      page = addPage(doc, true);
+      pages.push(page);
+      pageWidth = page.getWidth();
+      pageHeight = page.getHeight();
+      y = pageHeight - margin;
+      drawColHeaders();
+      fieldStripe = 0;
+    }
+
+    if (needsStrongRule) drawHRule(y, true);
+
+    if (kind === "supervision") {
+      page.drawRectangle({
+        x: margin,
+        y: y - rowHeight,
+        width: usable,
+        height: rowHeight,
+        color: HIGHLIGHT,
+      });
+    } else if (kind === "subtotal") {
+      page.drawRectangle({
+        x: margin,
+        y: y - rowHeight,
+        width: usable,
+        height: rowHeight,
+        color: TOTAL_BG,
+      });
+    } else if (fieldStripe % 2 === 1) {
+      page.drawRectangle({
+        x: margin,
+        y: y - rowHeight,
+        width: usable,
+        height: rowHeight,
+        color: ROW_ALT,
+      });
+    }
+    if (kind === "field") fieldStripe += 1;
+
+    const useBold = kind !== "field";
+    const textColor = kind === "grandtotal" ? GRAND_TOTAL_TEXT : rgb(0, 0, 0);
+    let x = margin;
+    row.forEach((cell, ci) => {
+      drawHoursCellText(
+        page,
+        cell,
+        x,
+        colWidths[ci],
+        y - rowHeight + 4,
+        useBold ? bold : font,
+        fontSize,
+        textColor,
+        HOURS_RIGHT_ALIGN.has(ci),
+      );
+      x += colWidths[ci];
+    });
+    y -= rowHeight;
+
+    if (kind === "grandtotal") drawHRule(y, true);
+    else if (kind === "field" || kind === "supervision") drawHRule(y, false);
+  });
+
+  return pages;
 }
 
 export async function downloadBudgetPdf(
@@ -292,35 +523,82 @@ export async function downloadHoursPdf(
     totalMaterial,
     supervisionHours,
   );
-  const columns = ["Cost Code", "Work Item", "Hours", "Amount", "Total Hours"];
+  const columns = ["Cost code", "Hours", "Amount", "Notes"];
 
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const margin = 43;
-  const jobTitle = budgetPdfJobTitle(jobNumber, data.job_name);
+  const margin = 36;
+  const jobTitle = hoursPdfJobTitle(jobNumber, data.job_name);
+  const companyName = hoursPdfCompanyName();
+  const reportDate = formatReportDate();
 
-  const page = addPage(doc, false);
+  const page = addPage(doc, true);
+  const pageWidth = page.getWidth();
   let y = page.getHeight() - margin;
-  page.drawText(truncate(jobTitle, bold, 16, page.getWidth() - margin * 2), {
+
+  const titleSize = 16;
+  const metaSize = 10;
+  page.drawText(truncate(jobTitle, bold, titleSize, pageWidth * 0.58), {
     x: margin,
-    y: y - 16,
-    size: 16,
+    y: y - titleSize,
+    size: titleSize,
     font: bold,
   });
-  y -= 22;
-  page.drawText("Field Hours", { x: margin, y: y - 12, size: 12, font });
 
-  drawTable(doc, page, false, margin, font, bold, 10, columns, tableRows, HOURS_WEIGHTS, {
-    contentTop: margin + 50,
-    rowStyle: (_row, index) => {
-      const kind = rowKinds[index];
-      if (kind === "supervision") return "highlight";
-      if (kind === "subtotal") return "subtotal";
-      if (kind === "grandtotal") return "grandtotal";
-      return "normal";
-    },
+  const companyW = bold.widthOfTextAtSize(
+    truncate(companyName, bold, metaSize, pageWidth * 0.38),
+    metaSize,
+  );
+  page.drawText(truncate(companyName, bold, metaSize, pageWidth * 0.38), {
+    x: pageWidth - margin - companyW,
+    y: y - metaSize,
+    size: metaSize,
+    font: bold,
   });
+  y -= titleSize + 6;
+
+  page.drawText("Field hours — Paint Division", {
+    x: margin,
+    y: y - metaSize,
+    size: metaSize,
+    font,
+    color: MUTED,
+  });
+  const dateLabel = `Report date: ${reportDate}`;
+  const dateW = font.widthOfTextAtSize(dateLabel, metaSize);
+  page.drawText(dateLabel, {
+    x: pageWidth - margin - dateW,
+    y: y - metaSize,
+    size: metaSize,
+    font,
+    color: MUTED,
+  });
+  y -= metaSize + 10;
+
+  page.drawLine({
+    start: { x: margin, y },
+    end: { x: pageWidth - margin, y },
+    thickness: 1,
+    color: RULE_STRONG,
+  });
+  y -= 14;
+
+  const pages = drawHoursFieldTable(
+    doc,
+    page,
+    margin,
+    font,
+    bold,
+    9,
+    columns,
+    tableRows,
+    HOURS_WEIGHTS,
+    rowKinds,
+    page.getHeight() - y,
+  );
+
+  stampHoursPdfFooters(pages, margin, font, `${jobTitle} · Field hours — Paint Division`);
 
   downloadPdfBytes(
     await doc.save(),

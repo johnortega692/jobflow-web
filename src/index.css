@@ -5622,6 +5622,33 @@ input.readonly {
   box-sizing: border-box;
 }
 
+.budget-hours-pdf-check {
+  text-align: center;
+  width: 1.5rem;
+  max-width: 1.5rem;
+  padding-left: 0.25rem !important;
+  padding-right: 0.25rem !important;
+  vertical-align: middle;
+}
+
+.budget-hours-pdf-check .budget-hours-pdf-header-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  margin: 0 auto;
+}
+
+.budget-hours-pdf-check input {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+tr.budget-hours-pdf-hidden td {
+  opacity: 0.55;
+}
+
 .budget-cell-code {
   min-width: 0;
 }

@@ -307,6 +307,7 @@ export type HoursExportRow = {
   workItem: string;
   hours: string;
   amount: string;
+  notes: string;
   highlight990: boolean;
 };
 
@@ -336,7 +337,10 @@ function parseAmountCell(amount: string): number {
 
 export function combineHoursExportRows(rows: HoursExportRow[]): HoursExportRow[] {
   const order: string[] = [];
-  const map = new Map<string, { row: HoursExportRow; hoursNum: number; amountNum: number }>();
+  const map = new Map<
+    string,
+    { row: HoursExportRow; hoursNum: number; amountNum: number; noteParts: string[] }
+  >();
 
   for (const row of rows) {
     const key = parseCostCodeNumber(row.costCode);
@@ -345,22 +349,31 @@ export function combineHoursExportRows(rows: HoursExportRow[]): HoursExportRow[]
     const existing = map.get(key);
     if (!existing) {
       order.push(key);
-      map.set(key, { row: { ...row }, hoursNum, amountNum });
+      map.set(key, {
+        row: { ...row },
+        hoursNum,
+        amountNum,
+        noteParts: row.notes ? [row.notes] : [],
+      });
       continue;
     }
     existing.hoursNum += hoursNum;
     existing.amountNum += amountNum;
     if (row.highlight990) existing.row.highlight990 = true;
+    if (row.notes && !existing.noteParts.includes(row.notes)) {
+      existing.noteParts.push(row.notes);
+    }
   }
 
   return order.map((key) => {
-    const { row, hoursNum, amountNum } = map.get(key)!;
+    const { row, hoursNum, amountNum, noteParts } = map.get(key)!;
     return {
       ...row,
       hours: hoursNum ? hoursNum.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
       amount: amountNum
         ? `$${amountNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "",
+      notes: noteParts.join("; "),
       highlight990: isExcludedFromFieldHoursTotal(row.costCode),
     };
   });
@@ -385,11 +398,13 @@ export function buildHoursExportRows(
   let totalMaterial = 0;
   let supervisionHours = 0;
   data.buckets.forEach((bucket, i) => {
+    if (bucket.hide_from_hours_pdf) return;
     const { amount, hours } = bucketMetrics(i, data.lines);
     if (data.hide_zero_amounts && amount === 0) return;
     const costCode = formatCostCode(bucket.cost_code, lib, bucket.cost_class);
     const showAmount = bucketShowsAmountOnFieldHoursExport(bucket, lib);
     const excluded = isExcludedFromFieldHoursTotal(bucket.cost_code);
+    const notes = fmtCell(bucket.notes);
     if (showAmount) {
       totalMaterial += amount;
       rows.push({
@@ -397,6 +412,7 @@ export function buildHoursExportRows(
         workItem: workItemForBucket(bucket, lib),
         hours: "",
         amount: amount ? `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "",
+        notes,
         highlight990: excluded,
       });
     } else {
@@ -407,6 +423,7 @@ export function buildHoursExportRows(
         workItem: workItemForBucket(bucket, lib),
         hours: hours ? hours.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "",
         amount: "",
+        notes,
         highlight990: excluded,
       });
     }

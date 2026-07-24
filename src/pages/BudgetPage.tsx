@@ -7,6 +7,7 @@ import {
   BudgetIconClear,
   BudgetIconDuplicate,
   BudgetIconExcel,
+  BudgetIconEyeOff,
   BudgetIconHide,
   BudgetIconImport,
   BudgetIconPdf,
@@ -948,7 +949,10 @@ export function BudgetPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Work Item</th>
+                  <th className="budget-hours-pdf-check" title="Include on Hours PDF export">
+                    <span className="sr-only">Hours PDF</span>
+                    <BudgetIconEyeOff />
+                  </th>
                   <th>Cost Code</th>
                   <th>Class</th>
                   <th>GL</th>
@@ -960,8 +964,29 @@ export function BudgetPage() {
               </thead>
               <tbody>
                 {summaryRows.map((r) => (
-                  <tr key={r.bucketIdx}>
-                    <td>{r.workItem}</td>
+                  <tr
+                    key={r.bucketIdx}
+                    className={draft.buckets[r.bucketIdx]?.hide_from_hours_pdf ? "budget-hours-pdf-hidden" : undefined}
+                  >
+                    <td className="budget-hours-pdf-check">
+                      <input
+                        type="checkbox"
+                        checked={!draft.buckets[r.bucketIdx]?.hide_from_hours_pdf}
+                        title="Include on Hours PDF"
+                        aria-label={`Include ${r.costCode || r.workItem} on Hours PDF`}
+                        onChange={(e) => {
+                          const buckets = draft.buckets.map((b, i) =>
+                            i === r.bucketIdx
+                              ? {
+                                  ...b,
+                                  hide_from_hours_pdf: e.target.checked ? undefined : true,
+                                }
+                              : b,
+                          );
+                          patch({ buckets });
+                        }}
+                      />
+                    </td>
                     <td>{r.costCode}</td>
                     <td>{r.costClass}</td>
                     <td>{r.glAcct}</td>

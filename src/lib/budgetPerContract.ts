@@ -125,6 +125,7 @@ function parseBudgetBuckets(raw: unknown): BudgetBucket[] {
     };
     if (row.template_type) bucket.template_type = String(row.template_type);
     if (row.notes) bucket.notes = String(row.notes);
+    if (row.hide_from_hours_pdf) bucket.hide_from_hours_pdf = true;
     return bucket;
   });
 }
