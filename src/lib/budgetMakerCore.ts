@@ -316,6 +316,11 @@ function parseCostCodeNumber(label: string): string {
   return m ? m[1] : label.split(" - ")[0]?.trim() ?? label;
 }
 
+/** Numeric cost code only (e.g. "901 - Paint Walls" → "901"). */
+export function costCodeNumberOnly(label: string): string {
+  return parseCostCodeNumber(label);
+}
+
 /** Cost codes whose hours appear on the Field Hours PDF but are excluded from the total. */
 export const FIELD_HOURS_EXCLUDED_COST_CODES = new Set(["990"]);
 

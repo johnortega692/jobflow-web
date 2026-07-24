@@ -12,6 +12,7 @@ import {
   fmtCell,
   bucketDisplay,
   buildSummaryRows,
+  costCodeNumberOnly,
   normalizeLibrary,
 } from "./budgetMakerCore";
 import type { BudgetLibrary, BudgetMakerData, BudgetScanLine } from "../types/budgetMaker";
@@ -291,12 +292,10 @@ export function downloadBudgetExcel(data: BudgetMakerData, lib: BudgetLibrary): 
     combineByCostCode: data.combine_cost_codes_on_export !== false,
   }).map((r) => ({
     "Work Item": r.workItem,
-    "Cost Code": r.costCode,
+    "Cost Code": costCodeNumberOnly(r.costCode),
     "Cost Class": r.costClass,
-    "GL Acct": r.glAcct,
     Hours: r.hours,
     Amount: r.amount ? `$${r.amount.toFixed(2)}` : "",
-    "%": r.pct,
     Notes: r.notes,
   }));
 
