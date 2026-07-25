@@ -3,8 +3,9 @@ import { supabase } from "./supabase";
 import {
   defaultProjectBilling,
   normalizeManpowerCells,
-  parseProjectBilling,
+  normalizeManpowerPhases,
   type ManpowerCell,
+  type ManpowerPhase,
   type ProjectBillingData,
 } from "../types/projectBilling";
 
@@ -23,6 +24,7 @@ export type FieldLaborProjectionSummary = {
   budgetHours: number;
   /** budgetHours − projectionHours (positive = hours left vs budget). */
   hoursDifference: number;
+  phases: ManpowerPhase[];
   cells: ManpowerCell[];
 };
 
@@ -51,6 +53,7 @@ function parseLaborProjectionPayload(raw: unknown): FieldLaborProjectionSummary 
     projectionHours,
     budgetHours,
     hoursDifference,
+    phases: normalizeManpowerPhases(o.phases),
     cells: normalizeManpowerCells(o.cells),
   };
 }
@@ -60,6 +63,7 @@ export function billingFromLaborProjection(plan: FieldLaborProjectionSummary): P
   const base = defaultProjectBilling();
   return {
     ...base,
+    manpowerPhases: plan.phases,
     manpowerWeekCount: plan.weekCount,
     manpowerCells: plan.cells,
   };
@@ -116,13 +120,4 @@ export async function saveFieldLaborProjectionCells(
   } as never);
   if (error) return { plan: null, error: error.message };
   return { plan: parseLaborProjectionPayload(data), error: null };
-}
-
-/** Office helper: merge cells into existing billing without touching week count. */
-export function withLaborProjectionCells(
-  billing: ProjectBillingData | null | undefined,
-  cells: ManpowerCell[],
-): ProjectBillingData {
-  const base = billing ? { ...billing } : parseProjectBilling(null);
-  return { ...base, manpowerCells: normalizeManpowerCells(cells) };
 }

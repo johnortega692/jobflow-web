@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { ManpowerMonthlyBudgetCard } from "../components/billing/ManpowerMonthlyBudgetCard";
 import { ManpowerPlanCard } from "../components/billing/ManpowerPlanCard";
@@ -12,15 +12,19 @@ import {
   manpowerHoursContext,
   type DerivedMonthHours,
 } from "../lib/manpowerHours";
-import { parseProjectDataBlob } from "../lib/jobInfo";
+import { availableTransmittalContracts, parseProjectDataBlob } from "../lib/jobInfo";
+import { loadBudgetLibrary } from "../lib/budgetLibrary";
 import { commitProjectUpdate } from "../lib/projectActivity";
 import { saveProjectBillingQuiet } from "../lib/projectBillingStorage";
+import { syncBillingPhasesFromBudget } from "../lib/syncManpowerFromBudget";
 import { syncProjectStartDateToManpower } from "../lib/syncProjectStartDate";
 import { supabase } from "../lib/supabase";
 import { canEditManpowerCells, canEditManpowerSchedule } from "../types/jobRoles";
+import { defaultBudgetLibrary, normalizeBudgetMaker } from "../types/budgetMaker";
 import { parseProjectBilling, totalPlannedHours, type ProjectBillingData } from "../types/projectBilling";
 import type { ProjectForm } from "../types/database";
-import { normalizeProject } from "../types/database";
+import { normalizeProject, type Json } from "../types/database";
+import { parseProjectTradeData } from "../types/tradeDocuments";
 
 type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectForm) => void };
 
@@ -36,7 +40,7 @@ function SummaryCard({ label, value, subtitle }: { label: string; value: string;
 
 export function BillingPage() {
   const { project, projectId, setProject } = useOutletContext<Ctx>();
-  const { isAdmin, jobRole } = useAuth();
+  const { user, isAdmin, jobRole } = useAuth();
   const canEditSchedule = canEditManpowerSchedule(jobRole, isAdmin);
   const canEditCells = canEditManpowerCells(jobRole, isAdmin);
 
@@ -45,10 +49,16 @@ export function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [calculatorMonth, setCalculatorMonth] = useState<DerivedMonthHours | null>(null);
   const [calculatorRevision, setCalculatorRevision] = useState(0);
+  const syncingRef = useRef(false);
+  const projectRef = useRef(project);
+  projectRef.current = project;
 
-  useEffect(() => {
-    setBilling(parseProjectBilling(project.data));
-  }, [project.data]);
+  const contracts = useMemo(() => availableTransmittalContracts(project), [project]);
+  const tradeData = useMemo(
+    () => parseProjectTradeData(parseProjectDataBlob(project.data) as Json),
+    [project.data],
+  );
+  const budgetMakerRaw = tradeData.budget_maker;
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +99,45 @@ export function BillingPage() {
     },
     [applyBilling, projectId],
   );
+
+  // Sync Labor Projection rows from Budget Hours PDF cost codes.
+  useEffect(() => {
+    let cancelled = false;
+    async function syncFromBudget() {
+      if (syncingRef.current) return;
+      const latest = projectRef.current;
+      const budget = normalizeBudgetMaker(budgetMakerRaw, latest.job_name);
+      const lib = user ? await loadBudgetLibrary(user.id) : defaultBudgetLibrary();
+      if (cancelled) return;
+      const current = parseProjectBilling(latest.data);
+      const { billing: synced, changed } = syncBillingPhasesFromBudget(
+        current,
+        budget,
+        lib,
+        contracts,
+      );
+      if (cancelled) return;
+      setBilling(synced);
+      if (!changed) return;
+      syncingRef.current = true;
+      const err = await saveProjectBillingQuiet(projectId, synced);
+      syncingRef.current = false;
+      if (cancelled) return;
+      if (err) {
+        setError(err);
+        return;
+      }
+      const fresh = projectRef.current;
+      setProject({
+        ...fresh,
+        data: { ...(fresh.data as object), billing: synced } as ProjectForm["data"],
+      });
+    }
+    void syncFromBudget();
+    return () => {
+      cancelled = true;
+    };
+  }, [budgetMakerRaw, contracts, project.job_name, projectId, setProject, user]);
 
   const persistScheduleDates = useCallback(
     async (startIso: string, endIso: string) => {
@@ -188,6 +237,7 @@ export function BillingPage() {
         saving={saving}
         canEditSchedule={canEditSchedule}
         canEditCells={canEditCells}
+        contracts={contracts}
         onBillingChange={setBilling}
         onPersistQuiet={persistQuiet}
         onScheduleDatesChange={persistScheduleDates}

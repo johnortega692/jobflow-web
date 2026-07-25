@@ -38,3 +38,25 @@ export function writeFieldDarkMode(value: boolean): void {
     /* ignore */
   }
 }
+
+const WORKLOAD_DARK_KEY = "jobflow-workload-dark-mode";
+
+/** Workload-only theme; falls back to Field dark mode so it matches by default. */
+export function readWorkloadDarkMode(): boolean {
+  try {
+    const stored = localStorage.getItem(WORKLOAD_DARK_KEY);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
+  } catch {
+    /* ignore */
+  }
+  return readFieldDarkMode();
+}
+
+export function writeWorkloadDarkMode(value: boolean): void {
+  try {
+    localStorage.setItem(WORKLOAD_DARK_KEY, String(value));
+  } catch {
+    /* ignore */
+  }
+}

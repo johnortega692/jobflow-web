@@ -90,6 +90,13 @@ const WORKLOAD_CHART_COLORS = [
   "#9333ea",
   "#db2777",
   "#ea580c",
+  "#0891b2",
+  "#65a30d",
+  "#7c3aed",
+  "#be123c",
+  "#0d9488",
+  "#a16207",
+  "#4f46e5",
   "#64748b",
 ];
 
@@ -153,14 +160,13 @@ export function sundayWeekToRollupKey(sundayIso: string): string {
 
 export function buildWorkloadChartModel(
   weeks: CompanyWorkloadWeek[],
-  options?: { maxJobs?: number; capacityPeople?: number; visibleSundayWeeks?: string[] },
+  options?: { capacityPeople?: number; visibleSundayWeeks?: string[] },
 ): {
   weeks: WorkloadChartWeek[];
   jobs: WorkloadChartJob[];
   capacityPeople: number | null;
   yMax: number;
 } {
-  const maxJobs = options?.maxJobs ?? 6;
   const capacityPeople = options?.capacityPeople;
   const visibleSundayWeeks = options?.visibleSundayWeeks;
   const totals = new Map<string, { label: string; hours: number }>();
@@ -176,25 +182,13 @@ export function buildWorkloadChartModel(
   }
 
   const ranked = [...totals.entries()].sort((a, b) => b[1].hours - a[1].hours);
-  const featured = ranked.slice(0, maxJobs);
-  const otherCount = ranked.length - featured.length;
-  const otherKey = "__other__";
 
-  const jobs: WorkloadChartJob[] = featured.map(([key, meta], index) => ({
+  const jobs: WorkloadChartJob[] = ranked.map(([key, meta], index) => ({
     key,
     label: meta.label,
     color: WORKLOAD_CHART_COLORS[index % WORKLOAD_CHART_COLORS.length],
   }));
 
-  if (otherCount > 0) {
-    jobs.push({
-      key: otherKey,
-      label: `Other (${otherCount} job${otherCount === 1 ? "" : "s"})`,
-      color: WORKLOAD_CHART_COLORS[6],
-    });
-  }
-
-  const featuredKeys = new Set(featured.map(([key]) => key));
   const weekByRollupKey = new Map(weeks.map((week) => [week.weekStart, week]));
 
   const sourceWeeks =
@@ -221,16 +215,11 @@ export function buildWorkloadChartModel(
 
       for (const job of week.jobs) {
         const key = projectChartKey(job.projectId, job.jobNumber, job.jobName);
-        const segmentKey = featuredKeys.has(key) ? key : otherKey;
-        if (!featuredKeys.has(key) && otherCount === 0) continue;
-        const label =
-          segmentKey === otherKey
-            ? jobs.find((j) => j.key === otherKey)?.label ?? "Other"
-            : projectChartLabel(job.jobNumber, job.jobName);
-        const existing = byKey.get(segmentKey) ?? { key: segmentKey, label, hours: 0, people: 0 };
+        const label = projectChartLabel(job.jobNumber, job.jobName);
+        const existing = byKey.get(key) ?? { key, label, hours: 0, people: 0 };
         existing.hours += job.hours;
         existing.people = hoursToPeople(existing.hours);
-        byKey.set(segmentKey, existing);
+        byKey.set(key, existing);
       }
 
       const segments = jobs
@@ -347,6 +336,52 @@ export async function fetchFieldViewManpowerActiveCrew(): Promise<number> {
   const { data, error } = await supabase.rpc("field_view_company_manpower_active_crew" as never, auth as never);
   if (error) throw new Error(error.message);
   return Number(data) || 0;
+}
+
+export type CompanyWorkloadActiveProject = {
+  projectId: string;
+  jobNumber: string;
+  jobName: string;
+};
+
+type RemoteActiveProject = {
+  project_id?: string;
+  job_number?: string;
+  job_name?: string;
+};
+
+function parseActiveProjectsResponse(data: unknown): CompanyWorkloadActiveProject[] {
+  const rows = Array.isArray(data) ? data : [];
+  return rows
+    .map((raw) => {
+      const row = raw as RemoteActiveProject;
+      return {
+        projectId: String(row.project_id ?? ""),
+        jobNumber: String(row.job_number ?? ""),
+        jobName: String(row.job_name ?? ""),
+      };
+    })
+    .filter((p) => p.projectId || p.jobNumber || p.jobName);
+}
+
+export async function fetchCompanyManpowerActiveProjects(): Promise<CompanyWorkloadActiveProject[]> {
+  const { data, error } = await supabase.rpc("get_company_manpower_active_projects" as never);
+  if (error) throw new Error(error.message);
+  return parseActiveProjectsResponse(data);
+}
+
+export async function fetchFieldViewCompanyManpowerActiveProjects(): Promise<CompanyWorkloadActiveProject[]> {
+  const session = loadFieldViewSession();
+  const auth = fieldViewRpcAuthArgs(session);
+  if (!auth.p_caller_id || !auth.p_session_token) {
+    throw new Error("Sign in to Field View to load active projects.");
+  }
+  const { data, error } = await supabase.rpc(
+    "field_view_company_manpower_active_projects" as never,
+    auth as never,
+  );
+  if (error) throw new Error(error.message);
+  return parseActiveProjectsResponse(data);
 }
 
 export function aggregateJobsByProject(jobs: CompanyWorkloadJob[]): {

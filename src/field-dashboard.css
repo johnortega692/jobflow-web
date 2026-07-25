@@ -1145,6 +1145,33 @@
   margin-bottom: 14px;
 }
 
+.field-dashboard .field-workload-theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.field-dashboard .field-workload-theme-btn .field-view-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-workload-page-title {
+  margin: 0 0 4px;
+  font-size: 1.35rem;
+  color: var(--fd-title);
+  font-weight: 700;
+}
+
+.field-dashboard .field-workload-page-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fd-muted);
+  line-height: 1.45;
+}
+
 .field-dashboard .field-cal-nav {
   display: flex;
   align-items: center;
@@ -1225,6 +1252,159 @@
   align-items: start;
 }
 
+.field-dashboard .field-cal-body--workload {
+  grid-template-columns: 1fr;
+}
+
+.field-dashboard .field-workload-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-dashboard .field-workload-panel {
+  border: 1px solid var(--fd-border-soft);
+  border-radius: 8px;
+  background: var(--fd-surface2);
+  padding: 12px 14px;
+}
+
+.field-dashboard .field-workload-panel--focus {
+  border-color: color-mix(in srgb, #e34948 35%, var(--fd-border-soft));
+  background: color-mix(in srgb, #e34948 6%, var(--fd-surface2));
+}
+
+.field-dashboard .field-workload-panel--focus:not(.field-workload-panel--warn) {
+  border-color: var(--fd-border-soft);
+  background: var(--fd-surface2);
+}
+
+.field-dashboard .field-workload-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.field-dashboard .field-workload-panel-head--toggle {
+  margin-bottom: 0;
+  width: 100%;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.field-dashboard .field-workload-panel-toggle {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.field-dashboard .field-workload-panel-toggle:hover h3 {
+  color: var(--fd-accent);
+}
+
+.field-dashboard .field-workload-panel--collapsed .field-workload-panel-head {
+  margin-bottom: 0;
+}
+
+.field-dashboard .field-workload-panel--open .field-workload-panel-toggle {
+  margin-bottom: 10px;
+}
+
+.field-dashboard .field-workload-panel-chevron {
+  display: inline-block;
+  width: 1em;
+  margin-right: 4px;
+  color: var(--fd-muted);
+  font-weight: 700;
+}
+
+.field-dashboard .field-workload-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fd-title);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.field-dashboard .field-workload-panel-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-workload-chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field-dashboard .field-workload-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--fd-surface);
+  border: 1px solid color-mix(in srgb, #e34948 28%, var(--fd-border-soft));
+}
+
+.field-dashboard .field-workload-chip-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fd-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.field-dashboard .field-workload-chip-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c62828;
+}
+
+.field-dashboard .field-workload-card-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .field-dashboard .field-workload-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .field-dashboard .field-workload-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field-dashboard .field-workload-chip-title {
+    max-width: 200px;
+  }
+}
+
 .field-dashboard .field-cal-body--mobile {
   grid-template-columns: 1fr;
 }
@@ -1236,6 +1416,10 @@
 
   .field-dashboard .field-cal-body {
     grid-template-columns: 1fr;
+  }
+
+  .field-dashboard .field-workload-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .field-dashboard .field-cal-body .field-cal-detail:not(.field-cal-detail--open) {
@@ -1545,6 +1729,27 @@
   color: var(--fd-muted);
 }
 
+.field-dashboard .field-workload-unplanned-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #e34948 18%, transparent);
+  color: #c62828;
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.field-dashboard.field-dashboard--dark .field-workload-unplanned-count {
+  background: color-mix(in srgb, #e34948 28%, transparent);
+  color: #ff8a80;
+}
+
 .field-dashboard .field-workload-summary {
   margin: 0 0 12px;
   padding: 0 2px;
@@ -1616,8 +1821,10 @@
 
 .field-dashboard .field-workload-band {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   padding: 10px 12px;
   border-radius: 8px;
   margin-bottom: 12px;
@@ -2469,6 +2676,26 @@
   border-left-width: 4px;
   padding-left: 10px;
   color: var(--fd-text);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-phase-desc {
+  color: var(--fd-muted);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-contract-tab {
+  border-color: var(--fd-border);
+  background: var(--fd-surface);
+  color: var(--fd-text-soft);
+}
+
+.field-dashboard .field-labor-page .billing-manpower-contract-tab.active {
+  border-color: var(--fd-accent);
+  color: var(--fd-accent);
+  background: color-mix(in srgb, var(--fd-accent) 12%, var(--fd-surface));
+}
+
+.field-dashboard .field-labor-page .billing-manpower-left--over {
+  color: #e34948;
 }
 
 .field-dashboard .field-labor-page .billing-manpower-chip:not(.billing-manpower-chip--empty) {

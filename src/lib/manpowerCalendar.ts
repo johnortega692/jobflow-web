@@ -237,7 +237,7 @@ export function weekHasPhaseOverlap(cells: ManpowerCell[], weekStartIso: string)
   return phasesWithHours.size >= 2;
 }
 
-export const PHASE_ACTIVITY_SHORT: Record<ManpowerPhaseId, string> = {
+export const PHASE_ACTIVITY_SHORT: Record<string, string> = {
   prime: "Prime",
   final: "Final",
   punch: "Touch-up",

@@ -6,11 +6,12 @@ import {
   HOURS_PER_CREW_DAY,
   weekColumnLabel,
   weekDayColumnLabels,
-  withWeekDayHours,
+  withCellDayHours,
 } from "../../lib/manpowerCalendar";
 import {
-  MANPOWER_PHASE_DEFS,
-  PHASE_COLORS,
+  phaseColorAtIndex,
+  phaseDisplayLabel,
+  type ManpowerPhase,
   type ManpowerPhaseId,
   type ProjectBillingData,
 } from "../../types/projectBilling";
@@ -18,12 +19,13 @@ import {
 type Props = {
   weekStartIso: string;
   billing: ProjectBillingData;
+  phases: ManpowerPhase[];
   saving: boolean;
   onClose: () => void;
   onSave: (next: ProjectBillingData) => Promise<boolean>;
 };
 
-type DraftByPhase = Record<ManpowerPhaseId, string[]>;
+type DraftByPhase = Record<string, string[]>;
 
 function hoursToCrew(hours: number): number {
   if (hours <= 0) return 0;
@@ -64,7 +66,14 @@ function formatHours(hours: number): string {
   return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
-export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose, onSave }: Props) {
+export function ManpowerWeekDetailModal({
+  weekStartIso,
+  billing,
+  phases,
+  saving,
+  onClose,
+  onSave,
+}: Props) {
   const dayCols = useMemo(() => weekDayColumnLabels(weekStartIso), [weekStartIso]);
   const weekLabel = weekColumnLabel(weekStartIso);
   const rangeLabel = useMemo(() => {
@@ -74,10 +83,16 @@ export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose
     return `Week of ${weekLabel}`;
   }, [dayCols, weekLabel]);
 
+  const phaseIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    billing.manpowerPhases.forEach((p, i) => map.set(p.id, i));
+    return map;
+  }, [billing.manpowerPhases]);
+
   const [draft, setDraft] = useState<DraftByPhase>(() => {
-    const initial = {} as DraftByPhase;
-    for (const def of MANPOWER_PHASE_DEFS) {
-      initial[def.id] = hoursToCrewDraft(cellDayHours(billing.manpowerCells, def.id, weekStartIso));
+    const initial: DraftByPhase = {};
+    for (const phase of phases) {
+      initial[phase.id] = hoursToCrewDraft(cellDayHours(billing.manpowerCells, phase.id, weekStartIso));
     }
     return initial;
   });
@@ -99,28 +114,35 @@ export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose
   }
 
   const phaseCrewTotals = useMemo(() => {
-    const totals = {} as Record<ManpowerPhaseId, number>;
-    for (const def of MANPOWER_PHASE_DEFS) {
-      totals[def.id] = (draft[def.id] ?? []).reduce((sum, raw) => sum + parseCrew(raw), 0);
+    const totals: Record<string, number> = {};
+    for (const phase of phases) {
+      totals[phase.id] = (draft[phase.id] ?? []).reduce((sum, raw) => sum + parseCrew(raw), 0);
     }
     return totals;
-  }, [draft]);
+  }, [draft, phases]);
 
   const dayCrewTotals = useMemo(() => {
     return emptyDayHours().map((_, dayIndex) =>
-      MANPOWER_PHASE_DEFS.reduce((sum, def) => sum + parseCrew(draft[def.id]?.[dayIndex] ?? ""), 0),
+      phases.reduce((sum, phase) => sum + parseCrew(draft[phase.id]?.[dayIndex] ?? ""), 0),
     );
-  }, [draft]);
+  }, [draft, phases]);
 
   const grandCrew = dayCrewTotals.reduce((sum, n) => sum + n, 0);
   const grandHours = crewToHours(grandCrew);
 
   async function handleSave() {
-    const byPhase = {} as Record<ManpowerPhaseId, number[]>;
-    for (const def of MANPOWER_PHASE_DEFS) {
-      byPhase[def.id] = draftToDayHours(draft[def.id] ?? []);
+    const activeIds = new Set(phases.map((p) => p.id));
+    let nextCells = billing.manpowerCells.filter(
+      (c) => !(c.weekStartIso === weekStartIso && activeIds.has(c.phaseId)),
+    );
+    for (const phase of phases) {
+      nextCells = withCellDayHours(
+        nextCells,
+        phase.id,
+        weekStartIso,
+        draftToDayHours(draft[phase.id] ?? []),
+      );
     }
-    const nextCells = withWeekDayHours(billing.manpowerCells, weekStartIso, byPhase);
     const next = { ...billing, manpowerCells: nextCells };
     const ok = await onSave(next);
     if (ok) onClose();
@@ -156,7 +178,7 @@ export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose
           <table className="billing-week-detail-table">
             <thead>
               <tr>
-                <th className="billing-week-detail-phase-col">Phase</th>
+                <th className="billing-week-detail-phase-col">Cost code</th>
                 {dayCols.map((col) => (
                   <th key={col.iso} className="billing-week-detail-day-col num">
                     <span className="billing-week-detail-weekday">{col.weekday}</span>
@@ -168,19 +190,18 @@ export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose
               </tr>
             </thead>
             <tbody>
-              {MANPOWER_PHASE_DEFS.map((def) => {
-                const colors = PHASE_COLORS[def.id];
-                const days = draft[def.id] ?? hoursToCrewDraft(emptyDayHours());
-                const crewTotal = phaseCrewTotals[def.id];
+              {phases.map((phase) => {
+                const colors = phaseColorAtIndex(phaseIndexById.get(phase.id) ?? 0);
+                const days = draft[phase.id] ?? hoursToCrewDraft(emptyDayHours());
+                const crewTotal = phaseCrewTotals[phase.id] ?? 0;
                 return (
-                  <tr key={def.id}>
+                  <tr key={phase.id}>
                     <td
                       className="billing-week-detail-phase-col billing-manpower-phase-name"
-                      style={{
-                        borderLeftColor: `var(--mp-phase-border-${def.id}, ${colors.border})`,
-                      }}
+                      style={{ borderLeftColor: colors.border }}
                     >
-                      {def.name}
+                      <span className="billing-manpower-phase-code">{phase.costCode || "—"}</span>
+                      <span className="billing-manpower-phase-desc">{phase.name}</span>
                     </td>
                     {days.map((value, dayIndex) => (
                       <td key={dayCols[dayIndex]!.iso} className="billing-week-detail-day-col">
@@ -191,18 +212,14 @@ export function ManpowerWeekDetailModal({ weekStartIso, billing, saving, onClose
                           className="billing-week-detail-input"
                           value={value}
                           placeholder="—"
-                          aria-label={`${def.name} ${dayCols[dayIndex]!.weekday} crew`}
+                          aria-label={`${phaseDisplayLabel(phase)} ${dayCols[dayIndex]!.weekday} crew`}
                           title={`${parseCrew(value) || 0} crew × ${HOURS_PER_CREW_DAY} = ${crewToHours(parseCrew(value))} hrs`}
-                          onChange={(e) => setPhaseDay(def.id, dayIndex, e.target.value)}
+                          onChange={(e) => setPhaseDay(phase.id, dayIndex, e.target.value)}
                         />
                       </td>
                     ))}
                     <td className="billing-week-detail-total-col num">
-                      <strong
-                        style={{ color: `var(--mp-phase-text-${def.id}, ${colors.text})` }}
-                      >
-                        {formatCrew(crewTotal)}
-                      </strong>
+                      <strong style={{ color: colors.text }}>{formatCrew(crewTotal)}</strong>
                     </td>
                     <td className="billing-week-detail-total-col num">
                       <span className="muted">{formatHours(crewToHours(crewTotal))}</span>

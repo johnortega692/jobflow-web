@@ -11381,9 +11381,69 @@ input.readonly {
 
 .billing-manpower-phase-col {
   left: 0;
-  min-width: 140px;
-  max-width: 180px;
+  min-width: 160px;
+  max-width: 220px;
   text-align: left;
+}
+
+.billing-manpower-phase-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.25;
+  border-left: 3px solid transparent;
+  padding-left: 8px;
+}
+
+.billing-manpower-phase-code {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.billing-manpower-phase-desc {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billing-manpower-budget-col {
+  min-width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-manpower-left--over {
+  color: #e34948;
+  font-weight: 700;
+}
+
+.billing-manpower-contract-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.billing-manpower-contract-tab {
+  border: 1px solid var(--border, #dadce0);
+  background: var(--bg-elevated, #fff);
+  color: var(--text-soft, #3c4043);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.billing-manpower-contract-tab.active {
+  border-color: var(--accent, #1a73e8);
+  color: var(--accent, #1a73e8);
+  background: color-mix(in srgb, var(--accent, #1a73e8) 10%, transparent);
+}
+
+.billing-manpower-contract-summary,
+.billing-manpower-empty {
+  margin: 0;
 }
 
 .billing-manpower-total-col {

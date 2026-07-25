@@ -10,7 +10,7 @@ import {
   type Plugin,
 } from "chart.js";
 import { useEffect, useMemo, useRef } from "react";
-import { HOURS_PER_MAN_WEEK } from "../../lib/manpowerCalendar";
+import { HOURS_PER_MAN_WEEK, todayMondayIso } from "../../lib/manpowerCalendar";
 import {
   buildWorkloadChartModel,
   chartVisibleSundayWeekStarts,
@@ -35,6 +35,8 @@ type Props = {
   selectedWeekStart: string | null;
   onSelectWeek: (weekStart: string) => void;
   mobileView?: boolean;
+  /** When light/dark tokens change, remount chart colors from --fd-*. */
+  darkMode?: boolean;
 };
 
 type WeekStack = {
@@ -49,6 +51,7 @@ type ChartPalette = {
   text: string;
   muted: string;
   grid: string;
+  accent: string;
 };
 
 function splitWeekStack(
@@ -89,6 +92,7 @@ function readChartPalette(container: HTMLElement | null): ChartPalette {
     text: styles?.getPropertyValue("--fd-text").trim() || "#202124",
     muted: styles?.getPropertyValue("--fd-muted").trim() || "#5f6368",
     grid: styles?.getPropertyValue("--fd-border-soft").trim() || "#e8eaed",
+    accent: styles?.getPropertyValue("--fd-accent").trim() || "#1a73e8",
   };
 }
 
@@ -105,6 +109,7 @@ export function CompanyWorkloadBarChart({
   crewCapacity,
   onSelectWeek,
   mobileView = false,
+  darkMode = false,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -154,6 +159,7 @@ export function CompanyWorkloadBarChart({
     if (!canvas || !weekStacks.length) return;
 
     const palette = readChartPalette(container);
+    const currentWeekStart = todayMondayIso();
     const labels = weekStacks.map((week) => formatWorkloadWeekLabel(week.labelWeekStart));
 
     const jobDatasets: ChartDataset<"bar">[] = model.jobs.map((job) => ({
@@ -209,7 +215,8 @@ export function CompanyWorkloadBarChart({
 
     const capacityLinePlugin: Plugin<"bar"> = {
       id: "capacityLine",
-      afterDraw(chart) {
+      // afterDatasetsDraw (not afterDraw) so the tooltip renders above the line
+      afterDatasetsDraw(chart) {
         if (!hasCapacity) return;
         const { ctx, chartArea } = chart;
         const yScale = chart.scales.y;
@@ -299,8 +306,15 @@ export function CompanyWorkloadBarChart({
             stacked: true,
             grid: { display: false },
             ticks: {
-              color: palette.muted,
-              font: { size: mobileView ? 10 : 11 },
+              color: (ctx) =>
+                weekStacks[ctx.index]?.weekStart === currentWeekStart ? palette.accent : palette.muted,
+              font: (ctx) => {
+                const isCurrent = weekStacks[ctx.index]?.weekStart === currentWeekStart;
+                return {
+                  size: mobileView ? 10 : 11,
+                  weight: isCurrent ? 700 : 400,
+                };
+              },
               maxRotation: 0,
               autoSkip: false,
             },
@@ -334,7 +348,7 @@ export function CompanyWorkloadBarChart({
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [capacity, hasCapacity, mobileView, model.jobs, model.weeks, model.yMax, onSelectWeek, weekStacks]);
+  }, [capacity, darkMode, hasCapacity, mobileView, model.jobs, model.weeks, model.yMax, onSelectWeek, weekStacks]);
 
   const minChartWidth = mobileView ? undefined : Math.max(weekStacks.length * (MAX_BAR_THICKNESS + 12) + 80, 320);
 
@@ -382,12 +396,6 @@ export function CompanyWorkloadBarChart({
       </div>
 
       <div className="field-workload-chart-legend">
-        {model.jobs.map((job) => (
-          <span key={job.key} className="field-workload-chart-legend-item">
-            <span className="field-workload-chart-legend-swatch" style={{ background: job.color }} />
-            {job.label}
-          </span>
-        ))}
         {hasCapacity ? (
           <>
             <span className="field-workload-chart-legend-item">
@@ -399,7 +407,9 @@ export function CompanyWorkloadBarChart({
               Capacity ({capacity})
             </span>
           </>
-        ) : null}
+        ) : (
+          <span className="field-workload-chart-legend-item muted">Hover a bar for job colors</span>
+        )}
       </div>
 
       <div className="field-workload-chart-scroll field-workload-chart-scroll--canvas">

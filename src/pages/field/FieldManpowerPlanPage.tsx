@@ -136,7 +136,9 @@ export function FieldManpowerPlanPage() {
               {plan.jobNumber}
               {plan.jobName ? ` — ${plan.jobName}` : ""}
             </h2>
-            <p className="muted small field-labor-detail-meta">PM sets start/finish · edit cells below</p>
+            <p className="muted small field-labor-detail-meta">
+              Cost codes from budget · PM sets start/finish · edit week hours below
+            </p>
           </div>
           <button
             type="button"
