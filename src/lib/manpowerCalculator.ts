@@ -4,20 +4,15 @@ export type CalculatorLaborRate = {
   id: string;
   className: string;
   costRate: number;
-  billRate: number;
-  crewMix: number;
 };
 
 export type MonthCalculatorMaterial = {
   materialCost: number;
-  materialBillable: number;
 };
 
 export type MonthCalculatorTotals = {
   laborCost: number;
-  laborBillable: number;
   materialCost: number;
-  materialBillable: number;
   cost: number;
   billable: number;
   margin: number;
@@ -38,11 +33,7 @@ export function newCalculatorLaborRateId(): string {
 }
 
 export function defaultCalculatorLaborRates(): CalculatorLaborRate[] {
-  return [
-    { id: newCalculatorLaborRateId(), className: "Foreman", costRate: 55, billRate: 95, crewMix: 1 },
-    { id: newCalculatorLaborRateId(), className: "Journeyman", costRate: 45, billRate: 80, crewMix: 2 },
-    { id: newCalculatorLaborRateId(), className: "Apprentice", costRate: 30, billRate: 55, crewMix: 1 },
-  ];
+  return [{ id: newCalculatorLaborRateId(), className: "Journeyman", costRate: 45 }];
 }
 
 function normalizeRate(raw: unknown): CalculatorLaborRate | null {
@@ -50,14 +41,10 @@ function normalizeRate(raw: unknown): CalculatorLaborRate | null {
   const o = raw as Record<string, unknown>;
   const className = typeof o.className === "string" ? o.className.trim() : "";
   const costRate = num(o.costRate);
-  const billRate = num(o.billRate);
-  const crewMix = num(o.crewMix);
   return {
     id: typeof o.id === "string" && o.id.trim() ? o.id.trim() : newCalculatorLaborRateId(),
     className,
     costRate,
-    billRate,
-    crewMix,
   };
 }
 
@@ -68,15 +55,33 @@ function num(value: unknown): number {
 }
 
 export function blendedCostRate(rates: CalculatorLaborRate[]): number {
-  const totalMix = rates.reduce((sum, r) => sum + r.crewMix, 0);
-  if (totalMix <= 0) return 0;
-  return rates.reduce((sum, r) => sum + r.costRate * r.crewMix, 0) / totalMix;
+  if (rates.length === 0) return 0;
+  return rates.reduce((sum, r) => sum + r.costRate, 0) / rates.length;
 }
 
-export function blendedBillRate(rates: CalculatorLaborRate[]): number {
-  const totalMix = rates.reduce((sum, r) => sum + r.crewMix, 0);
-  if (totalMix <= 0) return 0;
-  return rates.reduce((sum, r) => sum + r.billRate * r.crewMix, 0) / totalMix;
+/** Hours-based % complete (0–100). */
+export function hoursPercentComplete(cumulativeHours: number, totalHours: number): number {
+  if (totalHours <= 0) return 0;
+  return (cumulativeHours / totalHours) * 100;
+}
+
+/** Contract value earned at a given hours % complete. */
+export function pocBillableAmount(contractValue: number, percentComplete: number): number {
+  if (contractValue <= 0 || percentComplete <= 0) return 0;
+  return contractValue * (percentComplete / 100);
+}
+
+/** Month's earned billable = change in cumulative POC billable. */
+export function monthPocBillable(
+  contractValue: number,
+  prevCumulativeHours: number,
+  cumulativeHours: number,
+  totalHours: number,
+): number {
+  if (contractValue <= 0 || totalHours <= 0) return 0;
+  const prev = pocBillableAmount(contractValue, hoursPercentComplete(prevCumulativeHours, totalHours));
+  const next = pocBillableAmount(contractValue, hoursPercentComplete(cumulativeHours, totalHours));
+  return Math.max(0, next - prev);
 }
 
 export function formatMoney0(value: number): string {
@@ -127,11 +132,11 @@ export function saveCalculatorLaborRates(projectId: string, rates: CalculatorLab
 export function loadMonthMaterial(projectId: string, monthKey: string): MonthCalculatorMaterial {
   try {
     const raw = localStorage.getItem(monthMaterialKey(projectId, monthKey));
-    if (!raw) return { materialCost: 0, materialBillable: 0 };
+    if (!raw) return { materialCost: 0 };
     const o = JSON.parse(raw) as Record<string, unknown>;
-    return { materialCost: num(o.materialCost), materialBillable: num(o.materialBillable) };
+    return { materialCost: num(o.materialCost) };
   } catch {
-    return { materialCost: 0, materialBillable: 0 };
+    return { materialCost: 0 };
   }
 }
 
@@ -140,7 +145,6 @@ export function saveMonthMaterial(projectId: string, monthKey: string, material:
     monthMaterialKey(projectId, monthKey),
     JSON.stringify({
       materialCost: num(material.materialCost),
-      materialBillable: num(material.materialBillable),
     }),
   );
 }
@@ -148,29 +152,18 @@ export function saveMonthMaterial(projectId: string, monthKey: string, material:
 export function deriveMonthCalculatorTotals(
   hours: number,
   rates: CalculatorLaborRate[],
-  material: MonthCalculatorMaterial,
+  materialCost: number,
+  pocBillable: number,
 ): MonthCalculatorTotals {
-  const costRate = blendedCostRate(rates);
-  const billRate = blendedBillRate(rates);
-  const laborCost = hours * costRate;
-  const laborBillable = hours * billRate;
-  const materialCost = num(material.materialCost);
-  const materialBillable = num(material.materialBillable);
-  const cost = laborCost + materialCost;
-  const billable = laborBillable + materialBillable;
+  const laborCost = hours * blendedCostRate(rates);
+  const material = num(materialCost);
+  const cost = laborCost + material;
+  const billable = num(pocBillable);
   return {
     laborCost,
-    laborBillable,
-    materialCost,
-    materialBillable,
+    materialCost: material,
     cost,
     billable,
     margin: billable - cost,
   };
-}
-
-export function billableRatioFromRates(rates: CalculatorLaborRate[]): number {
-  const costRate = blendedCostRate(rates);
-  const billRate = blendedBillRate(rates);
-  return costRate > 0 ? billRate / costRate : 1;
 }

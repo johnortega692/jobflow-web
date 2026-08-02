@@ -6,6 +6,7 @@ import { MonthBudgetCalculatorModal } from "../components/billing/MonthBudgetCal
 import { useAuth } from "../contexts/AuthContext";
 import {
   currentMonthLabel,
+  deriveMonthlyHours,
   formatHoursCompact,
   formatManWeeksCompact,
   hoursToDateFromCalendar,
@@ -13,6 +14,11 @@ import {
   type DerivedMonthHours,
 } from "../lib/manpowerHours";
 import { availableTransmittalContracts, parseProjectDataBlob } from "../lib/jobInfo";
+import { loadMonthMaterial } from "../lib/manpowerCalculator";
+import {
+  resolveLaborProjectionContractValue,
+  resolveLaborProjectionMaterialCost,
+} from "../lib/laborProjectionContractValue";
 import { loadBudgetLibrary } from "../lib/budgetLibrary";
 import { commitProjectUpdate } from "../lib/projectActivity";
 import { saveProjectBillingQuiet } from "../lib/projectBillingStorage";
@@ -20,7 +26,11 @@ import { syncBillingPhasesFromBudget } from "../lib/syncManpowerFromBudget";
 import { syncProjectStartDateToManpower } from "../lib/syncProjectStartDate";
 import { supabase } from "../lib/supabase";
 import { canEditManpowerCells, canEditManpowerSchedule } from "../types/jobRoles";
-import { defaultBudgetLibrary, normalizeBudgetMaker } from "../types/budgetMaker";
+import {
+  defaultBudgetLibrary,
+  normalizeBudgetMaker,
+  type BudgetLibrary,
+} from "../types/budgetMaker";
 import { parseProjectBilling, totalPlannedHours, type ProjectBillingData } from "../types/projectBilling";
 import type { ProjectForm } from "../types/database";
 import { normalizeProject, type Json } from "../types/database";
@@ -49,6 +59,7 @@ export function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [calculatorMonth, setCalculatorMonth] = useState<DerivedMonthHours | null>(null);
   const [calculatorRevision, setCalculatorRevision] = useState(0);
+  const [budgetLibrary, setBudgetLibrary] = useState<BudgetLibrary>(() => defaultBudgetLibrary());
   const syncingRef = useRef(false);
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -109,6 +120,7 @@ export function BillingPage() {
       const budget = normalizeBudgetMaker(budgetMakerRaw, latest.job_name);
       const lib = user ? await loadBudgetLibrary(user.id) : defaultBudgetLibrary();
       if (cancelled) return;
+      setBudgetLibrary(lib);
       const current = parseProjectBilling(latest.data);
       const { billing: synced, changed } = syncBillingPhasesFromBudget(
         current,
@@ -197,6 +209,49 @@ export function BillingPage() {
   const totalHours = totalPlannedHours(billing);
   const hoursThroughMonth = hoursToDateFromCalendar(billing, projectStartIso, projectEndIso);
   const throughMonth = currentMonthLabel();
+  const budgetMaker = useMemo(
+    () => normalizeBudgetMaker(budgetMakerRaw, project.job_name),
+    [budgetMakerRaw, project.job_name],
+  );
+  const contractValue = useMemo(
+    () => resolveLaborProjectionContractValue(project, budgetMaker, contracts),
+    [budgetMaker, contracts, project],
+  );
+  const materialBudget = useMemo(
+    () => resolveLaborProjectionMaterialCost(budgetMaker, contracts, budgetLibrary),
+    [budgetLibrary, budgetMaker, contracts],
+  );
+  const monthlyHours = useMemo(
+    () => deriveMonthlyHours(billing, weekStarts),
+    [billing, weekStarts],
+  );
+  const calculatorMonthContext = useMemo(() => {
+    if (!calculatorMonth) return null;
+    void calculatorRevision;
+    let running = 0;
+    let materialEnteredOtherMonths = 0;
+    for (const m of monthlyHours) {
+      if (m.key !== calculatorMonth.key) {
+        materialEnteredOtherMonths += loadMonthMaterial(projectId, m.key).materialCost;
+      }
+      const prev = running;
+      running += m.hours;
+      if (m.key === calculatorMonth.key) {
+        return {
+          prevCumulativeHours: prev,
+          cumulativeHours: running,
+          totalPlannedHours: monthlyHours.reduce((sum, x) => sum + x.hours, 0),
+          materialEnteredOtherMonths,
+        };
+      }
+    }
+    return {
+      prevCumulativeHours: 0,
+      cumulativeHours: calculatorMonth.hours,
+      totalPlannedHours: totalHours,
+      materialEnteredOtherMonths,
+    };
+  }, [calculatorMonth, calculatorRevision, monthlyHours, projectId, totalHours]);
 
   const closeCalculator = useCallback(() => {
     setCalculatorMonth(null);
@@ -248,16 +303,24 @@ export function BillingPage() {
         projectId={projectId}
         projectStartIso={projectStartIso}
         projectEndIso={projectEndIso}
+        contractValue={contractValue}
+        materialBudget={materialBudget}
         calculatorRevision={calculatorRevision}
         onOpenMonth={setCalculatorMonth}
       />
 
-      {calculatorMonth ? (
+      {calculatorMonth && calculatorMonthContext ? (
         <MonthBudgetCalculatorModal
           projectId={projectId}
           monthKey={calculatorMonth.key}
           monthLabel={calculatorMonth.label}
           plannedHours={calculatorMonth.hours}
+          cumulativeHours={calculatorMonthContext.cumulativeHours}
+          prevCumulativeHours={calculatorMonthContext.prevCumulativeHours}
+          totalPlannedHours={calculatorMonthContext.totalPlannedHours}
+          contractValue={contractValue}
+          materialBudget={materialBudget}
+          materialEnteredOtherMonths={calculatorMonthContext.materialEnteredOtherMonths}
           onClose={closeCalculator}
         />
       ) : null}

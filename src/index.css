@@ -11381,8 +11381,9 @@ input.readonly {
 
 .billing-manpower-phase-col {
   left: 0;
-  min-width: 160px;
-  max-width: 220px;
+  width: 190px;
+  min-width: 190px;
+  max-width: 190px;
   text-align: left;
 }
 
@@ -11411,6 +11412,27 @@ input.readonly {
 .billing-manpower-budget-col {
   min-width: 64px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Budget / Planned / Left columns freeze alongside the cost-code column
+   while the table scrolls horizontally through the week columns. */
+.billing-manpower-budget-col.billing-manpower-sticky {
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
+}
+
+.billing-manpower-budget-col--budget {
+  left: 190px;
+}
+
+.billing-manpower-budget-col--planned {
+  left: 258px;
+}
+
+.billing-manpower-budget-col--left {
+  left: 326px;
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
 }
 
 .billing-manpower-left--over {
@@ -11495,7 +11517,21 @@ input.readonly {
   }
 
   .billing-manpower-phase-col {
-    min-width: 120px;
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
+  }
+
+  .billing-manpower-budget-col--budget {
+    left: 130px;
+  }
+
+  .billing-manpower-budget-col--planned {
+    left: 198px;
+  }
+
+  .billing-manpower-budget-col--left {
+    left: 266px;
   }
 
   .billing-manpower-chip {
@@ -11752,6 +11788,30 @@ input.readonly {
 .billing-manpower-planned-cell {
   color: var(--muted);
   font-weight: 600;
+}
+
+.billing-monthly-cost-band td {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+  border-bottom-color: color-mix(in srgb, var(--accent) 22%, rgba(58, 67, 88, 0.5));
+}
+
+.billing-monthly-cost-band .billing-manpower-sticky {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+}
+
+.billing-monthly-cost-band .billing-manpower-row-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.billing-monthly-cost-band--total td {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
+  font-weight: 600;
+  border-bottom-color: color-mix(in srgb, var(--accent) 34%, rgba(58, 67, 88, 0.5));
+}
+
+.billing-monthly-cost-band--total .billing-manpower-sticky {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
 }
 
 .billing-budget-card {

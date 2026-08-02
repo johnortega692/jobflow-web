@@ -287,9 +287,15 @@ export function ManpowerPlanCard({
             <thead>
               <tr>
                 <th className="billing-manpower-sticky billing-manpower-phase-col">Cost code</th>
-                <th className="billing-manpower-budget-col num">Budget</th>
-                <th className="billing-manpower-budget-col num">Planned</th>
-                <th className="billing-manpower-budget-col num">Left</th>
+                <th className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--budget num">
+                  Budget
+                </th>
+                <th className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--planned num">
+                  Planned
+                </th>
+                <th className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--left num">
+                  Left
+                </th>
                 {weeks.map((w, weekIdx) => (
                   <th
                     key={w}
@@ -334,14 +340,14 @@ export function ManpowerPlanCard({
                       <span className="billing-manpower-phase-code">{phase.costCode || "—"}</span>
                       <span className="billing-manpower-phase-desc">{phase.name}</span>
                     </td>
-                    <td className="billing-manpower-budget-col num">
+                    <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--budget num">
                       {formatHours(phase.budgetHours)}
                     </td>
-                    <td className="billing-manpower-budget-col num">
+                    <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--planned num">
                       {formatHours(planned)}
                     </td>
                     <td
-                      className={`billing-manpower-budget-col num${over ? " billing-manpower-left--over" : ""}`}
+                      className={`billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--left num${over ? " billing-manpower-left--over" : ""}`}
                     >
                       {formatHoursPlain(left)}
                     </td>
@@ -423,13 +429,13 @@ export function ManpowerPlanCard({
             <tfoot>
               <tr className="billing-manpower-total-row">
                 <td className="billing-manpower-sticky billing-manpower-phase-col">Total hrs</td>
-                <td className="billing-manpower-budget-col num">
+                <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--budget num">
                   {formatHours(contractBudget)}
                 </td>
-                <td className="billing-manpower-budget-col num">
+                <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--planned num">
                   {formatHours(contractPlanned)}
                 </td>
-                <td className="billing-manpower-budget-col num">
+                <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--left num">
                   {formatHoursPlain(contractBudget - contractPlanned)}
                 </td>
                 {weeks.map((w) => {

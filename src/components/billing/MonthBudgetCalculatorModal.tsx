@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  billableRatioFromRates,
-  blendedBillRate,
   blendedCostRate,
   defaultCalculatorLaborRates,
   deriveMonthCalculatorTotals,
   formatInputValue,
   formatMoney0,
   formatPct0,
+  hoursPercentComplete,
   loadCalculatorLaborRates,
   loadMonthMaterial,
+  monthPocBillable,
   newCalculatorLaborRateId,
   parseMoney,
+  pocBillableAmount,
   saveCalculatorLaborRates,
   saveMonthMaterial,
   type CalculatorLaborRate,
@@ -23,6 +24,16 @@ type Props = {
   monthKey: string;
   monthLabel: string;
   plannedHours: number;
+  /** Cumulative planned hours through this month (inclusive). */
+  cumulativeHours: number;
+  /** Prior cumulative hours (before this month). */
+  prevCumulativeHours: number;
+  totalPlannedHours: number;
+  contractValue: number;
+  /** Budget Maker material total — reference only; user enters this month. */
+  materialBudget: number;
+  /** Sum of material entered in other months (excludes this month). */
+  materialEnteredOtherMonths: number;
   onClose: () => void;
 };
 
@@ -31,18 +42,20 @@ export function MonthBudgetCalculatorModal({
   monthKey,
   monthLabel,
   plannedHours,
+  cumulativeHours,
+  prevCumulativeHours,
+  totalPlannedHours,
+  contractValue,
+  materialBudget,
+  materialEnteredOtherMonths,
   onClose,
 }: Props) {
   const [rates, setRates] = useState<CalculatorLaborRate[]>(() => loadCalculatorLaborRates(projectId));
   const [materialCostDraft, setMaterialCostDraft] = useState("");
-  const [materialBillableDraft, setMaterialBillableDraft] = useState("");
-  const [billableTouched, setBillableTouched] = useState(false);
 
   useEffect(() => {
     const saved = loadMonthMaterial(projectId, monthKey);
     setMaterialCostDraft(formatInputValue(saved.materialCost));
-    setMaterialBillableDraft(formatInputValue(saved.materialBillable));
-    setBillableTouched(saved.materialCost > 0 || saved.materialBillable > 0);
   }, [monthKey, projectId]);
 
   useEffect(() => {
@@ -50,36 +63,22 @@ export function MonthBudgetCalculatorModal({
   }, [projectId]);
 
   const materialCost = useMemo(() => parseMoney(materialCostDraft), [materialCostDraft]);
-  const materialBillable = useMemo(() => parseMoney(materialBillableDraft), [materialBillableDraft]);
-  const billableRatio = billableRatioFromRates(rates);
-  const totals = deriveMonthCalculatorTotals(plannedHours, rates, {
-    materialCost,
-    materialBillable,
-  });
+  const percentComplete = hoursPercentComplete(cumulativeHours, totalPlannedHours);
+  const monthBillable = monthPocBillable(
+    contractValue,
+    prevCumulativeHours,
+    cumulativeHours,
+    totalPlannedHours,
+  );
+  const earnedToDate = pocBillableAmount(contractValue, percentComplete);
+  const totals = deriveMonthCalculatorTotals(plannedHours, rates, materialCost, monthBillable);
   const marginPct = totals.billable > 0 ? (totals.margin / totals.billable) * 100 : 0;
-
-  function persistMaterial(nextCost: number, nextBillable: number) {
-    saveMonthMaterial(projectId, monthKey, {
-      materialCost: nextCost,
-      materialBillable: nextBillable,
-    });
-  }
+  const materialEnteredAll = materialEnteredOtherMonths + materialCost;
+  const materialLeft = materialBudget > 0 ? materialBudget - materialEnteredAll : 0;
 
   function updateMaterialCost(raw: string) {
     setMaterialCostDraft(raw);
-    const nextCost = parseMoney(raw);
-    let nextBillable = materialBillable;
-    if (!billableTouched) {
-      nextBillable = nextCost * billableRatio;
-      setMaterialBillableDraft(formatInputValue(nextBillable));
-    }
-    persistMaterial(nextCost, nextBillable);
-  }
-
-  function updateMaterialBillable(raw: string) {
-    setBillableTouched(true);
-    setMaterialBillableDraft(raw);
-    persistMaterial(materialCost, parseMoney(raw));
+    saveMonthMaterial(projectId, monthKey, { materialCost: parseMoney(raw) });
   }
 
   function patchRate(id: string, patch: Partial<CalculatorLaborRate>) {
@@ -118,7 +117,8 @@ export function MonthBudgetCalculatorModal({
         </div>
 
         <p className="muted small billing-manpower-caption">
-          Calculator only — amounts stay in this browser, not saved to the project.
+          Labor uses Cost/hr. Billable = contract × % complete. Enter this month’s material to split the
+          budget total.
         </p>
 
         <div className="billing-calc-stat-strip">
@@ -130,12 +130,26 @@ export function MonthBudgetCalculatorModal({
             </span>
           </div>
           <div className="billing-calc-stat-tile">
-            <span className="billing-calc-stat-label">Blended cost/hr</span>
+            <span className="billing-calc-stat-label">Cost/hr</span>
             <strong className="billing-calc-stat-value">{formatMoney0(blendedCostRate(rates))}</strong>
           </div>
           <div className="billing-calc-stat-tile">
-            <span className="billing-calc-stat-label">Blended bill/hr</span>
-            <strong className="billing-calc-stat-value">{formatMoney0(blendedBillRate(rates))}</strong>
+            <span className="billing-calc-stat-label">% complete</span>
+            <strong className="billing-calc-stat-value">
+              {totalPlannedHours > 0 ? formatPct0(percentComplete) : "—"}
+            </strong>
+            <span className="billing-calc-stat-sub muted">
+              earned {formatMoney0(earnedToDate)}
+            </span>
+          </div>
+          <div className="billing-calc-stat-tile">
+            <span className="billing-calc-stat-label">Material budget</span>
+            <strong className="billing-calc-stat-value">{formatMoney0(materialBudget)}</strong>
+            <span className="billing-calc-stat-sub muted">
+              {materialBudget > 0
+                ? `entered ${formatMoney0(materialEnteredAll)} · left ${formatMoney0(materialLeft)}`
+                : "from Budget Maker"}
+            </span>
           </div>
         </div>
 
@@ -156,8 +170,8 @@ export function MonthBudgetCalculatorModal({
             <span className="billing-calc-ledger-cell billing-calc-ledger-value" role="cell">
               {formatMoney0(totals.laborCost)}
             </span>
-            <span className="billing-calc-ledger-cell billing-calc-ledger-value" role="cell">
-              {formatMoney0(totals.laborBillable)}
+            <span className="billing-calc-ledger-cell billing-calc-ledger-value muted" role="cell">
+              —
             </span>
           </div>
           <div className="billing-calc-ledger-row billing-calc-ledger-row--material" role="row">
@@ -172,21 +186,12 @@ export function MonthBudgetCalculatorModal({
                 className="billing-calc-ledger-input"
                 value={materialCostDraft}
                 placeholder="0"
-                aria-label="Material cost"
+                aria-label="Material cost for this month"
                 onChange={(e) => updateMaterialCost(e.target.value)}
               />
             </span>
-            <span className="billing-calc-ledger-cell" role="cell">
-              <input
-                type="number"
-                min={0}
-                step={100}
-                className="billing-calc-ledger-input"
-                value={materialBillableDraft}
-                placeholder="0"
-                aria-label="Material billable"
-                onChange={(e) => updateMaterialBillable(e.target.value)}
-              />
+            <span className="billing-calc-ledger-cell billing-calc-ledger-value muted" role="cell">
+              —
             </span>
           </div>
           <div className="billing-calc-ledger-row billing-calc-ledger-row--total" role="row">
@@ -219,8 +224,6 @@ export function MonthBudgetCalculatorModal({
                   <tr>
                     <th className="billing-calc-rates-class-col">Class</th>
                     <th className="num">Cost/hr</th>
-                    <th className="num">Bill/hr</th>
-                    <th className="num">Crew mix</th>
                     <th />
                   </tr>
                 </thead>
@@ -243,26 +246,6 @@ export function MonthBudgetCalculatorModal({
                           value={r.costRate === 0 ? "" : r.costRate}
                           placeholder="0"
                           onChange={(e) => patchRate(r.id, { costRate: num(e.target.value) })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          className="billing-calc-rates-num-input"
-                          value={r.billRate === 0 ? "" : r.billRate}
-                          placeholder="0"
-                          onChange={(e) => patchRate(r.id, { billRate: num(e.target.value) })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min={0}
-                          className="billing-calc-rates-num-input"
-                          value={r.crewMix === 0 ? "" : r.crewMix}
-                          placeholder="0"
-                          onChange={(e) => patchRate(r.id, { crewMix: num(e.target.value) })}
                         />
                       </td>
                       <td>
@@ -294,7 +277,7 @@ export function MonthBudgetCalculatorModal({
                   setRates((rows) => {
                     const next = [
                       ...rows,
-                      { id: newCalculatorLaborRateId(), className: "", costRate: 0, billRate: 0, crewMix: 1 },
+                      { id: newCalculatorLaborRateId(), className: "", costRate: 0 },
                     ];
                     saveCalculatorLaborRates(projectId, next);
                     return next;
