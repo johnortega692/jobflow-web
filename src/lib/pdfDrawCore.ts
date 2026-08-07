@@ -226,11 +226,44 @@ export type PdfTableDrawOptions = {
   marginTop?: number;
 };
 
+/** Min points for an auto-sized column — keeps a short header from collapsing too narrow. */
+const AUTO_COL_MIN_WIDTH = 34;
+/** Min points for a pinned row-number ("#") column — tighter, since it never holds more than a couple digits. */
+const AUTO_INDEX_COL_MIN_WIDTH = 20;
+
+/** Content-driven column widths: each column sized to its widest header/cell, then scaled to fill `usable`. */
+function autoColWidths(
+  columns: string[],
+  rows: string[][],
+  font: PDFFont,
+  bold: PDFFont,
+  fontSize: number,
+  usable: number,
+): number[] {
+  const measure = (text: string, useFont: PDFFont) =>
+    useFont.widthOfTextAtSize(text.replace(/\s+/g, " ").trim(), fontSize);
+  // Row-number columns stay pinned to their (tightly floored) natural width instead
+  // of stretching to soak up leftover page width the way content columns do.
+  const pinned = columns.map((col) => col.trim() === "#");
+  const natural = columns.map((col, i) => {
+    let w = measure(col, bold);
+    for (const row of rows) w = Math.max(w, measure(row[i] ?? "", font));
+    return Math.max(w + 8, pinned[i] ? AUTO_INDEX_COL_MIN_WIDTH : AUTO_COL_MIN_WIDTH);
+  });
+
+  const pinnedWidth = natural.reduce((sum, w, i) => sum + (pinned[i] ? w : 0), 0);
+  const flexTotal = natural.reduce((sum, w, i) => sum + (pinned[i] ? 0 : w), 0);
+  const flexUsable = Math.max(0, usable - pinnedWidth);
+  const flexScale = flexTotal > 0 ? flexUsable / flexTotal : 1;
+
+  return natural.map((w, i) => (pinned[i] ? w : w * flexScale));
+}
+
 export function drawDataTable(
   state: PdfTableState,
   margin: number,
   columns: string[],
-  colWeights: number[],
+  colWeights: number[] | "auto",
   rows: string[][],
   fontSize = 9,
   /** Min y reserved for footers; defaults to `margin`. */
@@ -247,8 +280,10 @@ export function drawDataTable(
   let { doc, page, y, font, bold } = state;
   const pageWidth = page.getWidth();
   const usable = pageWidth - margin * 2;
-  const weightSum = colWeights.reduce((a, b) => a + b, 0);
-  const colWidths = colWeights.map((w) => (usable * w) / weightSum);
+  const colWidths =
+    colWeights === "auto"
+      ? autoColWidths(columns, rows, font, bold, fontSize, usable)
+      : colWeights.map((w) => (usable * w) / colWeights.reduce((a, b) => a + b, 0));
 
   function newPageIfNeeded(need: number) {
     if (y - need >= contentBottom) return;

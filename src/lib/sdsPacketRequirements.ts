@@ -9,8 +9,7 @@ import type { SdsSection } from "../types/tradeDocuments";
 /** Attachment kinds required for every section under a packet type. */
 export function requiredAttachmentsForPacketType(packetType: SdsPacketType): SdsAttachmentKind[] {
   switch (packetType) {
-    case "SDS & TDS":
-    case "Product Data":
+    case "Product Information":
     case "Finish Submittal":
     case "Custom":
       return ["product_data", "sds"];

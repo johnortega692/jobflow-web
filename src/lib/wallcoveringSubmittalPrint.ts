@@ -104,7 +104,6 @@ function wcRows(items: WallcoveringItem[], substitution: boolean): string {
       <td><strong>${esc(item.color)}</strong></td>
       <td>${esc(item.manufacturer)}</td>
       <td>${esc(item.product)}</td>
-      <td>${esc(item.qty)}</td>
     </tr>`;
       }
       return `<tr>
@@ -113,7 +112,6 @@ function wcRows(items: WallcoveringItem[], substitution: boolean): string {
       <td>${esc(item.product)}</td>
       <td>${esc(item.color)}</td>
       <td>${esc(item.label)}</td>
-      <td>${esc(item.qty)}</td>
     </tr>`;
     })
     .join("");
@@ -123,21 +121,19 @@ function wcTableHead(substitution: boolean): string {
   if (substitution) {
     return `<tr>
           <th style="width:5%">#</th>
-          <th style="width:10%">Label</th>
-          <th style="width:20%">Previous</th>
-          <th style="width:20%">New Color</th>
-          <th style="width:18%">Manufacturer</th>
-          <th style="width:17%">Product</th>
-          <th style="width:10%">Qty</th>
+          <th style="width:11%">Label</th>
+          <th style="width:22%">Previous</th>
+          <th style="width:22%">New Color</th>
+          <th style="width:20%">Manufacturer</th>
+          <th style="width:20%">Product</th>
         </tr>`;
   }
   return `<tr>
           <th style="width:5%">#</th>
-          <th style="width:22%">Manufacturer</th>
-          <th style="width:22%">Product</th>
-          <th style="width:26%">Color</th>
-          <th style="width:15%">Label</th>
-          <th style="width:10%">Qty</th>
+          <th style="width:24%">Manufacturer</th>
+          <th style="width:24%">Product</th>
+          <th style="width:29%">Color</th>
+          <th style="width:18%">Label</th>
         </tr>`;
 }
 
@@ -153,12 +149,12 @@ function wcPrintableItems(items: WallcoveringItem[]): WallcoveringItem[] {
 function wcSectionColumns(substitution: boolean): Pick<SubmittalPdfFloorSection, "columns" | "colWeights"> {
   return substitution
     ? {
-        columns: ["#", "Label", "Previous", "New Color", "Manufacturer", "Product", "Qty"],
-        colWeights: [0.05, 0.1, 0.2, 0.2, 0.18, 0.17, 0.1],
+        columns: ["#", "Label", "Previous", "New Color", "Manufacturer", "Product"],
+        colWeights: "auto",
       }
     : {
-        columns: ["#", "Manufacturer", "Product", "Color", "Label", "Qty"],
-        colWeights: [0.05, 0.22, 0.22, 0.26, 0.15, 0.1],
+        columns: ["#", "Manufacturer", "Product", "Color", "Label"],
+        colWeights: "auto",
       };
 }
 
@@ -172,7 +168,6 @@ function wcItemRowsForPdf(items: WallcoveringItem[], substitution: boolean): str
         item.color.trim(),
         item.manufacturer.trim(),
         item.product.trim(),
-        item.qty.trim(),
       ];
     }
     return [
@@ -181,7 +176,6 @@ function wcItemRowsForPdf(items: WallcoveringItem[], substitution: boolean): str
       item.product.trim(),
       item.color.trim(),
       item.label.trim(),
-      item.qty.trim(),
     ];
   });
 }

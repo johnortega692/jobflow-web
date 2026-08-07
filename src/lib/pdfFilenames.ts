@@ -1,5 +1,6 @@
 import { companySpecSubmittalFilename, sanitizeFilenamePart } from "./sdsPacketPresets";
 import { normalizeTransmittalNumber } from "./transmittalNumber";
+import { IRONWOOD_SHORT_COMPANY_NAME } from "./displayCompanyName";
 import type { TradeSubmittalType } from "../types/tradeDocuments";
 
 /** Prefer job number over job name for download filenames (orders, RFI, etc.). */
@@ -25,7 +26,7 @@ export function transmittalFilename(
   return `${projectPart}_Transmittal_${numPart}.pdf`;
 }
 
-/** Company format: `003 - 09 91 23 - Interior Painting.pdf` */
+/** Company format: `ICBI - 003 - 09 91 23 - Interior Painting.pdf` */
 export function paintSubmittalFilename(
   _jobName: string,
   _jobNumber: string,
@@ -33,10 +34,10 @@ export function paintSubmittalFilename(
   _submittalType: TradeSubmittalType,
   specSection?: string,
 ): string {
-  return companySpecSubmittalFilename(submittalNumber, specSection ?? "");
+  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "")}`;
 }
 
-/** Company format: `002 - 09 72 00 - Wall Coverings.pdf` */
+/** Company format: `ICBI - 002 - 09 72 00 - Wall Coverings.pdf` */
 export function wallcoveringSubmittalFilename(
   _jobName: string,
   _jobNumber: string,
@@ -44,7 +45,7 @@ export function wallcoveringSubmittalFilename(
   _submittalType: TradeSubmittalType,
   specSection?: string,
 ): string {
-  return companySpecSubmittalFilename(submittalNumber, specSection ?? "");
+  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "")}`;
 }
 
 export function rfiFilename(jobName: string, jobNumber: string, rfiNumber: string): string {
@@ -65,14 +66,14 @@ export function wallcoveringOrderFormFilename(
     : `${projectPart}_Wallcovering_Order_Form.pdf`;
 }
 
-/** Company format: `001 - 06 60 00 - Plastic Fabrications (FRP).pdf` */
+/** Company format: `ICBI - 001 - 06 60 00 - Plastic Fabrications (FRP).pdf` */
 export function frpSubmittalFilename(
   _jobName: string,
   _jobNumber: string,
   submittalNumber: number,
   specSection?: string,
 ): string {
-  return companySpecSubmittalFilename(submittalNumber, specSection ?? "");
+  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "")}`;
 }
 
 export function frpOrderFormFilename(jobName: string, jobNumber: string, poNumber?: string): string {

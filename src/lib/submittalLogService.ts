@@ -84,11 +84,24 @@ export async function deleteSubmittalLogRows(projectId: string, ids: string[]): 
   });
 }
 
+/**
+ * Auto-logs a submittal package's first PDF download as a new log line.
+ * Re-downloading the same package (e.g. reprinting) must not create a
+ * second line — reuse the row already logged for this trade submittal number.
+ */
 export async function recordPdfLogRow(
   projectId: string,
   params: Parameters<typeof buildAutoLogRow>[1],
 ): Promise<SubmittalLogRow> {
   const existing = await loadSubmittalLogRows(projectId);
+  const tradeNumber = params.trade_submittal_number?.trim();
+  const scope = params.scope ?? "Paint";
+  const already = tradeNumber
+    ? existing.find(
+        (row) => row.trade_submittal_number.trim() === tradeNumber && row.scope === scope && !row.revises_line,
+      )
+    : undefined;
+  if (already) return already;
   const row = buildAutoLogRow(existing, params);
   return insertSubmittalLogRow(projectId, row);
 }

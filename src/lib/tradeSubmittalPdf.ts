@@ -35,7 +35,7 @@ export type SubmittalPdfFloorSection = {
   bannerSubject?: string;
   bannerSpec?: string;
   columns: string[];
-  colWeights: number[];
+  colWeights: number[] | "auto";
   rows: string[][];
 };
 

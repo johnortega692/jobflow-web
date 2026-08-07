@@ -11,53 +11,6 @@ export type ExtractedPaintRow = {
   floor: string;
 };
 
-const MANUFACTURERS = [
-  "BENJAMIN MOORE & CO",
-  "BENJAMIN MOORE",
-  "SHERWIN-WILLIAMS",
-  "SHERWIN WILLIAMS",
-  "KELLY-MOORE",
-  "KELLY MOORE",
-  "DUNN-EDWARDS",
-  "DUNN EDWARDS",
-  "VISTA PAINTS",
-  "SCUFFMASTER",
-  "PPG",
-  "BEHR",
-] as const;
-
-const MANUFACTURER_ABBREV: Record<string, string> = {
-  "BENJAMIN MOORE & CO": "BM",
-  "BENJAMIN MOORE": "BM",
-  "SHERWIN-WILLIAMS": "SW",
-  "SHERWIN WILLIAMS": "SW",
-  "KELLY-MOORE": "KM",
-  "KELLY MOORE": "KM",
-  "DUNN-EDWARDS": "DE",
-  "DUNN EDWARDS": "DE",
-  PPG: "PPG",
-  BEHR: "BEHR",
-  "VISTA PAINTS": "Vista Paints",
-  SCUFFMASTER: "SCUFFMASTER",
-};
-
-export function abbreviateManufacturer(name: string): string {
-  const upper = name.toUpperCase().trim();
-  for (const mfr of MANUFACTURERS) {
-    if (upper.includes(mfr)) return MANUFACTURER_ABBREV[mfr] ?? mfr;
-  }
-  return name.trim();
-}
-
-export function paintColorForPrint(manufacturer: string, color: string): string {
-  const m = manufacturer.trim();
-  const c = color.trim();
-  if (!m) return c;
-  if (!c) return abbreviateManufacturer(m);
-  if (c.toUpperCase().includes(m.toUpperCase())) return c;
-  return `${abbreviateManufacturer(m)} ${c}`;
-}
-
 async function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> {
   const mediaType = file.type || "image/jpeg";
   const buffer = await file.arrayBuffer();

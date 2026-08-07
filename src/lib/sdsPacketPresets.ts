@@ -1,6 +1,7 @@
+import { IRONWOOD_SHORT_COMPANY_NAME } from "./displayCompanyName";
+
 export type SdsPacketType =
-  | "SDS & TDS"
-  | "Product Data"
+  | "Product Information"
   | "Finish Submittal"
   | "Shop Drawings"
   | "LEED / Sustainability"
@@ -11,8 +12,7 @@ export type SdsPacketType =
   | "Custom";
 
 export const SDS_PACKET_TYPES: SdsPacketType[] = [
-  "SDS & TDS",
-  "Product Data",
+  "Product Information",
   "Finish Submittal",
   "Shop Drawings",
   "LEED / Sustainability",
@@ -30,17 +30,11 @@ type SdsPacketPreset = {
 };
 
 const SDS_PACKET_PRESETS: Record<SdsPacketType, SdsPacketPreset> = {
-  "SDS & TDS": {
-    coverTitle: "SDS & TDS SUBMITTAL",
+  "Product Information": {
+    coverTitle: "PRODUCT INFORMATION SUBMITTAL",
     defaultPurpose:
-      "Safety Data Sheets and Technical Data Sheets are submitted for review and project records.",
-    outputSlug: "SDS_TDS",
-  },
-  "Product Data": {
-    coverTitle: "PRODUCT DATA SUBMITTAL",
-    defaultPurpose:
-      "Product data and technical data sheets are submitted for review and approval prior to procurement and installation.",
-    outputSlug: "Product_Data",
+      "Product data, technical data sheets, and safety data sheets are submitted for review and project records.",
+    outputSlug: "Product_Information",
   },
   "Finish Submittal": {
     coverTitle: "FINISH SUBMITTAL",
@@ -96,6 +90,9 @@ const LEGACY_COVER_PURPOSES = new Set([
   "Safety Data Sheets and Technical Data Sheets for paint materials scheduled for use on this project.",
   "Safety Data Sheets and Technical Data Sheets for materials scheduled for use on this project.",
   "Product data and technical data sheets for materials scheduled for use on this project.",
+  // Pre-merge "SDS & TDS" / "Product Data" defaults, now both folded into "Product Information".
+  "Safety Data Sheets and Technical Data Sheets are submitted for review and project records.",
+  "Product data and technical data sheets are submitted for review and approval prior to procurement and installation.",
   "Finish schedule and material information submitted for review and approval.",
   "Shop drawings submitted for review, coordination, and approval.",
   "LEED, HPD, EPD, and other sustainability documentation for materials on this project.",
@@ -117,15 +114,17 @@ function allPresetCoverPurposes(): Set<string> {
 const PRESET_COVER_PURPOSES = allPresetCoverPurposes();
 
 const LEGACY_PACKET_TYPE_MAP: Record<string, SdsPacketType> = {
-  "Safety Data Sheets": "SDS & TDS",
-  "Technical Data Sheets": "Product Data",
+  "Safety Data Sheets": "Product Information",
+  "Technical Data Sheets": "Product Information",
+  "SDS & TDS": "Product Information",
+  "Product Data": "Product Information",
 };
 
 export function normalizePacketType(value: string | undefined): SdsPacketType {
   const v = (value ?? "").trim();
   if (SDS_PACKET_TYPES.includes(v as SdsPacketType)) return v as SdsPacketType;
   if (LEGACY_PACKET_TYPE_MAP[v]) return LEGACY_PACKET_TYPE_MAP[v];
-  return "SDS & TDS";
+  return "Product Information";
 }
 
 export function defaultCoverPurpose(packetType: SdsPacketType): string {
@@ -266,7 +265,7 @@ export function sdsPacketFilename(
   const jobNo = sanitizeCompanyFilenamePart(jobNumber);
   const jobNm = sanitizeCompanyFilenamePart(jobName);
   const prefix = [jobNo, jobNm].filter(Boolean).join(" - ");
-  return prefix ? `${prefix} - ${base}` : base;
+  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${prefix ? `${prefix} - ${base}` : base}`;
 }
 
 /** Submittal log type mirrors the selected package preset. */

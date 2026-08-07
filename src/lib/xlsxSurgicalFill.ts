@@ -3,6 +3,13 @@ import JSZip from "jszip";
 const NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const NS_OFFICE_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
+/** Legacy Excel 97-2003 (.xls) files are OLE2/Compound File binaries, not zip archives. */
+const OLE2_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+
+function isLegacyXlsFile(bytes: Uint8Array): boolean {
+  return OLE2_SIGNATURE.every((b, i) => bytes[i] === b);
+}
+
 type SheetInfo = { name: string; path: string };
 
 function parseXml(xml: string): Document {
@@ -106,6 +113,12 @@ export async function patchXlsxCellValues(
   templateBytes: ArrayBuffer,
   cellValues: Record<string, string>,
 ): Promise<{ bytes: Uint8Array; sheetName: string }> {
+  if (isLegacyXlsFile(new Uint8Array(templateBytes.slice(0, 8)))) {
+    throw new Error(
+      "This is an old Excel 97-2003 file (.xls) — this tool only fills the modern .xlsx format. " +
+        "Open it in Excel, use File → Save As → Excel Workbook (.xlsx), then upload the .xlsx version.",
+    );
+  }
   const zip = await JSZip.loadAsync(templateBytes);
   const sheetInfo = await resolveFirstSheet(zip);
 

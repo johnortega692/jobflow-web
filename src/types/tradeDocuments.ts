@@ -545,7 +545,7 @@ export function emptySdsSection(): SdsSection {
 }
 
 export function defaultSdsPacket(): SdsPacketData {
-  const packet_type: SdsPacketType = "SDS & TDS";
+  const packet_type: SdsPacketType = "Product Information";
   return {
     packet_type,
     spec_section: "",

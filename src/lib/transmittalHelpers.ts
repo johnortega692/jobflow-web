@@ -81,13 +81,29 @@ export function pendingItemLabel(item: PendingSubmittalItem): string {
   return pendingItemEnclosureDescription(item);
 }
 
+/**
+ * Queues a submittal package for transmittal enclosure. Re-downloading the same
+ * package (same source + trade submittal number) must not duplicate its queue
+ * entry — refresh the existing one in place instead, keeping its id so any
+ * enclosure already linked to it (via pending_id) stays linked.
+ */
 export function queuePendingItem(
   transmittal: TransmittalData,
   item: Partial<PendingSubmittalItem>,
   autoAllowed: readonly TransmittalContentKey[] = defaultTransmittalContentAutoOn(),
 ): TransmittalData {
   const normalized = normalizePendingItem(item);
-  const queue = [...(transmittal.pending_submittal_queue ?? []), normalized];
+  const existingQueue = transmittal.pending_submittal_queue ?? [];
+  const dupeIndex =
+    normalized.source && normalized.trade_submittal_number
+      ? existingQueue.findIndex(
+          (q) => q.source === normalized.source && q.trade_submittal_number === normalized.trade_submittal_number,
+        )
+      : -1;
+  const queue =
+    dupeIndex >= 0
+      ? existingQueue.map((q, i) => (i === dupeIndex ? { ...normalized, id: q.id } : q))
+      : [...existingQueue, normalized];
   const withFlags = applyInferredContentFlags(
     transmittal,
     inferContentKeysFromPending(normalized),

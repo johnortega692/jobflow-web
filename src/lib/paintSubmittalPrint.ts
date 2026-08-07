@@ -11,7 +11,6 @@ import {
   type PrintBranding,
 } from "./printCore";
 import { paintSubmittalFilename, pdfTitleFromFilename } from "./pdfFilenames";
-import { paintColorForPrint } from "./paintImageImport";
 import type { ProjectPrintInfo } from "./jobInfo";
 import type { PaintItem, PaintSubmittalData } from "../types/tradeDocuments";
 import {
@@ -96,7 +95,7 @@ type ProjectInfo = ProjectPrintInfo;
 function paintTableRows(items: PaintItem[], isSub: boolean): string {
   return items
     .map((item, i) => {
-      const displayColor = paintColorForPrint(item.manufacturer, item.color);
+      const displayColor = item.color.trim();
       if (isSub) {
         return `<tr>
           <td>${i + 1}</td>
@@ -140,7 +139,7 @@ function paintTableHead(isSub: boolean): string {
 
 function paintItemRowsForPdf(items: PaintItem[], isSub: boolean): string[][] {
   return items.map((item, i) => {
-    const displayColor = paintColorForPrint(item.manufacturer, item.color);
+    const displayColor = item.color.trim();
     if (isSub) {
       return [
         String(i + 1),
@@ -159,11 +158,11 @@ function paintSectionColumns(isSub: boolean): Pick<SubmittalPdfFloorSection, "co
   return isSub
     ? {
         columns: ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"],
-        colWeights: [0.05, 0.1, 0.22, 0.22, 0.22, 0.19],
+        colWeights: "auto",
       }
     : {
         columns: ["#", "Color", "Product", "Sheen", "Label"],
-        colWeights: [0.05, 0.25, 0.25, 0.25, 0.2],
+        colWeights: "auto",
       };
 }
 
