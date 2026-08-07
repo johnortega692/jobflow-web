@@ -54,6 +54,7 @@ export function ProjectsPage() {
   const [showForm, setShowForm] = useState(false);
   const [jobNumber, setJobNumber] = useState("");
   const [jobName, setJobName] = useState("");
+  const [icbiIsGc, setIcbiIsGc] = useState(false);
   const [superId, setSuperId] = useState("");
   const [foremanId, setForemanId] = useState("");
   const [pmId, setPmId] = useState("");
@@ -147,6 +148,7 @@ export function ProjectsPage() {
   function resetCreateForm() {
     setJobNumber("");
     setJobName("");
+    setIcbiIsGc(false);
     setSuperId("");
     setForemanId("");
     setPmId("");
@@ -164,6 +166,7 @@ export function ProjectsPage() {
     const pmContact = findStaffContact(staffPms, pmId);
     const jobInfo = {
       ...defaultJobInfo(),
+      icbi_is_gc: icbiIsGc,
       ...jobInfoPatchFromStaffSelection(superContact, foremanContact, pmContact),
       ...(!pmContact ? jobInfoPatchFromProfilePm(profile, staffPms, jobRole) : {}),
     };
@@ -274,6 +277,20 @@ export function ProjectsPage() {
               }
             />
           </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={icbiIsGc}
+              onChange={(e) => setIcbiIsGc(e.target.checked)}
+            />
+            ICBI is the GC on this project
+          </label>
+          {icbiIsGc && (
+            <p className="muted small">
+              Self-perform paint POs get a trailing <strong>P</strong> (e.g. <code>1126-001P</code>) to
+              tell them apart from ICBI's GC-side PO accounting.
+            </p>
+          )}
           {fieldStaffError && (
             <p className="banner banner-warn">{fieldStaffError}</p>
           )}

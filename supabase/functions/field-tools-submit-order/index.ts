@@ -57,6 +57,8 @@ type IcbiOrderContacts = {
   super: string;
   superEmail: string;
   foremanEmail: string;
+  /** ICBI is also the GC on this project — paint POs get a trailing "P" suffix. */
+  isGc: boolean;
 };
 
 function strField(v: unknown): string {
@@ -92,6 +94,7 @@ async function loadIcbiOrderContacts(
     super: strField(ji.field_request_super),
     superEmail: strField(ji.icbi_super_email),
     foremanEmail: strField(ji.icbi_foreman_email),
+    isGc: Boolean(ji.icbi_is_gc),
   };
 }
 
@@ -325,6 +328,9 @@ Deno.serve(async (req) => {
           continue;
         }
         poNumber = String(po);
+        // ICBI-as-GC jobs: mark self-perform paint POs so they're distinguishable
+        // from ICBI's GC-side PO accounting, which uses the same shared job sequence.
+        if (icbi?.isGc && spec.material_scope === "paint") poNumber = `${poNumber}P`;
         assignedPos.push(poNumber);
       }
 

@@ -109,6 +109,20 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
       </p>
       {loading && <p className="muted small">Loading PM / super lists…</p>}
       {error && <p className="banner banner-warn">{error}</p>}
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={j.icbi_is_gc}
+          onChange={(e) => onChange({ icbi_is_gc: e.target.checked })}
+        />
+        ICBI is the GC on this project
+      </label>
+      {j.icbi_is_gc && (
+        <p className="muted small">
+          Self-perform paint POs for this job get a trailing <strong>P</strong> (e.g.{" "}
+          <code>1126-001P</code>) so they're distinguishable from ICBI's GC-side PO accounting.
+        </p>
+      )}
       <div className="grid-2">
         <label>
           Estimator

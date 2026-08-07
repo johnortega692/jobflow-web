@@ -47,6 +47,8 @@ export type JobInfoData = {
   icbi_foreman_email: string;
   /** ICBI / Field Tools super email (from Field Tools profile on new project) */
   icbi_super_email: string;
+  /** ICBI is also the GC on this project — self-perform paint POs get a trailing "P" (e.g. 1126-001P) to tell them apart from GC-side PO accounting. */
+  icbi_is_gc: boolean;
   /** @deprecated Legacy alias — synced from icbi_pm on save */
   field_request_pm: string;
   /** ICBI super — Field Tools orders and Manpower sync */
@@ -125,6 +127,7 @@ export function defaultJobInfo(): JobInfoData {
     icbi_foreman: "",
     icbi_foreman_email: "",
     icbi_super_email: "",
+    icbi_is_gc: false,
     field_request_pm: "",
     field_request_super: "",
     staff_super_id: "",

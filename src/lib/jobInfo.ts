@@ -58,6 +58,7 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     icbi_foreman: str(o.icbi_foreman),
     icbi_foreman_email: str(o.icbi_foreman_email),
     icbi_super_email: str(o.icbi_super_email),
+    icbi_is_gc: Boolean(o.icbi_is_gc),
     field_request_pm: str(o.field_request_pm),
     field_request_super: str(o.field_request_super),
     staff_super_id: str(o.staff_super_id),
