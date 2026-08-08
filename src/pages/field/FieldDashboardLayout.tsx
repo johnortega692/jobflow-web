@@ -16,13 +16,16 @@ import {
 import { resolveDisplayCompanyName } from "../../lib/displayCompanyName";
 import {
   applyFieldViewHandoffFromHash,
-  clearFieldViewSession,
   clearFieldViewHandoffFromUrl,
   clearLegacyFieldViewHandoffHash,
+  FIELD_VIEW_SESSION_EXPIRED_MESSAGE,
   hasFieldViewHandoffHash,
   loadFieldViewSession,
   loginFieldViewWithPin,
   logoutFieldView,
+  noteFieldViewSessionFailure,
+  subscribeFieldViewReauth,
+  validateFieldViewSession,
   type FieldViewSession,
 } from "../../lib/fieldViewAuth";
 import {
@@ -62,11 +65,13 @@ function FieldViewPinLogin({
   onLogin,
   darkMode,
   setDarkMode,
+  notice,
 }: {
   companyName: string;
   onLogin: (session: FieldViewSession) => void;
   darkMode: boolean;
   setDarkMode: (value: boolean) => void;
+  notice?: string | null;
 }) {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -96,6 +101,7 @@ function FieldViewPinLogin({
           <div className="company-name">{companyName}</div>
           <h1>Field View</h1>
           <p>Enter your Field Tools PIN to continue.</p>
+          {notice ? <div className="banner banner-warn">{notice}</div> : null}
           <input
             type="password"
             inputMode="numeric"
@@ -132,6 +138,7 @@ export function FieldDashboardLayout() {
     return hasFieldViewHandoffHash() ? null : loadFieldViewSession();
   });
   const [handoffBusy, setHandoffBusy] = useState(() => hasFieldViewHandoffHash());
+  const [pinNotice, setPinNotice] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectForm[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -164,9 +171,9 @@ export function FieldDashboardLayout() {
     const result = await loadAllProjectsForField();
     setLoading(false);
     if (result.error) {
-      if (!user && /SESSION|LOGIN|FIELD_VIEW/i.test(result.error)) {
-        clearFieldViewSession();
-        setFieldSession(null);
+      if (!user && noteFieldViewSessionFailure(result.error)) {
+        setProjects([]);
+        return;
       }
       setError(result.error);
       setProjects([]);
@@ -178,6 +185,37 @@ export function FieldDashboardLayout() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    return subscribeFieldViewReauth((message) => {
+      setFieldSession(null);
+      setPinNotice(message || FIELD_VIEW_SESSION_EXPIRED_MESSAGE);
+      setError(null);
+      setProjects([]);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (user || !fieldSession) return;
+
+    let checking = false;
+    const checkSession = () => {
+      if (document.visibilityState !== "visible") return;
+      if (checking) return;
+      checking = true;
+      void validateFieldViewSession(loadFieldViewSession()).finally(() => {
+        checking = false;
+      });
+    };
+
+    document.addEventListener("visibilitychange", checkSession);
+    window.addEventListener("pageshow", checkSession);
+    return () => {
+      document.removeEventListener("visibilitychange", checkSession);
+      window.removeEventListener("pageshow", checkSession);
+    };
+  }, [fieldSession, user]);
 
   useEffect(() => {
     if (user || !fieldSession) return;
@@ -226,8 +264,8 @@ export function FieldDashboardLayout() {
   useEffect(() => {
     if (!user) return;
     if (hasFieldViewHandoffHash() || handoffBusy) return;
-    clearFieldViewSession();
-    setFieldSession(null);
+    // Office login supersedes PIN session — drop local field token quietly.
+    void logoutFieldView(loadFieldViewSession()).finally(() => setFieldSession(null));
   }, [user, handoffBusy]);
 
   useEffect(() => {
@@ -266,7 +304,11 @@ export function FieldDashboardLayout() {
     return (
       <FieldViewPinLogin
         companyName={companyName}
-        onLogin={setFieldSession}
+        notice={pinNotice}
+        onLogin={(session) => {
+          setPinNotice(null);
+          setFieldSession(session);
+        }}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
       />

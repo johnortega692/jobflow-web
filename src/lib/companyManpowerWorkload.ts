@@ -1,7 +1,11 @@
 import { dateToKey, keyToDate } from "./fieldCalendarEvents";
 import { HOURS_PER_MAN_WEEK, mondayOnOrBefore } from "./manpowerCalendar";
 import { supabase } from "./supabase";
-import { fieldViewRpcAuthArgs, loadFieldViewSession } from "./fieldViewAuth";
+import {
+  fieldViewRpcAuthArgs,
+  loadFieldViewSession,
+  noteFieldViewSessionFailure,
+} from "./fieldViewAuth";
 
 /** Planned hours below this = light / slow week (~2 people). */
 export const WORKLOAD_LIGHT_MAX_HOURS = 80;
@@ -316,7 +320,10 @@ export async function fetchFieldViewCompanyManpowerWorkload(
     p_from_week: fromWeek,
     p_to_week: toWeek,
   } as never);
-  if (error) throw new Error(error.message);
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    throw new Error(error.message);
+  }
   return parseWorkloadResponse(data);
 }
 
@@ -334,7 +341,10 @@ export async function fetchFieldViewManpowerActiveCrew(): Promise<number> {
     throw new Error("Sign in to Field View to load crew capacity.");
   }
   const { data, error } = await supabase.rpc("field_view_company_manpower_active_crew" as never, auth as never);
-  if (error) throw new Error(error.message);
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    throw new Error(error.message);
+  }
   return Number(data) || 0;
 }
 
@@ -380,7 +390,10 @@ export async function fetchFieldViewCompanyManpowerActiveProjects(): Promise<Com
     "field_view_company_manpower_active_projects" as never,
     auth as never,
   );
-  if (error) throw new Error(error.message);
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    throw new Error(error.message);
+  }
   return parseActiveProjectsResponse(data);
 }
 

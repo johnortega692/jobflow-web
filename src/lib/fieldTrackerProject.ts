@@ -6,7 +6,11 @@ import { resolveDisplayCompanyName } from "./displayCompanyName";
 import { loadOrgSettingsBlob } from "./orgSettings";
 import { commitProjectUpdate } from "./projectActivity";
 import { supabase } from "./supabase";
-import { fieldViewRpcAuthArgs, loadFieldViewSession } from "./fieldViewAuth";
+import {
+  fieldViewRpcAuthArgs,
+  loadFieldViewSession,
+  noteFieldViewSessionFailure,
+} from "./fieldViewAuth";
 import type { ProjectForm, Json } from "../types/database";
 import { normalizeProject } from "../types/database";
 import {
@@ -219,7 +223,10 @@ async function loadProjectDataForField(projectId: string): Promise<{ data: unkno
     p_project_id: projectId,
     ...fieldViewRpcAuthArgs(loadFieldViewSession()),
   } as never);
-  if (error) return { data: null, error: error.message };
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    return { data: null, error: error.message };
+  }
   const row = data as { data?: unknown } | null;
   return { data: row?.data ?? null, error: null };
 }
@@ -229,7 +236,10 @@ export async function loadAllProjectsForField(): Promise<{ projects: ProjectForm
     "field_view_list_projects" as never,
     fieldViewRpcAuthArgs(loadFieldViewSession()) as never,
   );
-  if (error) return { projects: [], error: error.message };
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    return { projects: [], error: error.message };
+  }
   const rows = (Array.isArray(data) ? data : []) as ProjectForm[];
   return { projects: rows.map(normalizeProject), error: null };
 }
@@ -306,7 +316,11 @@ export async function reloadProject(projectId: string): Promise<ProjectForm | nu
     p_project_id: projectId,
     ...fieldViewRpcAuthArgs(loadFieldViewSession()),
   } as never);
-  if (error || !data) return null;
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    return null;
+  }
+  if (!data) return null;
   return normalizeProject(data as ProjectForm);
 }
 

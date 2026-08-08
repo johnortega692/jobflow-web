@@ -1,6 +1,10 @@
 import { supabase } from "./supabase";
 
 const FIELD_VIEW_SESSION_KEY = "jobflow_field_view_session_v1";
+const FIELD_VIEW_REAUTH_EVENT = "jobflow:field-view-reauth";
+
+export const FIELD_VIEW_SESSION_EXPIRED_MESSAGE =
+  "Session expired — enter your PIN to continue.";
 
 export type FieldViewSession = {
   profileId: string;
@@ -9,6 +13,62 @@ export type FieldViewSession = {
   role: string;
   loggedInAt: string;
 };
+
+export function isFieldViewSessionAuthError(message: string): boolean {
+  const m = message.toUpperCase();
+  return (
+    m.includes("INVALID_SESSION") ||
+    m.includes("FIELD_VIEW_LOGIN_REQUIRED") ||
+    m.includes("SESSION_REQUIRED") ||
+    (m.includes("FIELD_VIEW") && (m.includes("SESSION") || m.includes("LOGIN") || m.includes("AUTH")))
+  );
+}
+
+/** Clear local session and tell Field View to show the PIN screen. */
+export function forceFieldViewReauth(message = FIELD_VIEW_SESSION_EXPIRED_MESSAGE): void {
+  clearFieldViewSession();
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(FIELD_VIEW_REAUTH_EVENT, { detail: { message } }));
+}
+
+/** If `message` is a dead-session error, kick to PIN and return true. */
+export function noteFieldViewSessionFailure(message: string | null | undefined): boolean {
+  if (!message || !isFieldViewSessionAuthError(message)) return false;
+  forceFieldViewReauth();
+  return true;
+}
+
+export function subscribeFieldViewReauth(handler: (message: string) => void): () => void {
+  const listener = (event: Event) => {
+    const detail = (event as CustomEvent<{ message?: string }>).detail;
+    handler(detail?.message?.trim() || FIELD_VIEW_SESSION_EXPIRED_MESSAGE);
+  };
+  window.addEventListener(FIELD_VIEW_REAUTH_EVENT, listener);
+  return () => window.removeEventListener(FIELD_VIEW_REAUTH_EVENT, listener);
+}
+
+/**
+ * Cheap server check for Field View PIN session.
+ * On auth failure, clears session and emits reauth. Network blips do not log out.
+ */
+export async function validateFieldViewSession(
+  session: FieldViewSession | null = loadFieldViewSession(),
+): Promise<boolean> {
+  if (!session?.profileId || !session.sessionToken?.trim()) {
+    forceFieldViewReauth();
+    return false;
+  }
+  const { error } = await supabase.rpc(
+    "field_view_company_name" as never,
+    fieldViewRpcAuthArgs(session) as never,
+  );
+  if (!error) return true;
+  if (isFieldViewSessionAuthError(error.message)) {
+    forceFieldViewReauth();
+    return false;
+  }
+  return true;
+}
 
 export function loadFieldViewSession(): FieldViewSession | null {
   try {

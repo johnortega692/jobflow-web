@@ -1,5 +1,9 @@
 import { supabase } from "./supabase";
-import { loadFieldViewSession, type FieldViewSession } from "./fieldViewAuth";
+import {
+  loadFieldViewSession,
+  noteFieldViewSessionFailure,
+  type FieldViewSession,
+} from "./fieldViewAuth";
 
 const MANPOWER_CAL_URL =
   import.meta.env.VITE_MANPOWER_CAL_URL?.trim() ||
@@ -16,7 +20,9 @@ async function createManpowerHandoffHash(session: FieldViewSession): Promise<str
     p_purpose: "manpower",
   } as never);
 
-  const result = data as { ok?: boolean; code?: string } | null;
+  if (error) noteFieldViewSessionFailure(error.message);
+  const result = data as { ok?: boolean; code?: string; error?: string } | null;
+  if (result?.error) noteFieldViewSessionFailure(result.error);
   if (error || !result?.ok || !result.code) return null;
 
   const params = new URLSearchParams();

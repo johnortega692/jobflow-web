@@ -1,4 +1,8 @@
-import { fieldViewRpcAuthArgs, loadFieldViewSession } from "./fieldViewAuth";
+import {
+  fieldViewRpcAuthArgs,
+  loadFieldViewSession,
+  noteFieldViewSessionFailure,
+} from "./fieldViewAuth";
 import { supabase } from "./supabase";
 import {
   defaultProjectBilling,
@@ -88,7 +92,10 @@ export async function listFieldLaborProjections(): Promise<{
     "field_view_list_labor_projections" as never,
     fieldViewRpcAuthArgs(loadFieldViewSession()) as never,
   );
-  if (error) return { plans: [], error: error.message };
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    return { plans: [], error: error.message };
+  }
   const rows = Array.isArray(data) ? data : [];
   const plans = rows
     .map(parseLaborProjectionPayload)
@@ -103,7 +110,10 @@ export async function getFieldLaborProjection(
     p_project_id: projectId,
     ...fieldViewRpcAuthArgs(loadFieldViewSession()),
   } as never);
-  if (error) return { plan: null, error: error.message };
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    return { plan: null, error: error.message };
+  }
   return { plan: parseLaborProjectionPayload(data), error: null };
 }
 
@@ -118,6 +128,9 @@ export async function saveFieldLaborProjectionCells(
     p_user_name: userName,
     ...fieldViewRpcAuthArgs(loadFieldViewSession()),
   } as never);
-  if (error) return { plan: null, error: error.message };
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    return { plan: null, error: error.message };
+  }
   return { plan: parseLaborProjectionPayload(data), error: null };
 }

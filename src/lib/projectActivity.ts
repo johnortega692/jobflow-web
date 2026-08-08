@@ -1,7 +1,11 @@
 import { loadEffectiveUserSettings } from "./orgSettings";
 import { parseProjectDataBlob } from "./jobInfo";
 import { supabase } from "./supabase";
-import { fieldViewRpcAuthArgs, loadFieldViewSession } from "./fieldViewAuth";
+import {
+  fieldViewRpcAuthArgs,
+  loadFieldViewSession,
+  noteFieldViewSessionFailure,
+} from "./fieldViewAuth";
 import type { Database, Json } from "../types/database";
 import type { ProjectTradeData } from "../types/tradeDocuments";
 
@@ -222,6 +226,7 @@ export async function commitProjectUpdate(options: CommitProjectUpdateOptions): 
       p_user_name: actor.userName,
       ...fieldViewRpcAuthArgs(loadFieldViewSession()),
     } as never);
+    if (error?.message) noteFieldViewSessionFailure(error.message);
     return error?.message ?? null;
   }
 
