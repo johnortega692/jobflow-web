@@ -9,8 +9,35 @@ import { stripPdfFilenameFromEnclosureDescription } from "./transmittalHelpers";
 
 export type { TransmittalDownloadResult };
 
-const CSS = `
-@page { size: letter; margin: 0.15in 0.4in 0.4in 0.4in; }
+function buildTransmittalCss(multipage: boolean): string {
+  const pageLabels = multipage
+    ? `@page {
+  @bottom-left {
+    content: "";
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 8pt;
+    color: #000;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 8pt;
+    color: #000;
+  }
+}
+@page :first {
+  @bottom-left {
+    content: "Continued on next page";
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 8pt;
+    color: #000;
+  }
+}`
+    : "";
+
+  return `
+@page { size: letter; margin: 0.15in 0.4in 0.5in 0.4in; }
+${pageLabels}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000; line-height: 1.3; }
 table { border-collapse: collapse; width: 100%; }
@@ -62,7 +89,7 @@ table { border-collapse: collapse; width: 100%; }
 .transmittal-page-one {
   display: flex;
   flex-direction: column;
-  min-height: calc(11in - 0.15in - 0.4in);
+  min-height: calc(11in - 0.15in - 0.5in);
 }
 .transmittal-main { flex: 1 0 auto; }
 .transmittal-closing {
@@ -71,28 +98,17 @@ table { border-collapse: collapse; width: 100%; }
   page-break-inside: avoid;
   break-inside: avoid;
 }
-.transmittal-continued {
-  page-break-before: always;
-  padding-top: 0.15in;
-}
-.continued-label {
-  font-size: 10pt;
-  font-weight: bold;
-  margin-bottom: 6px;
-}
 @media print {
-  .transmittal-page-one.has-continued {
-    page-break-after: always;
-  }
   .no-print { display: none !important; }
 }
 @media screen {
   .no-print { display: block; }
 }
 `;
+}
 
-/** Item rows on page 1 — matches Ironwood Excel transmittal layout. */
-const PAGE_ONE_ITEM_ROWS = 10;
+/** Minimum blank rows when the list is short — matches Ironwood Excel layout. */
+const MIN_ITEM_ROWS = 10;
 
 type ItemRow = { num: string; copies: string; for_field: string; description: string };
 
@@ -103,20 +119,15 @@ function emptyItemRow(): ItemRow {
 function buildItemRows(
   included: { copies: string; for_field: string; description: string }[],
   showForColumn: boolean,
-): { pageOne: ItemRow[]; overflow: ItemRow[] } {
-  const mapped = included.map((row, i) => ({
+): ItemRow[] {
+  const rows = included.map((row, i) => ({
     num: String(i + 1),
     copies: row.copies || "1",
     for_field: showForColumn ? row.for_field : "",
     description: row.description,
   }));
-  const pageOne = mapped.slice(0, PAGE_ONE_ITEM_ROWS);
-  while (pageOne.length < PAGE_ONE_ITEM_ROWS) pageOne.push(emptyItemRow());
-  const overflow = mapped.slice(PAGE_ONE_ITEM_ROWS).map((row, i) => ({
-    ...row,
-    num: String(PAGE_ONE_ITEM_ROWS + i + 1),
-  }));
-  return { pageOne, overflow };
+  while (rows.length < MIN_ITEM_ROWS) rows.push(emptyItemRow());
+  return rows;
 }
 
 function itemsTableHtml(rows: ItemRow[], showForColumn: boolean): string {
@@ -220,13 +231,15 @@ export function buildTransmittalHtml(
 
   const included = data.enclosures
     .filter((e) => e.included && e.description.trim())
-    .slice(0, 19)
     .map((row) => ({
       copies: row.copies || "1",
       for_field: data.show_for_column ? row.for_field : "",
       description: enclosureDescription(row),
     }));
-  const { pageOne, overflow } = buildItemRows(included, data.show_for_column);
+  const itemRowsList = buildItemRows(included, data.show_for_column);
+  // Rough fit: items past ~12 usually need a second page once the closing block is reserved.
+  const multipage = included.length > 12 || data.remarks.trim().length > 400;
+  const css = buildTransmittalCss(multipage);
 
   const dm = data.delivery_method;
 
@@ -239,21 +252,15 @@ export function buildTransmittalHtml(
       : "";
 
   const signerLine = esc(pdfSignerDisplayName({ ...branding, signerName: signer }));
-
-  const continuedHtml = overflow.length
-    ? `<div class="transmittal-continued">
-  <div class="continued-label">Transmittal — enclosures (continued)</div>
-  ${itemsTableHtml(overflow, data.show_for_column)}
-</div>`
-    : "";
+  const closingHtml = closingBlockHtml(data, signerLine, sigContact);
 
   const pageTitle = pdfTitleFromFilename(saveFilename ?? "Transmittal");
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(pageTitle)}</title><style>${CSS}</style></head><body>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(pageTitle)}</title><style>${css}</style></head><body>
   <p class="no-print" style="font-family:Arial,sans-serif;font-size:11pt;margin-bottom:12px;">
     Choose <strong>Save as PDF</strong> as the printer.
   </p>
-  <div class="transmittal-page-one${overflow.length ? " has-continued" : ""}">
+  <div class="transmittal-page-one">
   <div class="transmittal-main">
   <table class="header-table"><tr>
     <td class="hdr-logo"><div class="logo-frame">${logoBlock(branding, logoFallbackText(branding))}</div></td>
@@ -296,10 +303,9 @@ export function buildTransmittalHtml(
     <tr>${cbCell("Engineering Drawings", data.cb_eng_drawings)}${cbCell("Change Orders", data.cb_change_orders)}${cbCell("Specifications", data.cb_specifications)}${cbCell("Invoices", data.cb_invoices)}${cbCell("SDS/Safety", data.cb_sds_safety)}</tr>
   </table>
   <div class="items-table-spacer" aria-hidden="true"></div>
-  ${itemsTableHtml(pageOne, data.show_for_column)}
+  ${itemsTableHtml(itemRowsList, data.show_for_column)}
   </div>
-  ${closingBlockHtml(data, signerLine, sigContact)}
+  ${closingHtml}
   </div>
-  ${continuedHtml}
 </body></html>`;
 }

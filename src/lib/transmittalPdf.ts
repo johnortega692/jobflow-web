@@ -1,4 +1,4 @@
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, type PDFFont } from "pdf-lib";
 import { downloadPdfBytes } from "./pdfDownload";
 import {
   createLetterPdfFonts,
@@ -9,6 +9,7 @@ import {
   embedLogoImage,
   LETTER_HEIGHT,
   LETTER_WIDTH,
+  PDF_MARGIN_BOTTOM,
   PDF_MARGIN_TOP,
   PDF_MARGIN_X,
   TEXT,
@@ -18,7 +19,12 @@ import { pdfSignerDisplayName, type PrintBranding } from "./printCore";
 import { stripPdfFilenameFromEnclosureDescription } from "./transmittalHelpers";
 import type { TransmittalData } from "../types/tradeDocuments";
 
-const PAGE_ONE_ITEM_ROWS = 10;
+/** Minimum blank rows when the list is short — matches Ironwood Excel layout. */
+const MIN_ITEM_ROWS = 10;
+/** Reserve space so the closing block can follow items on the same page when it fits. */
+const CLOSING_RESERVE = 170;
+const PAGE_LABEL_SIZE = 8;
+const PAGE_LABEL_Y = 16;
 
 type ProjectInfo = { job_number: string; job_name: string };
 
@@ -31,12 +37,34 @@ function enclosureDescription(row: { description: string; digital_copy: boolean 
 function itemRows(data: TransmittalData) {
   return data.enclosures
     .filter((e) => e.included && e.description.trim())
-    .slice(0, 19)
     .map((row) => ({
       copies: row.copies || "1",
       for_field: data.show_for_column ? row.for_field : "",
       description: enclosureDescription(row),
     }));
+}
+
+/** Stamp "Continued…" + "Page X of Y" once total page count is known. */
+function stampTransmittalPageLabels(doc: PDFDocument, font: PDFFont): void {
+  const pages = doc.getPages();
+  const total = pages.length;
+  if (total <= 1) return;
+
+  for (let i = 0; i < total; i++) {
+    const page = pages[i]!;
+    const rightEdge = page.getWidth() - PDF_MARGIN_X;
+    const pageLabel = `Page ${i + 1} of ${total}`;
+    drawRightAlignedText(page, pageLabel, rightEdge, PAGE_LABEL_Y, font, PAGE_LABEL_SIZE);
+    if (i < total - 1) {
+      page.drawText("Continued on next page", {
+        x: PDF_MARGIN_X,
+        y: PAGE_LABEL_Y,
+        size: PAGE_LABEL_SIZE,
+        font,
+        color: TEXT,
+      });
+    }
+  }
 }
 
 export async function buildTransmittalPdfBytes(
@@ -221,36 +249,39 @@ export async function buildTransmittalPdfBytes(
   y = ty - 18;
 
   const included = itemRows(data);
-  const mapped = included.map((row, i) => [
+  const itemTableRows = included.map((row, i) => [
     String(i + 1),
     row.copies,
     ...(data.show_for_column ? [row.for_field] : []),
     row.description,
   ]);
-  const pageOneRows = mapped.slice(0, PAGE_ONE_ITEM_ROWS);
-  while (pageOneRows.length < PAGE_ONE_ITEM_ROWS) {
-    pageOneRows.push(
-      data.show_for_column ? ["", "", "", ""] : ["", "", ""],
-    );
+  while (itemTableRows.length < MIN_ITEM_ROWS) {
+    itemTableRows.push(data.show_for_column ? ["", "", "", ""] : ["", "", ""]);
   }
-  const overflowRows = mapped.slice(PAGE_ONE_ITEM_ROWS);
 
   const itemColumns = data.show_for_column
     ? ["Item #.", "Copies", "For", "Description/Remark"]
     : ["Item #.", "Copies", "Description/Remark"];
   const itemWeights = data.show_for_column ? [0.12, 0.12, 0.16, 0.6] : [0.12, 0.12, 0.76];
 
+  // Grow past 10 rows as needed; spill to the next page only when space runs out.
+  // Reserve room so Remarks / signature can follow on the same page when they fit.
   let state = drawDataTable(
     { doc, page, y, font, bold },
     PDF_MARGIN_X,
     itemColumns,
     itemWeights,
-    pageOneRows,
+    itemTableRows,
     9,
+    PDF_MARGIN_BOTTOM + CLOSING_RESERVE,
   );
 
   y = state.y - 8;
   page = state.page;
+  if (y < PDF_MARGIN_BOTTOM + CLOSING_RESERVE) {
+    page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
+    y = page.getHeight() - PDF_MARGIN_TOP;
+  }
   page.drawLine({ start: { x: PDF_MARGIN_X, y }, end: { x: pageWidth - PDF_MARGIN_X, y }, thickness: 0.75, color: TEXT });
   y -= 14;
 
@@ -290,30 +321,7 @@ export async function buildTransmittalPdfBytes(
     });
   }
 
-  if (overflowRows.length) {
-    page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
-    y = page.getHeight() - PDF_MARGIN_TOP;
-    page.drawText("Transmittal — enclosures (continued)", {
-      x: PDF_MARGIN_X,
-      y: y - 11,
-      size: 10,
-      font: bold,
-      color: TEXT,
-    });
-    drawDataTable(
-      { doc, page, y: y - 16, font, bold },
-      PDF_MARGIN_X,
-      itemColumns,
-      itemWeights,
-      overflowRows.map((row, i) =>
-        data.show_for_column
-          ? [String(PAGE_ONE_ITEM_ROWS + i + 1), row[1]!, row[2]!, row[3]!]
-          : [String(PAGE_ONE_ITEM_ROWS + i + 1), row[1]!, row[2]!],
-      ),
-      9,
-    );
-  }
-
+  stampTransmittalPageLabels(doc, font);
   return doc.save();
 }
 

@@ -78,7 +78,12 @@ export function pendingItemEnclosureDescription(item: PendingSubmittalItem): str
 }
 
 export function pendingItemLabel(item: PendingSubmittalItem): string {
-  return pendingItemEnclosureDescription(item);
+  const desc = pendingItemEnclosureDescription(item);
+  const num = item.trade_submittal_number.trim();
+  if (!num) return desc;
+  const n = Number.parseInt(num, 10);
+  const label = Number.isFinite(n) && n > 0 ? `#${String(n).padStart(3, "0")}` : `#${num}`;
+  return `${label} · ${desc}`;
 }
 
 /**
@@ -154,6 +159,61 @@ export function appendPendingToEnclosures(
     added,
     skipped,
   };
+}
+
+function parseTradeSubmittalNum(raw: string): number | undefined {
+  const n = Number.parseInt(raw.trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function mergeUniqueSubmittalNums(existing: number[], next: number): number[] {
+  if (existing.includes(next)) return existing;
+  return [...existing, next].sort((a, b) => a - b);
+}
+
+/**
+ * When pending paint / WC / FRP packages are added, also check Include … sheet
+ * and select that submittal # under Build so Generate can attach the detail PDF.
+ */
+export function applyPendingSheetIncludes(
+  transmittal: TransmittalData,
+  pendingItems: readonly PendingSubmittalItem[],
+): TransmittalData {
+  let next = transmittal;
+  let linkedSheet = false;
+
+  for (const item of pendingItems) {
+    const num = parseTradeSubmittalNum(item.trade_submittal_number);
+    if (!num) continue;
+    const source = item.source.trim();
+    if (source === "paint_submittal") {
+      linkedSheet = true;
+      next = {
+        ...next,
+        include_paint_sheet: true,
+        paint_submittal_nums: mergeUniqueSubmittalNums(next.paint_submittal_nums, num),
+      };
+    } else if (source === "wallcovering_submittal") {
+      linkedSheet = true;
+      next = {
+        ...next,
+        include_wc_sheet: true,
+        wc_submittal_nums: mergeUniqueSubmittalNums(next.wc_submittal_nums, num),
+      };
+    } else if (source === "frp_submittal") {
+      linkedSheet = true;
+      next = {
+        ...next,
+        include_frp_sheet: true,
+        frp_submittal_nums: mergeUniqueSubmittalNums(next.frp_submittal_nums, num),
+      };
+    }
+  }
+
+  if (linkedSheet && !next.combine_enclosures) {
+    next = { ...next, combine_enclosures: true };
+  }
+  return next;
 }
 
 export function removePendingItems(

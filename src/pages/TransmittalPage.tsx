@@ -59,6 +59,7 @@ import {
   addItemsFromPaintHistory,
   addItemsFromWallcoveringHistory,
   appendPendingToEnclosures,
+  applyPendingSheetIncludes,
   buildAtticStockFromTransmittal,
   includedLogRowIds,
   paintSheetLabel,
@@ -282,22 +283,26 @@ export function TransmittalPage() {
       setError("No pending packages to add.");
       return;
     }
+    const pendingItems = indices
+      .map((i) => draft.pending_submittal_queue?.[i])
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
     const { transmittal: next, added, skipped } = appendPendingToEnclosures(draft, indices);
     if (!added && !skipped) {
       setError("No pending packages to add.");
       return;
     }
     let saved = removePendingItems(next, indices);
-    const inferred = indices.flatMap((i) => {
-      const item = draft.pending_submittal_queue?.[i];
-      return item ? inferContentKeysFromPending(item) : [];
-    });
+    const inferred = pendingItems.flatMap((item) => inferContentKeysFromPending(item));
     const autoOn = contentAutoOn.length ? contentAutoOn : await loadTransmittalContentAutoOn();
     saved = applyInferredContentFlags(saved, inferred, autoOn);
+    saved = applyPendingSheetIncludes(saved, pendingItems);
     await persistTransmittal(saved);
-    if (skipped && !added) setStatus("Package(s) were already on the enclosure list.");
-    else if (skipped) setStatus(`Added ${added} to enclosures. ${skipped} already on the list.`);
-    else setStatus(`Added ${added} package(s) to enclosures.`);
+    const linkedSheets =
+      saved.include_paint_sheet || saved.include_wc_sheet || saved.include_frp_sheet;
+    const sheetNote = linkedSheets ? " Trade sheet(s) selected under Build." : "";
+    if (skipped && !added) setStatus(`Package(s) were already on the enclosure list.${sheetNote}`);
+    else if (skipped) setStatus(`Added ${added} to enclosures. ${skipped} already on the list.${sheetNote}`);
+    else setStatus(`Added ${added} package(s) to enclosures.${sheetNote}`);
     setError(null);
   }
 
