@@ -7,9 +7,15 @@ import {
 } from "../config/projectStartupItemsCatalog";
 import { PROJECT_STARTUP_OPTIONAL_STEPS } from "../config/projectStartupOptionalSteps";
 import { parseFlexibleDate, toIsoDateValue, isoDateToDisplay } from "./dateInputUtils";
+import {
+  resolvePaintTracker,
+  resolveWcTracker,
+  resolveWcTrackerLines,
+} from "./fieldTrackerProject";
 import type { JobInfoData } from "../types/jobInfo";
 import { parseStartupOptional, type StartupOptionalState } from "./projectStartupOptional";
-import type { ProjectForm } from "../types/database";
+import type { Json, ProjectForm } from "../types/database";
+import { parseProjectTradeData } from "../types/tradeDocuments";
 
 export type StartupChecklistGroup =
   | "contract_compliance"
@@ -18,7 +24,7 @@ export type StartupChecklistGroup =
   | "procurement_field"
   | "billing";
 
-export type StartupChecklistSource = "manual" | "jobTracker" | "brushouts" | "sds";
+export type StartupChecklistSource = "manual" | "jobTracker" | "brushouts" | "materialTracker" | "sds";
 
 export type StartupChecklistItem = {
   id: string;
@@ -94,8 +100,14 @@ function parseItem(raw: unknown, fallback: StartupChecklistItem): StartupCheckli
       ? (o.group as StartupChecklistGroup)
       : fallback.group;
   const source =
-    o.source === "manual" || o.source === "jobTracker" || o.source === "brushouts" || o.source === "sds"
-      ? o.source
+    o.source === "manual" ||
+    o.source === "jobTracker" ||
+    o.source === "brushouts" ||
+    o.source === "materialTracker" ||
+    o.source === "sds"
+      ? o.source === "brushouts"
+        ? "materialTracker"
+        : o.source
       : fallback.source;
 
   return {
@@ -161,7 +173,13 @@ function mergeCatalogItems(stored: StartupChecklistItem[]): StartupChecklistItem
   for (const seed of STARTUP_CHECKLIST_CATALOG) {
     const existing = byId.get(seed.id);
     const parsed = parseItem(existing, seedItem(seed, existing));
-    merged.push({ ...parsed, label: seed.label, blocking: Boolean(seed.blocking) });
+    // Catalog owns label / source / blocking so auto→manual flips apply to saved jobs.
+    merged.push({
+      ...parsed,
+      label: seed.label,
+      source: seed.source,
+      blocking: Boolean(seed.blocking),
+    });
     byId.delete(seed.id);
   }
 
@@ -278,7 +296,38 @@ export function parseDashboardStartupItems(project: ProjectForm): StartupItemsSt
     project.data && typeof project.data === "object" && !Array.isArray(project.data)
       ? (project.data as Record<string, unknown>)
       : {};
-  return parseStartupItems(blob.startup_items, blob.startup_optional);
+  const state = parseStartupItems(blob.startup_items, blob.startup_optional);
+  return withSubmitBrushoutsFromMaterialTracker(state, project);
+}
+
+/** Live Material Tracker “Submitted for Approval” drives this startup row. */
+export function withSubmitBrushoutsFromMaterialTracker(
+  state: StartupItemsState,
+  project: ProjectForm,
+): StartupItemsState {
+  const blob =
+    project.data && typeof project.data === "object" && !Array.isArray(project.data)
+      ? (project.data as Record<string, unknown>)
+      : {};
+  const trade = parseProjectTradeData(blob as Json);
+  const submitted =
+    resolvePaintTracker(trade).submittedForApproval ||
+    resolveWcTracker(trade).submittedForApproval ||
+    resolveWcTrackerLines(trade).some((line) => line.sentForApproval);
+
+  return {
+    ...state,
+    items: state.items.map((item) => {
+      if (item.id !== "submit_brushouts") return item;
+      if (item.complete === submitted) return item;
+      return {
+        ...item,
+        complete: submitted,
+        completedBy: submitted ? item.completedBy ?? "Material Tracker" : null,
+        completedAt: submitted ? item.completedAt ?? new Date().toISOString() : null,
+      };
+    }),
+  };
 }
 
 export function enabledStartupItems(state: StartupItemsState): StartupChecklistItem[] {
@@ -497,6 +546,27 @@ export function toggleStartupItemComplete(
         complete,
         completedBy: complete ? actorName : null,
         completedAt: complete ? new Date().toISOString() : null,
+      };
+    }),
+  };
+}
+
+/** Complete an auto-sourced item from its upstream page (e.g. Approved brush-outs). */
+export function markAutoStartupItemComplete(
+  state: StartupItemsState,
+  itemId: string,
+  actorName: string,
+): StartupItemsState {
+  return {
+    ...state,
+    items: state.items.map((item) => {
+      if (item.id !== itemId) return item;
+      if (item.complete) return item;
+      return {
+        ...item,
+        complete: true,
+        completedBy: actorName,
+        completedAt: new Date().toISOString(),
       };
     }),
   };

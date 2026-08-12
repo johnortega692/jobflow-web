@@ -26,6 +26,15 @@ export function contractManpowerAlreadyPushed(
   return Boolean(manpowerPushForContract(draft, contract)?.pushed_at);
 }
 
+/** True when any contract has pushed budget hours to Manpower. */
+export function anyManpowerBudgetPushed(draft: BudgetMakerData | null | undefined): boolean {
+  if (!draft) return false;
+  if (draft.manpower_budget_pushed_at) return true;
+  const pushes = draft.manpower_budget_pushes;
+  if (!pushes) return false;
+  return Object.values(pushes).some((record) => Boolean(record?.pushed_at));
+}
+
 export function patchManpowerPushForContract(
   draft: BudgetMakerData,
   contract: TransmittalContract,

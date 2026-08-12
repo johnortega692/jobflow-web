@@ -23,6 +23,7 @@ import {
   coerceTransmittalContract,
   budgetProfileValues,
   hasTransmittalContractSwitch,
+  parseProjectDataBlob,
   TRANSMITTAL_CONTRACT_LABELS,
   transmittalPrintInfo,
 } from "../lib/jobInfo";
@@ -53,7 +54,10 @@ import {
 } from "../lib/budgetMakerCore";
 import { parseBudgetPdf } from "../lib/budgetPdfParse";
 import { pushBudgetHoursToManpower } from "../lib/pushBudgetHoursToManpower";
+import { commitProjectUpdate } from "../lib/projectActivity";
+import { parseStartupChecklist } from "../lib/projectStartupChecklist";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
+import { supabase } from "../lib/supabase";
 import type { ProjectForm } from "../types/database";
 import {
   defaultBudgetMaker,
@@ -314,6 +318,29 @@ export function BudgetPage() {
             manpower_job_name: data.job_name,
           }),
         );
+        try {
+          const { data: projectRow } = await supabase
+            .from("projects")
+            .select("data")
+            .eq("id", projectId)
+            .single();
+          const blob = parseProjectDataBlob(projectRow?.data);
+          const checklist = parseStartupChecklist(blob.startup_checklist);
+          if (!checklist.field_has_hours) {
+            await commitProjectUpdate({
+              projectId,
+              mergeData: {
+                startup_checklist: { ...checklist, field_has_hours: true },
+              },
+              activity: {
+                action: "startup_checklist_updated",
+                summary: "Startup checklist — Field has hours (budget pushed to Manpower)",
+              },
+            });
+          }
+        } catch {
+          /* checklist sync is best-effort; push already succeeded */
+        }
       }
     } finally {
       setPushingManpower(false);

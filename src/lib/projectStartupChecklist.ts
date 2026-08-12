@@ -2,8 +2,10 @@ import {
   PROJECT_STARTUP_STEPS,
   type ProjectStartupStepId,
 } from "../config/projectStartupChecklist";
+import { anyManpowerBudgetPushed } from "./budgetManpowerPush";
 import { projectHasWallcovering } from "./jobInfo";
 import type { JobInfoData } from "../types/jobInfo";
+import { normalizeBudgetMaker } from "../types/budgetMaker";
 
 export type StartupChecklistState = Record<ProjectStartupStepId, boolean>;
 
@@ -19,6 +21,24 @@ export function parseStartupChecklist(raw: unknown): StartupChecklistState {
     if (typeof o[step.id] === "boolean") base[step.id] = o[step.id] as boolean;
   }
   return base;
+}
+
+/**
+ * System setup Hours follows Budget Maker → Push to Manpower.
+ * Live overlay so already-pushed jobs show checked without a re-push.
+ */
+export function withFieldHoursFromBudgetPush(
+  checklist: StartupChecklistState,
+  projectData: unknown,
+): StartupChecklistState {
+  if (checklist.field_has_hours) return checklist;
+  const blob =
+    projectData && typeof projectData === "object" && !Array.isArray(projectData)
+      ? (projectData as Record<string, unknown>)
+      : {};
+  const budget = normalizeBudgetMaker(blob.budget_maker);
+  if (!anyManpowerBudgetPushed(budget)) return checklist;
+  return { ...checklist, field_has_hours: true };
 }
 
 /** Samples step only when Job Setup → wallcovering contract toggle is on. */

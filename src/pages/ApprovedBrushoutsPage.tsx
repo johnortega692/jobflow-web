@@ -199,8 +199,8 @@ export function ApprovedBrushoutsPage() {
       setChecklistMarked(true);
       setStatus((prev) =>
         prev
-          ? `${prev} Brush-outs step marked complete on startup checklist.`
-          : "Brush-outs step marked complete on startup checklist.",
+          ? `${prev} System setup · Brush outs marked complete.`
+          : "System setup · Brush outs marked complete.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update startup checklist");
@@ -231,7 +231,7 @@ export function ApprovedBrushoutsPage() {
       {savedApprovedCount > 0 && (
         <section className="card stack gap-xs">
           <p className="muted small" style={{ margin: 0 }}>
-            Startup checklist — <strong>Brush outs</strong>:{" "}
+            System setup — <strong>Brush outs</strong>:{" "}
             {checklistMarked ? (
               <>marked complete ({savedApprovedCount} color{savedApprovedCount === 1 ? "" : "s"} in Field Tools)</>
             ) : (
@@ -242,7 +242,8 @@ export function ApprovedBrushoutsPage() {
             <>
               <p className="muted small" style={{ margin: 0 }}>
                 Mark complete when this wave is ready for field. You can approve more colors later (e.g. a revised
-                PT-03) without unchecking the step.
+                PT-03) without unchecking the step. Project startup “Submit brushouts” is driven by Material Tracker
+                → Submitted for Approval.
               </p>
               <div>
                 <button
@@ -251,7 +252,7 @@ export function ApprovedBrushoutsPage() {
                   disabled={busy || loading}
                   onClick={() => void markStartupChecklistComplete()}
                 >
-                  Mark startup checklist complete
+                  Mark system setup complete
                 </button>
               </div>
             </>
@@ -279,109 +280,113 @@ export function ApprovedBrushoutsPage() {
             >
               Import from paint submittal
             </button>
-            <button type="button" className="btn ghost" onClick={() => setRows((r) => [...r, emptyRow(r.length)])}>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setRows((prev) => [...prev, emptyRow(prev.length)])}
+              disabled={busy}
+            >
               + Add line
             </button>
-            <button type="button" className="btn ghost" onClick={() => approveAll(true)} disabled={!rows.length}>
+            <button type="button" className="btn ghost" onClick={() => approveAll(true)} disabled={busy || !rows.length}>
               Approve all
             </button>
-            <button type="button" className="btn ghost" onClick={() => approveAll(false)} disabled={!rows.length}>
+            <button type="button" className="btn ghost" onClick={() => approveAll(false)} disabled={busy || !rows.length}>
               Clear approvals
             </button>
-            <button type="button" className="btn primary" onClick={() => void onSave()} disabled={busy || loading}>
+            <button type="button" className="btn btn-primary" onClick={() => void onSave()} disabled={busy || loading}>
               {busy ? "Saving…" : "Save approved"}
             </button>
           </div>
         </div>
 
-        <p className="muted small">
-          {approvedCount} of {rows.length} line{rows.length === 1 ? "" : "s"} marked approved (not saved until you
-          click Save approved).
-        </p>
-
         {loading ? (
           <p className="muted">Loading…</p>
-        ) : !rows.length ? (
-          <p className="muted">
+        ) : rows.length === 0 ? (
+          <p className="muted small">
             No brush-out lines yet. Use Import to pick one or more colors from the paint submittal, or add a line
             manually.
           </p>
         ) : (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Approved</th>
-                  <th>Label</th>
-                  <th>Floor</th>
-                  <th>Color</th>
-                  <th>Product</th>
-                  <th>Sheen</th>
-                  <th>Field display</th>
-                  <th aria-label="Remove" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => (
-                  <tr key={row.id ?? `new-${index}`}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={row.approved}
-                        onChange={(e) => updateRow(index, { approved: e.target.checked })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="input compact"
-                        value={row.label}
-                        onChange={(e) => updateRow(index, { label: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="input compact"
-                        value={row.floor}
-                        onChange={(e) => updateRow(index, { floor: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="input compact"
-                        value={row.color}
-                        onChange={(e) => updateRow(index, { color: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="input compact"
-                        value={row.product}
-                        onChange={(e) => updateRow(index, { product: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="input compact"
-                        value={row.sheen}
-                        onChange={(e) => updateRow(index, { sheen: e.target.value })}
-                      />
-                    </td>
-                    <td className="muted small">{row.display_line || "—"}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        aria-label="Remove line"
-                        onClick={() => removeRow(index)}
-                      >
-                        ×
-                      </button>
-                    </td>
+          <>
+            <p className="muted small">
+              {approvedCount} of {rows.length} line{rows.length === 1 ? "" : "s"} marked approved
+              {approvedCount ? " (not saved until you click Save approved)" : ""}.
+            </p>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Approved</th>
+                    <th>Label</th>
+                    <th>Floor</th>
+                    <th>Color</th>
+                    <th>Product</th>
+                    <th>Sheen</th>
+                    <th>Field display</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((row, index) => (
+                    <tr key={row.id ?? `new-${index}`}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={row.approved}
+                          onChange={(e) => updateRow(index, { approved: e.target.checked })}
+                          aria-label={`Approved ${row.label || index + 1}`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          value={row.label}
+                          onChange={(e) => updateRow(index, { label: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          value={row.floor}
+                          onChange={(e) => updateRow(index, { floor: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          value={row.color}
+                          onChange={(e) => updateRow(index, { color: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          value={row.product}
+                          onChange={(e) => updateRow(index, { product: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          value={row.sheen}
+                          onChange={(e) => updateRow(index, { sheen: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <span className="muted small">{row.display_line || "—"}</span>
+                      </td>
+                      <td>
+                        <button type="button" className="btn ghost btn-sm" onClick={() => removeRow(index)}>
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
 
@@ -389,9 +394,8 @@ export function ApprovedBrushoutsPage() {
         <ImportApprovedBrushoutsModal
           sources={importSources}
           existingRows={rows}
-          busy={busy}
-          onConfirm={onImportSelected}
           onClose={() => setImportOpen(false)}
+          onConfirm={onImportSelected}
         />
       )}
     </div>

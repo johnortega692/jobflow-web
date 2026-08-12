@@ -92,7 +92,7 @@ export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
     id: "product_data_submitted",
     group: "submittals_samples",
     label: "Submit product data package",
-    source: "jobTracker",
+    source: "manual",
     defaultEnabled: true,
   },
   {
@@ -113,7 +113,7 @@ export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
     id: "submit_brushouts",
     group: "submittals_samples",
     label: "Submit brushouts or wallcovering",
-    source: "brushouts",
+    source: "materialTracker",
     defaultEnabled: true,
   },
   {
@@ -228,7 +228,8 @@ export const LEGACY_OPTIONAL_MIGRATION_IDS = ["contract_review", "send_sov", "sc
 export const STARTUP_SOURCE_LABELS: Record<StartupChecklistSource, string> = {
   manual: "Manual",
   jobTracker: "Job Tracker",
-  brushouts: "Brushouts",
+  brushouts: "Material Tracker",
+  materialTracker: "Material Tracker",
   sds: "SDS",
 };
 

@@ -5,12 +5,10 @@ import { procurementLogFilename } from "./pdfFilenames";
 import { downloadPdfBytes } from "./pdfDownload";
 import {
   createLetterPdfFonts,
-  drawBrandingSignatureFooter,
   drawCenteredText,
   embedLogoImage,
   LETTER_HEIGHT,
   LETTER_WIDTH,
-  measureBrandingSignatureFooterHeight,
   MUTED,
   PDF_MARGIN_TOP,
   PDF_MARGIN_X,
@@ -258,13 +256,6 @@ export async function buildProcurementLogPdfBytes(options: {
   } else {
     logRows.forEach((row, i) => drawBodyRow(ctx, rowToCells(row), i % 2 === 1));
   }
-
-  const footerNeed = measureBrandingSignatureFooterHeight(branding) + 10;
-  if (ctx.y < footerNeed) {
-    ctx.page = doc.addPage([PAGE_W, PAGE_H]);
-    ctx.y = ctx.page.getHeight() - PDF_MARGIN_TOP;
-  }
-  drawBrandingSignatureFooter(ctx.page, pageWidth, font, bold, branding);
 
   return doc.save();
 }

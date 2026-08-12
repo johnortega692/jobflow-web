@@ -14,12 +14,14 @@ import {
   startupChecklistForJobInfo,
   startupChecklistProgress,
   visibleStartupSteps,
+  withFieldHoursFromBudgetPush,
   type StartupChecklistState,
 } from "../../lib/projectStartupChecklist";
 import {
   defaultStartupItems,
   parseStartupItems,
   toggleStartupItemComplete,
+  withSubmitBrushoutsFromMaterialTracker,
   type StartupChecklistGroup,
   type StartupItemsState,
 } from "../../lib/projectStartupItems";
@@ -125,8 +127,15 @@ export function ProjectStartupChecklist({
         if (err) throw new Error(err.message);
         const blob = parseProjectDataBlob(data?.data);
         const parsed = parseStartupChecklist(blob.startup_checklist);
-        setChecklist(startupChecklistForJobInfo(parsed, project.jobInfo));
-        setStartupItems(parseStartupItems(blob.startup_items, blob.startup_optional));
+        setChecklist(
+          withFieldHoursFromBudgetPush(startupChecklistForJobInfo(parsed, project.jobInfo), blob),
+        );
+        setStartupItems(
+          withSubmitBrushoutsFromMaterialTracker(parseStartupItems(blob.startup_items, blob.startup_optional), {
+            ...project,
+            data: blob as import("../../types/database").Json,
+          }),
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load startup checklist");
       } finally {

@@ -290,14 +290,19 @@ function lineExportRow(line: BudgetScanLine, buckets: BudgetMakerData["buckets"]
 export function downloadBudgetExcel(data: BudgetMakerData, lib: BudgetLibrary): void {
   const totalsRows = buildSummaryRows(data.buckets, data.lines, lib, data.hide_zero_amounts, {
     combineByCostCode: data.combine_cost_codes_on_export !== false,
-  }).map((r) => ({
-    "Work Item": r.workItem,
-    "Cost Code": costCodeNumberOnly(r.costCode),
-    "Cost Class": r.costClass,
-    Hours: r.hours,
-    Amount: r.amount ? `$${r.amount.toFixed(2)}` : "",
-    Notes: r.notes,
-  }));
+  }).map((r) => {
+    const code = costCodeNumberOnly(r.costCode);
+    const codeNum = Number(code);
+    return {
+      "Work Item": r.workItem,
+      // Prefer real numbers so paste into company workbooks does not need "convert to number".
+      "Cost Code": code && Number.isFinite(codeNum) ? codeNum : code,
+      "Cost Class": r.costClass,
+      Hours: Number.isFinite(r.hours) ? r.hours : 0,
+      Amount: Number.isFinite(r.amount) ? r.amount : 0,
+      Notes: r.notes,
+    };
+  });
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(totalsRows), "Bucket Totals");
