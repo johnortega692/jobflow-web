@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   UnsavedNavigationProvider,
   useUnsavedNavigation,
 } from "../contexts/UnsavedNavigationContext";
+import { useAuth } from "../contexts/AuthContext";
 import { ProjectNavIcon } from "./ProjectNavIcon";
 import {
   PROJECT_DETAIL_MODULE_IDS,
@@ -11,6 +12,7 @@ import {
   PROJECT_NAV_SECTIONS,
 } from "../config/projectModules";
 import { projectHasWallcovering } from "../lib/jobInfo";
+import { fetchProjectIsDone, setProjectDone } from "../lib/projectDone";
 import { supabase } from "../lib/supabase";
 import type { ProjectForm } from "../types/database";
 import { normalizeProject } from "../types/database";
@@ -39,10 +41,15 @@ function matchModule(pathname: string, base: string) {
 function ProjectLayoutShell() {
   const { projectId } = useParams<{ projectId: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isAdmin, roleLoading } = useAuth();
   const { requestNavigation } = useUnsavedNavigation();
   const [project, setProject] = useState<ProjectForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDone, setIsDone] = useState(false);
+  const [doneBusy, setDoneBusy] = useState(false);
+  const [doneError, setDoneError] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(() => {
     try {
@@ -65,20 +72,46 @@ function ProjectLayoutShell() {
     async function load() {
       if (!projectId) return;
       setLoading(true);
-      const { data, error: err } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("id", projectId)
-        .single();
+      setDoneError(null);
+      const [{ data, error: err }, doneRes] = await Promise.all([
+        supabase.from("projects").select("*").eq("id", projectId).single(),
+        fetchProjectIsDone(projectId),
+      ]);
       setLoading(false);
       if (err) {
         setError(err.message);
         return;
       }
       setProject(normalizeProject(data));
+      setIsDone(doneRes.isDone);
+      if (doneRes.error) setDoneError(doneRes.error);
     }
     void load();
   }, [projectId]);
+
+  async function onToggleCompleted(nextDone: boolean) {
+    if (!project || !projectId || doneBusy) return;
+    const label = `${project.job_number} ${project.job_name}`.trim();
+    if (nextDone) {
+      const ok = window.confirm(
+        `Mark ${label || "this project"} completed?\n\nIt will leave the active projects list and Manpower schedule. You can reopen it later or permanently delete it from Settings → Completed projects.`,
+      );
+      if (!ok) return;
+    } else {
+      const ok = window.confirm(`Reopen ${label || "this project"} and return it to the active list?`);
+      if (!ok) return;
+    }
+    setDoneBusy(true);
+    setDoneError(null);
+    const err = await setProjectDone(projectId, nextDone, label);
+    setDoneBusy(false);
+    if (err) {
+      setDoneError(err);
+      return;
+    }
+    setIsDone(nextDone);
+    if (nextDone) navigate("/projects");
+  }
 
   const base = projectId ? `/projects/${projectId}` : "";
   const { activeModule, isDetailView } = useMemo(
@@ -182,6 +215,31 @@ function ProjectLayoutShell() {
             );
           })}
         </nav>
+
+        {!roleLoading && isAdmin ? (
+          <div className="project-sidebar-admin">
+            {isDone ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm project-sidebar-reopen-btn"
+                disabled={doneBusy}
+                onClick={() => void onToggleCompleted(false)}
+              >
+                {doneBusy ? "Reopening…" : "Reopen project"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-danger btn-sm project-sidebar-done-btn"
+                disabled={doneBusy}
+                onClick={() => void onToggleCompleted(true)}
+              >
+                {doneBusy ? "Marking…" : "Mark completed"}
+              </button>
+            )}
+            {doneError ? <p className="project-sidebar-done-error">{doneError}</p> : null}
+          </div>
+        ) : null}
       </aside>
 
       <div className="project-main">
@@ -201,6 +259,13 @@ function ProjectLayoutShell() {
             </div>
           )}
         </div>
+
+        {isDone ? (
+          <div className="banner banner-warn project-completed-banner" role="status">
+            This project is marked completed. It is hidden from the active projects list
+            {!roleLoading && isAdmin ? " — admins can reopen it from the sidebar." : "."}
+          </div>
+        ) : null}
 
         <Outlet context={{ project, projectId, setProject }} />
       </div>

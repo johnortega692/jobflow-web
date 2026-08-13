@@ -425,7 +425,7 @@ export async function saveWcInstallDate(
 
 export function paintJobSmsText(row: FieldPaintRow): string {
   const night = row.nightsWeekends ? " - Nights/Weekends" : "";
-  const noPaint = row.tracker.noPaint ? " - NO PAINT" : "";
+  const noPaint = row.tracker.noPaint ? " - NOT NEEDED" : "";
   const superLine = row.gcSuper ? `\nGC Super: ${row.gcSuper}` : "";
   return `Job #${row.jobNumber}\nJob Name: ${row.jobName}${night}${noPaint}\nAddress: ${row.jobAddress}\nGC: ${row.gcName}${superLine}`;
 }

@@ -8,7 +8,9 @@ type Props = {
 
 function stageLabelClass(stage: string): string {
   if (stage === "Approved") return "project-mini-pipeline-stage project-mini-pipeline-stage--approved";
-  if (stage === "Not started") return "project-mini-pipeline-stage project-mini-pipeline-stage--muted";
+  if (stage === "Not started" || stage === "Not Needed") {
+    return "project-mini-pipeline-stage project-mini-pipeline-stage--muted";
+  }
   return "project-mini-pipeline-stage project-mini-pipeline-stage--active";
 }
 

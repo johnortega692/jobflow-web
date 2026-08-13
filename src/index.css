@@ -1427,6 +1427,8 @@ th {
   max-height: calc(100vh - 1.5rem);
   overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
   transition: width 200ms ease, padding 200ms ease, border-color 200ms ease;
 }
 
@@ -1534,6 +1536,33 @@ th {
   display: flex;
   flex-direction: column;
   gap: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.project-sidebar-admin {
+  margin-top: auto;
+  padding: 0.85rem 0.65rem 0.25rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.project-sidebar-done-btn,
+.project-sidebar-reopen-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.project-sidebar-done-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--danger);
+}
+
+.project-completed-banner {
+  margin: 0 0 0.75rem;
 }
 
 .project-nav-section + .project-nav-section {
@@ -5983,6 +6012,16 @@ tr.budget-hours-pdf-hidden td {
 
 .btn-danger-soft {
   color: var(--danger, #e55);
+}
+
+.btn-danger {
+  background: var(--danger, #e55);
+  color: #fff;
+  border-color: color-mix(in srgb, var(--danger, #e55) 70%, #000);
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.05);
 }
 
 .btn-success-soft {

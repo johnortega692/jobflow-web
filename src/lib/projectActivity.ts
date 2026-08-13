@@ -11,6 +11,8 @@ import type { ProjectTradeData } from "../types/tradeDocuments";
 
 export type ProjectActivityAction =
   | "project_created"
+  | "project_marked_done"
+  | "project_reopened"
   | "project_data_saved"
   | "job_info_saved"
   | "startup_checklist_updated"
@@ -279,6 +281,8 @@ export async function loadProjectActivity(
 export function activityActionLabel(action: ProjectActivityAction): string {
   const labels: Record<ProjectActivityAction, string> = {
     project_created: "Project created",
+    project_marked_done: "Project completed",
+    project_reopened: "Project reopened",
     project_data_saved: "Project data",
     job_info_saved: "Job setup",
     startup_checklist_updated: "Startup checklist",

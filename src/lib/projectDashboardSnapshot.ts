@@ -37,6 +37,7 @@ export function resolveDashboardPaintTracker(project: ProjectForm): PaintTracker
 }
 
 export function paintSubmittalStageLabel(tracker: PaintTrackerState): string {
+  if (tracker.noPaint) return "Not Needed";
   if (tracker.approved) return "Approved";
   if (tracker.revision) return "Revision";
   if (tracker.submittedForApproval) return "Submitted";
@@ -78,7 +79,7 @@ export function paintTrackerActiveFlags(tracker: PaintTrackerState): string[] {
   const flags: string[] = [];
   if (tracker.matchExisting) flags.push("Match existing");
   if (tracker.nightsWeekends) flags.push("Nights");
-  if (tracker.noPaint) flags.push("No paint");
+  if (tracker.noPaint) flags.push("Not Needed");
   return flags;
 }
 

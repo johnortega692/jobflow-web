@@ -24,11 +24,11 @@ const STATUS_OPTIONS: { value: PaintFieldStatus; label: string }[] = [
   { value: "Submitted for Approval", label: "Sent for Approval" },
   { value: "Needs Revision", label: "Needs Revision" },
   { value: "Approved", label: "Approved" },
-  { value: "No Paint", label: "No Paint" },
+  { value: "Not Needed", label: "Not Needed" },
 ];
 
 function rowClass(status: PaintFieldStatus): string {
-  if (status === "No Paint") return "row-no-paint";
+  if (status === "Not Needed") return "row-no-paint";
   if (status === "Needs Revision") return "row-revision";
   return "";
 }

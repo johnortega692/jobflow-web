@@ -35,6 +35,7 @@ import {
 } from "../lib/icbiPmDefaults";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
+import { listDoneProjectIds } from "../lib/projectDone";
 import { formatDateTime } from "../lib/strings";
 import { type Project } from "../types/database";
 
@@ -99,16 +100,21 @@ export function ProjectsPage() {
 
   async function loadProjects() {
     setLoading(true);
-    const { data, error: err } = await supabase
-      .from("projects")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    const [{ data, error: err }, doneRes] = await Promise.all([
+      supabase.from("projects").select("*").order("updated_at", { ascending: false }),
+      listDoneProjectIds(),
+    ]);
     setLoading(false);
     if (err) {
       setError(err.message);
       return;
     }
-    setProjects(data ?? []);
+    if (doneRes.error) {
+      setError(doneRes.error);
+      return;
+    }
+    const done = new Set(doneRes.ids);
+    setProjects((data ?? []).filter((p) => !done.has(p.id)));
   }
 
   useEffect(() => {
@@ -387,6 +393,7 @@ export function ProjectsPage() {
                     [
                       ["all", "All"],
                       ["not_started", "Not started"],
+                      ["not_needed", "Not Needed"],
                       ["ordered", "Ordered"],
                       ["submitted", "Submitted"],
                       ["revision", "Revision"],

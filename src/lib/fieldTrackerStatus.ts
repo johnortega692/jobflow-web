@@ -8,7 +8,7 @@ export type PaintFieldStatus =
   | "Submitted for Approval"
   | "Needs Revision"
   | "Approved"
-  | "No Paint";
+  | "Not Needed";
 
 export type WcFieldStatus =
   | "Not Started"
@@ -20,7 +20,7 @@ export type WcFieldStatus =
   | "Delivered";
 
 export function paintFieldStatus(tracker: PaintTrackerState): PaintFieldStatus {
-  if (tracker.noPaint) return "No Paint";
+  if (tracker.noPaint) return "Not Needed";
   if (tracker.revision && !tracker.approved) return "Needs Revision";
   if (tracker.approved) return "Approved";
   if (tracker.submittedForApproval) return "Submitted for Approval";
@@ -130,7 +130,7 @@ export function applyWcLineStage(line: WcTrackerLineState, stage: WcFieldStatus)
 
 export function paintPillClass(status: PaintFieldStatus): string {
   switch (status) {
-    case "No Paint":
+    case "Not Needed":
       return "pill-no-paint";
     case "Needs Revision":
       return "pill-revision";

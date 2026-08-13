@@ -71,8 +71,9 @@ export function CompletedProjectsSettingsSection() {
         <div>
           <h2>Completed projects</h2>
           <p className="muted" style={{ margin: "4px 0 0", maxWidth: 560 }}>
-            Permanently remove projects that were marked <strong>Done</strong> in Manpower → Admin. This deletes
-            RFIs, submittals, work orders, activity history, and uploaded files for that job from JobFlow.
+            Permanently remove projects that were marked <strong>Done</strong> in JobFlow (admin) or
+            Manpower → Admin. This deletes RFIs, submittals, work orders, activity history, and uploaded
+            files for that job from JobFlow.
           </p>
         </div>
       </div>
@@ -84,7 +85,8 @@ export function CompletedProjectsSettingsSection() {
         <p className="muted">Loading completed projects…</p>
       ) : rows.length === 0 ? (
         <p className="muted">
-          No completed projects ready for deletion. Mark a project done in Manpower → Admin first.
+          No completed projects ready for deletion. Mark a project completed from its sidebar (admin) or in
+          Manpower → Admin first.
         </p>
       ) : (
         <div className="table-wrap">

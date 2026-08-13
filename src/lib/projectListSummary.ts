@@ -56,6 +56,7 @@ export type ProjectsListSortDir = "asc" | "desc";
 export type ProjectsListStageFilter =
   | "all"
   | "not_started"
+  | "not_needed"
   | "ordered"
   | "submitted"
   | "revision"
@@ -79,6 +80,7 @@ export function defaultSortDir(sort: ProjectsListSort): ProjectsListSortDir {
 const FILTER_VALUES: ProjectsListStageFilter[] = [
   "all",
   "not_started",
+  "not_needed",
   "ordered",
   "submitted",
   "revision",
@@ -159,6 +161,7 @@ function stageMatchesFilter(stage: string, filter: ProjectsListStageFilter): boo
   if (filter === "all") return true;
   const map: Record<Exclude<ProjectsListStageFilter, "all">, string> = {
     not_started: "Not started",
+    not_needed: "Not Needed",
     ordered: "Ordered",
     submitted: "Submitted",
     revision: "Revision",

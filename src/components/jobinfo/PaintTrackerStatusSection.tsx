@@ -366,6 +366,7 @@ export function PaintTrackerStatusSection({
             <StatusPill label="Submitted" on={tracker.submittedForApproval} />
             <StatusPill label="Approved" on={tracker.approved} />
             <StatusPill label="Revision" on={tracker.revision} />
+            <StatusPill label="Not Needed" on={tracker.noPaint} />
             <StatusPill label="Nights" on={tracker.nightsWeekends} />
             <StatusPill label="Match existing" on={tracker.matchExisting} />
           </div>
@@ -436,7 +437,6 @@ export function PaintTrackerStatusSection({
             disabled={saving}
             onChange={(v) => patchTracker({ nightsWeekends: v })}
           />
-          <TrackerCheckbox label="No paint" checked={tracker.noPaint} disabled={saving} onChange={(v) => patchTracker({ noPaint: v })} />
         </div>
 
         <p className="muted small paint-tracker-subsection">Submittal status</p>
@@ -455,7 +455,7 @@ export function PaintTrackerStatusSection({
             return (
               <StageStepper
                 ariaLabel="Submittal status"
-                disabled={saving}
+                disabled={saving || tracker.noPaint}
                 items={stages.map((s, i) => ({
                   key: s.key,
                   label: s.label,
@@ -483,8 +483,15 @@ export function PaintTrackerStatusSection({
               label="Revision"
               tone="warn"
               checked={tracker.revision}
-              disabled={saving}
+              disabled={saving || tracker.noPaint}
               onChange={(v) => patchTracker({ revision: v })}
+            />
+            <FlagSwitch
+              label="Not Needed"
+              tone="accent"
+              checked={tracker.noPaint}
+              disabled={saving}
+              onChange={(v) => patchTracker({ noPaint: v })}
             />
           </div>
         </div>
