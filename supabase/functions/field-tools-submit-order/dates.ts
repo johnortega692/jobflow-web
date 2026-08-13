@@ -21,3 +21,20 @@ export function formatDateNeeded(raw: string): string {
 
   return s;
 }
+
+const ORDER_TZ = "America/Los_Angeles";
+
+/** Order placed timestamp, e.g. "08-12-2026 6:13 PM". */
+export function formatOrderDateTime(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: ORDER_TZ,
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("month")}-${get("day")}-${get("year")} ${get("hour")}:${get("minute")} ${get("dayPeriod")}`;
+}

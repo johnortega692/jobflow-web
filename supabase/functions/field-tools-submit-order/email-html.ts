@@ -1,11 +1,22 @@
 import type { OrderBranding } from "./branding.ts";
 import { formatDateNeeded } from "./dates.ts";
 
+/** Job number and name with a space, e.g. "1079 Oak Row". */
+export function formatJobProjectLabel(jobCode: string, jobName: string): string {
+  return [jobCode.trim(), jobName.trim()].filter(Boolean).join(" ");
+}
+
+/** Submitter line for email/PO, e.g. "John Ortega · 555-123-4567 · 08-12-2026 6:13 PM". */
+export function formatOrderedBy(name: string, phone?: string, placedAt?: string): string {
+  return [name.trim(), (phone ?? "").trim(), (placedAt ?? "").trim()].filter(Boolean).join(" · ");
+}
+
 export type EmailHtmlInput = {
   branding: OrderBranding;
   orderTitle: string;
   jobCode: string;
   jobName: string;
+  orderedBy?: string;
   poNumber?: string;
   siteContact: string;
   siteContactLabel?: string;
@@ -22,7 +33,7 @@ const ACCENT = "#2196F3";
 const RED = "#D2232A";
 
 export function buildOrderEmailHtml(input: EmailHtmlInput): string {
-  const jobLabel = `${input.jobCode}${input.jobName ? ` — ${input.jobName}` : ""}`;
+  const jobLabel = formatJobProjectLabel(input.jobCode, input.jobName);
   const logoBlock = input.branding.logoUrl && /^https?:\/\//i.test(input.branding.logoUrl)
     ? `<img src="${escapeAttr(input.branding.logoUrl)}" alt="${escapeAttr(input.branding.companyName)}" style="max-height:52px;max-width:200px;display:block;" />`
     : `<div style="font-size:18px;font-weight:700;color:${NAVY};">${escapeHtml(input.branding.companyName)}</div>`;
@@ -30,6 +41,7 @@ export function buildOrderEmailHtml(input: EmailHtmlInput): string {
   const metaRows = [
     input.poNumber ? metaRow("PO Number", input.poNumber, true) : "",
     metaRow("Project", jobLabel),
+    input.orderedBy ? metaRow("Ordered by", input.orderedBy) : "",
     input.dateNeeded ? metaRow("Date needed", formatDateNeeded(input.dateNeeded), true) : "",
     input.siteContact ? metaRow(input.siteContactLabel ?? "Site contact", input.siteContact) : "",
     input.vendorLabel ? metaRow("Vendor", input.vendorLabel) : "",
@@ -49,8 +61,7 @@ export function buildOrderEmailHtml(input: EmailHtmlInput): string {
 
   const preheader = [
     input.orderTitle,
-    input.jobCode,
-    input.jobName,
+    jobLabel,
     input.poNumber ? `PO# ${input.poNumber}` : "",
     "See attached PDF for order details.",
   ].filter(Boolean).join(" — ");

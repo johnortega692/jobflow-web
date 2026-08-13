@@ -1,3 +1,9 @@
 # Supabase local config (edge functions)
 [functions.field-tools-submit-order]
 verify_jwt = false
+
+[functions.field-tools-submit-tailgate]
+verify_jwt = false
+
+[functions.field-tools-link-reminders]
+verify_jwt = false

@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "supabase:login": "supabase login",
     "supabase:deploy:submit-order": "supabase functions deploy field-tools-submit-order --project-ref hrbsekijkvhtfoogdwzp",
-    "supabase:deploy:audit-pdf": "supabase functions deploy field-tools-audit-pdf --project-ref hrbsekijkvhtfoogdwzp"
+    "supabase:deploy:audit-pdf": "supabase functions deploy field-tools-audit-pdf --project-ref hrbsekijkvhtfoogdwzp",
+    "supabase:deploy:submit-tailgate": "supabase functions deploy field-tools-submit-tailgate --project-ref hrbsekijkvhtfoogdwzp",
+    "supabase:deploy:link-reminders": "supabase functions deploy field-tools-link-reminders --project-ref hrbsekijkvhtfoogdwzp"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

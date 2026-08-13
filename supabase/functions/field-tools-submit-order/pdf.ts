@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage } from "https://esm.sh/pdf-lib@1.17.1";
 import { embedLogoImage, type OrderBranding } from "./branding.ts";
 import { resolveDisplayCompanyName } from "../displayCompanyName.ts";
-import { formatDateNeeded } from "./dates.ts";
+import { formatDateNeeded, formatOrderDateTime } from "./dates.ts";
 
 export type LineItem = {
   name: string;
@@ -14,6 +14,8 @@ export type MaterialPdfInput = {
   branding: OrderBranding;
   jobCode: string;
   jobName: string;
+  orderedBy?: string;
+  generatedAt?: string;
   poNumber: string;
   siteContact: string;
   siteContactLabel?: string;
@@ -32,6 +34,8 @@ export type ListPdfInput = {
   title: string;
   jobCode: string;
   jobName: string;
+  orderedBy?: string;
+  generatedAt?: string;
   poNumber?: string;
   siteContact: string;
   siteContactLabel?: string;
@@ -496,6 +500,7 @@ function createLayout(
   branding: OrderBranding,
   docTitle: string,
   totalItems: number,
+  generatedAt?: string,
 ): PageLayout {
   return {
     doc,
@@ -506,7 +511,7 @@ function createLayout(
     branding,
     docTitle,
     totalItems,
-    generatedAt: new Date().toLocaleString(),
+    generatedAt: generatedAt || formatOrderDateTime(),
   };
 }
 
@@ -521,7 +526,7 @@ export async function buildMaterialPdf(input: MaterialPdfInput): Promise<Uint8Ar
   if (input.sundries.length) breakdownParts.push(`Sundries ${input.sundries.length}`);
   if (input.additional.length) breakdownParts.push(`Additional ${input.additional.length}`);
 
-  const layout = createLayout(doc, font, fontBold, input.branding, "Material Order", totalItems);
+  const layout = createLayout(doc, font, fontBold, input.branding, "Material Order", totalItems, input.generatedAt);
 
   layout.y = await drawBrandedHeader(
     doc,
@@ -536,6 +541,7 @@ export async function buildMaterialPdf(input: MaterialPdfInput): Promise<Uint8Ar
 
   layout.y = drawMetaBlock(layout, [
     { label: "Job:", value: `${input.jobCode}${input.jobName ? ` — ${input.jobName}` : ""}` },
+    { label: "Ordered by:", value: input.orderedBy ?? "" },
     { label: "Date needed:", value: formatDateNeeded(input.dateNeeded), bold: true },
     { label: `${input.siteContactLabel ?? "Site contact"}:`, value: input.siteContact },
     { label: "Vendor:", value: input.vendor },
@@ -574,7 +580,7 @@ export async function buildListPdf(input: ListPdfInput): Promise<Uint8Array> {
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
   const totalItems = input.items.length;
-  const layout = createLayout(doc, font, fontBold, input.branding, input.title, totalItems);
+  const layout = createLayout(doc, font, fontBold, input.branding, input.title, totalItems, input.generatedAt);
 
   layout.y = await drawBrandedHeader(
     doc,
@@ -589,6 +595,7 @@ export async function buildListPdf(input: ListPdfInput): Promise<Uint8Array> {
 
   layout.y = drawMetaBlock(layout, [
     { label: "Job:", value: `${input.jobCode}${input.jobName ? ` — ${input.jobName}` : ""}` },
+    { label: "Ordered by:", value: input.orderedBy ?? "" },
     { label: "Date needed:", value: formatDateNeeded(input.dateNeeded), bold: true },
     { label: `${input.siteContactLabel ?? "Site contact"}:`, value: input.siteContact },
     { label: "Vendor / Rep:", value: input.vendorOrRep ?? "" },

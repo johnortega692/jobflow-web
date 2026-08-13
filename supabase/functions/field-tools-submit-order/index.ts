@@ -1,6 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { embedLogoUrlInHtml, loadOrderBranding } from "./branding.ts";
-import { buildOrderEmailHtml, lineItemsToStrings, orderTitleForType } from "./email-html.ts";
+import { formatOrderDateTime } from "./dates.ts";
+import {
+  buildOrderEmailHtml,
+  formatJobProjectLabel,
+  formatOrderedBy,
+  lineItemsToStrings,
+  orderTitleForType,
+} from "./email-html.ts";
 import {
   buildListPdf,
   buildMaterialPdf,
@@ -223,12 +230,30 @@ Deno.serve(async (req) => {
     const profileResult = sessionProfile as {
       ok?: boolean;
       error?: string;
-      profile?: { id: string; name: string; email: string; role: string };
+      profile?: { id: string; name: string; email: string; phone?: string; role: string };
     };
     if (!profileResult?.ok || !profileResult.profile) {
       return jsonResponse({ ok: false, error: profileResult?.error ?? "Invalid session" }, 403);
     }
     const trustedProfile = profileResult.profile;
+
+    const { data: profileRow } = await supabase
+      .from("field_tools_profiles")
+      .select("phone, person_id")
+      .eq("id", trustedProfile.id)
+      .maybeSingle();
+    let orderedByPhone = String(profileRow?.phone ?? trustedProfile.phone ?? "").trim();
+    if (profileRow?.person_id) {
+      const { data: person } = await supabase
+        .from("org_people")
+        .select("phone")
+        .eq("id", profileRow.person_id)
+        .maybeSingle();
+      const personPhone = String(person?.phone ?? "").trim();
+      if (personPhone) orderedByPhone = personPhone;
+    }
+    const placedAt = formatOrderDateTime();
+    const orderedBy = formatOrderedBy(trustedProfile.name, orderedByPhone, placedAt);
 
     const { data: orderSettings } = await supabase
       .from("field_tools_order_settings")
@@ -245,6 +270,29 @@ Deno.serve(async (req) => {
     const jobCode = o.job_number.trim();
     const jobName = (o.job_name ?? (o.payload.jobName as string) ?? "").trim();
     const payload = o.payload ?? {};
+
+    const { data: accessProfile } = await supabase
+      .from("field_tools_profiles")
+      .select("job_access")
+      .eq("id", trustedProfile.id)
+      .maybeSingle();
+    if (String(accessProfile?.job_access ?? "all") !== "all") {
+      const { data: links } = await supabase
+        .from("field_tools_project_access")
+        .select("project_id")
+        .eq("profile_id", trustedProfile.id);
+      const projectIds = (links ?? []).map((row) => String((row as { project_id: string }).project_id));
+      let allowed = false;
+      if (projectIds.length) {
+        const { data: jobs } = await supabase.from("projects").select("job_number").in("id", projectIds);
+        allowed = (jobs ?? []).some(
+          (row) => String((row as { job_number?: string }).job_number ?? "").trim().toLowerCase() === jobCode.toLowerCase(),
+        );
+      }
+      if (!allowed) {
+        return jsonResponse({ ok: false, error: "You don't have access to this job." }, 403);
+      }
+    }
 
     const { data: orderRow, error: insertErr } = await supabase
       .from("field_tools_orders")
@@ -306,6 +354,8 @@ Deno.serve(async (req) => {
       branding,
       jobCode,
       jobName,
+      orderedBy,
+      generatedAt: placedAt,
       siteContact: o.site_contact,
       siteContactLabel,
       dateNeeded: o.date_needed ?? "",
@@ -356,7 +406,7 @@ Deno.serve(async (req) => {
           const pdfAdditional = materialScope === "sundries" ? [] : additionalItems;
           const orderLabel = materialScope === "sundries" ? "Sundries Order" : "Material Order";
           emailOrderTitle = orderLabel;
-          subject = `${jobCode}${jobName ? ` — ${jobName}` : ""} — ${orderLabel}${poNumber ? ` — PO# ${poNumber}` : ""}`;
+          subject = `${formatJobProjectLabel(jobCode, jobName)} — ${orderLabel}${poNumber ? ` — PO# ${poNumber}` : ""}`;
           attachmentName = buildMaterialOrderAttachmentName(jobCode, jobName, poNumber);
           vendorLabel = dispatchVendor;
           pdfBytes = await buildMaterialPdf({
@@ -385,7 +435,7 @@ Deno.serve(async (req) => {
           break;
         }
         case "rental": {
-          subject = `${jobCode}${jobName ? ` — ${jobName}` : ""} — Rental Order`;
+          subject = `${formatJobProjectLabel(jobCode, jobName)} — Rental Order`;
           attachmentName = `${jobCode}-rental.pdf`;
           vendorLabel = rentalVendor?.name ?? "";
           pdfBytes = await buildListPdf({
@@ -399,7 +449,7 @@ Deno.serve(async (req) => {
           break;
         }
         case "equipment": {
-          subject = `${jobCode}${jobName ? ` — ${jobName}` : ""} — Equipment Order`;
+          subject = `${formatJobProjectLabel(jobCode, jobName)} — Equipment Order`;
           attachmentName = `${jobCode}-equipment.pdf`;
           pdfBytes = await buildListPdf({
             ...baseMeta,
@@ -411,7 +461,7 @@ Deno.serve(async (req) => {
           break;
         }
         case "wallcovering": {
-          subject = `${jobCode}${jobName ? ` — ${jobName}` : ""} — Wallcovering Order`;
+          subject = `${formatJobProjectLabel(jobCode, jobName)} — Wallcovering Order`;
           attachmentName = `${jobCode}-wallcovering.pdf`;
           pdfBytes = await buildListPdf({
             ...baseMeta,
@@ -424,7 +474,7 @@ Deno.serve(async (req) => {
         }
         case "haul_off": {
           const haulNotes = String(sections?.haulOffNotes ?? o.notes ?? "");
-          subject = `${jobCode}${jobName ? ` — ${jobName}` : ""} — Haul Off Request`;
+          subject = `${formatJobProjectLabel(jobCode, jobName)} — Haul Off Request`;
           attachmentName = `${jobCode}-haul-off.pdf`;
           pdfBytes = await buildListPdf({
             ...baseMeta,
@@ -481,6 +531,7 @@ Deno.serve(async (req) => {
         orderTitle: emailOrderTitle,
         jobCode,
         jobName,
+        orderedBy: orderedBy || undefined,
         poNumber: poNumber || undefined,
         siteContact: o.site_contact,
         siteContactLabel,
