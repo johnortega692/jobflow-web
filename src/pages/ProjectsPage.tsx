@@ -35,7 +35,7 @@ import {
 } from "../lib/icbiPmDefaults";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
-import { listDoneProjectIds } from "../lib/projectDone";
+import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
 import { formatDateTime } from "../lib/strings";
 import { type Project } from "../types/database";
 
@@ -43,6 +43,32 @@ function projectSearchText(p: Project): string {
   return [p.job_number, p.job_name, p.contractor, p.architect, p.owner, p.job_address, p.job_address2]
     .join(" ")
     .toLowerCase();
+}
+
+function normalizeJobNumber(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/** Find an existing project with the same job number (includes completed jobs). */
+async function findDuplicateJobNumber(jobNumber: string): Promise<{
+  id: string;
+  job_number: string;
+  job_name: string;
+  isDone: boolean;
+} | null> {
+  const needle = normalizeJobNumber(jobNumber);
+  if (!needle) return null;
+  const { data, error } = await supabase.from("projects").select("id, job_number, job_name");
+  if (error || !data?.length) return null;
+  const match = data.find((p) => normalizeJobNumber(p.job_number ?? "") === needle);
+  if (!match) return null;
+  const { isDone } = await fetchProjectIsDone(match.id);
+  return {
+    id: match.id,
+    job_number: match.job_number ?? "",
+    job_name: match.job_name ?? "",
+    isDone,
+  };
 }
 
 export function ProjectsPage() {
@@ -165,6 +191,22 @@ export function ProjectsPage() {
     e.preventDefault();
     setSaving(true);
     setError(null);
+
+    const trimmedNumber = jobNumber.trim();
+    const trimmedName = jobName.trim();
+    const duplicate = await findDuplicateJobNumber(trimmedNumber);
+    if (duplicate) {
+      const status = duplicate.isDone ? "marked completed" : "still active";
+      const existingName = duplicate.job_name.trim() || "Untitled job";
+      const ok = window.confirm(
+        `Job number "${duplicate.job_number}" is already used by "${existingName}" (${status}).\n\nCreate another project with this job number anyway?`,
+      );
+      if (!ok) {
+        setSaving(false);
+        return;
+      }
+    }
+
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id ?? null;
     const superContact = findStaffContact(staffSupers, superId);
@@ -180,8 +222,8 @@ export function ProjectsPage() {
     const { data: inserted, error: err } = await supabase
       .from("projects")
       .insert({
-        job_number: jobNumber.trim(),
-        job_name: jobName.trim(),
+        job_number: trimmedNumber,
+        job_name: trimmedName,
         created_by: userId,
         updated_by: userId,
         data: { job_info: jobInfo, billing },
@@ -198,7 +240,7 @@ export function ProjectsPage() {
       await recordProjectActivity({
         projectId: inserted.id,
         action: "project_created",
-        summary: `Project created: ${jobNumber.trim()} · ${jobName.trim()}`,
+        summary: `Project created: ${trimmedNumber} · ${trimmedName}`,
         user: actor,
       });
     }

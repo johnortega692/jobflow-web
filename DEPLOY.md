@@ -50,11 +50,15 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
 
 ## Step 2 — Supabase auth (required for login)
 
-Supabase → **Authentication** → **URL Configuration**:
+Supabase → **Authentication** → [URL Configuration](https://supabase.com/dashboard/project/hrbsekijkvhtfoogdwzp/auth/url-configuration):
 
-- **Site URL**: `https://your-app.vercel.app`
-- **Redirect URLs**: add `https://your-app.vercel.app/**`
+- **Site URL**: `https://jobflow-web-kappa.vercel.app` (not localhost — this is the default link in verify/reset emails)
+- **Redirect URLs** (allow list), add:
+  - `https://jobflow-web-kappa.vercel.app/**`
+  - `http://localhost:5173/**` (local Vite)
+  - optional Vercel previews: `https://*-johnortega692.vercel.app/**` (adjust team slug if different)
 
+Signup code also passes `emailRedirectTo` to the live app so confirm links do not fall back to localhost when Site URL was left on a local default.
 ---
 
 ## Step 3 — Test

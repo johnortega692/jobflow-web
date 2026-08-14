@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { isAppAdmin, loadUserProfileAuth, type AppRole } from "../lib/appRole";
+import { authEmailRedirectTo } from "../lib/authRedirect";
 import { supabase } from "../lib/supabase";
 
 interface AuthContextValue {
@@ -87,7 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: authEmailRedirectTo(),
+      },
+    });
     if (error) return error.message;
     if (data.session) {
       await supabase.auth.signOut();
