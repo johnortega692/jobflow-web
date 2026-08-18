@@ -83,26 +83,62 @@ function jobInfoFromProjectData(data: unknown): Record<string, unknown> {
 }
 
 /** ICBI staff from JobFlow job setup — never GC Info fields. */
+function isIcbiGcFlag(value: unknown): boolean {
+  return value === true || String(value ?? "").trim().toLowerCase() === "true";
+}
+
 async function loadIcbiOrderContacts(
   supabase: ReturnType<typeof createClient>,
   jobCode: string,
+  jobName = "",
+  projectId = "",
 ): Promise<IcbiOrderContacts | null> {
+  if (projectId) {
+    const { data } = await supabase.from("projects").select("data").eq("id", projectId).maybeSingle();
+    if (data) {
+      const ji = jobInfoFromProjectData(data.data);
+      return contactsFromJobInfo(ji);
+    }
+  }
+
   const { data } = await supabase
     .from("projects")
-    .select("data")
-    .ilike("job_number", jobCode)
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  const ji = jobInfoFromProjectData(data.data);
+    .select("id, job_number, job_name, data")
+    .ilike("job_number", jobCode);
+  const rows = (data ?? []) as { id: string; job_number: string; job_name: string | null; data: unknown }[];
+  if (!rows.length) return null;
+
+  const code = jobCode.trim().toLowerCase();
+  const name = jobName.trim().toLowerCase();
+  const exact = rows.filter((r) => strField(r.job_number).toLowerCase() === code);
+  const pool = exact.length ? exact : rows;
+  const named = name
+    ? pool.find((r) => strField(r.job_name).toLowerCase() === name)
+    : undefined;
+  const picked = named ?? pool[0];
+  if (!picked) return null;
+  return contactsFromJobInfo(jobInfoFromProjectData(picked.data));
+}
+
+function contactsFromJobInfo(ji: Record<string, unknown>): IcbiOrderContacts {
   return {
     pm: strField(ji.icbi_pm) || strField(ji.field_request_pm),
     pmEmail: strField(ji.icbi_pm_email),
     super: strField(ji.field_request_super),
     superEmail: strField(ji.icbi_super_email),
     foremanEmail: strField(ji.icbi_foreman_email),
-    isGc: Boolean(ji.icbi_is_gc),
+    isGc: isIcbiGcFlag(ji.icbi_is_gc),
   };
+}
+
+function shouldSuffixIcbiPaintPo(
+  isGc: boolean,
+  spec: { type: DispatchType; material_scope?: "paint" | "sundries" },
+  hasPaint: boolean,
+): boolean {
+  if (!isGc || !hasPaint) return false;
+  if (spec.material_scope === "sundries") return false;
+  return spec.type === "material" || spec.type === "job_scope_kit";
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -329,7 +365,8 @@ Deno.serve(async (req) => {
     const vendorName = typeof paintVendor === "string" ? paintVendor : paintVendor?.name ?? "";
     const rentalVendor = payload.rentalVendor as VendorInfo | undefined;
 
-    const icbi = await loadIcbiOrderContacts(supabase, jobCode);
+    const projectId = strField(payload.projectId ?? payload.project_id);
+    const icbi = await loadIcbiOrderContacts(supabase, jobCode, jobName, projectId);
     const pm = icbi?.pm || String(payload.pm ?? "");
     const pmEmail = icbi ? icbi.pmEmail : String(payload.pmEmail ?? "");
     const superName = icbi?.super || String(payload.super ?? "");
@@ -378,9 +415,15 @@ Deno.serve(async (req) => {
           continue;
         }
         poNumber = String(po);
+        const hasPaint =
+          paintItems.length > 0 ||
+          additionalItems.length > 0 ||
+          (spec.type === "job_scope_kit" && spec.material_scope !== "sundries");
         // ICBI-as-GC jobs: mark self-perform paint POs so they're distinguishable
         // from ICBI's GC-side PO accounting, which uses the same shared job sequence.
-        if (icbi?.isGc && spec.material_scope === "paint") poNumber = `${poNumber}P`;
+        if (shouldSuffixIcbiPaintPo(Boolean(icbi?.isGc), spec, hasPaint)) {
+          poNumber = poNumber.endsWith("P") ? poNumber : `${poNumber}P`;
+        }
         assignedPos.push(poNumber);
       }
 
