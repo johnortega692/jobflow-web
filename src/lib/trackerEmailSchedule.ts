@@ -10,6 +10,8 @@ export type TrackerEmailSchedule = {
     paint_followup: boolean;
     wallcovering_followup: boolean;
     installs: boolean;
+    /** Separate email on days that match Job info Billing Due day. */
+    billing_due: boolean;
   };
   weekly: {
     enabled: boolean;
@@ -29,6 +31,7 @@ export const DEFAULT_TRACKER_EMAIL_SCHEDULE: TrackerEmailSchedule = {
     paint_followup: true,
     wallcovering_followup: true,
     installs: true,
+    billing_due: true,
   },
   weekly: {
     enabled: false,
@@ -54,6 +57,7 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
       base.daily.wallcovering_followup = d.wallcovering_followup;
     }
     if (typeof d.installs === "boolean") base.daily.installs = d.installs;
+    if (typeof d.billing_due === "boolean") base.daily.billing_due = d.billing_due;
   }
 
   if (o.weekly && typeof o.weekly === "object" && !Array.isArray(o.weekly)) {

@@ -8465,7 +8465,41 @@ tr.budget-hours-pdf-hidden td {
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 1.2;
-  margin: 0.15rem 0 0.5rem;
+  margin: 0.15rem 0 0;
+}
+
+.job-dashboard-address {
+  margin: 0.25rem 0 0.5rem;
+  line-height: 1.4;
+}
+
+.job-dashboard-billing-due {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  margin-left: auto;
+  padding: 0.45rem 0.7rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--border));
+  color: var(--warn);
+  line-height: 1.15;
+}
+
+.job-dashboard-billing-due-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.job-dashboard-billing-due-day {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #ffd56a;
 }
 
 .job-dashboard-pills {
@@ -9039,6 +9073,22 @@ a.job-tracker-tab {
 
 .job-info-wc-fields {
   margin-top: 0.25rem;
+}
+
+.job-info-gc-name-override {
+  margin-top: 0.4rem;
+}
+
+.job-info-job-number-field .btn {
+  margin-top: 0.4rem;
+}
+
+.job-info-reassign-backdrop {
+  z-index: 140;
+}
+
+.job-info-reassign-modal {
+  width: min(460px, 100%);
 }
 
 .transmittal-contract-row {

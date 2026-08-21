@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
+import { useAuth } from "../../contexts/AuthContext";
+import { loadContactDirectory, lookupGeneralContractor } from "../../lib/contactDirectory";
 import { supabase } from "../../lib/supabase";
 import { jobCityZipCountyLine, normalizeJobInfo, parseProjectDataBlob, syncLegacyFieldOrderFields } from "../../lib/jobInfo";
 import { applyProposalImportPatch, importJobInfoFromProposalPdf } from "../../lib/proposalPdfImport";
@@ -16,11 +18,14 @@ import {
   type StartupItemsState,
 } from "../../lib/projectStartupItems";
 import { syncProjectStartDateToManpower } from "../../lib/syncProjectStartDate";
+import { paintWcReassignMode } from "../../lib/reassignPaintWallcovering";
 import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSync";
 import { IcbiInfoSection } from "./IcbiInfoSection";
+import { ReassignJobNumbersModal } from "./ReassignJobNumbersModal";
 import { StartupChecklistConfigSection } from "./StartupChecklistConfigSection";
 import { TradeAppsSyncSection } from "./TradeAppsSyncSection";
 import type { ProjectForm } from "../../types/database";
+import type { GcEntry } from "../../types/contactDirectory";
 import { JOB_COST_TYPES, JOB_TYPES, type JobInfoData } from "../../types/jobInfo";
 
 type JobSetupTab = "info" | "startup";
@@ -51,6 +56,7 @@ function JobSection({ title, defaultOpen, children }: { title: string; defaultOp
 }
 
 export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose, onSaved, initialTab = "info" }: Props) {
+  const { user } = useAuth();
   const [project, setProject] = useState(initial);
   const [activeTab, setActiveTab] = useState<JobSetupTab>(initialTab);
   const [saving, setSaving] = useState(false);
@@ -60,12 +66,15 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [startupItems, setStartupItems] = useState<StartupItemsState>(() => defaultStartupItems());
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [gcDirectory, setGcDirectory] = useState<GcEntry[]>([]);
   const proposalInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setProject(initial);
       setActiveTab(initialTab);
+      setReassignOpen(false);
     }
   }, [open, initial, projectId, initialTab]);
 
@@ -79,8 +88,61 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
     })();
   }, [open, projectId]);
 
+  useEffect(() => {
+    if (!open || !user?.id) {
+      setGcDirectory([]);
+      return;
+    }
+    let cancelled = false;
+    void loadContactDirectory(user.id)
+      .then((dir) => {
+        if (!cancelled) setGcDirectory(dir.general_contractors);
+      })
+      .catch(() => {
+        if (!cancelled) setGcDirectory([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, user?.id]);
+
   function setJobInfo(patch: Partial<JobInfoData>) {
     setProject((p) => ({ ...p, jobInfo: patchJobInfo(p.jobInfo, patch) }));
+  }
+
+  function applyGcFromDirectory(name: string) {
+    const hit = lookupGeneralContractor(gcDirectory, name);
+    if (!hit) {
+      setProject((p) => ({ ...p, contractor: name }));
+      return;
+    }
+    setProject((p) => ({
+      ...p,
+      contractor: hit.name,
+      jobInfo: patchJobInfo(p.jobInfo, {
+        gc_address: hit.address,
+        ...(hit.office_phone.trim() ? { gc_office_phone: hit.office_phone } : {}),
+      }),
+    }));
+  }
+
+  function applyJobNumberReassign(result: {
+    job_number: string;
+    job_name: string;
+    jobInfo: JobInfoData;
+    summary: string;
+  }) {
+    const wasWallcovering = project.jobInfo.has_wallcovering;
+    setProject((p) => ({
+      ...p,
+      job_number: result.job_number,
+      job_name: result.job_name,
+      jobInfo: result.jobInfo,
+    }));
+    setStartupItems((items) => applyWallcoveringScope(items, result.jobInfo.has_wallcovering, wasWallcovering).state);
+    setReassignOpen(false);
+    setImportSuccess(`${result.summary}. Save job info to keep this.`);
+    setError(null);
   }
 
   async function onImportProposal(file: File | null) {
@@ -166,7 +228,14 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
       },
       activity: {
         action: "job_info_saved",
-        summary: "Job setup saved",
+        summary:
+          project.job_number.trim() !== initial.job_number.trim()
+            ? `Job numbers updated: paint ${project.job_number.trim()}${
+                jobInfo.has_wallcovering && jobInfo.wc_job_number.trim()
+                  ? `, wallcovering ${jobInfo.wc_job_number.trim()}`
+                  : ""
+              }`
+            : "Job setup saved",
       },
     });
 
@@ -332,12 +401,21 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
           >
           <JobSection title="Job Info" defaultOpen>
             <p className="muted small">
-              Job # and name are set when the project is created and cannot be changed here.
+              Job name is set when the project is created. If the office assigned this number to
+              wallcovering, reassign it instead of creating a second project.
             </p>
             <div className="grid-2">
-              <label>
+              <label className="job-info-job-number-field">
                 Job #
                 <input className="readonly" value={project.job_number} readOnly aria-readonly />
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={saving || !project.job_number.trim()}
+                  onClick={() => setReassignOpen(true)}
+                >
+                  {paintWcReassignMode(project) === "swap" ? "Swap with wallcovering" : "Reassign…"}
+                </button>
               </label>
               <label>
                 Date
@@ -395,18 +473,25 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                 <DateInput value={j.start_date} onChange={(v) => setJobInfo({ start_date: v })} />
               </label>
               <label>
-                First furnishing date
-                <DateInput
-                  value={j.first_furnishing_date}
-                  onChange={(v) => setJobInfo({ first_furnishing_date: v })}
-                />
-                <span className="muted small job-info-field-help">
-                  Date labor or materials were first furnished. Used to calculate the preliminary notice deadline.
-                </span>
-              </label>
-              <label>
                 Estimated end date
                 <DateInput value={j.end_date} onChange={(v) => setJobInfo({ end_date: v })} />
+              </label>
+              <label>
+                Billing Due
+                <select
+                  value={j.billing_due_day}
+                  onChange={(e) => setJobInfo({ billing_due_day: e.target.value })}
+                >
+                  <option value="">Day of month…</option>
+                  {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+                <span className="muted small job-info-field-help">
+                  Same day every month (e.g. 15 = the 15th).
+                </span>
               </label>
             </div>
             <label className="checkbox-row job-info-wc-toggle">
@@ -552,10 +637,38 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             <div className="grid-2">
               <label>
                 GC name
-                <input
-                  value={project.contractor}
-                  onChange={(e) => setProject({ ...project, contractor: e.target.value })}
-                />
+                {gcDirectory.some((g) => g.name.trim()) ? (
+                  <>
+                    <select
+                      value={lookupGeneralContractor(gcDirectory, project.contractor)?.name ?? ""}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        if (!name) return;
+                        applyGcFromDirectory(name);
+                      }}
+                    >
+                      <option value="">Select saved GC…</option>
+                      {gcDirectory
+                        .filter((g) => g.name.trim())
+                        .map((g) => (
+                          <option key={g.name} value={g.name}>
+                            {g.name}
+                          </option>
+                        ))}
+                    </select>
+                    <input
+                      className="job-info-gc-name-override"
+                      value={project.contractor}
+                      placeholder="Or type a GC name"
+                      onChange={(e) => setProject({ ...project, contractor: e.target.value })}
+                    />
+                  </>
+                ) : (
+                  <input
+                    value={project.contractor}
+                    onChange={(e) => setProject({ ...project, contractor: e.target.value })}
+                  />
+                )}
               </label>
               <label>
                 GC job #
@@ -708,6 +821,13 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
           </div>
         </form>
       </aside>
+      <ReassignJobNumbersModal
+        open={reassignOpen}
+        project={project}
+        projectId={projectId}
+        onClose={() => setReassignOpen(false)}
+        onApply={applyJobNumberReassign}
+      />
     </div>
   );
 }

@@ -142,7 +142,7 @@ export function ProjectStartupChecklist({
         setLoading(false);
       }
     })();
-  }, [projectId, refreshKey, project.jobInfo.public_works, project.jobInfo.start_date, project.jobInfo.first_furnishing_date]);
+  }, [projectId, refreshKey, project.jobInfo.public_works, project.jobInfo.start_date]);
 
   async function persistChecklist(next: StartupChecklistState) {
     const err = await commitProjectUpdate({

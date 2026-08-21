@@ -2,11 +2,14 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   emptyArchitectEntry,
+  emptyGcEntry,
   emptyMaterialVendor,
   loadContactDirectory,
   mergeArchitects,
+  mergeGeneralContractors,
   mergeMaterialVendors,
   parseArchitectsFromRows,
+  parseGeneralContractorsFromRows,
   parseMaterialVendorsFromRows,
   parseSpreadsheetFile,
   saveContactDirectory,
@@ -16,6 +19,7 @@ import {
   defaultContactDirectory,
   type ArchitectEntry,
   type ContactDirectorySettings,
+  type GcEntry,
   type MaterialVendor,
 } from "../../types/contactDirectory";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
@@ -36,8 +40,10 @@ export function VendorArchitectSettingsSection({
   const [error, setError] = useState<string | null>(null);
   const [vendorImportMode, setVendorImportMode] = useState<ImportMode>("merge");
   const [architectImportMode, setArchitectImportMode] = useState<ImportMode>("merge");
+  const [gcImportMode, setGcImportMode] = useState<ImportMode>("merge");
   const vendorFileRef = useRef<HTMLInputElement>(null);
   const architectFileRef = useRef<HTMLInputElement>(null);
+  const gcFileRef = useRef<HTMLInputElement>(null);
   const trackData = data ?? defaultContactDirectory();
   const ready = !loading && data !== null && Boolean(user?.id);
   const { markSaved, readBaseline, getIsDirty } = useSettingsDirtyTracker(trackData, ready, onDirtyChange);
@@ -63,7 +69,7 @@ export function VendorArchitectSettingsSection({
       return false;
     }
     markSaved();
-    setMessage("Vendors and architects saved.");
+    setMessage("Directory saved.");
     return true;
   }, [data, markSaved, user?.id]);
 
@@ -84,7 +90,7 @@ export function VendorArchitectSettingsSection({
     await persist();
   }
 
-  if (loading) return <p className="muted">Loading vendors &amp; architects…</p>;
+  if (loading) return <p className="muted">Loading contact directory…</p>;
   if (!data || !user?.id) return null;
 
   async function importVendors(file: File | null) {
@@ -143,6 +149,38 @@ export function VendorArchitectSettingsSection({
     }
   }
 
+  async function importGcs(file: File | null) {
+    if (!file) return;
+    setError(null);
+    try {
+      const rows = await parseSpreadsheetFile(file);
+      const imported = parseGeneralContractorsFromRows(rows);
+      if (!imported.length) {
+        setError("No GC rows found. Expected columns: Name, Address, Office Phone.");
+        return;
+      }
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              general_contractors: mergeGeneralContractors(
+                d.general_contractors,
+                imported,
+                gcImportMode,
+              ),
+            }
+          : d,
+      );
+      setMessage(
+        `Imported ${imported.length} GC row(s) (${gcImportMode === "merge" ? "merged" : "replaced"}). Click Save to keep.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "GC import failed");
+    } finally {
+      if (gcFileRef.current) gcFileRef.current.value = "";
+    }
+  }
+
   function patchVendor(i: number, patch: Partial<MaterialVendor>) {
     setData((d) => {
       if (!d) return d;
@@ -161,6 +199,15 @@ export function VendorArchitectSettingsSection({
     });
   }
 
+  function patchGc(i: number, patch: Partial<GcEntry>) {
+    setData((d) => {
+      if (!d) return d;
+      const general_contractors = [...d.general_contractors];
+      general_contractors[i] = { ...general_contractors[i]!, ...patch };
+      return { ...d, general_contractors };
+    });
+  }
+
   return (
     <form className="stack contact-directory-settings" onSubmit={(e) => void onSave(e)}>
       {readOnly && <SharedSettingsNotice />}
@@ -169,6 +216,120 @@ export function VendorArchitectSettingsSection({
       )}
 
       <fieldset disabled={readOnly} className="stack settings-shared-fieldset">
+      <section className="stack">
+        <h2>General contractors</h2>
+        <p className="muted small">
+          Saved GCs for Job info. Pick a name in GC Info to fill address and office phone. Import CSV /
+          Excel with columns <strong>Name</strong>, <strong>Address</strong>,{" "}
+          <strong>Office Phone</strong>.
+        </p>
+
+        {!readOnly && (
+        <div className="row-gap wrap contact-import-bar">
+          <label className="check">
+            <input
+              type="radio"
+              name="gc-import-mode"
+              checked={gcImportMode === "merge"}
+              onChange={() => setGcImportMode("merge")}
+            />
+            Merge (skip duplicates)
+          </label>
+          <label className="check">
+            <input
+              type="radio"
+              name="gc-import-mode"
+              checked={gcImportMode === "replace"}
+              onChange={() => setGcImportMode("replace")}
+            />
+            Replace all
+          </label>
+          <input
+            ref={gcFileRef}
+            type="file"
+            accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="sr-only"
+            onChange={(e) => void importGcs(e.target.files?.[0] ?? null)}
+          />
+          <button type="button" className="btn btn-secondary" onClick={() => gcFileRef.current?.click()}>
+            Import CSV / Excel…
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() =>
+              setData((d) =>
+                d ? { ...d, general_contractors: [...d.general_contractors, emptyGcEntry()] } : d,
+              )
+            }
+          >
+            Add GC
+          </button>
+          <span className="muted small">{data.general_contractors.length} GC(s)</span>
+        </div>
+        )}
+
+        <div className="paint-settings-table-wrap settings-scroll-table-wrap">
+          <table className="paint-settings-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Address</th>
+                <th>Office phone</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.general_contractors.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="muted small">
+                    No GCs yet — import a file or add one manually.
+                  </td>
+                </tr>
+              ) : (
+                data.general_contractors.map((g, i) => (
+                  <tr key={`gc-${i}`}>
+                    <td>
+                      <input value={g.name} onChange={(e) => patchGc(i, { name: e.target.value })} />
+                    </td>
+                    <td>
+                      <input
+                        value={g.address}
+                        onChange={(e) => patchGc(i, { address: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={g.office_phone}
+                        onChange={(e) => patchGc(i, { office_phone: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() =>
+                          setData((d) =>
+                            d
+                              ? {
+                                  ...d,
+                                  general_contractors: d.general_contractors.filter((_, j) => j !== i),
+                                }
+                              : d,
+                          )
+                        }
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section className="stack">
         <h2>Material vendors</h2>
         <p className="muted small">
@@ -405,7 +566,7 @@ export function VendorArchitectSettingsSection({
 
       {!readOnly && (
       <button type="submit" className="btn btn-primary" disabled={saving}>
-        {saving ? "Saving…" : "Save vendors & architects"}
+        {saving ? "Saving…" : "Save directory"}
       </button>
       )}
     </form>

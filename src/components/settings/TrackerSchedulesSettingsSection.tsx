@@ -3,6 +3,7 @@ import { patchOrgSettings } from "../../lib/budgetLibrary";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
 import { SharedSettingsNotice } from "./SharedSettingsNotice";
 import {
+  BillingDueDigestSection,
   FollowUpRemindersSection,
   ScheduledEmailSection,
   usePaintSettingsData,
@@ -40,6 +41,8 @@ export function TrackerSchedulesSettingsSection({
 
     const errOrg = await patchOrgSettings(user.id, {
       tracker_email_schedule: data.tracker_email_schedule,
+      notification_primary_email: data.notification_primary_email.trim(),
+      notification_primary_name: data.notification_primary_name.trim(),
     });
     setSaving(false);
     if (errOrg) {
@@ -74,12 +77,45 @@ export function TrackerSchedulesSettingsSection({
       <section className="stack">
         <h2>Recipients</h2>
         <p className="muted small">
-          Manual sends and scheduled emails go <strong>To</strong> your Profile email (or notification primary
-          email for automatic cron). <strong>CC</strong> uses ICBI super and foreman from each job&apos;s setup.
-          Paint tracker approval/revision notifications use <strong>Job setup → GC Info</strong> for the GC
-          Super line. Brush-out vendor emails CC the <strong>GC super</strong>. Transmittal/attic emails still
-          CC ICBI staff.
+          <strong>Scheduled (automatic) emails</strong> go To the notification primary address below.
+          <strong> Manual</strong> Send now buttons use your Profile email. <strong>CC</strong> uses ICBI super
+          and foreman from each job&apos;s setup.
         </p>
+        <label>
+          Notification primary name
+          <input
+            value={data.notification_primary_name}
+            disabled={readOnly}
+            onChange={(e) =>
+              setData((d) => (d ? { ...d, notification_primary_name: e.target.value } : d))
+            }
+            placeholder="John Ortega"
+          />
+        </label>
+        <label>
+          Notification primary email (scheduled digests To)
+          <input
+            type="email"
+            value={data.notification_primary_email}
+            disabled={readOnly}
+            onChange={(e) =>
+              setData((d) => (d ? { ...d, notification_primary_email: e.target.value } : d))
+            }
+            placeholder="you@company.com"
+          />
+        </label>
+        {!data.notification_primary_email.trim() && (
+          <p className="muted small" style={{ color: "var(--danger, #b71c1c)" }}>
+            Scheduled digests will not send until this email is set.
+          </p>
+        )}
+        {!(data.google_urls.paint_tracker ?? "").trim() && (
+          <p className="muted small">
+            Dashboard Web App URL is empty (Settings → Google Sheets). Cron can still send via Resend if{" "}
+            <code>RESEND_API_KEY</code> and <code>EMAIL_FROM</code> are set on Vercel; otherwise configure the
+            Dashboard URL.
+          </p>
+        )}
       </section>
 
       <WeeklyDigestSection
@@ -89,6 +125,12 @@ export function TrackerSchedulesSettingsSection({
       />
 
       <FollowUpRemindersSection
+        data={data}
+        letterhead={letterhead}
+        brandingCompanyName={letterhead.company_name}
+      />
+
+      <BillingDueDigestSection
         data={data}
         letterhead={letterhead}
         brandingCompanyName={letterhead.company_name}

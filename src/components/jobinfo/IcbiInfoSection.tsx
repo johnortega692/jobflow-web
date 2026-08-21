@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useLetterhead } from "../../contexts/LetterheadContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { buildIcbiPmOptions, shouldDefaultPmFromProfile } from "../../lib/icbiPmDefaults";
@@ -86,27 +85,6 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
       <summary className="job-section-summary">
         <h3>ICBI Info</h3>
       </summary>
-      <p className="muted small">
-        PM and super here feed{" "}
-        <Link to="/field" target="_blank" rel="noopener noreferrer">
-          Field Tools
-        </Link>{" "}
-        material orders and Manpower.
-        {profileIsPm ? (
-          <>
-            {" "}
-            PM defaults to your profile ({profile.name.trim() || "Settings → Your profile"}) — pick another from
-            the list if needed.
-          </>
-        ) : (
-          <>
-            {" "}
-            PM names from{" "}
-            <Link to="/settings" state={{ tab: "project-staff" }}>Settings → Project staff</Link>.
-          </>
-        )}{" "}
-        Supers from Field Tools. GC contacts stay in GC Info above.
-      </p>
       {loading && <p className="muted small">Loading PM / super lists…</p>}
       {error && <p className="banner banner-warn">{error}</p>}
       <label className="checkbox-row">
@@ -127,6 +105,10 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
         <label>
           Estimator
           <input value={j.icbi_estimator} onChange={(e) => onChange({ icbi_estimator: e.target.value })} />
+        </label>
+        <label>
+          PE
+          <input value={j.icbi_engineer} onChange={(e) => onChange({ icbi_engineer: e.target.value })} />
         </label>
         <label>
           PM
@@ -158,10 +140,6 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
             placeholder="CC on Field Tools orders"
             onChange={(e) => onChange({ icbi_pm_email: e.target.value })}
           />
-        </label>
-        <label>
-          PE
-          <input value={j.icbi_engineer} onChange={(e) => onChange({ icbi_engineer: e.target.value })} />
         </label>
         <label>
           Foreman

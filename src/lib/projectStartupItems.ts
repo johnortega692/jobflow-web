@@ -356,17 +356,9 @@ export function groupProgress(state: StartupItemsState, group: StartupChecklistG
 }
 
 export function prelimReferenceIso(jobInfo: JobInfoData): string | null {
-  const furnishing = jobInfo.first_furnishing_date.trim();
-  if (furnishing) {
-    const iso = toIsoDateValue(furnishing);
-    if (iso) return iso;
-  }
   const start = jobInfo.start_date.trim();
-  if (start) {
-    const iso = toIsoDateValue(start);
-    if (iso) return iso;
-  }
-  return null;
+  if (!start) return null;
+  return toIsoDateValue(start);
 }
 
 export function addCalendarDaysIso(iso: string, days: number): string | null {
@@ -495,10 +487,8 @@ export function applyWallcoveringScope(
   return { state: { ...state, items }, activityNotes };
 }
 
-export function prelimReferenceLabel(jobInfo: JobInfoData): string {
-  if (jobInfo.first_furnishing_date.trim()) return "First furnishing date";
-  if (jobInfo.start_date.trim()) return "Start date";
-  return "Start or first furnishing date";
+export function prelimReferenceLabel(_jobInfo: JobInfoData): string {
+  return "Start date";
 }
 
 export function prelimDeadlineExplanation(jobInfo: JobInfoData): string | null {
@@ -508,8 +498,7 @@ export function prelimDeadlineExplanation(jobInfo: JobInfoData): string | null {
   if (!dueIso) return null;
   const refDisplay = isoDateToDisplay(refIso);
   const dueDisplay = isoDateToDisplay(dueIso);
-  const refName = prelimReferenceLabel(jobInfo);
-  return `${refName} ${refDisplay} + 20 calendar days = ${dueDisplay}`;
+  return `Start date ${refDisplay} + 20 calendar days = ${dueDisplay}`;
 }
 
 export function isPublicWorksCatalogItem(id: string): boolean {

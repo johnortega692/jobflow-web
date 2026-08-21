@@ -3,14 +3,17 @@ import { loadRawUserSettings, patchOrgSettings } from "./budgetLibrary";
 import {
   defaultContactDirectory,
   emptyArchitectEntry,
+  emptyGcEntry,
   emptyMaterialVendor,
   type ArchitectEntry,
   type ContactDirectorySettings,
+  type GcEntry,
   type MaterialVendor,
 } from "../types/contactDirectory";
 
 const VENDORS_KEY = "material_vendors";
 const ARCHITECTS_KEY = "architects";
+const GCS_KEY = "general_contractors";
 
 function normalizeCol(name: string): string {
   return name.replace(/[^a-z0-9]/gi, "").toLowerCase();
@@ -58,6 +61,12 @@ const ARCHITECT_ALIASES = {
   address: ["Address", "Addr", "Mailing Address", "Street Address"],
 };
 
+const GC_ALIASES = {
+  name: ["Name", "GC", "Company", "GC Name", "General Contractor", "Contractor"],
+  address: ["Address", "Addr", "Mailing Address", "Street Address", "Office Address"],
+  office_phone: ["Office Phone", "Phone", "Telephone", "Main Phone", "Office"],
+};
+
 export async function parseSpreadsheetFile(file: File): Promise<Record<string, unknown>[]> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
@@ -87,12 +96,24 @@ function normalizeArchitect(row: Record<string, string>): ArchitectEntry | null 
   return { company, address };
 }
 
+function normalizeGc(row: Record<string, string>): GcEntry | null {
+  const name = row.name?.trim() ?? "";
+  const address = row.address?.trim() ?? "";
+  const office_phone = row.office_phone?.trim() ?? "";
+  if (!name && !address && !office_phone) return null;
+  return { name, address, office_phone };
+}
+
 function vendorKey(v: MaterialVendor): string {
   return `${v.name.toLowerCase()}|${v.email.toLowerCase()}`;
 }
 
 function architectKey(a: ArchitectEntry): string {
   return a.company.toLowerCase();
+}
+
+function gcKey(g: GcEntry): string {
+  return g.name.toLowerCase();
 }
 
 export function parseMaterialVendorsFromRows(
@@ -107,6 +128,12 @@ export function parseArchitectsFromRows(rows: Record<string, unknown>[]): Archit
   return mapColumns(rows, ARCHITECT_ALIASES)
     .map(normalizeArchitect)
     .filter((a): a is ArchitectEntry => a !== null);
+}
+
+export function parseGeneralContractorsFromRows(rows: Record<string, unknown>[]): GcEntry[] {
+  return mapColumns(rows, GC_ALIASES)
+    .map(normalizeGc)
+    .filter((g): g is GcEntry => g !== null);
 }
 
 export function mergeMaterialVendors(
@@ -143,6 +170,23 @@ export function mergeArchitects(
   return next;
 }
 
+export function mergeGeneralContractors(
+  existing: GcEntry[],
+  imported: GcEntry[],
+  mode: "merge" | "replace",
+): GcEntry[] {
+  if (mode === "replace") return dedupeGeneralContractors(imported);
+  const seen = new Set(existing.map(gcKey));
+  const next = [...existing];
+  for (const g of imported) {
+    const key = gcKey(g);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    next.push(g);
+  }
+  return next;
+}
+
 function dedupeMaterialVendors(vendors: MaterialVendor[]): MaterialVendor[] {
   const seen = new Set<string>();
   const out: MaterialVendor[] = [];
@@ -163,6 +207,18 @@ function dedupeArchitects(architects: ArchitectEntry[]): ArchitectEntry[] {
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(a);
+  }
+  return out;
+}
+
+function dedupeGeneralContractors(gcs: GcEntry[]): GcEntry[] {
+  const seen = new Set<string>();
+  const out: GcEntry[] = [];
+  for (const g of gcs) {
+    const key = gcKey(g);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(g);
   }
   return out;
 }
@@ -188,6 +244,15 @@ export function lookupArchitectAddress(
   return hit?.address.trim() || null;
 }
 
+export function lookupGeneralContractor(
+  gcs: GcEntry[],
+  name: string,
+): GcEntry | null {
+  const q = name.trim().toLowerCase();
+  if (!q) return null;
+  return gcs.find((g) => g.name.trim().toLowerCase() === q) ?? null;
+}
+
 function coerceMaterialVendor(raw: unknown): MaterialVendor | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -208,6 +273,16 @@ function coerceArchitect(raw: unknown): ArchitectEntry | null {
   return { company, address };
 }
 
+function coerceGc(raw: unknown): GcEntry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const name = String(o.name ?? o.company ?? "").trim();
+  const address = String(o.address ?? "").trim();
+  const office_phone = String(o.office_phone ?? o.phone ?? "").trim();
+  if (!name && !address && !office_phone) return null;
+  return { name, address, office_phone };
+}
+
 export function normalizeContactDirectory(raw: unknown): ContactDirectorySettings {
   const base = defaultContactDirectory();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
@@ -226,7 +301,14 @@ export function normalizeContactDirectory(raw: unknown): ContactDirectorySetting
           .filter((a): a is ArchitectEntry => a !== null),
       )
     : [];
-  return { material_vendors, architects };
+  const general_contractors = Array.isArray(o[GCS_KEY])
+    ? dedupeGeneralContractors(
+        (o[GCS_KEY] as unknown[])
+          .map(coerceGc)
+          .filter((g): g is GcEntry => g !== null),
+      )
+    : [];
+  return { material_vendors, architects, general_contractors };
 }
 
 export async function loadContactDirectory(userId: string): Promise<ContactDirectorySettings> {
@@ -234,6 +316,7 @@ export async function loadContactDirectory(userId: string): Promise<ContactDirec
   return normalizeContactDirectory({
     [VENDORS_KEY]: raw[VENDORS_KEY],
     [ARCHITECTS_KEY]: raw[ARCHITECTS_KEY],
+    [GCS_KEY]: raw[GCS_KEY],
   });
 }
 
@@ -248,7 +331,12 @@ export async function saveContactDirectory(
     [ARCHITECTS_KEY]: dedupeArchitects(
       data.architects.filter((a) => a.company.trim() || a.address.trim()),
     ),
+    [GCS_KEY]: dedupeGeneralContractors(
+      data.general_contractors.filter(
+        (g) => g.name.trim() || g.address.trim() || g.office_phone.trim(),
+      ),
+    ),
   });
 }
 
-export { emptyMaterialVendor, emptyArchitectEntry };
+export { emptyMaterialVendor, emptyArchitectEntry, emptyGcEntry };

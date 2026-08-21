@@ -2,12 +2,15 @@ import { useState } from "react";
 import { GcContactLine } from "./GcContactLine";
 import { DashboardTablerIcon } from "./DashboardTablerIcon";
 import {
+  billingDueDayLabel,
   frpJobLabel,
   hasDistinctFrpContract,
   hasDistinctTrackContract,
   hasDistinctWcContract,
   icbiSuperEmail,
   icbiSuperintendent,
+  jobFullAddressOneLine,
+  normalizeBillingDueDay,
   trackJobLabel,
   wcTrackerJobLabel,
 } from "../../lib/jobInfo";
@@ -77,6 +80,9 @@ export function ProjectDashboardHeader({
   ).filter((c) => c.name || c.phone || c.email);
 
   const trackerFlags = paintTrackerActiveFlags(paintTracker);
+  const jobAddress = jobFullAddressOneLine(project, j);
+  const billingDueDay = normalizeBillingDueDay(j.billing_due_day);
+  const billingDueLabel = billingDueDay ? billingDueDayLabel(billingDueDay) : "";
 
   return (
     <header className="card job-dashboard-header job-dashboard-header--snapshot">
@@ -109,6 +115,9 @@ export function ProjectDashboardHeader({
             Edit job info
           </button>
         </div>
+        {jobAddress ? (
+          <p className="job-dashboard-address muted small">{jobAddress}</p>
+        ) : null}
 
         <div className="job-dashboard-pills" role="list">
           {attentionCount > 0 && (
@@ -210,6 +219,12 @@ export function ProjectDashboardHeader({
 
         <SubmittalPipelineStepper tracker={paintTracker} />
       </div>
+      {billingDueLabel ? (
+        <div className="job-dashboard-billing-due" title={`Billing due on the ${billingDueLabel} of each month`}>
+          <span className="job-dashboard-billing-due-label">Billing Due</span>
+          <span className="job-dashboard-billing-due-day">{billingDueLabel}</span>
+        </div>
+      ) : null}
     </header>
   );
 }

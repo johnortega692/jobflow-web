@@ -46,7 +46,7 @@ export function ProjectOverviewPage() {
       const nextProject = { ...project, data: blob as Json };
       setStartupItems(parseDashboardStartupItems(nextProject));
     })();
-  }, [projectId, activityRefreshKey, project.jobInfo.public_works, project.jobInfo.start_date, project.jobInfo.first_furnishing_date]);
+  }, [projectId, activityRefreshKey, project.jobInfo.public_works, project.jobInfo.start_date]);
 
   const paintTracker = useMemo(() => resolveDashboardPaintTracker(project), [project]);
   const submittalStage = paintSubmittalStageLabel(paintTracker);

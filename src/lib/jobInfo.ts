@@ -10,6 +10,46 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
+/** Day of month 1–31 for Billing Due; accepts bare day or a legacy full date. */
+export function normalizeBillingDueDay(raw: unknown): string {
+  const s = str(raw).trim();
+  if (!s) return "";
+  if (/^\d{1,2}$/.test(s)) {
+    const n = Number(s);
+    if (n >= 1 && n <= 31) return String(n);
+    return "";
+  }
+  const iso = s.match(/^\d{4}-\d{2}-(\d{2})/);
+  if (iso) {
+    const n = Number(iso[1]);
+    if (n >= 1 && n <= 31) return String(n);
+  }
+  const slash = s.match(/\/(\d{1,2})(?:\D|$)/);
+  if (slash) {
+    const n = Number(slash[1]);
+    if (n >= 1 && n <= 31) return String(n);
+  }
+  return "";
+}
+
+/** Display label for billing due day, e.g. "15th". */
+export function billingDueDayLabel(day: string): string {
+  const n = Number(normalizeBillingDueDay(day));
+  if (!n) return "";
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
 /** Parse job_info from projects.data, seeded from top-level columns when empty. */
 export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contractor" | "architect" | "owner" | "job_address2">): JobInfoData {
   const base = defaultJobInfo();
@@ -27,6 +67,7 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     start_date: str(o.start_date),
     end_date: str(o.end_date),
     first_furnishing_date: str(o.first_furnishing_date),
+    billing_due_day: normalizeBillingDueDay(o.billing_due_day ?? o.billing_due_date),
     public_works: Boolean(o.public_works),
     scope_of_out_work: str(o.scope_of_out_work),
     project_description: str(o.project_description),

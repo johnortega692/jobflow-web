@@ -30,7 +30,7 @@ const SETTINGS_TABS = [
   { id: "users", label: "User approvals", adminOnly: true as const },
   { id: "completed-projects", label: "Completed projects", adminOnly: true as const },
   { id: "project-staff", label: "Project staff", adminOnly: true as const },
-  { id: "vendors", label: "Vendors & architects" },
+  { id: "vendors", label: "Vendors, architects & GCs" },
   { id: "delivery", label: "Delivery" },
   { id: "google", label: "Google Sheets", adminOnly: true as const },
   { id: "budget", label: "Budget", adminOnly: true as const },

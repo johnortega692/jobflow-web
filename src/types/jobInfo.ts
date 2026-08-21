@@ -10,8 +10,10 @@ export type JobInfoData = {
   contract_amount: string;
   start_date: string;
   end_date: string;
-  /** Date labor or materials were first furnished (prelim notice deadline). */
+  /** @deprecated Unused in web UI — prelim notice uses start_date. Kept for legacy job_info JSON. */
   first_furnishing_date: string;
+  /** Web-only: day of month billing is due (1–31). */
+  billing_due_day: string;
   /** Public works projects — enables DIR / certified payroll checklist items. */
   public_works: boolean;
   scope_of_out_work: string;
@@ -96,6 +98,7 @@ export function defaultJobInfo(): JobInfoData {
     start_date: "",
     end_date: "",
     first_furnishing_date: "",
+    billing_due_day: "",
     public_works: false,
     scope_of_out_work: "",
     project_description: "",

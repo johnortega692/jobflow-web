@@ -16,6 +16,10 @@ import {
   type WeeklyDigestKind,
 } from "../../lib/trackerWeeklyDigest";
 import { sendSiteReadyDigest } from "../../lib/startupSiteReadyDigest";
+import {
+  loadProjectsForBillingDueDigest,
+  sendBillingDueDigest,
+} from "../../lib/billingDueDigest";
 import type { LetterheadSettings } from "../../types/letterheadSettings";
 import {
   DEFAULT_TRACKER_EMAIL_SCHEDULE,
@@ -183,6 +187,84 @@ export function WeeklyDigestSection({
           onClick={() => void sendDigest("site_ready")}
         >
           {digestSending === "site_ready" ? "Sending…" : "Send Monday site-ready digest now"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function BillingDueDigestSection({
+  data,
+  letterhead,
+  brandingCompanyName,
+}: {
+  data: PaintUserSettings;
+  letterhead: LetterheadSettings;
+  brandingCompanyName: string;
+}) {
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
+  const profile = profileFromSettings(letterhead);
+  const primaryEmail = profile.email.trim();
+  const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
+
+  async function sendNow() {
+    setSending(true);
+    setMessage(null);
+    setError(null);
+
+    if (!gasUrl) {
+      setError("Set Dashboard Web App URL in Settings → Google Sheets.");
+      setSending(false);
+      return;
+    }
+    if (!primaryEmail) {
+      setError("Set email on your Profile (Settings → Profile & letterhead).");
+      setSending(false);
+      return;
+    }
+
+    try {
+      const { projects, error: loadError } = await loadProjectsForBillingDueDigest();
+      if (loadError) throw new Error(loadError);
+      const result = await sendBillingDueDigest({
+        projects,
+        primaryEmail,
+        primaryName: profile.name.trim() || "PM",
+        companyName,
+        companyAddress: letterhead.company_address,
+        fromName: `${companyName} Dashboard`.trim(),
+        gasUrl,
+        logoUrl: letterhead.logo_url,
+      });
+      setMessage(
+        result.sent
+          ? `Billing due email sent (${result.count} job${result.count === 1 ? "" : "s"}).`
+          : "Billing due email: no jobs due today.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send billing due email.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="stack">
+      <h2>Billing due</h2>
+      <p className="muted small">
+        Separate email for jobs whose Job info <strong>Billing Due</strong> day matches today. To: your Profile
+        email. CC: ICBI super and foreman from each job&apos;s setup.
+      </p>
+      {(error || message) && (
+        <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
+      )}
+      <div className="row-gap wrap">
+        <button type="button" className="btn btn-secondary" disabled={sending} onClick={() => void sendNow()}>
+          {sending ? "Sending…" : "Send billing due email now"}
         </button>
       </div>
     </section>
@@ -376,7 +458,20 @@ export function ScheduledEmailSection({
             />
             Upcoming installs (14 days)
           </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={schedule.daily.billing_due}
+              disabled={!schedule.daily.enabled}
+              onChange={(e) => patchDaily({ billing_due: e.target.checked })}
+            />
+            Billing due (own email when day matches)
+          </label>
         </div>
+        <p className="muted small" style={{ margin: 0 }}>
+          Billing due runs with the daily cron and only sends when at least one job&apos;s Billing Due day is
+          today.
+        </p>
       </div>
 
       <div className="stack">

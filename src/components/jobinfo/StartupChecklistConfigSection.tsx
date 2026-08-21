@@ -161,7 +161,7 @@ export function StartupChecklistConfigSection({ value, jobInfo, onChange, embedd
                     <div className="startup-config-due stack">
                       <p className="muted small startup-config-prelim-math" style={{ margin: 0 }}>
                         {prelimExplanation ??
-                          "Calculated deadline: set start date or first furnishing date in Job info (+ 20 calendar days)."}
+                          "Calculated deadline: set estimated start date in Job info (+ 20 calendar days)."}
                       </p>
                       {item.dueDateOverride ? (
                         <label>

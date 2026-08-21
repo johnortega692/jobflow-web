@@ -1,15 +1,17 @@
 import { normalizeLetterheadSettings } from "../types/letterheadSettings";
+import { createCronEmailPoster, isResendConfigured } from "./cronEmailSend";
 import { loadAllProjectsAdmin } from "./loadAllProjectsAdmin";
 import { loadEffectiveUserSettingsAdmin, loadOrgSettingsBlobAdmin } from "./orgSettingsAdmin";
 import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad";
 import { profileFromSettings } from "./userProfile";
-import { sendFollowUpReminderViaGasDirect, followUpReminderHasContent } from "./trackerFollowUpReminders";
-import type { TrackerEmailCronSlot } from "./trackerEmailSchedule";
-import { sendWeeklyTrackerDigestViaGasDirect } from "./trackerWeeklyDigest";
 import {
-  sendSiteReadyDigestViaGasDirect,
-  siteReadyDigestHasContent,
-} from "./startupSiteReadyDigest";
+  sendBillingDueDigest,
+  billingDueDigestHasContent,
+} from "./billingDueDigest";
+import { sendFollowUpReminder, followUpReminderHasContent } from "./trackerFollowUpReminders";
+import type { TrackerEmailCronSlot } from "./trackerEmailSchedule";
+import { sendWeeklyTrackerDigest } from "./trackerWeeklyDigest";
+import { sendSiteReadyDigest, siteReadyDigestHasContent } from "./startupSiteReadyDigest";
 import { listTrackerCronTargets, ORG_TRACKER_CRON_TARGET } from "./userSettingsAdmin";
 
 export type CronRunResult = {
@@ -61,7 +63,10 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
   const result: CronRunResult = { slot, usersProcessed: 0, sent: [], skipped: [], errors: [] };
 
   const targetIds = await listTrackerCronTargets();
-  if (!targetIds.length) return result;
+  if (!targetIds.length) {
+    result.skipped.push("no cron targets (enable Scheduled emails master switch and Save)");
+    return result;
+  }
 
   const { projects, error: projectsError } = await loadAllProjectsAdmin();
   if (projectsError) throw new Error(projectsError);
@@ -81,14 +86,17 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
       }
 
       const gasUrl = (paint.google_urls.paint_tracker ?? "").trim();
+      const resendOk = isResendConfigured();
       const { email: primaryEmail, name: primaryName } = resolvePrimaryRecipient(raw, paint, isOrgRun);
-      if (!gasUrl) {
-        result.skipped.push(`${label}: missing Dashboard Web App URL`);
+      if (!gasUrl && !resendOk) {
+        result.skipped.push(
+          `${label}: missing Dashboard Web App URL (and Resend not configured on Vercel)`,
+        );
         continue;
       }
       if (!primaryEmail) {
         result.skipped.push(
-          `${label}: missing ${isOrgRun ? "notification primary email in Paint & email settings" : "profile email"}`,
+          `${label}: missing ${isOrgRun ? "notification primary email in Settings → Schedules" : "profile email"}`,
         );
         continue;
       }
@@ -96,6 +104,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
       applyTimezone(schedule.timezone);
       const letterhead = normalizeLetterheadSettings(raw);
       const companyName = letterhead.company_name.trim() || "JobFlow";
+      const gasPost = createCronEmailPoster(gasUrl);
       const sendBase = {
         projects,
         primaryEmail,
@@ -103,14 +112,15 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         companyName,
         companyAddress: letterhead.company_address,
         fromName: `${companyName} Dashboard`.trim(),
-        gasUrl,
+        gasUrl: gasUrl || "resend",
         logoUrl: letterhead.logo_url,
+        gasPost,
       };
 
       if (slot === "daily" && schedule.daily.enabled) {
         if (schedule.daily.paint_followup) {
           if (followUpReminderHasContent("paint", projects)) {
-            await sendFollowUpReminderViaGasDirect({ kind: "paint", ...sendBase });
+            await sendFollowUpReminder({ kind: "paint", ...sendBase });
             result.sent.push(`${label}: paint follow-up`);
           } else {
             result.skipped.push(`${label}: paint follow-up (nothing due)`);
@@ -118,7 +128,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         }
         if (schedule.daily.wallcovering_followup) {
           if (followUpReminderHasContent("wallcovering", projects)) {
-            await sendFollowUpReminderViaGasDirect({ kind: "wallcovering", ...sendBase });
+            await sendFollowUpReminder({ kind: "wallcovering", ...sendBase });
             result.sent.push(`${label}: wallcovering follow-up`);
           } else {
             result.skipped.push(`${label}: wallcovering follow-up (nothing due)`);
@@ -126,10 +136,18 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         }
         if (schedule.daily.installs) {
           if (followUpReminderHasContent("installs", projects)) {
-            await sendFollowUpReminderViaGasDirect({ kind: "installs", ...sendBase });
+            await sendFollowUpReminder({ kind: "installs", ...sendBase });
             result.sent.push(`${label}: installs reminder`);
           } else {
             result.skipped.push(`${label}: installs (nothing upcoming)`);
+          }
+        }
+        if (schedule.daily.billing_due) {
+          if (billingDueDigestHasContent(projects)) {
+            await sendBillingDueDigest({ ...sendBase });
+            result.sent.push(`${label}: billing due digest`);
+          } else {
+            result.skipped.push(`${label}: billing due (nothing due today)`);
           }
         }
       } else if (slot === "daily" && !schedule.daily.enabled) {
@@ -138,11 +156,11 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
 
       if (slot === "weekly" && schedule.weekly.enabled) {
         if (schedule.weekly.combined_digest) {
-          await sendWeeklyTrackerDigestViaGasDirect({ kind: "combined", ...sendBase });
+          await sendWeeklyTrackerDigest({ kind: "combined", ...sendBase });
           result.sent.push(`${label}: combined weekly digest`);
         }
         if (schedule.weekly.wallcovering_digest) {
-          await sendWeeklyTrackerDigestViaGasDirect({ kind: "wallcovering", ...sendBase });
+          await sendWeeklyTrackerDigest({ kind: "wallcovering", ...sendBase });
           result.sent.push(`${label}: wallcovering weekly digest`);
         }
       } else if (slot === "weekly" && !schedule.weekly.enabled) {
@@ -154,7 +172,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
           result.skipped.push(`${label}: weekly schedule disabled (Monday site-ready)`);
         } else if (schedule.weekly.startup_site_ready) {
           if (siteReadyDigestHasContent(projects)) {
-            await sendSiteReadyDigestViaGasDirect({ ...sendBase });
+            await sendSiteReadyDigest({ ...sendBase });
             result.sent.push(`${label}: Monday site-ready digest`);
           } else {
             result.skipped.push(`${label}: Monday site-ready digest (nothing due)`);
