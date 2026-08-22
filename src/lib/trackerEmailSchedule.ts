@@ -10,7 +10,7 @@ export type TrackerEmailSchedule = {
     paint_followup: boolean;
     wallcovering_followup: boolean;
     installs: boolean;
-    /** Separate email on days that match Job info Billing Due day. */
+    /** Per-job email to ICBI PM 4 days before Billing Due day. */
     billing_due: boolean;
   };
   weekly: {
@@ -42,12 +42,18 @@ export const DEFAULT_TRACKER_EMAIL_SCHEDULE: TrackerEmailSchedule = {
 };
 
 export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedule {
-  const base = { ...DEFAULT_TRACKER_EMAIL_SCHEDULE };
+  const base = {
+    ...DEFAULT_TRACKER_EMAIL_SCHEDULE,
+    daily: { ...DEFAULT_TRACKER_EMAIL_SCHEDULE.daily },
+    weekly: { ...DEFAULT_TRACKER_EMAIL_SCHEDULE.weekly },
+  };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
   const o = raw as Record<string, unknown>;
 
   if (typeof o.enabled === "boolean") base.enabled = o.enabled;
   if (typeof o.timezone === "string" && o.timezone.trim()) base.timezone = o.timezone.trim();
+
+  let legacyWeeklyBillingDue: boolean | undefined;
 
   if (o.daily && typeof o.daily === "object" && !Array.isArray(o.daily)) {
     const d = o.daily as Record<string, unknown>;
@@ -69,6 +75,17 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
     }
     if (typeof w.startup_site_ready === "boolean") {
       base.weekly.startup_site_ready = w.startup_site_ready;
+    }
+    if (typeof w.billing_due === "boolean") legacyWeeklyBillingDue = w.billing_due;
+  }
+
+  // Migrate prior weekly month-list flag onto daily 4-day reminder.
+  if (legacyWeeklyBillingDue !== undefined) {
+    const d = o.daily && typeof o.daily === "object" && !Array.isArray(o.daily)
+      ? (o.daily as Record<string, unknown>)
+      : null;
+    if (!d || typeof d.billing_due !== "boolean") {
+      base.daily.billing_due = legacyWeeklyBillingDue;
     }
   }
 

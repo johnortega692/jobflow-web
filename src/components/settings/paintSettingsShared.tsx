@@ -17,6 +17,7 @@ import {
 } from "../../lib/trackerWeeklyDigest";
 import { sendSiteReadyDigest } from "../../lib/startupSiteReadyDigest";
 import {
+  BILLING_DUE_REMINDER_DAYS_BEFORE,
   loadProjectsForBillingDueDigest,
   sendBillingDueDigest,
 } from "../../lib/billingDueDigest";
@@ -154,10 +155,6 @@ export function WeeklyDigestSection({
   return (
     <section className="stack">
       <h2>Weekly digests</h2>
-      <p className="muted small">
-        Build a status email from all jobs in JobFlow and send now via Gmail. To: your Profile email. CC: ICBI
-        super and foreman emails from each job&apos;s setup.
-      </p>
       {(digestError || digestMessage) && (
         <div className={`banner ${digestError ? "banner-error" : "banner-ok"}`}>
           {digestError ?? digestMessage}
@@ -207,8 +204,6 @@ export function BillingDueDigestSection({
   const [error, setError] = useState<string | null>(null);
 
   const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
-  const profile = profileFromSettings(letterhead);
-  const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
   async function sendNow() {
@@ -221,30 +216,31 @@ export function BillingDueDigestSection({
       setSending(false);
       return;
     }
-    if (!primaryEmail) {
-      setError("Set email on your Profile (Settings → Profile & letterhead).");
-      setSending(false);
-      return;
-    }
 
     try {
       const { projects, error: loadError } = await loadProjectsForBillingDueDigest();
       if (loadError) throw new Error(loadError);
       const result = await sendBillingDueDigest({
         projects,
-        primaryEmail,
-        primaryName: profile.name.trim() || "PM",
         companyName,
         companyAddress: letterhead.company_address,
         fromName: `${companyName} Dashboard`.trim(),
         gasUrl,
         logoUrl: letterhead.logo_url,
       });
-      setMessage(
-        result.sent
-          ? `Billing due email sent (${result.count} job${result.count === 1 ? "" : "s"}).`
-          : "Billing due email: no jobs due today.",
-      );
+      if (!result.sent) {
+        setMessage(
+          `Billing due: no jobs are ${BILLING_DUE_REMINDER_DAYS_BEFORE} days from their Billing Due day today.`,
+        );
+      } else {
+        const skipped =
+          result.skippedNoPm > 0
+            ? ` (${result.skippedNoPm} job${result.skippedNoPm === 1 ? "" : "s"} skipped — no ICBI PM email)`
+            : "";
+        setMessage(
+          `Billing due reminder sent to ${result.pmCount} ICBI PM${result.pmCount === 1 ? "" : "s"} (${result.count} job${result.count === 1 ? "" : "s"})${skipped}.`,
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not send billing due email.");
     } finally {
@@ -255,16 +251,12 @@ export function BillingDueDigestSection({
   return (
     <section className="stack">
       <h2>Billing due</h2>
-      <p className="muted small">
-        Separate email for jobs whose Job info <strong>Billing Due</strong> day matches today. To: your Profile
-        email. CC: ICBI super and foreman from each job&apos;s setup.
-      </p>
       {(error || message) && (
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
       )}
       <div className="row-gap wrap">
         <button type="button" className="btn btn-secondary" disabled={sending} onClick={() => void sendNow()}>
-          {sending ? "Sending…" : "Send billing due email now"}
+          {sending ? "Sending…" : `Send ${BILLING_DUE_REMINDER_DAYS_BEFORE}-day billing reminders now`}
         </button>
       </div>
     </section>
@@ -335,11 +327,6 @@ export function FollowUpRemindersSection({
   return (
     <section className="stack">
       <h2>Follow-up &amp; install reminders</h2>
-      <p className="muted small">
-        Daily-style reminders from follow-up dates on paint tracker and wallcovering lines, plus upcoming
-        install dates (next 14 days). To: your Profile email. CC: ICBI super and foreman from each job&apos;s
-        setup. Sends only when there is something due or upcoming.
-      </p>
       {(statusError || status) && (
         <div className={`banner ${statusError ? "banner-error" : "banner-ok"}`}>
           {statusError ?? status}
@@ -397,11 +384,6 @@ export function ScheduledEmailSection({
   return (
     <section className="stack">
       <h2>Scheduled emails (automatic)</h2>
-      <p className="muted small">
-        When enabled, Vercel runs the same emails as the manual buttons above on a fixed UTC schedule.
-        Requires <strong>SUPABASE_SERVICE_ROLE_KEY</strong> and <strong>CRON_SECRET</strong> on Vercel (see
-        DEPLOY.md).
-      </p>
       <label className="check">
         <input
           type="checkbox"
@@ -465,12 +447,12 @@ export function ScheduledEmailSection({
               disabled={!schedule.daily.enabled}
               onChange={(e) => patchDaily({ billing_due: e.target.checked })}
             />
-            Billing due (own email when day matches)
+            Billing due (ICBI PM, 4 days before)
           </label>
         </div>
         <p className="muted small" style={{ margin: 0 }}>
-          Billing due runs with the daily cron and only sends when at least one job&apos;s Billing Due day is
-          today.
+          Billing due runs daily and emails each job&apos;s ICBI PM exactly 4 days before that job&apos;s Billing
+          Due day.
         </p>
       </div>
 

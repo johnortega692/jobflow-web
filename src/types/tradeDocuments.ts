@@ -703,6 +703,29 @@ export const REVISED_SUBMITTAL_TYPES: { id: TradeSubmittalType; label: string; h
   },
 ];
 
+/** Same type ids as paint revisions; wallcovering-facing labels for Start revision from history. */
+export const REVISED_WALLCOVERING_SUBMITTAL_TYPES: {
+  id: TradeSubmittalType;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    id: "revised",
+    label: "Revised wallcovering",
+    hint: "Changes to products already on the original submittal",
+  },
+  {
+    id: "new",
+    label: "New wallcovering",
+    hint: "Additional wallcovering items added to the original package",
+  },
+  {
+    id: "substitution",
+    label: "Material substitution",
+    hint: "Replace an approved material on the same label",
+  },
+];
+
 export const WALLCOVERING_SUBMITTAL_TYPES: { id: TradeSubmittalType; label: string }[] = [
   { id: "new", label: "New wallcovering" },
   { id: "revised", label: "Revised" },

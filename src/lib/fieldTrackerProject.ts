@@ -83,6 +83,10 @@ function wcNameFromItem(item: WallcoveringItem): string {
   return [item.manufacturer, item.product, item.color].filter((p) => p.trim()).join(" ").trim();
 }
 
+function normalizeWcMatchKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function linesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
   const defaults = defaultWcTrackerLineFields();
   return items
@@ -98,6 +102,123 @@ function linesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
 
 export function buildWcTrackerLinesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
   return linesFromSubmittal(items);
+}
+
+export type MergeWcTrackerFromSubmittalResult = {
+  lines: WcTrackerLineState[];
+  added: number;
+  updated: number;
+  unchanged: number;
+};
+
+/**
+ * Merge submittal items into Material Tracker lines.
+ * Matching rows keep lead times, dates, and stage flags; new items are appended.
+ * Tracker-only rows (not on the submittal) are kept.
+ */
+export function mergeWcTrackerLinesFromSubmittal(
+  existing: WcTrackerLineState[],
+  items: WallcoveringItem[],
+): MergeWcTrackerFromSubmittalResult {
+  const submittable = items.filter(
+    (i) => i.label.trim() || i.product.trim() || i.manufacturer.trim(),
+  );
+  if (!submittable.length) {
+    return { lines: existing, added: 0, updated: 0, unchanged: existing.length };
+  }
+
+  const unused = [...existing];
+  const merged: WcTrackerLineState[] = [];
+  let added = 0;
+  let updated = 0;
+
+  function takeMatch(label: string, name: string): WcTrackerLineState | null {
+    const labelKey = normalizeWcMatchKey(label);
+    if (labelKey) {
+      const byLabel = unused.findIndex((l) => normalizeWcMatchKey(l.label) === labelKey);
+      if (byLabel >= 0) return unused.splice(byLabel, 1)[0] ?? null;
+    }
+    const nameKey = normalizeWcMatchKey(name);
+    if (nameKey) {
+      const byName = unused.findIndex((l) => normalizeWcMatchKey(l.wallcoveringName) === nameKey);
+      if (byName >= 0) return unused.splice(byName, 1)[0] ?? null;
+    }
+    return null;
+  }
+
+  for (let index = 0; index < submittable.length; index += 1) {
+    const item = submittable[index]!;
+    const label = item.label.trim();
+    const wallcoveringName = wcNameFromItem(item) || item.product.trim();
+    const match = takeMatch(label, wallcoveringName);
+    if (match) {
+      const next: WcTrackerLineState = {
+        ...match,
+        label: label || match.label,
+        wallcoveringName: wallcoveringName || match.wallcoveringName,
+        panels: Boolean(item.panels),
+      };
+      if (
+        next.label !== match.label ||
+        next.wallcoveringName !== match.wallcoveringName ||
+        next.panels !== match.panels
+      ) {
+        updated += 1;
+      }
+      merged.push(next);
+    } else {
+      added += 1;
+      merged.push({
+        id: `wc-${Date.now().toString(36)}-${index}`,
+        label,
+        wallcoveringName,
+        ...defaultWcTrackerLineFields(),
+        panels: Boolean(item.panels),
+      });
+    }
+  }
+
+  return {
+    lines: [...merged, ...unused],
+    added,
+    updated,
+    unchanged: unused.length,
+  };
+}
+
+/** Load existing WC tracker lines, merge from submittal items, and save. */
+export async function updateWcTrackerFromSubmittalItems(
+  projectId: string,
+  items: WallcoveringItem[],
+): Promise<{ error: string | null; added: number; updated: number; total: number }> {
+  const submittable = items.filter(
+    (i) => i.label.trim() || i.product.trim() || i.manufacturer.trim(),
+  );
+  if (!submittable.length) {
+    return { error: null, added: 0, updated: 0, total: 0 };
+  }
+
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return { error, added: 0, updated: 0, total: 0 };
+
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const existing = normalizeWcTrackerLines(trade.wc_tracker_lines);
+  const { lines, added, updated } = mergeWcTrackerLinesFromSubmittal(existing, items);
+
+  if (added === 0 && updated === 0) {
+    return { error: null, added: 0, updated: 0, total: lines.length };
+  }
+
+  const summaryParts = [
+    added ? `added ${added}` : null,
+    updated ? `updated ${updated}` : null,
+  ].filter(Boolean);
+  const summary = summaryParts.length
+    ? `Material Tracker updated from submittal (${summaryParts.join(", ")})`
+    : "Material Tracker updated from submittal";
+
+  const saveErr = await saveWcTrackerLines(projectId, lines, summary);
+  return { error: saveErr, added, updated, total: lines.length };
 }
 
 export function resolvePaintTracker(trade: ProjectTradeData): PaintTrackerState {

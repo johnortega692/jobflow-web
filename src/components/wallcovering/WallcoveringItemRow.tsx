@@ -223,7 +223,7 @@ export function WallcoveringItemRow({
                 checked={item.include_in_submittal}
                 onChange={(e) => onChange({ include_in_submittal: e.target.checked })}
               />
-              Submittal
+              Sub.
             </label>
             {showFloor && (
               <label className="wc-inline-floor">

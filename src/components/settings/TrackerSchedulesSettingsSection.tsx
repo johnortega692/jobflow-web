@@ -76,11 +76,6 @@ export function TrackerSchedulesSettingsSection({
 
       <section className="stack">
         <h2>Recipients</h2>
-        <p className="muted small">
-          <strong>Scheduled (automatic) emails</strong> go To the notification primary address below.
-          <strong> Manual</strong> Send now buttons use your Profile email. <strong>CC</strong> uses ICBI super
-          and foreman from each job&apos;s setup.
-        </p>
         <label>
           Notification primary name
           <input

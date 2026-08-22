@@ -20,7 +20,7 @@ import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
 import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
 import { queuePendingItem } from "../lib/transmittalHelpers";
-import { buildWcTrackerLinesFromSubmittal, saveWcTrackerLines, syncWcSubmittalOrdered } from "../lib/fieldTrackerProject";
+import { updateWcTrackerFromSubmittalItems, syncWcSubmittalOrdered } from "../lib/fieldTrackerProject";
 import {
   applyGotTrackToggle,
   detectGotTrack,
@@ -120,10 +120,20 @@ export function WallcoveringSubmittalsPage() {
         setHistory(nextHistory);
         syncBaseline({ draft: nextDraft, history: nextHistory });
         setError(null);
+        const tracker = await updateWcTrackerFromSubmittalItems(projectId, nextDraft.items);
+        if (tracker.error) {
+          setStatus(`Saved submittal. Material Tracker update failed: ${tracker.error}`);
+        } else if (tracker.added || tracker.updated) {
+          const parts = [
+            tracker.added ? `added ${tracker.added}` : null,
+            tracker.updated ? `updated ${tracker.updated}` : null,
+          ].filter(Boolean);
+          setStatus(`Saved. Material Tracker ${parts.join(", ")}.`);
+        }
       }
       return ok;
     },
-    [history, tradeData, save, setError, syncBaseline],
+    [history, tradeData, save, setError, syncBaseline, projectId],
   );
 
   const onDiscardUnsaved = useCallback(() => {
@@ -543,28 +553,33 @@ export function WallcoveringSubmittalsPage() {
     setSamplesOpen(true);
   }
 
-  async function onCopyToTracker() {
+  async function onUpdateMaterialTracker() {
     setTrackerBusy(true);
     setError(null);
     setStatus(null);
     try {
-      const lines = buildWcTrackerLinesFromSubmittal(draft.items);
-      if (!lines.length) {
-        setError("No wallcovering items with data to copy.");
+      const result = await updateWcTrackerFromSubmittalItems(projectId, draft.items);
+      if (result.error) {
+        setError(result.error);
         return;
       }
-      const saveErr = await saveWcTrackerLines(
-        projectId,
-        lines,
-        `Copied ${lines.length} wallcovering line${lines.length === 1 ? "" : "s"} from submittal`,
+      if (!result.added && !result.updated) {
+        if (!draft.items.some((i) => i.label.trim() || i.product.trim() || i.manufacturer.trim())) {
+          setError("No wallcovering items with data to update.");
+          return;
+        }
+        setStatus("Material Tracker already up to date (lead times and dates kept).");
+        return;
+      }
+      const parts = [
+        result.added ? `added ${result.added}` : null,
+        result.updated ? `updated ${result.updated}` : null,
+      ].filter(Boolean);
+      setStatus(
+        `Material Tracker updated (${parts.join(", ")}). Existing lead times and dates were kept.`,
       );
-      if (saveErr) {
-        setError(saveErr);
-        return;
-      }
-      setStatus(`Copied ${lines.length} line${lines.length === 1 ? "" : "s"} to Job Tracker → Wallcovering.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save tracker lines.");
+      setError(e instanceof Error ? e.message : "Could not update Material Tracker.");
     } finally {
       setTrackerBusy(false);
     }
@@ -693,15 +708,16 @@ export function WallcoveringSubmittalsPage() {
               checked={Boolean(draft.submittal_ordered)}
               onChange={(e) => void onSubmittalOrderedChange(e.target.checked)}
             />
-            Ordered
+            Submittal Ordered
           </label>
           <button
             type="button"
             className="btn btn-secondary"
             disabled={trackerBusy}
-            onClick={() => void onCopyToTracker()}
+            title="Adds new submittal items to Material Tracker and refreshes names. Keeps lead times, dates, and stage checkboxes on matching labels."
+            onClick={() => void onUpdateMaterialTracker()}
           >
-            {trackerBusy ? "Saving…" : "Copy to Job Tracker"}
+            {trackerBusy ? "Updating…" : "Update Material Tracker"}
           </button>
         </div>
       </section>

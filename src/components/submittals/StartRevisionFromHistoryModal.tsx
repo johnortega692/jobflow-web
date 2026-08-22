@@ -9,6 +9,7 @@ import {
 import { buildRevisionDraftFromHistory } from "../../lib/startRevisionFromHistory";
 import {
   REVISED_SUBMITTAL_TYPES,
+  REVISED_WALLCOVERING_SUBMITTAL_TYPES,
   type PaintSubmittalData,
   type SubmittalHistoryEntry,
   type SubmittalIssueStatus,
@@ -67,6 +68,8 @@ export function StartRevisionFromHistoryModal({
       ),
     [scopedHistory, targetSubmittalNum, currentDraft],
   );
+
+  const typeOptions = scope === "paint" ? REVISED_SUBMITTAL_TYPES : REVISED_WALLCOVERING_SUBMITTAL_TYPES;
 
   const title =
     scope === "paint" ? "Start revision from history" : "Start wallcovering revision from history";
@@ -132,7 +135,7 @@ export function StartRevisionFromHistoryModal({
 
             <section className="stack revised-section">
               <p className="paint-col-head">Submittal type</p>
-              {REVISED_SUBMITTAL_TYPES.map((t) => (
+              {typeOptions.map((t) => (
                 <label key={t.id} className="check revised-type-option">
                   <input
                     type="radio"

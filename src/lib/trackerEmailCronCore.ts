@@ -94,7 +94,15 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         );
         continue;
       }
-      if (!primaryEmail) {
+
+      const dailyBillingOnly =
+        slot === "daily" &&
+        schedule.daily.enabled &&
+        schedule.daily.billing_due &&
+        !schedule.daily.paint_followup &&
+        !schedule.daily.wallcovering_followup &&
+        !schedule.daily.installs;
+      if (!primaryEmail && !dailyBillingOnly) {
         result.skipped.push(
           `${label}: missing ${isOrgRun ? "notification primary email in Settings → Schedules" : "profile email"}`,
         );
@@ -119,7 +127,9 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
 
       if (slot === "daily" && schedule.daily.enabled) {
         if (schedule.daily.paint_followup) {
-          if (followUpReminderHasContent("paint", projects)) {
+          if (!primaryEmail) {
+            result.skipped.push(`${label}: paint follow-up skipped (no primary email)`);
+          } else if (followUpReminderHasContent("paint", projects)) {
             await sendFollowUpReminder({ kind: "paint", ...sendBase });
             result.sent.push(`${label}: paint follow-up`);
           } else {
@@ -127,7 +137,9 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
           }
         }
         if (schedule.daily.wallcovering_followup) {
-          if (followUpReminderHasContent("wallcovering", projects)) {
+          if (!primaryEmail) {
+            result.skipped.push(`${label}: wallcovering follow-up skipped (no primary email)`);
+          } else if (followUpReminderHasContent("wallcovering", projects)) {
             await sendFollowUpReminder({ kind: "wallcovering", ...sendBase });
             result.sent.push(`${label}: wallcovering follow-up`);
           } else {
@@ -135,7 +147,9 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
           }
         }
         if (schedule.daily.installs) {
-          if (followUpReminderHasContent("installs", projects)) {
+          if (!primaryEmail) {
+            result.skipped.push(`${label}: installs skipped (no primary email)`);
+          } else if (followUpReminderHasContent("installs", projects)) {
             await sendFollowUpReminder({ kind: "installs", ...sendBase });
             result.sent.push(`${label}: installs reminder`);
           } else {
@@ -144,10 +158,14 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         }
         if (schedule.daily.billing_due) {
           if (billingDueDigestHasContent(projects)) {
-            await sendBillingDueDigest({ ...sendBase });
-            result.sent.push(`${label}: billing due digest`);
+            const billing = await sendBillingDueDigest({ ...sendBase });
+            result.sent.push(
+              `${label}: billing due 4-day reminder (${billing.pmCount} PM${billing.pmCount === 1 ? "" : "s"})`,
+            );
           } else {
-            result.skipped.push(`${label}: billing due (nothing due today)`);
+            result.skipped.push(
+              `${label}: billing due (no jobs 4 days from due with ICBI PM email)`,
+            );
           }
         }
       } else if (slot === "daily" && !schedule.daily.enabled) {
@@ -156,12 +174,20 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
 
       if (slot === "weekly" && schedule.weekly.enabled) {
         if (schedule.weekly.combined_digest) {
-          await sendWeeklyTrackerDigest({ kind: "combined", ...sendBase });
-          result.sent.push(`${label}: combined weekly digest`);
+          if (!primaryEmail) {
+            result.skipped.push(`${label}: combined digest skipped (no primary email)`);
+          } else {
+            await sendWeeklyTrackerDigest({ kind: "combined", ...sendBase });
+            result.sent.push(`${label}: combined weekly digest`);
+          }
         }
         if (schedule.weekly.wallcovering_digest) {
-          await sendWeeklyTrackerDigest({ kind: "wallcovering", ...sendBase });
-          result.sent.push(`${label}: wallcovering weekly digest`);
+          if (!primaryEmail) {
+            result.skipped.push(`${label}: wallcovering digest skipped (no primary email)`);
+          } else {
+            await sendWeeklyTrackerDigest({ kind: "wallcovering", ...sendBase });
+            result.sent.push(`${label}: wallcovering weekly digest`);
+          }
         }
       } else if (slot === "weekly" && !schedule.weekly.enabled) {
         result.skipped.push(`${label}: weekly schedule disabled`);
@@ -171,7 +197,9 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         if (!schedule.weekly.enabled) {
           result.skipped.push(`${label}: weekly schedule disabled (Monday site-ready)`);
         } else if (schedule.weekly.startup_site_ready) {
-          if (siteReadyDigestHasContent(projects)) {
+          if (!primaryEmail) {
+            result.skipped.push(`${label}: Monday site-ready skipped (no primary email)`);
+          } else if (siteReadyDigestHasContent(projects)) {
             await sendSiteReadyDigest({ ...sendBase });
             result.sent.push(`${label}: Monday site-ready digest`);
           } else {
