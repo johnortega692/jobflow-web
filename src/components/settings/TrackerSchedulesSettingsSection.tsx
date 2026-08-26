@@ -104,13 +104,13 @@ export function TrackerSchedulesSettingsSection({
             Scheduled digests will not send until this email is set.
           </p>
         )}
-        {!(data.google_urls.paint_tracker ?? "").trim() && (
+        {!(data.google_urls.field_request_order ?? "").trim() ? (
           <p className="muted small">
-            Dashboard Web App URL is empty (Settings → Google Sheets). Cron can still send via Resend if{" "}
-            <code>RESEND_API_KEY</code> and <code>EMAIL_FROM</code> are set on Vercel; otherwise configure the
-            Dashboard URL.
+            {(data.google_urls.paint_tracker ?? "").trim()
+              ? "Field Request Order URL is empty — scheduled digests will try Dashboard Web App URL, then Resend. Prefer setting Field Request Order URL to match working Field Tools emails."
+              : "Field Request Order URL is empty (Settings → Google Sheets). Digests use the same Apps Script as Field Tools (sendOrderEmail). Cron can still fall back to Dashboard Web App URL or Resend if RESEND_API_KEY and EMAIL_FROM are set on Vercel."}
           </p>
-        )}
+        ) : null}
       </section>
 
       <WeeklyDigestSection

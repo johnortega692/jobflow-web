@@ -1,4 +1,4 @@
-/** Session-only manpower cost calculator — localStorage, not project billing. */
+/** Manpower cost calculator helpers (formatting, rates, POC billable). */
 
 export type CalculatorLaborRate = {
   id: string;
@@ -17,8 +17,6 @@ export type MonthCalculatorTotals = {
   billable: number;
   margin: number;
 };
-
-const STORAGE_PREFIX = "jobflow.manpowerCalc";
 
 function newId(prefix: string): string {
   const rand =
@@ -46,6 +44,11 @@ function normalizeRate(raw: unknown): CalculatorLaborRate | null {
     className,
     costRate,
   };
+}
+
+export function normalizeCalculatorLaborRates(raw: unknown): CalculatorLaborRate[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeRate).filter((r): r is CalculatorLaborRate => r != null);
 }
 
 function num(value: unknown): number {
@@ -101,52 +104,6 @@ export function parseMoney(raw: string): number {
 
 export function formatInputValue(value: number): string {
   return value > 0 ? String(Number(value.toFixed(2))) : "";
-}
-
-function laborRatesKey(projectId: string): string {
-  return `${STORAGE_PREFIX}.${projectId}.laborRates`;
-}
-
-function monthMaterialKey(projectId: string, monthKey: string): string {
-  return `${STORAGE_PREFIX}.${projectId}.months.${monthKey}`;
-}
-
-export function loadCalculatorLaborRates(projectId: string): CalculatorLaborRate[] {
-  try {
-    const raw = localStorage.getItem(laborRatesKey(projectId));
-    if (!raw) return defaultCalculatorLaborRates();
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return defaultCalculatorLaborRates();
-    const rates = parsed.map(normalizeRate).filter((r): r is CalculatorLaborRate => Boolean(r?.className));
-    return rates.length ? rates : defaultCalculatorLaborRates();
-  } catch {
-    return defaultCalculatorLaborRates();
-  }
-}
-
-export function saveCalculatorLaborRates(projectId: string, rates: CalculatorLaborRate[]): void {
-  const cleaned = rates.filter((r) => r.className.trim());
-  localStorage.setItem(laborRatesKey(projectId), JSON.stringify(cleaned.length ? cleaned : defaultCalculatorLaborRates()));
-}
-
-export function loadMonthMaterial(projectId: string, monthKey: string): MonthCalculatorMaterial {
-  try {
-    const raw = localStorage.getItem(monthMaterialKey(projectId, monthKey));
-    if (!raw) return { materialCost: 0 };
-    const o = JSON.parse(raw) as Record<string, unknown>;
-    return { materialCost: num(o.materialCost) };
-  } catch {
-    return { materialCost: 0 };
-  }
-}
-
-export function saveMonthMaterial(projectId: string, monthKey: string, material: MonthCalculatorMaterial): void {
-  localStorage.setItem(
-    monthMaterialKey(projectId, monthKey),
-    JSON.stringify({
-      materialCost: num(material.materialCost),
-    }),
-  );
 }
 
 export function deriveMonthCalculatorTotals(

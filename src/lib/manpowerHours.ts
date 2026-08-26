@@ -21,11 +21,15 @@ export function deriveWeekHours(billing: ProjectBillingData, weekStartIso: strin
   return { weekStartIso, hours, manWeeks: hoursToManWeeks(hours) };
 }
 
-export function deriveMonthlyHours(billing: ProjectBillingData, weekStarts: string[]): DerivedMonthHours[] {
+export function deriveMonthlyHours(
+  billing: ProjectBillingData,
+  weekStarts: string[],
+  phaseIds?: ReadonlySet<string>,
+): DerivedMonthHours[] {
   const periods = buildManpowerPeriods("month", weekStarts);
   return periods.map((period) => {
     const hours = period.weekStartIsos.reduce(
-      (sum, w) => sum + weekTotalHours(billing.manpowerCells, w),
+      (sum, w) => sum + weekTotalHours(billing.manpowerCells, w, phaseIds),
       0,
     );
     return {

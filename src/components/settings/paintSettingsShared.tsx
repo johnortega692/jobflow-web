@@ -21,12 +21,30 @@ import {
   loadProjectsForBillingDueDigest,
   sendBillingDueDigest,
 } from "../../lib/billingDueDigest";
+import {
+  createBrowserScheduleEmailPoster,
+  resolveScheduleEmailUrls,
+} from "../../lib/scheduleEmailSend";
 import type { LetterheadSettings } from "../../types/letterheadSettings";
 import {
   DEFAULT_TRACKER_EMAIL_SCHEDULE,
   TRACKER_CRON_UTC_SCHEDULE,
   type TrackerEmailSchedule,
 } from "../../lib/trackerEmailSchedule";
+
+function scheduleSendChannel(data: PaintUserSettings) {
+  const urls = resolveScheduleEmailUrls(data.google_urls);
+  const gasPost = createBrowserScheduleEmailPoster(urls);
+  const gasUrl = urls.fieldOrderUrl || urls.dashboardUrl;
+  return { urls, gasPost, gasUrl };
+}
+
+function missingScheduleEmailError(urls: { fieldOrderUrl: string; dashboardUrl: string }): string {
+  if (!urls.fieldOrderUrl && !urls.dashboardUrl) {
+    return "Set Field Request Order URL in Settings → Google Sheets (same URL Field Tools uses for emails).";
+  }
+  return "";
+}
 
 export function usePaintSettingsData(onDirtyChange?: (dirty: boolean) => void) {
   const { user } = useAuth();
@@ -87,7 +105,7 @@ export function WeeklyDigestSection({
   const [digestMessage, setDigestMessage] = useState<string | null>(null);
   const [digestError, setDigestError] = useState<string | null>(null);
 
-  const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
+  const { urls, gasPost, gasUrl } = scheduleSendChannel(data);
   const profile = profileFromSettings(letterhead);
   const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
@@ -97,8 +115,9 @@ export function WeeklyDigestSection({
     setDigestMessage(null);
     setDigestError(null);
 
-    if (!gasUrl) {
-      setDigestError("Set Dashboard Web App URL in Settings → Google Sheets.");
+    const missing = missingScheduleEmailError(urls);
+    if (missing) {
+      setDigestError(missing);
       setDigestSending(null);
       return;
     }
@@ -121,6 +140,7 @@ export function WeeklyDigestSection({
           fromName: `${companyName} Dashboard`.trim(),
           gasUrl,
           logoUrl: letterhead.logo_url,
+          gasPost,
         });
         setDigestMessage(
           result.sent
@@ -138,6 +158,7 @@ export function WeeklyDigestSection({
           fromName: `${companyName} Dashboard`.trim(),
           gasUrl,
           logoUrl: letterhead.logo_url,
+          gasPost,
         });
         setDigestMessage(
           kind === "combined"
@@ -203,7 +224,7 @@ export function BillingDueDigestSection({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
+  const { urls, gasPost, gasUrl } = scheduleSendChannel(data);
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
   async function sendNow() {
@@ -211,8 +232,9 @@ export function BillingDueDigestSection({
     setMessage(null);
     setError(null);
 
-    if (!gasUrl) {
-      setError("Set Dashboard Web App URL in Settings → Google Sheets.");
+    const missing = missingScheduleEmailError(urls);
+    if (missing) {
+      setError(missing);
       setSending(false);
       return;
     }
@@ -227,6 +249,7 @@ export function BillingDueDigestSection({
         fromName: `${companyName} Dashboard`.trim(),
         gasUrl,
         logoUrl: letterhead.logo_url,
+        gasPost,
       });
       if (!result.sent) {
         setMessage(
@@ -276,7 +299,7 @@ export function FollowUpRemindersSection({
   const [status, setStatus] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
-  const gasUrl = (data.google_urls.paint_tracker ?? "").trim();
+  const { urls, gasPost, gasUrl } = scheduleSendChannel(data);
   const profile = profileFromSettings(letterhead);
   const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
@@ -286,8 +309,9 @@ export function FollowUpRemindersSection({
     setStatus(null);
     setStatusError(null);
 
-    if (!gasUrl) {
-      setStatusError("Set Dashboard Web App URL in Settings → Google Sheets.");
+    const missing = missingScheduleEmailError(urls);
+    if (missing) {
+      setStatusError(missing);
       setSending(null);
       return;
     }
@@ -310,6 +334,7 @@ export function FollowUpRemindersSection({
         fromName: `${companyName} Dashboard`.trim(),
         gasUrl,
         logoUrl: letterhead.logo_url,
+        gasPost,
       });
       const labels: Record<FollowUpReminderKind, string> = {
         paint: "Paint follow-up reminder",

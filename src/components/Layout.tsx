@@ -1,7 +1,7 @@
 import { Link, Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
-import { UserHeaderIdentity } from "./UserHeaderIdentity";
+import { UserAccountMenu } from "./UserAccountMenu";
 import { PendingApprovalPage } from "../pages/PendingApprovalPage";
 
 export function Layout() {
@@ -25,14 +25,10 @@ export function Layout() {
             Field view
           </Link>
           <Link to="/brush-out-request">Brush-out request</Link>
-          <Link to="/settings">Settings</Link>
         </nav>
         <div className="topbar-right">
-          <UserHeaderIdentity profile={profile} email={user?.email} />
+          <UserAccountMenu profile={profile} email={user?.email} onSignOut={() => signOut()} />
           {!roleLoading && isAdmin && <span className="topbar-admin-badge">Admin</span>}
-          <button type="button" className="btn btn-ghost" onClick={() => signOut()}>
-            Sign out
-          </button>
         </div>
       </header>
       <main className="main-content">

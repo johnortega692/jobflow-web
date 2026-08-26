@@ -84,7 +84,8 @@ export function GoogleSheetsSettingsSection({ onDirtyChange, onBindActions }: Se
         <h2>Google Apps Script URLs</h2>
         <p className="muted small">
           Shared for everyone in JobFlow. Deploy each script with <strong>Anyone</strong> access.
-          Dashboard URL powers scheduled tracker emails; Field Request Order URL powers Field Tools order emails.
+          <strong> Field Request Order URL</strong> is the primary send path for Field Tools and automatic
+          JobFlow Schedules digests (<code>sendOrderEmail</code>). Dashboard Web App URL is a fallback.
         </p>
         {GOOGLE_URL_FIELDS.map(({ key, title, hint }) => (
           <label key={key}>

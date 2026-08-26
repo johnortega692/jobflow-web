@@ -5,6 +5,11 @@
 
 import type { TransmittalContract } from "../lib/jobInfo";
 import { normalizeTransmittalContract } from "../lib/jobInfo";
+import {
+  defaultCalculatorLaborRates,
+  normalizeCalculatorLaborRates,
+  type CalculatorLaborRate,
+} from "../lib/manpowerCalculator";
 
 /** @deprecated Legacy coat rows; kept for migration detection only. */
 export const MANPOWER_PHASE_DEFS = [
@@ -46,7 +51,7 @@ export type ManpowerPeriodActual = {
   actualHours: number;
 };
 
-/** Hours-only manpower plan persisted per project. */
+/** Hours + monthly calculator fields persisted per project in projects.data.billing. */
 export type ProjectBillingData = {
   version: 1;
   manpowerPhases: ManpowerPhase[];
@@ -54,6 +59,12 @@ export type ProjectBillingData = {
   manpowerPeriodActuals: ManpowerPeriodActual[];
   /** Number of week columns seeded from project start (default 8); add-week increments. */
   manpowerWeekCount: number;
+  /** Cost calculator labor class rates. */
+  calculatorLaborRates: CalculatorLaborRate[];
+  /** monthKey (YYYY-MM) → material cost entered for that month. */
+  monthMaterial: Record<string, number>;
+  /** `${contract}:${monthKey}` → fixed amount billed to GC. */
+  monthBilled: Record<string, number>;
 };
 
 export const BILLING_DATA_KEY = "billing" as const;
@@ -104,7 +115,22 @@ export function defaultProjectBilling(): ProjectBillingData {
     manpowerCells: [],
     manpowerPeriodActuals: [],
     manpowerWeekCount: 8,
+    calculatorLaborRates: defaultCalculatorLaborRates(),
+    monthMaterial: {},
+    monthBilled: {},
   };
+}
+
+function normalizeMoneyMap(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const k = key.trim();
+    if (!k) continue;
+    const amount = num(value);
+    if (amount > 0) out[k] = amount;
+  }
+  return out;
 }
 
 function num(value: unknown, fallback = 0): number {
@@ -228,12 +254,69 @@ export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
     return defaultProjectBilling();
   }
   const o = raw as Record<string, unknown>;
+  const rates = normalizeCalculatorLaborRates(o.calculatorLaborRates);
   return {
     version: 1,
     manpowerPhases: normalizeManpowerPhases(o.manpowerPhases),
     manpowerCells: normalizeManpowerCells(o.manpowerCells),
     manpowerPeriodActuals: normalizeManpowerPeriodActuals(o.manpowerPeriodActuals),
     manpowerWeekCount: Math.max(1, Math.round(num(o.manpowerWeekCount, 8)) || 8),
+    calculatorLaborRates: rates.length ? rates : defaultCalculatorLaborRates(),
+    monthMaterial: normalizeMoneyMap(o.monthMaterial),
+    monthBilled: normalizeMoneyMap(o.monthBilled),
+  };
+}
+
+export function monthBilledMapKey(contract: string, monthKey: string): string {
+  return `${contract}:${monthKey}`;
+}
+
+export function getMonthMaterialCost(billing: ProjectBillingData, monthKey: string): number {
+  return num(billing.monthMaterial[monthKey]);
+}
+
+export function withMonthMaterialCost(
+  billing: ProjectBillingData,
+  monthKey: string,
+  materialCost: number,
+): ProjectBillingData {
+  const next = { ...billing.monthMaterial };
+  const amount = num(materialCost);
+  if (amount <= 0) delete next[monthKey];
+  else next[monthKey] = amount;
+  return { ...billing, monthMaterial: next };
+}
+
+export function getMonthBilledAmount(
+  billing: ProjectBillingData,
+  contract: string,
+  monthKey: string,
+): number {
+  return num(billing.monthBilled[monthBilledMapKey(contract, monthKey)]);
+}
+
+export function withMonthBilledAmount(
+  billing: ProjectBillingData,
+  contract: string,
+  monthKey: string,
+  billedAmount: number,
+): ProjectBillingData {
+  const key = monthBilledMapKey(contract, monthKey);
+  const next = { ...billing.monthBilled };
+  const amount = num(billedAmount);
+  if (amount <= 0) delete next[key];
+  else next[key] = amount;
+  return { ...billing, monthBilled: next };
+}
+
+export function withCalculatorLaborRates(
+  billing: ProjectBillingData,
+  rates: CalculatorLaborRate[],
+): ProjectBillingData {
+  const cleaned = normalizeCalculatorLaborRates(rates);
+  return {
+    ...billing,
+    calculatorLaborRates: cleaned.length ? cleaned : defaultCalculatorLaborRates(),
   };
 }
 

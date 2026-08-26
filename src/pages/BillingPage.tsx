@@ -13,8 +13,8 @@ import {
   manpowerHoursContext,
   type DerivedMonthHours,
 } from "../lib/manpowerHours";
-import { availableTransmittalContracts, parseProjectDataBlob } from "../lib/jobInfo";
-import { loadMonthMaterial } from "../lib/manpowerCalculator";
+import { availableTransmittalContracts, parseProjectDataBlob, TRANSMITTAL_CONTRACT_LABELS, type TransmittalContract } from "../lib/jobInfo";
+import { migrateLocalCalculatorIntoBilling } from "../lib/migrateManpowerCalculator";
 import {
   resolveLaborProjectionContractValue,
   resolveLaborProjectionMaterialCost,
@@ -31,7 +31,12 @@ import {
   normalizeBudgetMaker,
   type BudgetLibrary,
 } from "../types/budgetMaker";
-import { parseProjectBilling, totalPlannedHours, type ProjectBillingData } from "../types/projectBilling";
+import {
+  getMonthMaterialCost,
+  parseProjectBilling,
+  totalPlannedHours,
+  type ProjectBillingData,
+} from "../types/projectBilling";
 import type { ProjectForm } from "../types/database";
 import { normalizeProject, type Json } from "../types/database";
 import { parseProjectTradeData } from "../types/tradeDocuments";
@@ -65,6 +70,14 @@ export function BillingPage() {
   projectRef.current = project;
 
   const contracts = useMemo(() => availableTransmittalContracts(project), [project]);
+  const [activeContract, setActiveContract] = useState<TransmittalContract>(() => contracts[0] ?? "paint");
+
+  useEffect(() => {
+    if (!contracts.includes(activeContract)) {
+      setActiveContract(contracts[0] ?? "paint");
+    }
+  }, [activeContract, contracts]);
+
   const tradeData = useMemo(
     () => parseProjectTradeData(parseProjectDataBlob(project.data) as Json),
     [project.data],
@@ -128,11 +141,15 @@ export function BillingPage() {
         lib,
         contracts,
       );
+      const { billing: migrated, changed: migratedCalc } = migrateLocalCalculatorIntoBilling(
+        projectId,
+        synced,
+      );
       if (cancelled) return;
-      setBilling(synced);
-      if (!changed) return;
+      setBilling(migrated);
+      if (!changed && !migratedCalc) return;
       syncingRef.current = true;
-      const err = await saveProjectBillingQuiet(projectId, synced);
+      const err = await saveProjectBillingQuiet(projectId, migrated);
       syncingRef.current = false;
       if (cancelled) return;
       if (err) {
@@ -142,7 +159,7 @@ export function BillingPage() {
       const fresh = projectRef.current;
       setProject({
         ...fresh,
-        data: { ...(fresh.data as object), billing: synced } as ProjectForm["data"],
+        data: { ...(fresh.data as object), billing: migrated } as ProjectForm["data"],
       });
     }
     void syncFromBudget();
@@ -213,17 +230,25 @@ export function BillingPage() {
     () => normalizeBudgetMaker(budgetMakerRaw, project.job_name),
     [budgetMakerRaw, project.job_name],
   );
+  const activeContracts = useMemo(() => [activeContract] as TransmittalContract[], [activeContract]);
+  const activePhaseIds = useMemo(() => {
+    const ids = billing.manpowerPhases
+      .filter((p) => p.contract === activeContract)
+      .map((p) => p.id);
+    return new Set(ids);
+  }, [activeContract, billing.manpowerPhases]);
+
   const contractValue = useMemo(
-    () => resolveLaborProjectionContractValue(project, budgetMaker, contracts),
-    [budgetMaker, contracts, project],
+    () => resolveLaborProjectionContractValue(project, budgetMaker, activeContracts),
+    [activeContracts, budgetMaker, project],
   );
   const materialBudget = useMemo(
-    () => resolveLaborProjectionMaterialCost(budgetMaker, contracts, budgetLibrary),
-    [budgetLibrary, budgetMaker, contracts],
+    () => resolveLaborProjectionMaterialCost(budgetMaker, activeContracts, budgetLibrary),
+    [activeContracts, budgetLibrary, budgetMaker],
   );
   const monthlyHours = useMemo(
-    () => deriveMonthlyHours(billing, weekStarts),
-    [billing, weekStarts],
+    () => deriveMonthlyHours(billing, weekStarts, activePhaseIds),
+    [activePhaseIds, billing, weekStarts],
   );
   const calculatorMonthContext = useMemo(() => {
     if (!calculatorMonth) return null;
@@ -232,7 +257,7 @@ export function BillingPage() {
     let materialEnteredOtherMonths = 0;
     for (const m of monthlyHours) {
       if (m.key !== calculatorMonth.key) {
-        materialEnteredOtherMonths += loadMonthMaterial(projectId, m.key).materialCost;
+        materialEnteredOtherMonths += getMonthMaterialCost(billing, m.key);
       }
       const prev = running;
       running += m.hours;
@@ -251,7 +276,7 @@ export function BillingPage() {
       totalPlannedHours: totalHours,
       materialEnteredOtherMonths,
     };
-  }, [calculatorMonth, calculatorRevision, monthlyHours, projectId, totalHours]);
+  }, [billing, calculatorMonth, calculatorRevision, monthlyHours, totalHours]);
 
   const closeCalculator = useCallback(() => {
     setCalculatorMonth(null);
@@ -293,6 +318,8 @@ export function BillingPage() {
         canEditSchedule={canEditSchedule}
         canEditCells={canEditCells}
         contracts={contracts}
+        activeContract={activeContract}
+        onActiveContractChange={setActiveContract}
         onBillingChange={setBilling}
         onPersistQuiet={persistQuiet}
         onScheduleDatesChange={persistScheduleDates}
@@ -300,18 +327,21 @@ export function BillingPage() {
 
       <ManpowerMonthlyBudgetCard
         billing={billing}
-        projectId={projectId}
         projectStartIso={projectStartIso}
         projectEndIso={projectEndIso}
         contractValue={contractValue}
         materialBudget={materialBudget}
+        phaseIds={activePhaseIds}
+        contract={activeContract}
+        contractLabel={TRANSMITTAL_CONTRACT_LABELS[activeContract]}
         calculatorRevision={calculatorRevision}
         onOpenMonth={setCalculatorMonth}
+        onPersistQuiet={persistQuiet}
       />
 
       {calculatorMonth && calculatorMonthContext ? (
         <MonthBudgetCalculatorModal
-          projectId={projectId}
+          billing={billing}
           monthKey={calculatorMonth.key}
           monthLabel={calculatorMonth.label}
           plannedHours={calculatorMonth.hours}
@@ -321,6 +351,7 @@ export function BillingPage() {
           contractValue={contractValue}
           materialBudget={materialBudget}
           materialEnteredOtherMonths={calculatorMonthContext.materialEnteredOtherMonths}
+          onPersistQuiet={persistQuiet}
           onClose={closeCalculator}
         />
       ) : null}

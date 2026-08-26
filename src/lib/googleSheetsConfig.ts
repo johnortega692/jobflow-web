@@ -4,12 +4,12 @@ export const GOOGLE_URL_FIELDS: { key: GoogleUrlKey; title: string; hint: string
   {
     key: "paint_tracker",
     title: "Dashboard Web App URL",
-    hint: "Gmail send for paint tracker notifications, follow-up/install reminders, and weekly digests. Deploy as Execute as: Me.",
+    hint: "Fallback Gmail send for JobFlow digests if Field Request Order URL is unset. Deploy as Execute as: Me.",
   },
   {
     key: "field_request_order",
     title: "Field Request Order URL",
-    hint: "Field Tools order emails with PDF attachments (?action=sendOrderEmail). Must match Supabase edge secret GAS_SEND_EMAIL_URL.",
+    hint: "Primary send path for Field Tools and JobFlow Schedules digests (?action=sendOrderEmail). Must match Supabase edge secret GAS_SEND_EMAIL_URL.",
   },
 ];
 

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   manpowerEndDateHint,
   manpowerWeekStarts,
@@ -5,12 +6,12 @@ import {
 import {
   blendedCostRate,
   deriveMonthCalculatorTotals,
+  formatInputValue,
   formatMoney0,
   formatPct0,
   hoursPercentComplete,
-  loadCalculatorLaborRates,
-  loadMonthMaterial,
   monthPocBillable,
+  parseMoney,
 } from "../../lib/manpowerCalculator";
 import {
   currentMonthKey,
@@ -21,31 +22,46 @@ import {
   monthBeyondContract,
   type DerivedMonthHours,
 } from "../../lib/manpowerHours";
-import type { ProjectBillingData } from "../../types/projectBilling";
+import type { TransmittalContract } from "../../lib/jobInfo";
+import {
+  getMonthBilledAmount,
+  getMonthMaterialCost,
+  withMonthBilledAmount,
+  type ProjectBillingData,
+} from "../../types/projectBilling";
 import { ManpowerHeaderCalculatorIcon } from "./ManpowerHeaderPillIcons";
 
 type Props = {
   billing: ProjectBillingData;
-  projectId: string;
   projectStartIso: string;
   projectEndIso: string;
   /** Contract sell value (Budget Maker grand total) for % complete billable. */
   contractValue: number;
   /** Budget Maker material total — reference for splitting into months. */
   materialBudget: number;
+  /** When set, month hours / billable use only this contract's Labor Projection rows. */
+  phaseIds?: ReadonlySet<string>;
+  /** Active contract key for per-contract billed amounts. */
+  contract: TransmittalContract;
+  /** Label for the active contract (e.g. Paint) shown in the caption. */
+  contractLabel?: string;
   calculatorRevision: number;
   onOpenMonth: (month: DerivedMonthHours) => void;
+  onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
 };
 
 export function ManpowerMonthlyBudgetCard({
   billing,
-  projectId,
   projectStartIso,
   projectEndIso,
   contractValue,
   materialBudget,
+  phaseIds,
+  contract,
+  contractLabel,
   calculatorRevision,
   onOpenMonth,
+  onPersistQuiet,
 }: Props) {
   const { weekStarts: weeks, contractEndWeekIndex } = manpowerWeekStarts(
     projectStartIso,
@@ -54,38 +70,72 @@ export function ManpowerMonthlyBudgetCard({
     billing.manpowerWeekCount,
   );
   const endDateHint = manpowerEndDateHint(projectStartIso, projectEndIso);
-  const months = deriveMonthlyHours(billing, weeks);
+  const months = deriveMonthlyHours(billing, weeks, phaseIds);
   const thisMonth = currentMonthKey();
-  const laborRates = loadCalculatorLaborRates(projectId);
+  const laborRates = billing.calculatorLaborRates;
   void calculatorRevision;
+
+  const billingRef = useRef(billing);
+  billingRef.current = billing;
+
+  const [billedDrafts, setBilledDrafts] = useState<Record<string, string>>({});
+  const [savingBilled, setSavingBilled] = useState(false);
+
+  useEffect(() => {
+    setBilledDrafts({});
+  }, [contract]);
 
   const totalHours = months.reduce((sum, m) => sum + m.hours, 0);
   const costRate = blendedCostRate(laborRates);
 
-  const monthRows = (() => {
+  const monthRows = useMemo(() => {
     let running = 0;
     return months.map((m) => {
       const prev = running;
       running += m.hours;
-      const materialCost = loadMonthMaterial(projectId, m.key).materialCost;
+      const materialCost = getMonthMaterialCost(billing, m.key);
       const pocBillable = monthPocBillable(contractValue, prev, running, totalHours);
       const totals = deriveMonthCalculatorTotals(m.hours, laborRates, materialCost, pocBillable);
+      const billedAmount = getMonthBilledAmount(billing, contract, m.key);
       return {
         month: m,
         cumulativeHours: running,
         percentComplete: hoursPercentComplete(running, totalHours),
         laborCost: m.hours * costRate,
         materialCost,
+        billedAmount,
         totals,
       };
     });
-  })();
+  }, [billing, contract, contractValue, costRate, laborRates, months, totalHours]);
 
   const totalLaborCost = monthRows.reduce((sum, r) => sum + r.laborCost, 0);
   const totalMaterialEntered = monthRows.reduce((sum, r) => sum + r.materialCost, 0);
   const materialRemaining = materialBudget > 0 ? materialBudget - totalMaterialEntered : 0;
   const totalCost = monthRows.reduce((sum, r) => sum + r.totals.cost, 0);
   const totalBillable = contractValue > 0 && totalHours > 0 ? contractValue : 0;
+  const totalBilled = monthRows.reduce((sum, r) => sum + r.billedAmount, 0);
+
+  function billedInputValue(monthKey: string, stored: number): string {
+    if (Object.prototype.hasOwnProperty.call(billedDrafts, monthKey)) {
+      return billedDrafts[monthKey] ?? "";
+    }
+    return formatInputValue(stored);
+  }
+
+  async function commitBilled(monthKey: string, raw: string) {
+    const amount = parseMoney(raw);
+    const current = getMonthBilledAmount(billingRef.current, contract, monthKey);
+    setBilledDrafts((prev) => {
+      const next = { ...prev };
+      delete next[monthKey];
+      return next;
+    });
+    if (amount === current) return;
+    setSavingBilled(true);
+    await onPersistQuiet(withMonthBilledAmount(billingRef.current, contract, monthKey, amount));
+    setSavingBilled(false);
+  }
 
   function monthHeaderClass(m: DerivedMonthHours): string {
     return [
@@ -109,6 +159,8 @@ export function ManpowerMonthlyBudgetCard({
           {totalBillable > 0 || totalCost > 0 ? (
             <> · Billable {formatMoney0(totalBillable)} · cost {formatMoney0(totalCost)}</>
           ) : null}
+          {totalBilled > 0 ? <> · Billed {formatMoney0(totalBilled)}</> : null}
+          {savingBilled ? <> · saving…</> : null}
         </span>
       </div>
 
@@ -117,6 +169,7 @@ export function ManpowerMonthlyBudgetCard({
       ) : (
         <p className="muted small billing-manpower-caption">
           current month: {currentMonthLabel()}
+          {contractLabel ? <> · {contractLabel}</> : null}
           {contractValue > 0 ? (
             <> · Billable = contract × % complete ({formatMoney0(contractValue)})</>
           ) : (
@@ -284,6 +337,37 @@ export function ManpowerMonthlyBudgetCard({
               <td className="billing-manpower-sticky billing-manpower-total-col num">
                 {totalHours > 0 ? formatPct0(100) : "—"}
               </td>
+            </tr>
+            <tr>
+              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
+                Billed
+              </td>
+              {monthRows.map((r) => (
+                <td key={r.month.key} className="billing-manpower-month-col num">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="billing-billed-input"
+                    value={billedInputValue(r.month.key, r.billedAmount)}
+                    placeholder="—"
+                    aria-label={`Billed to GC for ${r.month.label}`}
+                    title={`Amount billed to GC for ${r.month.label}`}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setBilledDrafts((prev) => ({ ...prev, [r.month.key]: v }));
+                    }}
+                    onBlur={(e) => {
+                      void commitBilled(r.month.key, e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                  />
+                </td>
+              ))}
+              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatMoney0(totalBilled)}</td>
             </tr>
           </tbody>
         </table>

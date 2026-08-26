@@ -196,23 +196,102 @@ label {
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+.user-account-menu {
+  position: relative;
+}
+
+.user-account-menu-trigger {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.2rem 0.35rem;
+  margin: -0.2rem -0.35rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.user-account-menu-trigger:hover,
+.user-account-menu-trigger[aria-expanded="true"] {
+  background: var(--surface);
+}
+
+.user-account-menu-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  flex-shrink: 0;
+  height: 1.05rem;
+}
+
+.user-account-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  min-width: 180px;
+  padding: 0.3rem 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.user-account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.user-account-menu-item:hover {
+  background: var(--surface2);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.user-account-menu-item svg {
+  display: block;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.user-account-menu-divider {
+  height: 1px;
+  margin: 0.2rem 0.7rem;
+  background: var(--border);
+}
+
 .user-header-identity {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 0.1rem;
   line-height: 1.25;
-  text-align: right;
+  text-align: left;
 }
 
 .user-header-identity-line {
   font-size: 0.85rem;
+  font-weight: 700;
   color: var(--text);
   white-space: nowrap;
 }
 
 .user-header-identity-line--muted {
   font-size: 0.78rem;
+  font-weight: 400;
   color: var(--muted);
 }
 
@@ -11461,38 +11540,73 @@ input.readonly {
 
 .billing-manpower-sticky {
   position: sticky;
-  background: var(--bg-elevated);
+  background: var(--surface);
   z-index: 1;
 }
 
 .billing-manpower-phase-col {
   left: 0;
-  width: 190px;
-  min-width: 190px;
-  max-width: 190px;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
   text-align: left;
+}
+
+.billing-manpower-table--plan th,
+.billing-manpower-table--plan td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* Labor Projection: shrink-wrap to code + name (one line). Sticky offsets via --manpower-*-left. */
+.billing-manpower-table--plan .billing-manpower-phase-col {
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  padding: 4px 10px 4px 6px;
+  overflow: visible;
+  white-space: nowrap;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.billing-manpower-table--plan .billing-manpower-phase-name {
+  /* Keep table-cell so the row fill covers the whole cell, not a shrink-wrapped block. */
+  display: table-cell;
+  padding-left: 6px;
+  line-height: 1.15;
+  overflow: visible;
+  white-space: nowrap;
 }
 
 .billing-manpower-phase-name {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  line-height: 1.25;
+  gap: 1px;
+  line-height: 1.2;
   border-left: 3px solid transparent;
-  padding-left: 8px;
+  padding-left: 6px;
+  min-width: 0;
 }
 
 .billing-manpower-phase-code {
   font-weight: 700;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .billing-manpower-phase-desc {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.billing-manpower-table--plan .billing-manpower-phase-desc {
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+  margin-left: 0.35em;
 }
 
 .billing-manpower-budget-col {
@@ -11508,16 +11622,30 @@ input.readonly {
   max-width: 68px;
 }
 
+.billing-manpower-table--plan .billing-manpower-budget-col--budget {
+  left: var(--manpower-budget-left, 140px);
+}
+
+.billing-manpower-table--plan .billing-manpower-budget-col--planned {
+  left: var(--manpower-planned-left, 208px);
+}
+
+.billing-manpower-table--plan .billing-manpower-budget-col--left {
+  left: var(--manpower-left-left, 276px);
+  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Fallback sticky offsets when not using the plan table modifier */
 .billing-manpower-budget-col--budget {
-  left: 190px;
+  left: 120px;
 }
 
 .billing-manpower-budget-col--planned {
-  left: 258px;
+  left: 188px;
 }
 
 .billing-manpower-budget-col--left {
-  left: 326px;
+  left: 256px;
   box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
 }
 
@@ -11603,21 +11731,39 @@ input.readonly {
   }
 
   .billing-manpower-phase-col {
-    width: 130px;
-    min-width: 130px;
-    max-width: 130px;
+    width: 110px;
+    min-width: 110px;
+    max-width: 110px;
+  }
+
+  .billing-manpower-table--plan .billing-manpower-phase-col {
+    width: max-content;
+    min-width: max-content;
+    max-width: none;
   }
 
   .billing-manpower-budget-col--budget {
-    left: 130px;
+    left: 110px;
   }
 
   .billing-manpower-budget-col--planned {
-    left: 198px;
+    left: 178px;
   }
 
   .billing-manpower-budget-col--left {
-    left: 266px;
+    left: 246px;
+  }
+
+  .billing-manpower-table--plan .billing-manpower-budget-col--budget {
+    left: var(--manpower-budget-left, 140px);
+  }
+
+  .billing-manpower-table--plan .billing-manpower-budget-col--planned {
+    left: var(--manpower-planned-left, 208px);
+  }
+
+  .billing-manpower-table--plan .billing-manpower-budget-col--left {
+    left: var(--manpower-left-left, 276px);
   }
 
   .billing-manpower-chip {
@@ -11917,6 +12063,32 @@ input.readonly {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.billing-billed-input {
+  width: 100%;
+  min-width: 64px;
+  max-width: 96px;
+  margin: 0 auto;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+}
+
+.billing-billed-input:hover,
+.billing-billed-input:focus {
+  border-color: var(--border);
+  background: rgba(79, 140, 255, 0.1);
+  outline: none;
+}
+
+.billing-billed-input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
 }
 
 .billing-budget-value-button:hover,

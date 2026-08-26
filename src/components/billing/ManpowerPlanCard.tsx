@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { DateInput } from "../DateInput";
 import {
   cellHours,
@@ -38,6 +38,8 @@ type Props = {
   variant?: "office" | "field";
   /** Contracts with a Labor Projection tab (from job + budget). */
   contracts?: TransmittalContract[];
+  activeContract?: TransmittalContract;
+  onActiveContractChange?: (contract: TransmittalContract) => void;
   onBillingChange: (next: ProjectBillingData) => void;
   onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
   onScheduleDatesChange?: (startIso: string, endIso: string) => Promise<boolean>;
@@ -73,6 +75,8 @@ export function ManpowerPlanCard({
   canEditCells,
   variant = "office",
   contracts: contractsProp,
+  activeContract: activeContractProp,
+  onActiveContractChange,
   onBillingChange,
   onPersistQuiet,
   onScheduleDatesChange,
@@ -83,9 +87,15 @@ export function ManpowerPlanCard({
     return fromPhases.length ? fromPhases : ["paint"];
   }, [billing.manpowerPhases, contractsProp]);
 
-  const [activeContract, setActiveContract] = useState<TransmittalContract>(
-    () => contracts[0] ?? "paint",
+  const [internalContract, setInternalContract] = useState<TransmittalContract>(
+    () => activeContractProp ?? contracts[0] ?? "paint",
   );
+  const activeContract = activeContractProp ?? internalContract;
+
+  function setActiveContract(next: TransmittalContract) {
+    if (activeContractProp === undefined) setInternalContract(next);
+    onActiveContractChange?.(next);
+  }
 
   useEffect(() => {
     if (!contracts.includes(activeContract)) {
@@ -93,10 +103,32 @@ export function ManpowerPlanCard({
     }
   }, [activeContract, contracts]);
 
+  useEffect(() => {
+    if (activeContractProp !== undefined) setInternalContract(activeContractProp);
+  }, [activeContractProp]);
+
   const contractPhases = useMemo(
     () => billing.manpowerPhases.filter((p) => p.contract === activeContract),
     [activeContract, billing.manpowerPhases],
   );
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [phaseColPx, setPhaseColPx] = useState(0);
+
+  useLayoutEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const cell = root.querySelector<HTMLElement>("tbody .billing-manpower-phase-col");
+    if (!cell) {
+      setPhaseColPx(0);
+      return;
+    }
+    const sync = () => setPhaseColPx(Math.ceil(cell.getBoundingClientRect().width));
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(cell);
+    return () => ro.disconnect();
+  }, [activeContract, contractPhases]);
 
   const phaseIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -279,11 +311,22 @@ export function ManpowerPlanCard({
         </p>
       ) : (
         <div
+          ref={scrollRef}
           className="billing-manpower-scroll"
           tabIndex={0}
           aria-label="Labor Projection weeks — scroll horizontally"
+            style={
+              phaseColPx > 0
+                ? ({
+                    "--manpower-phase-w": `${phaseColPx}px`,
+                    "--manpower-budget-left": `${phaseColPx}px`,
+                    "--manpower-planned-left": `${phaseColPx + 68}px`,
+                    "--manpower-left-left": `${phaseColPx + 136}px`,
+                  } as CSSProperties)
+                : undefined
+            }
         >
-          <table className="billing-manpower-table">
+          <table className="billing-manpower-table billing-manpower-table--plan">
             <thead>
               <tr>
                 <th className="billing-manpower-sticky billing-manpower-phase-col">Cost code</th>
@@ -338,7 +381,10 @@ export function ManpowerPlanCard({
                       title={phaseDisplayLabel(phase)}
                     >
                       <span className="billing-manpower-phase-code">{phase.costCode || "—"}</span>
-                      <span className="billing-manpower-phase-desc">{phase.name}</span>
+                      {phase.name.trim() &&
+                      phase.name.trim() !== (phase.costCode || "").trim() ? (
+                        <span className="billing-manpower-phase-desc">{phase.name.trim()}</span>
+                      ) : null}
                     </td>
                     <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--budget num">
                       {formatHours(phase.budgetHours)}

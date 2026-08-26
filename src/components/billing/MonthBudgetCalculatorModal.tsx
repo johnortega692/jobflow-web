@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   blendedCostRate,
   defaultCalculatorLaborRates,
@@ -7,20 +7,22 @@ import {
   formatMoney0,
   formatPct0,
   hoursPercentComplete,
-  loadCalculatorLaborRates,
-  loadMonthMaterial,
   monthPocBillable,
   newCalculatorLaborRateId,
   parseMoney,
   pocBillableAmount,
-  saveCalculatorLaborRates,
-  saveMonthMaterial,
   type CalculatorLaborRate,
 } from "../../lib/manpowerCalculator";
 import { formatHoursCompact, formatManWeeksCompact } from "../../lib/manpowerHours";
+import {
+  getMonthMaterialCost,
+  withCalculatorLaborRates,
+  withMonthMaterialCost,
+  type ProjectBillingData,
+} from "../../types/projectBilling";
 
 type Props = {
-  projectId: string;
+  billing: ProjectBillingData;
   monthKey: string;
   monthLabel: string;
   plannedHours: number;
@@ -34,11 +36,12 @@ type Props = {
   materialBudget: number;
   /** Sum of material entered in other months (excludes this month). */
   materialEnteredOtherMonths: number;
+  onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
   onClose: () => void;
 };
 
 export function MonthBudgetCalculatorModal({
-  projectId,
+  billing,
   monthKey,
   monthLabel,
   plannedHours,
@@ -48,19 +51,37 @@ export function MonthBudgetCalculatorModal({
   contractValue,
   materialBudget,
   materialEnteredOtherMonths,
+  onPersistQuiet,
   onClose,
 }: Props) {
-  const [rates, setRates] = useState<CalculatorLaborRate[]>(() => loadCalculatorLaborRates(projectId));
-  const [materialCostDraft, setMaterialCostDraft] = useState("");
+  const billingRef = useRef(billing);
+  billingRef.current = billing;
+
+  const [rates, setRates] = useState<CalculatorLaborRate[]>(() => billing.calculatorLaborRates);
+  const [materialCostDraft, setMaterialCostDraft] = useState(() =>
+    formatInputValue(getMonthMaterialCost(billing, monthKey)),
+  );
+  const ratesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ratesRef = useRef(rates);
+  ratesRef.current = rates;
 
   useEffect(() => {
-    const saved = loadMonthMaterial(projectId, monthKey);
-    setMaterialCostDraft(formatInputValue(saved.materialCost));
-  }, [monthKey, projectId]);
+    setMaterialCostDraft(formatInputValue(getMonthMaterialCost(billing, monthKey)));
+  }, [billing, monthKey]);
 
   useEffect(() => {
-    setRates(loadCalculatorLaborRates(projectId));
-  }, [projectId]);
+    setRates(billing.calculatorLaborRates);
+  }, [billing.calculatorLaborRates]);
+
+  useEffect(() => {
+    return () => {
+      if (ratesSaveTimer.current) {
+        clearTimeout(ratesSaveTimer.current);
+        ratesSaveTimer.current = null;
+        void onPersistQuiet(withCalculatorLaborRates(billingRef.current, ratesRef.current));
+      }
+    };
+  }, [onPersistQuiet]);
 
   const materialCost = useMemo(() => parseMoney(materialCostDraft), [materialCostDraft]);
   const percentComplete = hoursPercentComplete(cumulativeHours, totalPlannedHours);
@@ -76,17 +97,36 @@ export function MonthBudgetCalculatorModal({
   const materialEnteredAll = materialEnteredOtherMonths + materialCost;
   const materialLeft = materialBudget > 0 ? materialBudget - materialEnteredAll : 0;
 
-  function updateMaterialCost(raw: string) {
-    setMaterialCostDraft(raw);
-    saveMonthMaterial(projectId, monthKey, { materialCost: parseMoney(raw) });
+  async function commitMaterial(raw: string) {
+    const amount = parseMoney(raw);
+    const current = getMonthMaterialCost(billingRef.current, monthKey);
+    setMaterialCostDraft(formatInputValue(amount));
+    if (amount === current) return;
+    await onPersistQuiet(withMonthMaterialCost(billingRef.current, monthKey, amount));
+  }
+
+  async function persistRatesNow(next: CalculatorLaborRate[]) {
+    if (ratesSaveTimer.current) {
+      clearTimeout(ratesSaveTimer.current);
+      ratesSaveTimer.current = null;
+    }
+    ratesRef.current = next;
+    setRates(next);
+    await onPersistQuiet(withCalculatorLaborRates(billingRef.current, next));
+  }
+
+  function queuePersistRates(next: CalculatorLaborRate[]) {
+    ratesRef.current = next;
+    setRates(next);
+    if (ratesSaveTimer.current) clearTimeout(ratesSaveTimer.current);
+    ratesSaveTimer.current = setTimeout(() => {
+      ratesSaveTimer.current = null;
+      void onPersistQuiet(withCalculatorLaborRates(billingRef.current, ratesRef.current));
+    }, 400);
   }
 
   function patchRate(id: string, patch: Partial<CalculatorLaborRate>) {
-    setRates((rows) => {
-      const next = rows.map((r) => (r.id === id ? { ...r, ...patch } : r));
-      saveCalculatorLaborRates(projectId, next);
-      return next;
-    });
+    queuePersistRates(rates.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
   function num(value: string): number {
@@ -118,7 +158,7 @@ export function MonthBudgetCalculatorModal({
 
         <p className="muted small billing-manpower-caption">
           Labor uses Cost/hr. Billable = contract × % complete. Enter this month’s material to split the
-          budget total.
+          budget total. Saved with the project.
         </p>
 
         <div className="billing-calc-stat-strip">
@@ -187,7 +227,13 @@ export function MonthBudgetCalculatorModal({
                 value={materialCostDraft}
                 placeholder="0"
                 aria-label="Material cost for this month"
-                onChange={(e) => updateMaterialCost(e.target.value)}
+                onChange={(e) => setMaterialCostDraft(e.target.value)}
+                onBlur={(e) => {
+                  void commitMaterial(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
               />
             </span>
             <span className="billing-calc-ledger-cell billing-calc-ledger-value muted" role="cell">
@@ -253,11 +299,7 @@ export function MonthBudgetCalculatorModal({
                           type="button"
                           className="btn btn-ghost btn-small billing-calc-rates-remove"
                           onClick={() => {
-                            setRates((rows) => {
-                              const next = rows.filter((x) => x.id !== r.id);
-                              saveCalculatorLaborRates(projectId, next);
-                              return next;
-                            });
+                            void persistRatesNow(rates.filter((x) => x.id !== r.id));
                           }}
                           aria-label="Remove class"
                         >
@@ -274,14 +316,10 @@ export function MonthBudgetCalculatorModal({
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={() => {
-                  setRates((rows) => {
-                    const next = [
-                      ...rows,
-                      { id: newCalculatorLaborRateId(), className: "", costRate: 0 },
-                    ];
-                    saveCalculatorLaborRates(projectId, next);
-                    return next;
-                  });
+                  void persistRatesNow([
+                    ...rates,
+                    { id: newCalculatorLaborRateId(), className: "", costRate: 0 },
+                  ]);
                 }}
               >
                 Add class
@@ -290,9 +328,7 @@ export function MonthBudgetCalculatorModal({
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => {
-                  const next = defaultCalculatorLaborRates();
-                  saveCalculatorLaborRates(projectId, next);
-                  setRates(next);
+                  void persistRatesNow(defaultCalculatorLaborRates());
                 }}
               >
                 Reset to defaults

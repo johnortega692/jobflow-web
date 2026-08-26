@@ -85,12 +85,17 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         continue;
       }
 
-      const gasUrl = (paint.google_urls.paint_tracker ?? "").trim();
+      const urls = {
+        fieldOrderUrl:
+          (paint.google_urls.field_request_order ?? "").trim() ||
+          (process.env.GAS_SEND_EMAIL_URL ?? "").trim(),
+        dashboardUrl: (paint.google_urls.paint_tracker ?? "").trim(),
+      };
       const resendOk = isResendConfigured();
       const { email: primaryEmail, name: primaryName } = resolvePrimaryRecipient(raw, paint, isOrgRun);
-      if (!gasUrl && !resendOk) {
+      if (!urls.fieldOrderUrl && !urls.dashboardUrl && !resendOk) {
         result.skipped.push(
-          `${label}: missing Dashboard Web App URL (and Resend not configured on Vercel)`,
+          `${label}: missing Field Request Order URL (and Dashboard Web App URL / Resend)`,
         );
         continue;
       }
@@ -112,7 +117,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
       applyTimezone(schedule.timezone);
       const letterhead = normalizeLetterheadSettings(raw);
       const companyName = letterhead.company_name.trim() || "JobFlow";
-      const gasPost = createCronEmailPoster(gasUrl);
+      const gasPost = createCronEmailPoster(urls);
       const sendBase = {
         projects,
         primaryEmail,
@@ -120,7 +125,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         companyName,
         companyAddress: letterhead.company_address,
         fromName: `${companyName} Dashboard`.trim(),
-        gasUrl: gasUrl || "resend",
+        gasUrl: urls.fieldOrderUrl || urls.dashboardUrl || "resend",
         logoUrl: letterhead.logo_url,
         gasPost,
       };

@@ -220,8 +220,17 @@ export function phaseTotalHours(cells: ManpowerCell[], phaseId: ManpowerPhaseId)
   return cells.filter((c) => c.phaseId === phaseId).reduce((sum, c) => sum + c.hours, 0);
 }
 
-export function weekTotalHours(cells: ManpowerCell[], weekStartIso: string): number {
-  return cells.filter((c) => c.weekStartIso === weekStartIso).reduce((sum, c) => sum + c.hours, 0);
+export function weekTotalHours(
+  cells: ManpowerCell[],
+  weekStartIso: string,
+  phaseIds?: ReadonlySet<string>,
+): number {
+  return cells
+    .filter(
+      (c) =>
+        c.weekStartIso === weekStartIso && (!phaseIds || phaseIds.has(c.phaseId)),
+    )
+    .reduce((sum, c) => sum + c.hours, 0);
 }
 
 /** Crew-equivalent for display (hours ÷ 40). */
