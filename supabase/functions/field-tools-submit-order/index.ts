@@ -23,10 +23,23 @@ const corsHeaders = {
 
 type DispatchType = "material" | "rental" | "equipment" | "wallcovering" | "haul_off" | "job_scope_kit";
 
+type DispatchSpec = {
+  type: DispatchType;
+  to_email: string;
+  cc_emails?: string[];
+  assign_po?: boolean;
+  warehouse_email?: string;
+  material_scope?: "paint" | "sundries";
+  vendor_name?: string;
+};
+
 type SubmitBody = {
   caller_id: string;
   session_token: string;
-  order: {
+  client_submit_id?: string;
+  resend_order_id?: string;
+  resend_dispatch_id?: string;
+  order?: {
     job_number: string;
     job_name?: string;
     order_type: "field_request" | "job_scope_kit";
@@ -45,15 +58,7 @@ type SubmitBody = {
     materials: unknown[];
     scopes: unknown[];
   };
-  dispatches: {
-    type: DispatchType;
-    to_email: string;
-    cc_emails?: string[];
-    assign_po?: boolean;
-    warehouse_email?: string;
-    material_scope?: "paint" | "sundries";
-    vendor_name?: string;
-  }[];
+  dispatches?: DispatchSpec[];
 };
 
 type VendorInfo = { name: string; email: string; email2?: string };
@@ -171,6 +176,64 @@ function parseEmailList(raw: string): string[] {
     .split(/[,;]/)
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function asUuid(value: string | undefined): string {
+  const s = (value ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s) ? s : "";
+}
+
+type ExistingDispatchRow = {
+  id: string;
+  dispatch_type: string;
+  po_number: string;
+  to_email: string;
+  cc_emails: string;
+  subject: string;
+  email_status: string;
+};
+
+function asDispatchSpecs(value: unknown): DispatchSpec[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      const type = String(o.type ?? "");
+      if (!type) return null;
+      return {
+        type: type as DispatchType,
+        to_email: String(o.to_email ?? ""),
+        cc_emails: Array.isArray(o.cc_emails) ? o.cc_emails.map((e) => String(e)) : undefined,
+        assign_po: Boolean(o.assign_po),
+        warehouse_email: o.warehouse_email != null ? String(o.warehouse_email) : undefined,
+        material_scope: o.material_scope === "paint" || o.material_scope === "sundries" ? o.material_scope : undefined,
+        vendor_name: o.vendor_name != null ? String(o.vendor_name) : undefined,
+      } satisfies DispatchSpec;
+    })
+    .filter((s): s is DispatchSpec => Boolean(s));
+}
+
+function specsFromDispatchRows(rows: ExistingDispatchRow[]): DispatchSpec[] {
+  return rows.map((r) => ({
+    type: r.dispatch_type as DispatchType,
+    to_email: r.to_email,
+    cc_emails: parseEmailList(r.cc_emails),
+    assign_po: Boolean(r.po_number),
+  }));
+}
+
+function matchExistingDispatch(
+  rows: ExistingDispatchRow[],
+  spec: DispatchSpec,
+  index: number,
+): ExistingDispatchRow | undefined {
+  const typeRows = rows.filter((r) => r.dispatch_type === spec.type);
+  const to = spec.to_email.trim().toLowerCase();
+  const byEmail = to ? typeRows.filter((r) => r.to_email.trim().toLowerCase() === to) : [];
+  if (byEmail.length === 1) return byEmail[0];
+  if (typeRows[index]) return typeRows[index];
+  return typeRows[0] ?? rows[index];
 }
 
 function sanitizeAttachmentPart(value: string): string {
@@ -298,69 +361,188 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const globalCcEmails = parseEmailList(String(orderSettings?.global_cc_emails ?? ""));
 
-    if (!body?.order?.job_number || !body.dispatches?.length) {
+    const clientSubmitId = asUuid(body.client_submit_id);
+    const resendOrderId = asUuid(body.resend_order_id);
+    const resendDispatchId = asUuid(body.resend_dispatch_id);
+    const isAdminCaller = trustedProfile.role === "admin" || trustedProfile.role === "super";
+
+    type StoredOrder = {
+      id: string;
+      job_number: string;
+      job_name: string | null;
+      order_type: string;
+      submitted_by_profile_id: string | null;
+      site_contact: string;
+      notes: string;
+      delivery_type: string;
+      date_needed: string | null;
+      crew_kit: string | null;
+      crew_count: number | null;
+      phase: string | null;
+      payload: Record<string, unknown> | null;
+      paint: unknown;
+      materials: unknown;
+      scopes: unknown;
+      po_number: string | null;
+      dispatch_specs: unknown;
+      status: string;
+      email_status: string;
+    };
+
+    let stored: StoredOrder | null = null;
+    if (resendOrderId) {
+      const { data } = await supabase.from("field_tools_orders").select("*").eq("id", resendOrderId).maybeSingle();
+      stored = (data as StoredOrder | null) ?? null;
+      if (!stored) return jsonResponse({ ok: false, error: "Order not found" }, 404);
+      if (stored.submitted_by_profile_id !== trustedProfile.id && !isAdminCaller) {
+        return jsonResponse({ ok: false, error: "Access denied" }, 403);
+      }
+    } else if (clientSubmitId) {
+      const { data } = await supabase
+        .from("field_tools_orders")
+        .select("*")
+        .eq("client_submit_id", clientSubmitId)
+        .maybeSingle();
+      stored = (data as StoredOrder | null) ?? null;
+      if (stored && stored.submitted_by_profile_id !== trustedProfile.id && !isAdminCaller) {
+        return jsonResponse({ ok: false, error: "Access denied" }, 403);
+      }
+    }
+
+    if (!stored && (!body?.order?.job_number || !body.dispatches?.length)) {
       return jsonResponse({ ok: false, error: "Invalid submit payload" }, 400);
     }
 
-    const o = body.order;
+    const o = stored
+      ? {
+          job_number: stored.job_number,
+          job_name: stored.job_name ?? "",
+          order_type: stored.order_type as "field_request" | "job_scope_kit",
+          submitted_by_profile_id: stored.submitted_by_profile_id ?? trustedProfile.id,
+          submitted_by_name: trustedProfile.name,
+          submitted_by_email: trustedProfile.email,
+          site_contact: stored.site_contact,
+          notes: stored.notes,
+          delivery_type: stored.delivery_type,
+          date_needed: stored.date_needed,
+          crew_kit: stored.crew_kit ?? "",
+          crew_count: stored.crew_count ?? 1,
+          phase: stored.phase ?? "",
+          payload: stored.payload ?? {},
+          paint: Array.isArray(stored.paint) ? stored.paint : [],
+          materials: Array.isArray(stored.materials) ? stored.materials : [],
+          scopes: Array.isArray(stored.scopes) ? stored.scopes : [],
+        }
+      : body.order!;
     const jobCode = o.job_number.trim();
     const jobName = (o.job_name ?? (o.payload.jobName as string) ?? "").trim();
     const payload = o.payload ?? {};
 
-    const { data: accessProfile } = await supabase
-      .from("field_tools_profiles")
-      .select("job_access")
-      .eq("id", trustedProfile.id)
-      .maybeSingle();
-    if (String(accessProfile?.job_access ?? "all") !== "all") {
-      const { data: links } = await supabase
-        .from("field_tools_project_access")
-        .select("project_id")
-        .eq("profile_id", trustedProfile.id);
-      const projectIds = (links ?? []).map((row) => String((row as { project_id: string }).project_id));
-      let allowed = false;
-      if (projectIds.length) {
-        const { data: jobs } = await supabase.from("projects").select("job_number").in("id", projectIds);
-        allowed = (jobs ?? []).some(
-          (row) => String((row as { job_number?: string }).job_number ?? "").trim().toLowerCase() === jobCode.toLowerCase(),
-        );
-      }
-      if (!allowed) {
-        return jsonResponse({ ok: false, error: "You don't have access to this job." }, 403);
+    if (!stored) {
+      const { data: accessProfile } = await supabase
+        .from("field_tools_profiles")
+        .select("job_access")
+        .eq("id", trustedProfile.id)
+        .maybeSingle();
+      if (String(accessProfile?.job_access ?? "all") !== "all") {
+        const { data: links } = await supabase
+          .from("field_tools_project_access")
+          .select("project_id")
+          .eq("profile_id", trustedProfile.id);
+        const projectIds = (links ?? []).map((row) => String((row as { project_id: string }).project_id));
+        let allowed = false;
+        if (projectIds.length) {
+          const { data: jobs } = await supabase.from("projects").select("job_number").in("id", projectIds);
+          allowed = (jobs ?? []).some(
+            (row) => String((row as { job_number?: string }).job_number ?? "").trim().toLowerCase() === jobCode.toLowerCase(),
+          );
+        }
+        if (!allowed) {
+          return jsonResponse({ ok: false, error: "You don't have access to this job." }, 403);
+        }
       }
     }
 
-    const { data: orderRow, error: insertErr } = await supabase
-      .from("field_tools_orders")
-      .insert({
-        job_number: jobCode,
-        job_name: jobName,
-        order_type: o.order_type,
-        submitted_by_profile_id: trustedProfile.id,
-        submitted_by_name: trustedProfile.name,
-        submitted_by_email: trustedProfile.email,
-        site_contact: o.site_contact,
-        notes: o.notes,
-        delivery_type: o.delivery_type,
-        date_needed: o.date_needed,
-        crew_kit: o.crew_kit ?? "",
-        crew_count: o.crew_count ?? 1,
-        phase: o.phase ?? "",
-        payload: o.payload,
-        paint: o.paint,
-        materials: o.materials,
-        scopes: o.scopes,
-        status: "submitted",
-        email_status: "pending",
-      })
-      .select("id")
-      .single();
+    let orderId = stored?.id ?? "";
+    if (!stored) {
+      const { data: orderRow, error: insertErr } = await supabase
+        .from("field_tools_orders")
+        .insert({
+          job_number: jobCode,
+          job_name: jobName,
+          order_type: o.order_type,
+          submitted_by_profile_id: trustedProfile.id,
+          submitted_by_name: trustedProfile.name,
+          submitted_by_email: trustedProfile.email,
+          site_contact: o.site_contact,
+          notes: o.notes,
+          delivery_type: o.delivery_type,
+          date_needed: o.date_needed,
+          crew_kit: o.crew_kit ?? "",
+          crew_count: o.crew_count ?? 1,
+          phase: o.phase ?? "",
+          payload: o.payload,
+          paint: o.paint,
+          materials: o.materials,
+          scopes: o.scopes,
+          status: "submitted",
+          email_status: "pending",
+          client_submit_id: clientSubmitId || null,
+          dispatch_specs: body.dispatches ?? [],
+        })
+        .select("id")
+        .single();
 
-    if (insertErr || !orderRow) {
-      return jsonResponse({ ok: false, error: insertErr?.message ?? "Order insert failed" }, 500);
+      if (insertErr?.code === "23505" && clientSubmitId) {
+        const { data: raced } = await supabase
+          .from("field_tools_orders")
+          .select("*")
+          .eq("client_submit_id", clientSubmitId)
+          .maybeSingle();
+        stored = (raced as StoredOrder | null) ?? null;
+        orderId = stored?.id ?? "";
+      } else if (insertErr || !orderRow) {
+        return jsonResponse({ ok: false, error: insertErr?.message ?? "Order insert failed" }, 500);
+      } else {
+        orderId = orderRow.id as string;
+      }
     }
 
-    const orderId = orderRow.id as string;
+    if (!orderId) {
+      return jsonResponse({ ok: false, error: "Order insert failed" }, 500);
+    }
+
+    const { data: existingDispatchData } = await supabase
+      .from("field_tools_order_dispatches")
+      .select("id, dispatch_type, po_number, to_email, cc_emails, subject, email_status")
+      .eq("order_id", orderId);
+    const existingDispatches = (existingDispatchData ?? []) as ExistingDispatchRow[];
+
+    let dispatchSpecs = asDispatchSpecs(stored?.dispatch_specs);
+    if (!dispatchSpecs.length) dispatchSpecs = body.dispatches ?? [];
+    if (!dispatchSpecs.length) dispatchSpecs = specsFromDispatchRows(existingDispatches);
+    if (!dispatchSpecs.length) {
+      return jsonResponse({ ok: false, error: "No dispatches to send" }, 400);
+    }
+    if (asDispatchSpecs(stored?.dispatch_specs).length === 0) {
+      await supabase.from("field_tools_orders").update({ dispatch_specs: dispatchSpecs }).eq("id", orderId);
+    }
+
+    if (existingDispatches.length && existingDispatches.every((d) => d.email_status === "sent") && !resendDispatchId) {
+      const poLabel = existingDispatches.map((d) => d.po_number).filter(Boolean).join(", ") || stored?.po_number || "";
+      return jsonResponse({
+        ok: true,
+        order_id: orderId,
+        po_number: poLabel || null,
+        dispatches: existingDispatches.map((d) => ({
+          type: d.dispatch_type,
+          po_number: d.po_number || undefined,
+          ok: true,
+          message: "Already sent",
+        })),
+        message: `Order submitted${poLabel ? ` — PO# ${poLabel}` : ""}`,
+      });
+    }
     const paintVendor = payload.vendor as VendorInfo | string | undefined;
     const vendorName = typeof paintVendor === "string" ? paintVendor : paintVendor?.name ?? "";
     const rentalVendor = payload.rentalVendor as VendorInfo | undefined;
@@ -404,9 +586,32 @@ Deno.serve(async (req) => {
     const results: { type: string; po_number?: string; ok: boolean; message: string }[] = [];
     const assignedPos: string[] = [];
 
-    for (const spec of body.dispatches) {
-      let poNumber = "";
-      if (spec.assign_po) {
+    for (let specIndex = 0; specIndex < dispatchSpecs.length; specIndex++) {
+      const spec = dispatchSpecs[specIndex];
+      const existingDispatch = matchExistingDispatch(existingDispatches, spec, specIndex);
+      if (resendDispatchId && existingDispatch && existingDispatch.id !== resendDispatchId) {
+        results.push({
+          type: spec.type,
+          po_number: existingDispatch.po_number || undefined,
+          ok: existingDispatch.email_status === "sent",
+          message: existingDispatch.email_status === "sent" ? "Already sent" : existingDispatch.email_status,
+        });
+        if (existingDispatch.po_number) assignedPos.push(existingDispatch.po_number);
+        continue;
+      }
+      if (existingDispatch?.email_status === "sent" && existingDispatch.id !== resendDispatchId) {
+        results.push({
+          type: spec.type,
+          po_number: existingDispatch.po_number || undefined,
+          ok: true,
+          message: "Already sent",
+        });
+        if (existingDispatch.po_number) assignedPos.push(existingDispatch.po_number);
+        continue;
+      }
+
+      let poNumber = existingDispatch?.po_number ?? "";
+      if (!poNumber && spec.assign_po) {
         const { data: po, error: poErr } = await supabase.rpc("field_tools_next_po_number", {
           p_job_code: jobCode,
         });
@@ -424,8 +629,8 @@ Deno.serve(async (req) => {
         if (shouldSuffixIcbiPaintPo(Boolean(icbi?.isGc), spec, hasPaint)) {
           poNumber = poNumber.endsWith("P") ? poNumber : `${poNumber}P`;
         }
-        assignedPos.push(poNumber);
       }
+      if (poNumber) assignedPos.push(poNumber);
 
       let pdfBytes: Uint8Array;
       let subject: string;
@@ -540,7 +745,7 @@ Deno.serve(async (req) => {
           : spec.to_email.trim();
 
       if (!to) {
-        await supabase.from("field_tools_order_dispatches").insert({
+        const failedRow = {
           order_id: orderId,
           dispatch_type: spec.type,
           po_number: poNumber,
@@ -549,7 +754,12 @@ Deno.serve(async (req) => {
           subject,
           email_status: "failed",
           gas_response: { error: "No recipient email" },
-        });
+        };
+        if (existingDispatch) {
+          await supabase.from("field_tools_order_dispatches").update(failedRow).eq("id", existingDispatch.id);
+        } else {
+          await supabase.from("field_tools_order_dispatches").insert(failedRow);
+        }
         results.push({ type: spec.type, po_number: poNumber || undefined, ok: false, message: "No recipient email" });
         continue;
       }
@@ -560,13 +770,7 @@ Deno.serve(async (req) => {
         pmEmail,
         superEmail,
         foreman,
-        spec.type === "material" || spec.type === "job_scope_kit"
-          ? spec.type === "material" && spec.material_scope === "sundries"
-            ? ""
-            : typeof paintVendor === "object"
-              ? paintVendor?.email2
-              : ""
-          : rentalVendor?.email2,
+        spec.type === "rental" ? rentalVendor?.email2 : "",
       ]);
 
       let htmlBody = buildOrderEmailHtml({
@@ -597,7 +801,7 @@ Deno.serve(async (req) => {
         senderName,
       });
 
-      await supabase.from("field_tools_order_dispatches").insert({
+      const dispatchRow = {
         order_id: orderId,
         dispatch_type: spec.type,
         po_number: poNumber,
@@ -607,7 +811,12 @@ Deno.serve(async (req) => {
         email_status: gas.ok ? "sent" : "failed",
         gas_response: { message: gas.message },
         emailed_at: gas.ok ? new Date().toISOString() : null,
-      });
+      };
+      if (existingDispatch) {
+        await supabase.from("field_tools_order_dispatches").update(dispatchRow).eq("id", existingDispatch.id);
+      } else {
+        await supabase.from("field_tools_order_dispatches").insert(dispatchRow);
+      }
 
       results.push({
         type: spec.type,
@@ -619,9 +828,10 @@ Deno.serve(async (req) => {
 
     await supabase.rpc("field_tools_refresh_order_email_status", { p_order_id: orderId });
 
-    const orderPoLabel = assignedPos.join(", ");
+    const uniquePos = [...new Set(assignedPos.filter(Boolean))];
+    const orderPoLabel = uniquePos.join(", ");
 
-    if (assignedPos.length) {
+    if (uniquePos.length) {
       await supabase.from("field_tools_orders").update({ po_number: orderPoLabel }).eq("id", orderId);
     }
 
@@ -633,6 +843,7 @@ Deno.serve(async (req) => {
       .update({
         gas_response: { dispatches: results },
         status: allOk ? "confirmed" : anyOk ? "submitted" : "failed",
+        last_submit_error: allOk ? "" : results.filter((r) => !r.ok).map((r) => `${r.type}: ${r.message}`).join(" · "),
       })
       .eq("id", orderId);
 
