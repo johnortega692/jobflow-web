@@ -43,6 +43,14 @@ export type WcTrackerLineState = {
   followUp: string;
   esdFollowUp: string;
   packageQty: string;
+  manufacturer: string;
+  product: string;
+  color: string;
+  orderQty: string;
+  orderUnit: string;
+  orderNotes: string;
+  /** Material Orders checkbox. Unset until the user saves an order selection. */
+  orderSelected?: boolean;
   leadTime: string;
   approvalReceived: string;
   dateOrdered: string;
@@ -78,6 +86,12 @@ export const defaultWcTrackerLineFields = (): Omit<WcTrackerLineState, "id" | "l
   followUp: "",
   esdFollowUp: "",
   packageQty: "",
+  manufacturer: "",
+  product: "",
+  color: "",
+  orderQty: "",
+  orderUnit: "",
+  orderNotes: "",
   leadTime: "",
   approvalReceived: "",
   dateOrdered: "",
@@ -149,6 +163,13 @@ export function normalizeWcTrackerLine(raw: unknown, fallbackId: string): WcTrac
     followUp: String(o.followUp ?? defaults.followUp),
     esdFollowUp: String(o.esdFollowUp ?? defaults.esdFollowUp),
     packageQty: String(o.packageQty ?? defaults.packageQty),
+    manufacturer: String(o.manufacturer ?? defaults.manufacturer),
+    product: String(o.product ?? defaults.product),
+    color: String(o.color ?? defaults.color),
+    orderQty: String(o.orderQty ?? defaults.orderQty),
+    orderUnit: String(o.orderUnit ?? defaults.orderUnit),
+    orderNotes: String(o.orderNotes ?? defaults.orderNotes),
+    orderSelected: typeof o.orderSelected === "boolean" ? o.orderSelected : undefined,
     leadTime: String(o.leadTime ?? defaults.leadTime),
     approvalReceived: String(o.approvalReceived ?? defaults.approvalReceived),
     dateOrdered: String(o.dateOrdered ?? defaults.dateOrdered),

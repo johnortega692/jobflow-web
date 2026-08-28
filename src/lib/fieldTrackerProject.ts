@@ -29,7 +29,9 @@ import {
   parseProjectTradeData,
   type PaintSubmittalData,
   type ProjectTradeData,
+  type SubmittalHistoryEntry,
   type WallcoveringItem,
+  type WallcoveringSubmittalData,
 } from "../types/tradeDocuments";
 import { harmonizeTrackerRevision } from "./paintTrackerRevision";
 
@@ -87,6 +89,22 @@ function normalizeWcMatchKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function orderFieldsFromItem(item: WallcoveringItem): Pick<
+  WcTrackerLineState,
+  "manufacturer" | "product" | "color" | "orderQty" | "orderUnit" | "orderNotes" | "orderSelected" | "panels"
+> {
+  return {
+    manufacturer: item.manufacturer.trim(),
+    product: item.product.trim(),
+    color: item.color.trim(),
+    orderQty: item.qty.trim(),
+    orderUnit: item.unit?.trim() || "EA",
+    orderNotes: item.notes.trim(),
+    orderSelected: Boolean(item.order),
+    panels: Boolean(item.panels),
+  };
+}
+
 function linesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
   const defaults = defaultWcTrackerLineFields();
   return items
@@ -96,7 +114,7 @@ function linesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
       label: item.label.trim(),
       wallcoveringName: wcNameFromItem(item) || item.product.trim(),
       ...defaults,
-      panels: Boolean(item.panels),
+      ...orderFieldsFromItem(item),
     }));
 }
 
@@ -111,15 +129,106 @@ export type MergeWcTrackerFromSubmittalResult = {
   unchanged: number;
 };
 
+export type MergeWcTrackerOptions = {
+  /** Refresh matching tracker rows from this package (names, product, color). */
+  updateMatches?: boolean;
+  /** Append items from this package that are not already on the tracker. */
+  addUnmatched?: boolean;
+};
+
+function indexOfWcTrackerMatch(
+  lines: WcTrackerLineState[],
+  label: string,
+  name: string,
+  skip: Set<number>,
+): number {
+  const labelKey = normalizeWcMatchKey(label);
+  const nameKey = normalizeWcMatchKey(name);
+
+  if (labelKey && nameKey) {
+    const byBoth = lines.findIndex(
+      (l, i) =>
+        !skip.has(i) &&
+        normalizeWcMatchKey(l.label) === labelKey &&
+        normalizeWcMatchKey(l.wallcoveringName) === nameKey,
+    );
+    if (byBoth >= 0) return byBoth;
+  }
+
+  if (nameKey) {
+    const byName = lines.findIndex(
+      (l, i) => !skip.has(i) && normalizeWcMatchKey(l.wallcoveringName) === nameKey,
+    );
+    if (byName >= 0) return byName;
+  }
+
+  if (labelKey) {
+    return lines.findIndex((l, i) => {
+      if (skip.has(i) || normalizeWcMatchKey(l.label) !== labelKey) return false;
+      const existingName = normalizeWcMatchKey(l.wallcoveringName);
+      if (nameKey && existingName && nameKey !== existingName) return false;
+      return true;
+    });
+  }
+  return -1;
+}
+
+function lineFromSubmittalItem(item: WallcoveringItem, index: number): WcTrackerLineState {
+  const label = item.label.trim();
+  const wallcoveringName = wcNameFromItem(item) || item.product.trim();
+  return {
+    id: `wc-${Date.now().toString(36)}-${index}`,
+    label,
+    wallcoveringName,
+    ...defaultWcTrackerLineFields(),
+    ...orderFieldsFromItem(item),
+  };
+}
+
+function updatedLineFromMatch(match: WcTrackerLineState, item: WallcoveringItem): WcTrackerLineState {
+  const label = item.label.trim();
+  const wallcoveringName = wcNameFromItem(item) || item.product.trim();
+  const fromItem = orderFieldsFromItem(item);
+  return {
+    ...match,
+    label: label || match.label,
+    wallcoveringName: wallcoveringName || match.wallcoveringName,
+    manufacturer: fromItem.manufacturer || match.manufacturer,
+    product: fromItem.product || match.product,
+    color: fromItem.color || match.color,
+    panels: fromItem.panels,
+    orderQty: match.orderQty.trim() || fromItem.orderQty,
+    orderUnit: match.orderUnit.trim() || fromItem.orderUnit,
+    orderNotes: match.orderNotes.trim() || fromItem.orderNotes,
+    orderSelected: match.orderSelected ?? fromItem.orderSelected,
+  };
+}
+
+function trackerLineChanged(before: WcTrackerLineState, after: WcTrackerLineState): boolean {
+  return (
+    after.label !== before.label ||
+    after.wallcoveringName !== before.wallcoveringName ||
+    after.manufacturer !== before.manufacturer ||
+    after.product !== before.product ||
+    after.color !== before.color ||
+    after.panels !== before.panels ||
+    after.orderQty !== before.orderQty ||
+    after.orderUnit !== before.orderUnit ||
+    after.orderNotes !== before.orderNotes
+  );
+}
+
 /**
  * Merge submittal items into Material Tracker lines.
- * Matching rows keep lead times, dates, and stage flags; new items are appended.
- * Tracker-only rows (not on the submittal) are kept.
+ * Update refreshes matching rows. Add appends unmatched items. Tracker-only rows are kept.
  */
 export function mergeWcTrackerLinesFromSubmittal(
   existing: WcTrackerLineState[],
   items: WallcoveringItem[],
+  options: MergeWcTrackerOptions = {},
 ): MergeWcTrackerFromSubmittalResult {
+  const updateMatches = options.updateMatches !== false;
+  const addUnmatched = options.addUnmatched !== false;
   const submittable = items.filter(
     (i) => i.label.trim() || i.product.trim() || i.manufacturer.trim(),
   );
@@ -127,57 +236,55 @@ export function mergeWcTrackerLinesFromSubmittal(
     return { lines: existing, added: 0, updated: 0, unchanged: existing.length };
   }
 
-  const unused = [...existing];
+  if (!updateMatches && addUnmatched) {
+    const skip = new Set<number>();
+    const appended: WcTrackerLineState[] = [];
+    for (let index = 0; index < submittable.length; index += 1) {
+      const item = submittable[index]!;
+      const label = item.label.trim();
+      const name = wcNameFromItem(item) || item.product.trim();
+      const matchAt = indexOfWcTrackerMatch(existing, label, name, skip);
+      if (matchAt >= 0) {
+        skip.add(matchAt);
+        continue;
+      }
+      appended.push(lineFromSubmittalItem(item, index));
+    }
+    return {
+      lines: [...existing, ...appended],
+      added: appended.length,
+      updated: 0,
+      unchanged: existing.length,
+    };
+  }
+
+  const used = new Set<number>();
   const merged: WcTrackerLineState[] = [];
   let added = 0;
   let updated = 0;
-
-  function takeMatch(label: string, name: string): WcTrackerLineState | null {
-    const labelKey = normalizeWcMatchKey(label);
-    if (labelKey) {
-      const byLabel = unused.findIndex((l) => normalizeWcMatchKey(l.label) === labelKey);
-      if (byLabel >= 0) return unused.splice(byLabel, 1)[0] ?? null;
-    }
-    const nameKey = normalizeWcMatchKey(name);
-    if (nameKey) {
-      const byName = unused.findIndex((l) => normalizeWcMatchKey(l.wallcoveringName) === nameKey);
-      if (byName >= 0) return unused.splice(byName, 1)[0] ?? null;
-    }
-    return null;
-  }
 
   for (let index = 0; index < submittable.length; index += 1) {
     const item = submittable[index]!;
     const label = item.label.trim();
     const wallcoveringName = wcNameFromItem(item) || item.product.trim();
-    const match = takeMatch(label, wallcoveringName);
-    if (match) {
-      const next: WcTrackerLineState = {
-        ...match,
-        label: label || match.label,
-        wallcoveringName: wallcoveringName || match.wallcoveringName,
-        panels: Boolean(item.panels),
-      };
-      if (
-        next.label !== match.label ||
-        next.wallcoveringName !== match.wallcoveringName ||
-        next.panels !== match.panels
-      ) {
-        updated += 1;
+    const matchAt = indexOfWcTrackerMatch(existing, label, wallcoveringName, used);
+    if (matchAt >= 0) {
+      used.add(matchAt);
+      const match = existing[matchAt]!;
+      if (updateMatches) {
+        const next = updatedLineFromMatch(match, item);
+        if (trackerLineChanged(match, next)) updated += 1;
+        merged.push(next);
+      } else {
+        merged.push(match);
       }
-      merged.push(next);
-    } else {
+    } else if (addUnmatched) {
       added += 1;
-      merged.push({
-        id: `wc-${Date.now().toString(36)}-${index}`,
-        label,
-        wallcoveringName,
-        ...defaultWcTrackerLineFields(),
-        panels: Boolean(item.panels),
-      });
+      merged.push(lineFromSubmittalItem(item, index));
     }
   }
 
+  const unused = existing.filter((_, i) => !used.has(i));
   return {
     lines: [...merged, ...unused],
     added,
@@ -190,6 +297,7 @@ export function mergeWcTrackerLinesFromSubmittal(
 export async function updateWcTrackerFromSubmittalItems(
   projectId: string,
   items: WallcoveringItem[],
+  options: MergeWcTrackerOptions = {},
 ): Promise<{ error: string | null; added: number; updated: number; total: number }> {
   const submittable = items.filter(
     (i) => i.label.trim() || i.product.trim() || i.manufacturer.trim(),
@@ -203,7 +311,13 @@ export async function updateWcTrackerFromSubmittalItems(
 
   const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
   const existing = normalizeWcTrackerLines(trade.wc_tracker_lines);
-  const { lines, added, updated } = mergeWcTrackerLinesFromSubmittal(existing, items);
+  const addUnmatched =
+    options.addUnmatched !== undefined ? options.addUnmatched : existing.length === 0;
+  const mergeOptions: MergeWcTrackerOptions = {
+    updateMatches: options.updateMatches !== false,
+    addUnmatched,
+  };
+  const { lines, added, updated } = mergeWcTrackerLinesFromSubmittal(existing, items, mergeOptions);
 
   if (added === 0 && updated === 0) {
     return { error: null, added: 0, updated: 0, total: lines.length };
@@ -214,7 +328,7 @@ export async function updateWcTrackerFromSubmittalItems(
     updated ? `updated ${updated}` : null,
   ].filter(Boolean);
   const summary = summaryParts.length
-    ? `Material Tracker updated from submittal (${summaryParts.join(", ")})`
+    ? `Material Tracker ${mergeOptions.updateMatches === false ? "items added" : "updated"} from submittal (${summaryParts.join(", ")})`
     : "Material Tracker updated from submittal";
 
   const saveErr = await saveWcTrackerLines(projectId, lines, summary);
@@ -262,6 +376,86 @@ export function resolveWcTrackerLines(trade: ProjectTradeData): WcTrackerLineSta
   const stored = normalizeWcTrackerLines(trade.wc_tracker_lines);
   if (stored.length) return stored;
   return linesFromSubmittal(trade.wallcovering_submittal?.items ?? []);
+}
+
+export function hasStoredWcTrackerLines(trade: ProjectTradeData): boolean {
+  return normalizeWcTrackerLines(trade.wc_tracker_lines).length > 0;
+}
+
+export function collectWallcoveringItemsFromPackages(
+  current: WallcoveringSubmittalData | undefined,
+  history: SubmittalHistoryEntry[] | undefined,
+): WallcoveringItem[] {
+  const items: WallcoveringItem[] = [];
+  if (current?.items) items.push(...current.items);
+  for (const entry of history ?? []) {
+    if ((entry.scope ?? "wallcovering") !== "wallcovering") continue;
+    for (const raw of entry.items ?? []) {
+      items.push(raw as WallcoveringItem);
+    }
+  }
+  return items;
+}
+
+export function findWcItemForTrackerLine(
+  line: WcTrackerLineState,
+  items: WallcoveringItem[],
+): WallcoveringItem | undefined {
+  const labelKey = normalizeWcMatchKey(line.label);
+  const nameKey = normalizeWcMatchKey(line.wallcoveringName);
+
+  const named = items.filter((item) => {
+    const n = normalizeWcMatchKey(wcNameFromItem(item) || item.product);
+    return Boolean(nameKey && n && n === nameKey);
+  });
+  if (named.length === 1) return named[0];
+
+  if (labelKey) {
+    const pool = named.length ? named : items;
+    const byLabel = pool.find((item) => normalizeWcMatchKey(item.label) === labelKey);
+    if (byLabel) {
+      const itemName = normalizeWcMatchKey(wcNameFromItem(byLabel) || byLabel.product);
+      if (!nameKey || !itemName || itemName === nameKey) return byLabel;
+    }
+  }
+  return named[0];
+}
+
+export function wallcoveringItemMatchesTrackerLine(
+  item: WallcoveringItem,
+  line: WcTrackerLineState,
+): boolean {
+  return findWcItemForTrackerLine(line, [item]) === item;
+}
+
+export function wcOrderDisplayFromTrackerLine(
+  line: WcTrackerLineState,
+  items: WallcoveringItem[],
+): {
+  manufacturer: string;
+  product: string;
+  color: string;
+  qty: string;
+  unit: string;
+  notes: string;
+  order: boolean;
+} {
+  const item = findWcItemForTrackerLine(line, items);
+  const manufacturer = line.manufacturer.trim() || item?.manufacturer.trim() || "";
+  const color = line.color.trim() || item?.color.trim() || "";
+  const product =
+    line.product.trim() ||
+    item?.product.trim() ||
+    (!manufacturer && !color ? line.wallcoveringName.trim() : "");
+  return {
+    manufacturer,
+    product,
+    color,
+    qty: line.orderQty.trim() || item?.qty.trim() || line.packageQty.trim() || "",
+    unit: line.orderUnit.trim() || item?.unit?.trim() || "EA",
+    notes: line.orderNotes.trim() || item?.notes.trim() || "",
+    order: line.orderSelected ?? Boolean(item?.order),
+  };
 }
 
 export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {

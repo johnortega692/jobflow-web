@@ -5,13 +5,18 @@ import type {
   SubmittalPackageCategory,
   TradeSubmittalType,
   WallcoveringItem,
+  WallcoveringSubmittalData,
 } from "../types/tradeDocuments";
 import {
   defaultPackageForScope,
+  emptyWallcoveringItem,
   formatToday,
   normalizePackageCategory,
   normalizeRevisionNumber,
   normalizeSubmittalIssueStatus,
+  normalizeWallcoveringSubmittal,
+  wcSubjectForPackage,
+  withWcSpecSections,
   type SubmittalIssueStatus,
 } from "../types/tradeDocuments";
 import { formatSubmittalDisplayDate } from "./dateInputUtils";
@@ -269,9 +274,15 @@ export function removeSubmittalFromHistory(
 }
 
 /** Next submittal package number (new product-data / color package). */
-export function nextSubmittalNumber(history: SubmittalHistoryEntry[]): number {
+export function nextSubmittalNumber(
+  history: SubmittalHistoryEntry[],
+  currentDraftNumber?: number,
+): number {
   const nums = history.map((h) => h.submittal_number).filter((n) => Number.isFinite(n));
-  return nums.length ? Math.max(...nums) + 1 : 1;
+  if (typeof currentDraftNumber === "number" && Number.isFinite(currentDraftNumber)) {
+    nums.push(currentDraftNumber);
+  }
+  return (nums.length ? Math.max(...nums) : 0) + 1;
 }
 
 /** Next revision for an existing submittal package (after Rev 0, Rev 1, …). */
@@ -336,7 +347,7 @@ export function createNewSubmittalPackageDraft<
 >(base: T, history: SubmittalHistoryEntry[]): T {
   return {
     ...base,
-    submittal_number: nextSubmittalNumber(history),
+    submittal_number: nextSubmittalNumber(history, base.submittal_number),
     revision_number: 0,
     issue_status: "draft",
     date: formatToday(),
@@ -369,4 +380,84 @@ export function filterHistoryByScope(
   scope: SubmittalScope,
 ): SubmittalHistoryEntry[] {
   return history.map(normalizeHistoryEntry).filter((h) => (h.scope ?? "paint") === scope);
+}
+
+function historyItemsHaveContent(items: SubmittalHistoryEntry["items"]): boolean {
+  return items.some((i) => {
+    const row = i as PaintItem & WallcoveringItem & FrpItem;
+    return Boolean(row.color?.trim() || row.product?.trim() || row.label?.trim() || row.manufacturer?.trim());
+  });
+}
+
+type SnapshotDraft = {
+  submittal_number: number;
+  revision_number: number;
+  items: SubmittalHistoryEntry["items"];
+  submittal_type?: TradeSubmittalType;
+  issue_status: SubmittalIssueStatus;
+  revision_note?: string;
+  package_type?: SubmittalPackageCategory;
+  date: string;
+  spec_section?: string;
+  spec_section_secondary?: string;
+  spec_section_secondary_label?: string;
+};
+
+/** Keep the current editor package in history so New package / Open this package can go back. */
+export function snapshotSubmittalDraftToHistory(
+  history: SubmittalHistoryEntry[],
+  draft: SnapshotDraft,
+  scope: SubmittalScope,
+): SubmittalHistoryEntry[] {
+  if (!historyItemsHaveContent(draft.items)) return history;
+  return addSubmittalToHistory(
+    history,
+    draft.submittal_number,
+    draft.revision_number,
+    draft.items,
+    draft.submittal_type,
+    scope,
+    {
+      revisionNote: draft.revision_note,
+      issueStatus: draft.issue_status,
+      locked: isLockedPackageStatus(draft.issue_status),
+      packageType: draft.package_type,
+      date: draft.date,
+      specSection: draft.spec_section,
+      specSectionSecondary: draft.spec_section_secondary,
+      specSectionSecondaryLabel: draft.spec_section_secondary_label,
+    },
+  );
+}
+
+/** Restore a wallcovering history row as the working package (same number, rev, status, items). */
+export function wallcoveringDraftFromHistoryEntry(entry: SubmittalHistoryEntry): WallcoveringSubmittalData {
+  const items = ((entry.items ?? []) as WallcoveringItem[]).map((i) => ({
+    ...emptyWallcoveringItem(),
+    ...i,
+    order: i.order ?? false,
+    spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
+  }));
+  const package_type = normalizePackageCategory(
+    entry.package_type,
+    "Wallcovering Samples",
+    "wallcovering",
+  );
+  const submittal_type = entry.submittal_type ?? "new";
+  const spec = entry.spec_section?.trim() || "09 72 00 - Wall Coverings";
+  return withWcSpecSections(
+    normalizeWallcoveringSubmittal({
+      submittal_number: entry.submittal_number,
+      revision_number: entry.revision_number ?? 0,
+      issue_status: entry.issue_status ?? "issued",
+      package_type,
+      submittal_type,
+      subject: wcSubjectForPackage(package_type, submittal_type),
+      spec_section: spec,
+      date: entry.date,
+      items: items.length ? items : [emptyWallcoveringItem()],
+      revision_note: entry.revision_note,
+    }),
+    [spec],
+  );
 }

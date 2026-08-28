@@ -13,9 +13,12 @@ type Props = {
   jobNumber: string;
   jobName: string;
   history: SubmittalHistoryEntry[];
+  currentSubmittalNumber?: number;
+  currentRevisionNumber?: number;
   onLoadPaint?: (items: PaintItem[], replace: boolean) => void;
   onLoadWallcovering?: (items: WallcoveringItem[], replace: boolean) => void;
   onLoadFrp?: (items: FrpItem[], replace: boolean) => void;
+  onOpenPackage?: (entry: SubmittalHistoryEntry) => void;
   onDelete: (submittalNumber: number, revisionNumber: number) => void;
   onClose: () => void;
 };
@@ -25,9 +28,12 @@ export function SubmittalHistoryModal({
   jobNumber,
   jobName,
   history,
+  currentSubmittalNumber,
+  currentRevisionNumber,
   onLoadPaint,
   onLoadWallcovering,
   onLoadFrp,
+  onOpenPackage,
   onDelete,
   onClose,
 }: Props) {
@@ -40,8 +46,15 @@ export function SubmittalHistoryModal({
       }),
     [history],
   );
-  const [selected, setSelected] = useState(0);
-  const entry = sorted[selected];
+  const currentIdx = sorted.findIndex(
+    (h) =>
+      currentSubmittalNumber != null &&
+      h.submittal_number === currentSubmittalNumber &&
+      (h.revision_number ?? 0) === (currentRevisionNumber ?? 0),
+  );
+  const [selected, setSelected] = useState(() => (currentIdx >= 0 ? currentIdx : 0));
+  const activeIdx = selected < sorted.length ? selected : 0;
+  const entry = sorted[activeIdx];
   const scopeLabel =
     scope === "paint" ? "Paint" : scope === "wallcovering" ? "Wallcovering" : "FRP";
 
@@ -65,8 +78,8 @@ export function SubmittalHistoryModal({
         <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
           <h3>Submittal history</h3>
           <p className="muted">
-            No saved {scopeLabel.toLowerCase()} submittals for this job yet. History is saved when you
-            print a submittal PDF.
+            No saved {scopeLabel.toLowerCase()} submittals for this job yet. Issue a package, or start
+            a new package after adding items — both keep a record you can open later.
           </p>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Close
@@ -92,18 +105,26 @@ export function SubmittalHistoryModal({
         <div className="paint-history-body">
           <div className="paint-history-list">
             <p className="paint-col-head">Saved submittals</p>
+            <p className="muted small">Includes the package currently open on the tab.</p>
             <ul>
-              {sorted.map((h, i) => (
+              {sorted.map((h, i) => {
+                const isCurrent =
+                  currentSubmittalNumber != null &&
+                  h.submittal_number === currentSubmittalNumber &&
+                  (h.revision_number ?? 0) === (currentRevisionNumber ?? 0);
+                return (
                 <li key={`${h.submittal_number}-${h.revision_number ?? 0}`}>
                   <button
                     type="button"
-                    className={`paint-history-item${i === selected ? " active" : ""}`}
+                    className={`paint-history-item${i === activeIdx ? " active" : ""}`}
                     onClick={() => setSelected(i)}
                   >
                     {formatSubmittalHistoryLabel(h)}
+                    {isCurrent ? " · current" : ""}
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </div>
 
@@ -191,12 +212,43 @@ export function SubmittalHistoryModal({
           </div>
         </div>
 
+        <p className="muted small paint-history-load-hint">
+          {scope === "wallcovering" ? (
+            <>
+              <strong>Load to wallcovering tab</strong> adds these saved items onto the package you are
+              editing. <strong>Replace wallcovering tab</strong> removes the current items and uses only
+              this list. Neither changes the submittal number
+              {onOpenPackage ? (
+                <>
+                  {" "}
+                  — use <strong>Open this package</strong> to switch to this record
+                </>
+              ) : null}
+              .
+            </>
+          ) : scope === "paint" ? (
+            <>
+              <strong>Load to paint tab</strong> adds these saved items onto the package you are editing.{" "}
+              <strong>Replace paint tab</strong> removes the current items and uses only this list.
+            </>
+          ) : (
+            <>
+              <strong>Load to FRP tab</strong> adds these saved items onto the package you are editing.{" "}
+              <strong>Replace FRP tab</strong> removes the current items and uses only this list.
+            </>
+          )}
+        </p>
         <div className="row-gap wrap">
+          {onOpenPackage && entry ? (
+            <button type="button" className="btn btn-primary" onClick={() => onOpenPackage(entry)}>
+              Open this package
+            </button>
+          ) : null}
           {scope === "paint" && onLoadPaint && (
             <>
               <button
                 type="button"
-                className="btn btn-primary"
+                className={onOpenPackage ? "btn btn-secondary" : "btn btn-primary"}
                 onClick={() => entry && onLoadPaint(entry.items as PaintItem[], false)}
               >
                 Load to paint tab
@@ -214,7 +266,8 @@ export function SubmittalHistoryModal({
             <>
               <button
                 type="button"
-                className="btn btn-primary"
+                className={onOpenPackage ? "btn btn-secondary" : "btn btn-primary"}
+                title="Add these saved items onto the package currently open on the Wallcovering tab"
                 onClick={() => entry && onLoadWallcovering(entry.items as WallcoveringItem[], false)}
               >
                 Load to wallcovering tab
@@ -222,6 +275,7 @@ export function SubmittalHistoryModal({
               <button
                 type="button"
                 className="btn btn-secondary"
+                title="Clear the Wallcovering tab items and use only this saved list"
                 onClick={() => entry && onLoadWallcovering(entry.items as WallcoveringItem[], true)}
               >
                 Replace wallcovering tab
@@ -232,7 +286,7 @@ export function SubmittalHistoryModal({
             <>
               <button
                 type="button"
-                className="btn btn-primary"
+                className={onOpenPackage ? "btn btn-secondary" : "btn btn-primary"}
                 onClick={() => entry && onLoadFrp(entry.items as FrpItem[], false)}
               >
                 Load to FRP tab

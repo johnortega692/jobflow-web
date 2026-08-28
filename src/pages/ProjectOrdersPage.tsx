@@ -44,7 +44,14 @@ import {
 } from "../lib/trackCatalog";
 import { downloadTrackOrderForm, trackItemsToOrderForm } from "../lib/trackOrderFormPrint";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
-import { resolveWcTrackerLines, saveWcTrackerLines } from "../lib/fieldTrackerProject";
+import {
+  collectWallcoveringItemsFromPackages,
+  hasStoredWcTrackerLines,
+  resolveWcTrackerLines,
+  saveWcTrackerLines,
+  wallcoveringItemMatchesTrackerLine,
+  wcOrderDisplayFromTrackerLine,
+} from "../lib/fieldTrackerProject";
 import { applyWcLineStage } from "../lib/fieldTrackerStatus";
 import type { WcTrackerLineState } from "../types/fieldTracker";
 import type { MaterialVendor } from "../types/contactDirectory";
@@ -60,6 +67,7 @@ import {
   type FrpItem,
   type FrpSubmittalData,
   type MaterialOrderUnit,
+  type SubmittalHistoryEntry,
   type TrackItem,
   type TrackSubmittalData,
   type WallcoveringItem,
@@ -74,6 +82,7 @@ type ScopeFilter = "all" | OrderScope;
 type UnifiedOrderRow = {
   scope: OrderScope;
   index: number;
+  lineId?: string;
   label: string;
   product: string;
   manufacturer: string;
@@ -161,45 +170,99 @@ function normalizeTrackDraft(raw: TrackSubmittalData): TrackSubmittalData {
   return { ...defaultTrackSubmittal(), ...raw, items };
 }
 
-/** Match an order row to its Material Tracker line: label first, then full name, then derived id. */
+/** Match an order row to its Material Tracker line: id first, then label, then full name. */
 function findWcTrackerLine(
   lines: WcTrackerLineState[],
   row: UnifiedOrderRow,
 ): WcTrackerLineState | undefined {
-  const label = row.label.trim().toLowerCase();
-  if (label) {
-    const byLabel = lines.find((l) => l.label.trim().toLowerCase() === label);
-    if (byLabel) return byLabel;
+  if (row.lineId) {
+    const byId = lines.find((l) => l.id === row.lineId);
+    if (byId) return byId;
   }
+  const label = row.label.trim().toLowerCase();
   const name = [row.manufacturer, row.product, row.color]
     .filter((p) => p.trim())
     .join(" ")
     .trim()
     .toLowerCase();
+  if (label && name) {
+    const byBoth = lines.find(
+      (l) =>
+        l.label.trim().toLowerCase() === label &&
+        l.wallcoveringName.trim().toLowerCase() === name,
+    );
+    if (byBoth) return byBoth;
+  }
   if (name) {
     const byName = lines.find((l) => l.wallcoveringName.trim().toLowerCase() === name);
     if (byName) return byName;
   }
+  if (label) {
+    const byLabel = lines.find((l) => {
+      if (l.label.trim().toLowerCase() !== label) return false;
+      const existingName = l.wallcoveringName.trim().toLowerCase();
+      if (name && existingName && name !== existingName) return false;
+      return true;
+    });
+    if (byLabel) return byLabel;
+  }
   return lines.find((l) => l.id === `submittal-${row.index}`);
 }
 
-function buildUnifiedRows(wc: WallcoveringSubmittalData, frp: FrpSubmittalData): UnifiedOrderRow[] {
+function wallcoveringItemsFromOrderRows(rows: UnifiedOrderRow[]): WallcoveringItem[] {
+  return rows
+    .filter((r) => r.scope === "wallcovering" && r.order)
+    .map((r) => ({
+      ...emptyWallcoveringItem(),
+      label: r.label,
+      product: r.product,
+      manufacturer: r.manufacturer,
+      color: r.color,
+      qty: r.qty,
+      unit: r.unit,
+      notes: r.notes,
+      order: true,
+    }));
+}
+
+function buildUnifiedRows(
+  wcLines: WcTrackerLineState[],
+  wc: WallcoveringSubmittalData,
+  wcHistory: SubmittalHistoryEntry[],
+  frp: FrpSubmittalData,
+  fromTracker: boolean,
+): UnifiedOrderRow[] {
   const rows: UnifiedOrderRow[] = [];
-  wc.items.forEach((item, index) => {
-    if (!wcItemHasContent(item)) return;
-    rows.push({
-      scope: "wallcovering",
-      index,
-      label: item.label,
-      product: item.product,
-      manufacturer: item.manufacturer,
-      color: item.color,
-      qty: item.qty,
-      unit: item.unit?.trim() || "EA",
-      notes: item.notes,
-      order: item.order,
+  if (fromTracker) {
+    const pool = collectWallcoveringItemsFromPackages(wc, wcHistory);
+    wcLines.forEach((line, index) => {
+      if (!line.label.trim() && !line.wallcoveringName.trim()) return;
+      const display = wcOrderDisplayFromTrackerLine(line, pool);
+      rows.push({
+        scope: "wallcovering",
+        index,
+        lineId: line.id,
+        label: line.label,
+        ...display,
+      });
     });
-  });
+  } else {
+    wc.items.forEach((item, index) => {
+      if (!wcItemHasContent(item)) return;
+      rows.push({
+        scope: "wallcovering",
+        index,
+        label: item.label,
+        product: item.product,
+        manufacturer: item.manufacturer,
+        color: item.color,
+        qty: item.qty,
+        unit: item.unit?.trim() || "EA",
+        notes: item.notes,
+        order: item.order,
+      });
+    });
+  }
   frp.items.forEach((item, index) => {
     if (!frpItemHasContent(item)) return;
     rows.push({
@@ -225,6 +288,7 @@ export function ProjectOrdersPage() {
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
 
   const [wcDraft, setWcDraft] = useState<WallcoveringSubmittalData>(defaultWallcoveringSubmittal());
+  const [wcHistory, setWcHistory] = useState<SubmittalHistoryEntry[]>([]);
   const [frpDraft, setFrpDraft] = useState<FrpSubmittalData>(defaultFrpSubmittal());
   const [trackDraft, setTrackDraft] = useState<TrackSubmittalData>(defaultTrackSubmittal());
   const [frpCatalog, setFrpCatalog] = useState<FrpCatalog | null>(null);
@@ -239,6 +303,7 @@ export function ProjectOrdersPage() {
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   /** Material Tracker lines — the "order complete" column reads/writes materialOrder. */
   const [wcLines, setWcLines] = useState<WcTrackerLineState[]>([]);
+  const [wcOrdersFromTracker, setWcOrdersFromTracker] = useState(false);
   const [completeSaving, setCompleteSaving] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -256,9 +321,11 @@ export function ProjectOrdersPage() {
   useEffect(() => {
     if (!loading) {
       setWcDraft(normalizeWcDraft(tradeData.wallcovering_submittal ?? defaultWallcoveringSubmittal()));
+      setWcHistory(tradeData.wallcovering_submittal_history ?? []);
       setFrpDraft(normalizeFrpDraft(tradeData.frp_submittal ?? defaultFrpSubmittal()));
       setTrackDraft(normalizeTrackDraft(tradeData.track_submittal ?? defaultTrackSubmittal()));
       setWcLines(resolveWcTrackerLines(tradeData));
+      setWcOrdersFromTracker(hasStoredWcTrackerLines(tradeData));
     }
   }, [loading, tradeData]);
 
@@ -302,7 +369,10 @@ export function ProjectOrdersPage() {
       ? fwpPoJobCode
       : materialPoJobCode;
 
-  const unifiedRows = useMemo(() => buildUnifiedRows(wcDraft, frpDraft), [wcDraft, frpDraft]);
+  const unifiedRows = useMemo(
+    () => buildUnifiedRows(wcLines, wcDraft, wcHistory, frpDraft, wcOrdersFromTracker),
+    [wcLines, wcDraft, wcHistory, frpDraft, wcOrdersFromTracker],
+  );
 
   const visibleRows = useMemo(() => {
     if (scopeFilter === "all") return unifiedRows;
@@ -320,31 +390,17 @@ export function ProjectOrdersPage() {
   const frpVendorCount = useMemo(() => uniqueVendors(checkedFrp).length, [checkedFrp]);
 
   const emailOrderItems = useMemo((): MaterialOrderEmailItem[] => {
-    const rows: MaterialOrderEmailItem[] = [];
-    for (const item of wcDraft.items) {
-      if (!item.order || !wcItemHasContent(item)) continue;
-      rows.push({
-        manufacturer: item.manufacturer,
-        product: item.product,
-        color: item.color,
-        quantity: [item.qty.trim(), item.unit?.trim()].filter(Boolean).join(" "),
-        label: item.label,
-        notes: item.notes,
-      });
-    }
-    for (const item of frpDraft.items) {
-      if (!item.order || !frpItemHasContent(item)) continue;
-      rows.push({
-        manufacturer: item.manufacturer,
-        product: item.product,
-        color: item.color,
-        quantity: [item.quantity.trim(), item.unit?.trim()].filter(Boolean).join(" "),
-        label: item.label,
-        notes: item.notes,
-      });
-    }
-    return rows;
-  }, [wcDraft.items, frpDraft.items]);
+    return unifiedRows
+      .filter((row) => row.order)
+      .map((row) => ({
+        manufacturer: row.manufacturer,
+        product: row.product,
+        color: row.color,
+        quantity: [row.qty.trim(), row.unit?.trim()].filter(Boolean).join(" "),
+        label: row.label,
+        notes: row.notes,
+      }));
+  }, [unifiedRows]);
 
   const fwpEmailOrderItems = useMemo((): MaterialOrderEmailItem[] => {
     return trackDraft.items
@@ -389,6 +445,7 @@ export function ProjectOrdersPage() {
       wallcovering_submittal: wcDraft,
       frp_submittal: frpDraft,
       track_submittal: trackDraft,
+      ...(wcOrdersFromTracker ? { wc_tracker_lines: wcLines } : {}),
     });
     if (ok) {
       setError(null);
@@ -397,8 +454,16 @@ export function ProjectOrdersPage() {
     return ok;
   }
 
+  function patchWcTrackerLine(index: number, patch: Partial<WcTrackerLineState>) {
+    setWcLines((lines) => lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  }
+
   function setOrder(scope: OrderScope, index: number, order: boolean) {
     if (scope === "wallcovering") {
+      if (wcOrdersFromTracker) {
+        patchWcTrackerLine(index, { orderSelected: order });
+        return;
+      }
       setWcDraft((d) => ({
         ...d,
         items: d.items.map((item, i) => (i === index ? { ...item, order } : item)),
@@ -417,10 +482,16 @@ export function ProjectOrdersPage() {
     );
     const frpIndexes = new Set(visibleRows.filter((r) => r.scope === "frp").map((r) => r.index));
     if (wcIndexes.size) {
-      setWcDraft((d) => ({
-        ...d,
-        items: d.items.map((item, i) => (wcIndexes.has(i) ? { ...item, order } : item)),
-      }));
+      if (wcOrdersFromTracker) {
+        setWcLines((lines) =>
+          lines.map((line, i) => (wcIndexes.has(i) ? { ...line, orderSelected: order } : line)),
+        );
+      } else {
+        setWcDraft((d) => ({
+          ...d,
+          items: d.items.map((item, i) => (wcIndexes.has(i) ? { ...item, order } : item)),
+        }));
+      }
     }
     if (frpIndexes.size) {
       setFrpDraft((d) => ({
@@ -467,6 +538,10 @@ export function ProjectOrdersPage() {
   function setQty(scope: OrderScope, index: number, qty: string) {
     const next = qtyNumericOnly(qty);
     if (scope === "wallcovering") {
+      if (wcOrdersFromTracker) {
+        patchWcTrackerLine(index, { orderQty: next });
+        return;
+      }
       setWcDraft((d) => ({
         ...d,
         items: d.items.map((item, i) => (i === index ? { ...item, qty: next } : item)),
@@ -481,6 +556,10 @@ export function ProjectOrdersPage() {
 
   function setUnit(scope: OrderScope, index: number, unit: MaterialOrderUnit) {
     if (scope === "wallcovering") {
+      if (wcOrdersFromTracker) {
+        patchWcTrackerLine(index, { orderUnit: unit });
+        return;
+      }
       setWcDraft((d) => ({
         ...d,
         items: d.items.map((item, i) => (i === index ? { ...item, unit } : item)),
@@ -495,6 +574,10 @@ export function ProjectOrdersPage() {
 
   function setNotes(scope: OrderScope, index: number, notes: string) {
     if (scope === "wallcovering") {
+      if (wcOrdersFromTracker) {
+        patchWcTrackerLine(index, { orderNotes: notes });
+        return;
+      }
       setWcDraft((d) => ({
         ...d,
         items: d.items.map((item, i) => (i === index ? { ...item, notes } : item)),
@@ -504,6 +587,59 @@ export function ProjectOrdersPage() {
         ...d,
         items: d.items.map((item, i) => (i === index ? { ...item, notes } : item)),
       }));
+    }
+  }
+
+  async function removeOrderRow(row: UnifiedOrderRow) {
+    const name = row.label.trim() || row.product.trim() || `${scopeLabel(row.scope)} line`;
+    const source =
+      row.scope === "wallcovering"
+        ? wcOrdersFromTracker
+          ? "Material Tracker (and the open wallcovering package if this line is on it)"
+          : "wallcovering submittal"
+        : "FRP submittal";
+    if (
+      !window.confirm(
+        `Remove ${name} from this order list? This also removes it from the ${source}.`,
+      )
+    ) {
+      return;
+    }
+    let nextWc = wcDraft;
+    let nextFrp = frpDraft;
+    let nextLines = wcLines;
+    if (row.scope === "wallcovering") {
+      if (wcOrdersFromTracker) {
+        const line = wcLines[row.index];
+        nextLines = wcLines.filter((_, i) => i !== row.index);
+        if (line) {
+          const items = wcDraft.items.filter(
+            (item) => !wallcoveringItemMatchesTrackerLine(item, line),
+          );
+          nextWc = { ...wcDraft, items: items.length ? items : [emptyWallcoveringItem()] };
+        }
+        setWcLines(nextLines);
+        setWcDraft(nextWc);
+      } else {
+        const items = wcDraft.items.filter((_, i) => i !== row.index);
+        nextWc = { ...wcDraft, items: items.length ? items : [emptyWallcoveringItem()] };
+        setWcDraft(nextWc);
+      }
+    } else {
+      const items = frpDraft.items.filter((_, i) => i !== row.index);
+      nextFrp = { ...frpDraft, items: items.length ? items : [emptyFrpItem()] };
+      setFrpDraft(nextFrp);
+    }
+    const ok = await save({
+      ...tradeData,
+      wallcovering_submittal: nextWc,
+      frp_submittal: nextFrp,
+      track_submittal: trackDraft,
+      ...(wcOrdersFromTracker ? { wc_tracker_lines: nextLines } : {}),
+    });
+    if (ok) {
+      setError(null);
+      setStatus(`Removed ${name}.`);
     }
   }
 
@@ -767,7 +903,7 @@ export function ProjectOrdersPage() {
     void (async () => {
       try {
         if (action.kind === "wc_form") {
-          const items = wcDraft.items.filter((i) => i.order && wcItemHasContent(i));
+          const items = wallcoveringItemsFromOrderRows(checkedWc);
           if (!items.length) throw new Error("Check wallcovering items to include on the order form.");
           const po = await downloadWcForm(items, address, undefined, confirmedPo);
           setStatus(`Wallcovering order form PDF downloaded — PO# ${po}.`);
@@ -803,7 +939,7 @@ export function ProjectOrdersPage() {
       if (!items.length) throw new Error("No checked FWP items to include on the order PDF.");
       issued.push(await downloadFwpForm(items, address, vendorLabel, po));
     } else {
-      const wcItems = wcDraft.items.filter((i) => i.order && wcItemHasContent(i));
+      const wcItems = wallcoveringItemsFromOrderRows(checkedWc);
       const frpItems = frpDraft.items.filter((i) => i.order && frpItemHasContent(i));
       if (wcItems.length) issued.push(await downloadWcForm(wcItems, address, vendorLabel, po));
       if (frpItems.length) issued.push(await downloadFrpForm(frpItems, address, vendorLabel, po));
@@ -830,6 +966,12 @@ export function ProjectOrdersPage() {
             Wallcovering job: {wcJobNumber || "—"}
             {wcJobName ? ` — ${wcJobName}` : ""}
           </p>
+          {wcOrdersFromTracker && (
+            <p className="muted small">
+              Wallcovering lines come from Material Tracker, so they stay put when you switch
+              submittal packages.
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -886,6 +1028,7 @@ export function ProjectOrdersPage() {
               <col className="project-orders-col-qty" />
               <col className="project-orders-col-notes" />
               <col className="project-orders-col-complete" />
+              <col className="project-orders-col-actions" />
             </colgroup>
             <thead>
               <tr>
@@ -932,12 +1075,16 @@ export function ProjectOrdersPage() {
                     <path d="M3 9l4 0" />
                   </svg>
                 </th>
+                <th className="project-orders-th-actions" title="Remove from order list">
+                  <span aria-hidden="true">×</span>
+                  <span className="sr-only">Remove</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {visibleRows.map((row) => (
                 <tr
-                  key={`${row.scope}-${row.index}`}
+                  key={`${row.scope}-${row.lineId ?? row.index}`}
                   className={row.order ? "project-orders-row--checked" : undefined}
                 >
                   <td>
@@ -956,9 +1103,9 @@ export function ProjectOrdersPage() {
                   </td>
                   <td>{row.label || "—"}</td>
                   <td className="project-orders-product">{row.product || "—"}</td>
-                  <td>{row.manufacturer || "—"}</td>
-                  <td>{row.color || "—"}</td>
-                  <td>
+                  <td className="project-orders-ellipsis">{row.manufacturer || "—"}</td>
+                  <td className="project-orders-ellipsis">{row.color || "—"}</td>
+                  <td className="project-orders-qty-cell">
                     <div className="project-orders-qty-group">
                       <input
                         className="project-orders-qty-input"
@@ -984,7 +1131,7 @@ export function ProjectOrdersPage() {
                       </select>
                     </div>
                   </td>
-                  <td>
+                  <td className="project-orders-notes-cell">
                     <input
                       className="project-orders-notes-input"
                       value={row.notes}
@@ -1017,6 +1164,17 @@ export function ProjectOrdersPage() {
                     ) : (
                       <span className="muted">—</span>
                     )}
+                  </td>
+                  <td className="project-orders-actions-cell">
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-small btn-danger-soft"
+                      title={`Remove ${row.label || row.product || "line"}`}
+                      aria-label={`Remove ${row.label || row.product || "line"}`}
+                      onClick={() => void removeOrderRow(row)}
+                    >
+                      ×
+                    </button>
                   </td>
                 </tr>
               ))}

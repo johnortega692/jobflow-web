@@ -786,6 +786,12 @@ label {
   max-width: 28rem;
 }
 
+.project-orders-page {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .project-orders-page-header {
   align-items: flex-start;
   gap: 1rem;
@@ -839,53 +845,113 @@ label {
 .project-orders-table {
   table-layout: fixed;
   width: 100%;
+  min-width: 0;
   --orders-control-height: 2.5rem;
 }
 
+.project-orders-table th,
+.project-orders-table td {
+  min-width: 0;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
 .project-orders-col-order {
-  width: 2.25rem;
+  width: 2.1rem;
 }
 
 .project-orders-table td:first-child {
   text-align: center;
-  padding-left: 0.5rem;
-  padding-right: 0.25rem;
+  padding-left: 0.4rem;
+  padding-right: 0.2rem;
 }
 
 .project-orders-col-scope {
-  width: 3.5rem;
+  width: 3.1rem;
 }
 
 .project-orders-col-label {
-  width: 4.5rem;
+  width: 3.4rem;
 }
 
 .project-orders-col-product {
-  width: auto;
+  width: 16%;
 }
 
 .project-orders-col-mfr {
-  width: 8.5rem;
+  width: 13%;
 }
 
 .project-orders-col-color {
-  width: 7rem;
+  width: 12%;
 }
 
 .project-orders-col-qty {
-  width: 7.25rem;
+  width: 8.5rem;
 }
 
 .project-orders-col-notes {
-  width: 9.5rem;
+  width: auto;
 }
 
 .project-orders-col-complete {
+  width: 1.85rem;
+}
+
+.project-orders-col-actions {
   width: 2.5rem;
 }
 
 .project-orders-complete-cell {
   text-align: center;
+}
+
+.project-orders-table .project-orders-qty-cell,
+.project-orders-table .project-orders-notes-cell,
+.project-orders-table .project-orders-complete-cell,
+.project-orders-table .project-orders-actions-cell,
+.project-orders-table .project-orders-th-actions {
+  overflow: visible;
+}
+
+.project-orders-table .project-orders-qty-cell {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+}
+
+.project-orders-table .project-orders-th-complete,
+.project-orders-table .project-orders-complete-cell {
+  padding-left: 0.15rem;
+  padding-right: 0.15rem;
+}
+
+.project-orders-table .project-orders-th-actions,
+.project-orders-table .project-orders-actions-cell {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  box-sizing: border-box;
+  text-align: center;
+  padding: 0.25rem 0.45rem 0.25rem 0.15rem;
+}
+
+.project-orders-th-actions {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.project-orders-table .project-orders-actions-cell .btn-icon {
+  width: 26px;
+  min-width: 26px;
+  max-width: 26px;
+  height: var(--orders-control-height);
+  min-height: var(--orders-control-height);
+  padding: 0;
+  font-size: 0.95rem;
+  line-height: 1;
+  border-radius: 4px;
 }
 
 .project-orders-th-complete {
@@ -896,6 +962,11 @@ label {
   display: inline-block;
   vertical-align: middle;
   color: var(--muted, #6b7280);
+}
+
+.project-orders-qty-cell {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
 }
 
 .project-orders-notes-input {
@@ -919,9 +990,11 @@ label {
   background: color-mix(in srgb, var(--accent) 9%, transparent);
 }
 
-.project-orders-product {
+.project-orders-product,
+.project-orders-ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-orders-qty-group {
@@ -931,6 +1004,7 @@ label {
   gap: 0.3rem;
   white-space: nowrap;
   height: var(--orders-control-height);
+  max-width: 100%;
 }
 
 .project-orders-qty-input,
@@ -954,14 +1028,24 @@ label {
 }
 
 .project-orders-unit-select {
-  width: 3.4rem;
-  min-width: 3.4rem;
-  max-width: 3.4rem;
-  padding-right: 1.25rem;
+  appearance: none;
+  width: 3.1rem;
+  min-width: 3.1rem;
+  max-width: 3.1rem;
+  padding: 0 0.95rem 0 0.3rem;
+  font-size: 0.8rem;
+  background-color: var(--bg-elevated);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%239aa3b5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.28rem center;
+  background-size: 7px 4px;
 }
 
 .project-orders-lines-section {
   gap: 0.65rem;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
 }
 
 .project-orders-table-wrap {
@@ -969,7 +1053,9 @@ label {
   border: none;
   background: transparent;
   padding: 0;
-  overflow-x: auto;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
 }
 
 .project-orders-action-bar {
@@ -2849,6 +2935,12 @@ th {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85em;
   word-break: break-all;
+}
+
+.submittal-package-hint {
+  margin: 0;
+  max-width: 46rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 900px) {
@@ -5890,11 +5982,10 @@ tr.budget-hours-pdf-hidden td {
   }
 }
 
-/* Fixed content width — matches SDS / paint / orders modules */
+/* Fixed content width — matches SDS / paint modules */
 .paint-submittal-page,
 .wc-submittal-page,
 .frp-submittal-page,
-.project-orders-page,
 .po-tracker-page,
 .budget-maker-page,
 .billing-page,
@@ -7111,8 +7202,9 @@ tr.budget-hours-pdf-hidden td {
   white-space: nowrap;
 }
 
-.paint-history-modal {
-  width: min(920px, 100%);
+.paint-history-load-hint {
+  margin: 0.15rem 0 0;
+  line-height: 1.45;
 }
 
 .paint-history-body {
@@ -8108,6 +8200,14 @@ tr.budget-hours-pdf-hidden td {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+.table-wrap.project-orders-table-wrap {
+  overflow: visible;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  scrollbar-gutter: auto;
 }
 
 .data-table {

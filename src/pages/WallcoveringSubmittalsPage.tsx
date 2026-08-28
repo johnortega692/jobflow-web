@@ -13,7 +13,10 @@ import { loadContactDirectory } from "../lib/contactDirectory";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
+  findHistoryEntry,
   removeSubmittalFromHistory,
+  snapshotSubmittalDraftToHistory,
+  wallcoveringDraftFromHistoryEntry,
 } from "../lib/submittalHistory";
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
@@ -96,7 +99,7 @@ export function WallcoveringSubmittalsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [startRevisionOpen, setStartRevisionOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [trackerBusy, setTrackerBusy] = useState(false);
+  const [trackerBusy, setTrackerBusy] = useState<"update" | "add" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -110,30 +113,22 @@ export function WallcoveringSubmittalsPage() {
 
   const persist = useCallback(
     async (nextDraft: WallcoveringSubmittalData, nextHistory = history) => {
+      const historyWithDraft = snapshotSubmittalDraftToHistory(nextHistory, nextDraft, "wallcovering");
       const ok = await save({
         ...tradeData,
         wallcovering_submittal: nextDraft,
-        wallcovering_submittal_history: nextHistory,
+        wallcovering_submittal_history: historyWithDraft,
       });
       if (ok) {
         setDraft(nextDraft);
-        setHistory(nextHistory);
-        syncBaseline({ draft: nextDraft, history: nextHistory });
+        setHistory(historyWithDraft);
+        syncBaseline({ draft: nextDraft, history: historyWithDraft });
         setError(null);
-        const tracker = await updateWcTrackerFromSubmittalItems(projectId, nextDraft.items);
-        if (tracker.error) {
-          setStatus(`Saved submittal. Material Tracker update failed: ${tracker.error}`);
-        } else if (tracker.added || tracker.updated) {
-          const parts = [
-            tracker.added ? `added ${tracker.added}` : null,
-            tracker.updated ? `updated ${tracker.updated}` : null,
-          ].filter(Boolean);
-          setStatus(`Saved. Material Tracker ${parts.join(", ")}.`);
-        }
+        setStatus("Saved.");
       }
       return ok;
     },
-    [history, tradeData, save, setError, syncBaseline, projectId],
+    [history, tradeData, save, setError, syncBaseline],
   );
 
   const onDiscardUnsaved = useCallback(() => {
@@ -167,7 +162,19 @@ export function WallcoveringSubmittalsPage() {
 
   const showPreviousColor = draft.submittal_type === "substitution";
   const wcPrint = useMemo(() => wcPrintInfo(project, project.jobInfo), [project]);
+  const historyWithCurrent = useMemo(
+    () => snapshotSubmittalDraftToHistory(history, draft, "wallcovering"),
+    [history, draft],
+  );
   const draftLocked = submittalDraftIsLocked(draft);
+  const laterSubmittalPackage =
+    draft.submittal_number > 1 ||
+    history.some(
+      (entry) =>
+        (entry.scope ?? "wallcovering") === "wallcovering" &&
+        entry.submittal_number !== draft.submittal_number,
+    );
+  const showAddToTracker = laterSubmittalPackage || draftLocked;
   const autoLabel = draft.auto_label !== false;
   const showFloor = draft.show_floor === true || wcItemsHaveFloor(draft.items);
   const hasTrack = Boolean(draft.got_track) || draft.items.some(isTrackInfillItem);
@@ -433,6 +440,21 @@ export function WallcoveringSubmittalsPage() {
     return window.confirm(readiness.confirmMessage);
   }
 
+  function openHistory() {
+    setHistoryOpen(true);
+    if (findHistoryEntry(history, draft.submittal_number, draft.revision_number)) return;
+    const nextHistory = snapshotSubmittalDraftToHistory(history, draft, "wallcovering");
+    if (nextHistory === history) return;
+    setHistory(nextHistory);
+    void save({
+      ...tradeData,
+      wallcovering_submittal: draft,
+      wallcovering_submittal_history: nextHistory,
+    }).then((ok) => {
+      if (ok) syncBaseline({ draft, history: nextHistory });
+    });
+  }
+
   function loadHistoryItems(items: WallcoveringItem[], replace: boolean) {
     const mapped = items.length
       ? items.map((i) => ({
@@ -553,22 +575,39 @@ export function WallcoveringSubmittalsPage() {
     setSamplesOpen(true);
   }
 
-  async function onUpdateMaterialTracker() {
-    setTrackerBusy(true);
+  async function applyMaterialTracker(mode: "update" | "add") {
+    setTrackerBusy(mode);
     setError(null);
     setStatus(null);
     try {
-      const result = await updateWcTrackerFromSubmittalItems(projectId, draft.items);
+      const result = await updateWcTrackerFromSubmittalItems(projectId, draft.items, {
+        updateMatches: mode === "update",
+        addUnmatched: mode === "add" || !laterSubmittalPackage,
+      });
       if (result.error) {
         setError(result.error);
         return;
       }
       if (!result.added && !result.updated) {
         if (!draft.items.some((i) => i.label.trim() || i.product.trim() || i.manufacturer.trim())) {
-          setError("No wallcovering items with data to update.");
+          setError(
+            mode === "add"
+              ? "No wallcovering items with data to add."
+              : "No wallcovering items with data to update.",
+          );
           return;
         }
-        setStatus("Material Tracker already up to date (lead times and dates kept).");
+        setStatus(
+          mode === "add"
+            ? "Those items are already on Material Tracker."
+            : "Material Tracker already up to date (lead times and dates kept).",
+        );
+        return;
+      }
+      if (mode === "add") {
+        setStatus(
+          `Added ${result.added} item${result.added === 1 ? "" : "s"} to Material Tracker. Existing lines were left as-is.`,
+        );
         return;
       }
       const parts = [
@@ -579,10 +618,24 @@ export function WallcoveringSubmittalsPage() {
         `Material Tracker updated (${parts.join(", ")}). Existing lead times and dates were kept.`,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update Material Tracker.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : mode === "add"
+            ? "Could not add items to Material Tracker."
+            : "Could not update Material Tracker.",
+      );
     } finally {
-      setTrackerBusy(false);
+      setTrackerBusy(null);
     }
+  }
+
+  async function onUpdateMaterialTracker() {
+    await applyMaterialTracker("update");
+  }
+
+  async function onAddToMaterialTracker() {
+    await applyMaterialTracker("add");
   }
 
   async function onIssueSubmittal() {
@@ -606,14 +659,15 @@ export function WallcoveringSubmittalsPage() {
   function onNewSubmittalPackage() {
     if (
       !window.confirm(
-        "Start a new submittal package? This assigns the next submittal number and resets revision to 0.",
+        "Start a new submittal package? The current package stays in Submittal history so you can go back. This assigns the next submittal number and resets revision to 0.",
       )
     ) {
       return;
     }
     setSavedTrackItem(null);
+    const nextHistory = snapshotSubmittalDraftToHistory(history, draft, "wallcovering");
     const nextBase = {
-      ...createNewSubmittalPackageDraft(draft, history),
+      ...createNewSubmittalPackageDraft(draft, nextHistory),
       submittal_type: "new" as const,
       subject: wcSubjectForPackage(draft.package_type, "new"),
       auto_label: true,
@@ -622,8 +676,42 @@ export function WallcoveringSubmittalsPage() {
       show_floor: false,
     };
     const leadOnly = (draft.spec_sections?.[0] ?? draft.spec_section)?.trim();
-    setDraft(withWcSpecSections(nextBase, leadOnly ? [leadOnly] : ["09 72 00 - Wall Coverings"]));
-    setStatus("New submittal package started (Rev 0, draft).");
+    const nextDraft = withWcSpecSections(nextBase, leadOnly ? [leadOnly] : ["09 72 00 - Wall Coverings"]);
+    void persist(nextDraft, nextHistory).then((ok) => {
+      if (ok) {
+        setStatus("New submittal package started (Rev 0, draft). Previous package is in Submittal history.");
+      }
+    });
+  }
+
+  async function onOpenHistoryPackage(entry: SubmittalHistoryEntry) {
+    const samePackage =
+      entry.submittal_number === draft.submittal_number &&
+      (entry.revision_number ?? 0) === draft.revision_number;
+    if (samePackage) {
+      setHistoryOpen(false);
+      setStatus(
+        `Already viewing Submittal #${String(entry.submittal_number).padStart(3, "0")} Rev ${entry.revision_number ?? 0}.`,
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `Open Submittal #${String(entry.submittal_number).padStart(3, "0")} Rev ${entry.revision_number ?? 0}? The package you are on stays in Submittal history.`,
+      )
+    ) {
+      return;
+    }
+    setSavedTrackItem(null);
+    const nextHistory = snapshotSubmittalDraftToHistory(history, draft, "wallcovering");
+    const nextDraft = normalizeWcDraft(wallcoveringDraftFromHistoryEntry(entry));
+    setHistoryOpen(false);
+    const ok = await persist(nextDraft, nextHistory);
+    if (ok) {
+      setStatus(
+        `Opened Submittal #${String(entry.submittal_number).padStart(3, "0")} Rev ${entry.revision_number ?? 0} from history.`,
+      );
+    }
   }
 
   async function onDeleteHistory(submittalNumber: number, revisionNumber: number) {
@@ -653,11 +741,22 @@ export function WallcoveringSubmittalsPage() {
           <button
             type="button"
             className="btn btn-outline-accent"
-            title="Assign the next submittal number (Rev 0, draft). Does not lock or issue."
+            title="Assign the next submittal number (Rev 0, draft). Current package stays in Submittal history."
             onClick={onNewSubmittalPackage}
           >
             New submittal package
           </button>
+          {showAddToTracker && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={Boolean(trackerBusy)}
+              title="Append this package's items to Material Tracker. Existing tracker lines stay as-is."
+              onClick={() => void onAddToMaterialTracker()}
+            >
+              {trackerBusy === "add" ? "Adding…" : "Add to Material Tracker"}
+            </button>
+          )}
           <button type="button" className="btn btn-secondary" onClick={() => setStartRevisionOpen(true)}>
             Start revision from…
           </button>
@@ -683,6 +782,14 @@ export function WallcoveringSubmittalsPage() {
       <p className="sds-filename-preview muted small">
         Filename: <code>{submittalPdfFilename}</code>
       </p>
+      <p className="muted small submittal-package-hint">
+        Use <strong>New submittal package</strong> when you need a new number (#002, #003) for a different
+        set of materials or package type (for example samples vs product data). Use{" "}
+        <strong>Create next revision</strong> to change items on the same package after it is issued or
+        approved. Older packages stay in <strong>Submittal history</strong> — open one to go back.
+        After the first package, use <strong>Add to Material Tracker</strong> to append that package's
+        items; <strong>Update Material Tracker</strong> only refreshes lines already on the tracker.
+      </p>
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
@@ -699,7 +806,7 @@ export function WallcoveringSubmittalsPage() {
           <button type="button" className="btn btn-secondary" onClick={startOrderSamples}>
             Order samples
           </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
+          <button type="button" className="btn btn-secondary" onClick={openHistory}>
             Submittal history…
           </button>
           <label className="check paint-action-check">
@@ -713,12 +820,27 @@ export function WallcoveringSubmittalsPage() {
           <button
             type="button"
             className="btn btn-secondary"
-            disabled={trackerBusy}
-            title="Adds new submittal items to Material Tracker and refreshes names. Keeps lead times, dates, and stage checkboxes on matching labels."
+            disabled={Boolean(trackerBusy)}
+            title={
+              laterSubmittalPackage
+                ? "Refresh matching Material Tracker lines from this package. Does not add new items — use Add to Material Tracker for that."
+                : "Create or refresh Material Tracker from this package. Matching lines keep lead times, dates, and order qty."
+            }
             onClick={() => void onUpdateMaterialTracker()}
           >
-            {trackerBusy ? "Updating…" : "Update Material Tracker"}
+            {trackerBusy === "update" ? "Updating…" : "Update Material Tracker"}
           </button>
+          {showAddToTracker && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={Boolean(trackerBusy)}
+              title="Append this package's items to Material Tracker. Existing tracker lines stay as-is."
+              onClick={() => void onAddToMaterialTracker()}
+            >
+              {trackerBusy === "add" ? "Adding…" : "Add to Material Tracker"}
+            </button>
+          )}
         </div>
       </section>
 
@@ -917,8 +1039,11 @@ export function WallcoveringSubmittalsPage() {
           scope="wallcovering"
           jobNumber={wcPrint.job_number}
           jobName={wcPrint.job_name}
-          history={history}
+          history={historyWithCurrent}
+          currentSubmittalNumber={draft.submittal_number}
+          currentRevisionNumber={draft.revision_number}
           onLoadWallcovering={loadHistoryItems}
+          onOpenPackage={(entry) => void onOpenHistoryPackage(entry)}
           onDelete={(n, r) => void onDeleteHistory(n, r)}
           onClose={() => setHistoryOpen(false)}
         />
@@ -927,7 +1052,7 @@ export function WallcoveringSubmittalsPage() {
       {startRevisionOpen && (
         <StartRevisionFromHistoryModal
           scope="wallcovering"
-          history={history}
+          history={historyWithCurrent}
           currentDraft={draft}
           onClose={() => setStartRevisionOpen(false)}
           onStart={(revisedDraft) => {
