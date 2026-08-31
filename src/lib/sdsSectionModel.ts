@@ -1,4 +1,4 @@
-import type { SdsSection } from "../types/tradeDocuments";
+import type { SdsSection } from "../types/tradeDocuments.js";
 
 export type SdsSectionCategory =
   | "Paint"

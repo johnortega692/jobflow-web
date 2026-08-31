@@ -1,17 +1,17 @@
-import type { ProjectForm } from "../types/database";
-import { collectProjectIcbiStaffCc, formatGcSuperFieldDisplay, gcSuperintendentContact, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo";
+import type { ProjectForm } from "../types/database.js";
+import { collectProjectIcbiStaffCc, formatGcSuperFieldDisplay, gcSuperintendentContact, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo.js";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
   loadAllProjectsForField,
-} from "./fieldTrackerProject";
-import { embedLogoUrlInHtml } from "./emailImageEmbed";
+} from "./fieldTrackerProject.js";
+import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import {
   resolveTrackerNotificationRecipients,
   type TrackerNotificationBranding,
-} from "./trackerNotificationEmail";
-import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect";
+} from "./trackerNotificationEmail.js";
+import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail.js";
+import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
 
 export type FollowUpReminderKind = "paint" | "wallcovering" | "installs";
 

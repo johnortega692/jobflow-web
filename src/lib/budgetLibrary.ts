@@ -5,19 +5,19 @@ import {
   removeOrgSettingsKeys,
   saveOrgSettingsPatch,
   savePersonalUserSettingsPatch,
-} from "./orgSettings";
-import { ORG_SETTINGS_KEYS, pickPersonalSettingsPatch } from "./orgSettingsKeys";
-import { supabase } from "./supabase";
+} from "./orgSettings.js";
+import { ORG_SETTINGS_KEYS, pickPersonalSettingsPatch } from "./orgSettingsKeys.js";
+import { supabase } from "./supabase.js";
 import {
   fmtCell,
   bucketDisplay,
   buildSummaryRows,
   costCodeNumberOnly,
   normalizeLibrary,
-} from "./budgetMakerCore";
-import type { BudgetLibrary, BudgetMakerData, BudgetScanLine } from "../types/budgetMaker";
-import { defaultBudgetLibrary } from "../types/budgetMaker";
-import type { Json } from "../types/database";
+} from "./budgetMakerCore.js";
+import type { BudgetLibrary, BudgetMakerData, BudgetScanLine } from "../types/budgetMaker.js";
+import { defaultBudgetLibrary } from "../types/budgetMaker.js";
+import type { Json } from "../types/database.js";
 
 function exportFilename(stem: string, extension: string, jobName = ""): string {
   const ext = extension.replace(/^\./, "");

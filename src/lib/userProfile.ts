@@ -1,8 +1,8 @@
-import type { LetterheadSettings } from "../types/letterheadSettings";
-import type { UserProfile } from "../types/userProfile";
-import type { PrintBranding } from "./printCore";
-import type { RfiFormData } from "../types/database";
-import type { SdsPacketData, TransmittalData } from "../types/tradeDocuments";
+import type { LetterheadSettings } from "../types/letterheadSettings.js";
+import type { UserProfile } from "../types/userProfile.js";
+import type { PrintBranding } from "./printCore.js";
+import type { RfiFormData } from "../types/database.js";
+import type { SdsPacketData, TransmittalData } from "../types/tradeDocuments.js";
 
 export function profileFromSettings(settings: LetterheadSettings): UserProfile {
   return {

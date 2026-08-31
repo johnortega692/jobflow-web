@@ -1,10 +1,10 @@
-import type { TransmittalContract } from "../lib/jobInfo";
-import { normalizeTransmittalContract } from "../lib/jobInfo";
+import type { TransmittalContract } from "../lib/jobInfo.js";
+import { normalizeTransmittalContract } from "../lib/jobInfo.js";
 import {
   emptyBudgetContractSlice,
   parseBudgetByContract,
   parseBudgetContractSlice,
-} from "../lib/budgetPerContract";
+} from "../lib/budgetPerContract.js";
 
 export type CostCodeRecord = {
   gl_account: string;

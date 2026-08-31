@@ -1,4 +1,4 @@
-import type { RfiFormData } from "../types/database";
+import type { RfiFormData } from "../types/database.js";
 
 /** Checkbox / chip labels shared by RFI editor and PDF output. */
 

@@ -1,10 +1,10 @@
-import type { Project, ProjectForm, RfiFormData } from "../types/database";
-import { defaultJobInfo, type JobInfoData } from "../types/jobInfo";
+import type { Project, ProjectForm, RfiFormData } from "../types/database.js";
+import { defaultJobInfo, type JobInfoData } from "../types/jobInfo.js";
 import {
   applyTransmittalContractNumber,
   mergeActiveTransmittalNumber,
-} from "./transmittalPerContract";
-import type { TransmittalData } from "../types/tradeDocuments";
+} from "./transmittalPerContract.js";
+import type { TransmittalData } from "../types/tradeDocuments.js";
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);

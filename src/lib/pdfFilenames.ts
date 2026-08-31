@@ -1,7 +1,7 @@
-import { companySpecSubmittalFilename, sanitizeFilenamePart } from "./sdsPacketPresets";
-import { normalizeTransmittalNumber } from "./transmittalNumber";
-import { IRONWOOD_SHORT_COMPANY_NAME } from "./displayCompanyName";
-import type { TradeSubmittalType } from "../types/tradeDocuments";
+import { companySpecSubmittalFilename, sanitizeFilenamePart } from "./sdsPacketPresets.js";
+import { normalizeTransmittalNumber } from "./transmittalNumber.js";
+import { IRONWOOD_SHORT_COMPANY_NAME } from "./displayCompanyName.js";
+import type { TradeSubmittalType } from "../types/tradeDocuments.js";
 
 /** Prefer job number over job name for download filenames (orders, RFI, etc.). */
 export function projectFilenamePart(
@@ -112,4 +112,4 @@ export function procurementLogFilename(jobName: string, jobNumber: string, d = n
   return `${num} ${name} - Procurement Log ${datePart}.pdf`;
 }
 
-export { companySpecSubmittalFilename, sdsPacketFilename } from "./sdsPacketPresets";
+export { companySpecSubmittalFilename, sdsPacketFilename } from "./sdsPacketPresets.js";

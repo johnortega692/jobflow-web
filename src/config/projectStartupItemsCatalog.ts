@@ -1,4 +1,4 @@
-import type { StartupChecklistGroup, StartupChecklistSource } from "../lib/projectStartupItems";
+import type { StartupChecklistGroup, StartupChecklistSource } from "../lib/projectStartupItems.js";
 
 export type StartupCatalogSeed = {
   id: string;

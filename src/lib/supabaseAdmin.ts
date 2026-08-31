@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "../types/database";
+import type { Database } from "../types/database.js";
 
 function readSupabaseUrl(): string {
   return (process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "").trim();

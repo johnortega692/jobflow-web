@@ -1,6 +1,6 @@
-import type { TransmittalContract } from "./jobInfo";
-import { normalizeTransmittalNumber } from "./transmittalNumber";
-import type { TransmittalData } from "../types/tradeDocuments";
+import type { TransmittalContract } from "./jobInfo.js";
+import { normalizeTransmittalNumber } from "./transmittalNumber.js";
+import type { TransmittalData } from "../types/tradeDocuments.js";
 
 const CONTRACT_KEYS: TransmittalContract[] = ["paint", "wallcovering", "frp", "track"];
 

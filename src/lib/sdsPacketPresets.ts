@@ -1,4 +1,4 @@
-import { IRONWOOD_SHORT_COMPANY_NAME } from "./displayCompanyName";
+import { IRONWOOD_SHORT_COMPANY_NAME } from "./displayCompanyName.js";
 
 export type SdsPacketType =
   | "Product Information"

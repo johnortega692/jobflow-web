@@ -1,4 +1,4 @@
-import type { WallcoveringItem } from "../types/tradeDocuments";
+import type { WallcoveringItem } from "../types/tradeDocuments.js";
 
 const WC_TRACK_MFR = "APS";
 const WC_TRACK_PRODUCT = "Track and Infill";

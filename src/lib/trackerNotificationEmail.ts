@@ -1,8 +1,8 @@
-import type { ProjectForm } from "../types/database";
-import type { PaintTrackerState } from "../types/fieldTracker";
-import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import { formatGcSuperFieldDisplay, gcSuperintendentContact } from "./jobInfo";
-import { sendVendorEmail } from "./sendVendorEmail";
+import type { ProjectForm } from "../types/database.js";
+import type { PaintTrackerState } from "../types/fieldTracker.js";
+import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
+import { formatGcSuperFieldDisplay, gcSuperintendentContact } from "./jobInfo.js";
+import { sendVendorEmail } from "./sendVendorEmail.js";
 
 export type PaintNotificationJobData = {
   jobNumber: string;

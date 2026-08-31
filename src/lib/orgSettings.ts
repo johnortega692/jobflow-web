@@ -1,11 +1,11 @@
-import { normalizeGoogleUrls, type GoogleUrlKey } from "./googleSheetsConfig";
+import { normalizeGoogleUrls, type GoogleUrlKey } from "./googleSheetsConfig.js";
 import {
   mergeOrgAndPersonalSettings,
   pickOrgSettingsPatch,
   stripOrgKeysFromPersonalBlob,
-} from "./orgSettingsKeys";
-import { supabase } from "./supabase";
-import type { Json } from "../types/database";
+} from "./orgSettingsKeys.js";
+import { supabase } from "./supabase.js";
+import type { Json } from "../types/database.js";
 
 export async function loadOrgSettingsBlob(): Promise<Record<string, unknown>> {
   const { data, error } = await supabase

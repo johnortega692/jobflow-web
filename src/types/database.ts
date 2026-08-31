@@ -1,8 +1,8 @@
 import type { Database, Json } from "./database.generated";
 export type { Database, Json };
-import type { JobInfoData } from "./jobInfo";
-import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
-import { normalizeRfiImpactFields } from "../lib/rfiFormLabels";
+import type { JobInfoData } from "./jobInfo.js";
+import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo.js";
+import { normalizeRfiImpactFields } from "../lib/rfiFormLabels.js";
 
 export type RfiAttachedFile = {
   id: string;

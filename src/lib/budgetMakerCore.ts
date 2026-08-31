@@ -8,7 +8,7 @@ import {
   type CostClassRecord,
   type CostCodeRecord,
   defaultBudgetLibrary,
-} from "../types/budgetMaker";
+} from "../types/budgetMaker.js";
 
 export const AUTO_PUSH_RULES: {
   cost_code: string;

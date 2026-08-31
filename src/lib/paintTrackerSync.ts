@@ -2,7 +2,7 @@ import {
   PAINT_VENDOR_CODES,
   PAINT_VENDOR_OPTIONS,
   type PaintVendorLabel,
-} from "./googleSheetsConfig";
+} from "./googleSheetsConfig.js";
 
 export function paintTrackerBaseUrl(googleUrls: Record<string, string>): string {
   return (googleUrls.paint_tracker ?? "").trim();

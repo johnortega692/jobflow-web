@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
 
 /** Attach the current Supabase session token for protected /api/* routes. */
 export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {

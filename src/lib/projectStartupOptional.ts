@@ -1,7 +1,7 @@
 import {
   optionalStepLabel,
   PROJECT_STARTUP_OPTIONAL_STEPS,
-} from "../config/projectStartupOptionalSteps";
+} from "../config/projectStartupOptionalSteps.js";
 
 export type StartupOptionalCustomStep = {
   id: string;

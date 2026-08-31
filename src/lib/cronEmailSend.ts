@@ -1,7 +1,7 @@
-import { runSendVendorEmail } from "../../server/sendVendorEmailCore";
-import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect";
-import type { SendVendorEmailRequest } from "./sendVendorEmail";
+import { runSendVendorEmail } from "../../server/sendVendorEmailCore.js";
+import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js";
+import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 
 export function isResendConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.EMAIL_FROM?.trim());

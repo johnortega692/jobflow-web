@@ -1,10 +1,10 @@
-import type { TransmittalContract } from "./jobInfo";
+import type { TransmittalContract } from "./jobInfo.js";
 import type {
   BudgetBucket,
   BudgetContractSlice,
   BudgetMakerData,
   BudgetScanLine,
-} from "../types/budgetMaker";
+} from "../types/budgetMaker.js";
 
 export function emptyBudgetContractSlice(): BudgetContractSlice {
   return {

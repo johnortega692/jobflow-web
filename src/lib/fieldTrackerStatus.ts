@@ -1,5 +1,5 @@
-import type { PaintTrackerState, WcTrackerLineState } from "../types/fieldTracker";
-import { formatDateDisplay } from "./dateInputUtils";
+import type { PaintTrackerState, WcTrackerLineState } from "../types/fieldTracker.js";
+import { formatDateDisplay } from "./dateInputUtils.js";
 
 export type PaintFieldStatus =
   | "Not Started"

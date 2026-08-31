@@ -1,8 +1,8 @@
-import { defaultLetterheadPdfVisibility } from "../types/letterheadSettings";
-import { normalizeRevisionNumber } from "../types/tradeDocuments";
-import { formatSubmittalDisplayDate } from "./dateInputUtils";
-import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import { formatSpecSectionBannerText } from "./specSections";
+import { defaultLetterheadPdfVisibility } from "../types/letterheadSettings.js";
+import { normalizeRevisionNumber } from "../types/tradeDocuments.js";
+import { formatSubmittalDisplayDate } from "./dateInputUtils.js";
+import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
+import { formatSpecSectionBannerText } from "./specSections.js";
 
 function resolveAbsoluteAssetUrl(url: string): string {
   const trimmed = url.trim();
@@ -334,7 +334,7 @@ export type PrintBranding = {
   signerTitle: string;
   signerPhone: string;
   signerEmail: string;
-  pdfShow: import("../types/letterheadSettings").LetterheadPdfVisibility;
+  pdfShow: import("../types/letterheadSettings.js").LetterheadPdfVisibility;
 };
 
 /** Name + title line for PDF signature blocks, respecting visibility toggles. */

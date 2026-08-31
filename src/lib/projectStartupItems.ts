@@ -4,18 +4,18 @@ import {
   STARTUP_CHECKLIST_CATALOG,
   STARTUP_CHECKLIST_GROUP_META,
   type StartupCatalogSeed,
-} from "../config/projectStartupItemsCatalog";
-import { PROJECT_STARTUP_OPTIONAL_STEPS } from "../config/projectStartupOptionalSteps";
-import { parseFlexibleDate, toIsoDateValue, isoDateToDisplay } from "./dateInputUtils";
+} from "../config/projectStartupItemsCatalog.js";
+import { PROJECT_STARTUP_OPTIONAL_STEPS } from "../config/projectStartupOptionalSteps.js";
+import { parseFlexibleDate, toIsoDateValue, isoDateToDisplay } from "./dateInputUtils.js";
 import {
   resolvePaintTracker,
   resolveWcTracker,
   resolveWcTrackerLines,
-} from "./fieldTrackerProject";
-import type { JobInfoData } from "../types/jobInfo";
-import { parseStartupOptional, type StartupOptionalState } from "./projectStartupOptional";
-import type { Json, ProjectForm } from "../types/database";
-import { parseProjectTradeData } from "../types/tradeDocuments";
+} from "./fieldTrackerProject.js";
+import type { JobInfoData } from "../types/jobInfo.js";
+import { parseStartupOptional, type StartupOptionalState } from "./projectStartupOptional.js";
+import type { Json, ProjectForm } from "../types/database.js";
+import { parseProjectTradeData } from "../types/tradeDocuments.js";
 
 export type StartupChecklistGroup =
   | "contract_compliance"

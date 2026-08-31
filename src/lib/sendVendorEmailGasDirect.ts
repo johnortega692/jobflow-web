@@ -1,4 +1,4 @@
-import type { SendVendorEmailRequest } from "./sendVendorEmail";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 
 export type GasEmailPost = (
   baseUrl: string,

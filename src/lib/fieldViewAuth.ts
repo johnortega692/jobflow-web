@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
 
 const FIELD_VIEW_SESSION_KEY = "jobflow_field_view_session_v1";
 const FIELD_VIEW_REAUTH_EVENT = "jobflow:field-view-reauth";

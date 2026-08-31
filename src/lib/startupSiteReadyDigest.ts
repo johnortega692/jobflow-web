@@ -1,7 +1,7 @@
-import type { ProjectForm } from "../types/database";
-import { collectProjectIcbiStaffCc, jobFullAddressOneLine } from "./jobInfo";
-import { parseFlexibleDate } from "./dateInputUtils";
-import { embedLogoUrlInHtml } from "./emailImageEmbed";
+import type { ProjectForm } from "../types/database.js";
+import { collectProjectIcbiStaffCc, jobFullAddressOneLine } from "./jobInfo.js";
+import { parseFlexibleDate } from "./dateInputUtils.js";
+import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import {
   itemNeedsAttention,
   parseDashboardStartupItems,
@@ -9,13 +9,13 @@ import {
   shortAttentionLabel,
   type StartupChecklistGroup,
   type StartupChecklistItem,
-} from "./projectStartupItems";
+} from "./projectStartupItems.js";
 import {
   resolveTrackerNotificationRecipients,
   type TrackerNotificationBranding,
-} from "./trackerNotificationEmail";
-import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect";
+} from "./trackerNotificationEmail.js";
+import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail.js";
+import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
 
 /** Gate items that must be done before manpower belongs on site. */
 export const SITE_READY_GATE_ITEM_IDS = ["executed_subcontract", "coi_sent"] as const;

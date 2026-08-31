@@ -1,10 +1,10 @@
-import type { ComposeEmailMethod } from "./paintUserSettings";
-import type { EmailSignatureSettings } from "./emailSignature";
-import { buildEmailSignatureHtml, buildEmailSignaturePlain, constrainSignatureLogoInHtml } from "./emailSignature";
-import { copyOutlookHtmlToClipboard, emailParagraph, outlookSpacer } from "./outlookClipboard";
-import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import { FLOOR_ORDER } from "./printCore";
-import type { PaintItem, TradeSubmittalType } from "../types/tradeDocuments";
+import type { ComposeEmailMethod } from "./paintUserSettings.js";
+import type { EmailSignatureSettings } from "./emailSignature.js";
+import { buildEmailSignatureHtml, buildEmailSignaturePlain, constrainSignatureLogoInHtml } from "./emailSignature.js";
+import { copyOutlookHtmlToClipboard, emailParagraph, outlookSpacer } from "./outlookClipboard.js";
+import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
+import { FLOOR_ORDER } from "./printCore.js";
+import type { PaintItem, TradeSubmittalType } from "../types/tradeDocuments.js";
 
 export type PaintVendor = {
   name: string;

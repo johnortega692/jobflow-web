@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
 
 export async function syncProjectStartDateToManpower(projectId: string): Promise<void> {
   const { error } = await supabase.rpc("sync_project_start_date_to_manpower", {

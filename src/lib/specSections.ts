@@ -1,6 +1,6 @@
 /** Org-level CSI / spec section list for submittals, SDS, and transmittals. */
 
-import { loadRawUserSettings, patchOrgSettings, removeUserSettingsKeys } from "./budgetLibrary";
+import { loadRawUserSettings, patchOrgSettings, removeUserSettingsKeys } from "./budgetLibrary.js";
 
 export const SPEC_SECTIONS_KEY = "spec_sections";
 

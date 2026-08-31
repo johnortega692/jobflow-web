@@ -1,11 +1,11 @@
 import {
   DEFAULT_EMAIL_SIGNATURE,
   normalizeEmailSignature,
-} from "./emailSignature";
-import type { PaintVendor } from "./paintVendorEmail";
-import { normalizeTrackerEmailSchedule, type TrackerEmailSchedule } from "./trackerEmailSchedule";
-import type { BrushoutPrepRecord, PaintUserSettings, SuperEmail } from "./paintUserSettings";
-import { normalizeComposeEmailMethod } from "./paintUserSettings";
+} from "./emailSignature.js";
+import type { PaintVendor } from "./paintVendorEmail.js";
+import { normalizeTrackerEmailSchedule, type TrackerEmailSchedule } from "./trackerEmailSchedule.js";
+import type { BrushoutPrepRecord, PaintUserSettings, SuperEmail } from "./paintUserSettings.js";
+import { normalizeComposeEmailMethod } from "./paintUserSettings.js";
 
 export function loadPaintUserSettingsFromRaw(
   raw: Record<string, unknown>,

@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, isSupabaseAdminConfigured } from "./supabaseAdmin";
+import { getSupabaseAdmin, isSupabaseAdminConfigured } from "./supabaseAdmin.js";
 
 export type PinLockoutPendingRow = {
   id: string;

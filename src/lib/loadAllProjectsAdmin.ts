@@ -1,5 +1,5 @@
-import { normalizeProject, type ProjectForm } from "../types/database";
-import { getSupabaseAdmin } from "./supabaseAdmin";
+import { normalizeProject, type ProjectForm } from "../types/database.js";
+import { getSupabaseAdmin } from "./supabaseAdmin.js";
 
 export async function loadAllProjectsAdmin(): Promise<{ projects: ProjectForm[]; error: string | null }> {
   const { data, error } = await getSupabaseAdmin()

@@ -1,18 +1,18 @@
-import { syncProjectStartDateToManpower } from "./syncProjectStartDate";
-import { formatGcSuperFieldDisplay, gcSuperintendentContact, icbiProjectManager, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo";
-import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus";
-import { normalizePaintVendor } from "./paintTrackerSync";
-import { resolveDisplayCompanyName } from "./displayCompanyName";
-import { loadOrgSettingsBlob } from "./orgSettings";
-import { commitProjectUpdate } from "./projectActivity";
-import { supabase } from "./supabase";
+import { syncProjectStartDateToManpower } from "./syncProjectStartDate.js";
+import { formatGcSuperFieldDisplay, gcSuperintendentContact, icbiProjectManager, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo.js";
+import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus.js";
+import { normalizePaintVendor } from "./paintTrackerSync.js";
+import { resolveDisplayCompanyName } from "./displayCompanyName.js";
+import { loadOrgSettingsBlob } from "./orgSettings.js";
+import { commitProjectUpdate } from "./projectActivity.js";
+import { supabase } from "./supabase.js";
 import {
   fieldViewRpcAuthArgs,
   loadFieldViewSession,
   noteFieldViewSessionFailure,
-} from "./fieldViewAuth";
-import type { ProjectForm, Json } from "../types/database";
-import { normalizeProject } from "../types/database";
+} from "./fieldViewAuth.js";
+import type { ProjectForm, Json } from "../types/database.js";
+import { normalizeProject } from "../types/database.js";
 import {
   defaultWcTrackerLineFields,
   defaultWcTrackerState,
@@ -22,7 +22,7 @@ import {
   type PaintTrackerState,
   type WcTrackerLineState,
   type WcTrackerState,
-} from "../types/fieldTracker";
+} from "../types/fieldTracker.js";
 import {
   normalizePaintSubmittal,
   normalizeWallcoveringSubmittal,
@@ -32,8 +32,8 @@ import {
   type SubmittalHistoryEntry,
   type WallcoveringItem,
   type WallcoveringSubmittalData,
-} from "../types/tradeDocuments";
-import { harmonizeTrackerRevision } from "./paintTrackerRevision";
+} from "../types/tradeDocuments.js";
+import { harmonizeTrackerRevision } from "./paintTrackerRevision.js";
 
 export function withSyncedPaintVendor(trade: ProjectTradeData, submittal: PaintSubmittalData): ProjectTradeData {
   const vendor = normalizePaintVendor(submittal.paint_vendor ?? "PPG");

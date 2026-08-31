@@ -1,14 +1,14 @@
-import type { Json } from "./database";
-import type { BudgetMakerData } from "./budgetMaker";
-import type { PaintTrackerState, WcTrackerLineState, WcTrackerState } from "./fieldTracker";
-import { formatSubmittalDisplayDate } from "../lib/dateInputUtils";
-import { normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo";
-import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract";
-import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks";
-import { normalizeSdsSection as normalizeSdsSectionRow, sortSdsSectionsBySpec } from "../lib/sdsSectionModel";
-import { applyPaintAutoLabels, paintItemsSuggestAutoLabel } from "../lib/paintItemLabels";
-import { applyFrpAutoLabels, frpItemsSuggestAutoLabel, parseFrpQtyField } from "../lib/frpItemLabels";
-import { applyWcAutoLabels, parseWcQtyField, wcItemsHaveFloor, wcItemsSuggestAutoLabel } from "../lib/wcItemLabels";
+import type { Json } from "./database.js";
+import type { BudgetMakerData } from "./budgetMaker.js";
+import type { PaintTrackerState, WcTrackerLineState, WcTrackerState } from "./fieldTracker.js";
+import { formatSubmittalDisplayDate } from "../lib/dateInputUtils.js";
+import { normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo.js";
+import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract.js";
+import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks.js";
+import { normalizeSdsSection as normalizeSdsSectionRow, sortSdsSectionsBySpec } from "../lib/sdsSectionModel.js";
+import { applyPaintAutoLabels, paintItemsSuggestAutoLabel } from "../lib/paintItemLabels.js";
+import { applyFrpAutoLabels, frpItemsSuggestAutoLabel, parseFrpQtyField } from "../lib/frpItemLabels.js";
+import { applyWcAutoLabels, parseWcQtyField, wcItemsHaveFloor, wcItemsSuggestAutoLabel } from "../lib/wcItemLabels.js";
 
 /** Paint dual-table model is binary (`primary` | `secondary`); chip UI is capped to match. */
 export const MAX_PAINT_SPEC_SECTIONS = 2;
@@ -480,9 +480,9 @@ import {
   normalizePacketType,
   sdsPacketFilename,
   type SdsPacketType,
-} from "../lib/sdsPacketPresets";
+} from "../lib/sdsPacketPresets.js";
 
-export type { SdsPacketType } from "../lib/sdsPacketPresets";
+export type { SdsPacketType } from "../lib/sdsPacketPresets.js";
 export {
   SDS_PACKET_TYPES,
   coverMainTitle,
@@ -490,11 +490,11 @@ export {
   isPresetCoverPurpose,
   resolveCoverPurpose,
   sdsPacketFilename,
-} from "../lib/sdsPacketPresets";
+} from "../lib/sdsPacketPresets.js";
 
-import type { SdsSectionAttachments, SdsSectionCategory } from "../lib/sdsSectionModel";
+import type { SdsSectionAttachments, SdsSectionCategory } from "../lib/sdsSectionModel.js";
 
-export type { SdsSectionCategory } from "../lib/sdsSectionModel";
+export type { SdsSectionCategory } from "../lib/sdsSectionModel.js";
 
 export type SdsSection = {
   id: string;

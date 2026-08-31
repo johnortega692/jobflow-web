@@ -1,18 +1,18 @@
-import { normalizeLetterheadSettings } from "../types/letterheadSettings";
-import { createCronEmailPoster, isResendConfigured } from "./cronEmailSend";
-import { loadAllProjectsAdmin } from "./loadAllProjectsAdmin";
-import { loadEffectiveUserSettingsAdmin, loadOrgSettingsBlobAdmin } from "./orgSettingsAdmin";
-import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad";
-import { profileFromSettings } from "./userProfile";
+import { normalizeLetterheadSettings } from "../types/letterheadSettings.js";
+import { createCronEmailPoster, isResendConfigured } from "./cronEmailSend.js";
+import { loadAllProjectsAdmin } from "./loadAllProjectsAdmin.js";
+import { loadEffectiveUserSettingsAdmin, loadOrgSettingsBlobAdmin } from "./orgSettingsAdmin.js";
+import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad.js";
+import { profileFromSettings } from "./userProfile.js";
 import {
   sendBillingDueDigest,
   billingDueDigestHasContent,
-} from "./billingDueDigest";
-import { sendFollowUpReminder, followUpReminderHasContent } from "./trackerFollowUpReminders";
-import type { TrackerEmailCronSlot } from "./trackerEmailSchedule";
-import { sendWeeklyTrackerDigest } from "./trackerWeeklyDigest";
-import { sendSiteReadyDigest, siteReadyDigestHasContent } from "./startupSiteReadyDigest";
-import { listTrackerCronTargets, ORG_TRACKER_CRON_TARGET } from "./userSettingsAdmin";
+} from "./billingDueDigest.js";
+import { sendFollowUpReminder, followUpReminderHasContent } from "./trackerFollowUpReminders.js";
+import type { TrackerEmailCronSlot } from "./trackerEmailSchedule.js";
+import { sendWeeklyTrackerDigest } from "./trackerWeeklyDigest.js";
+import { sendSiteReadyDigest, siteReadyDigestHasContent } from "./startupSiteReadyDigest.js";
+import { listTrackerCronTargets, ORG_TRACKER_CRON_TARGET } from "./userSettingsAdmin.js";
 
 export type CronRunResult = {
   slot: TrackerEmailCronSlot;

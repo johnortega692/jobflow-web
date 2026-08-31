@@ -1,16 +1,16 @@
-import type { ProjectForm } from "../types/database";
+import type { ProjectForm } from "../types/database.js";
 import {
   billingDueDayLabel,
   icbiPmEmail,
   icbiProjectManager,
   jobFullAddressOneLine,
   normalizeBillingDueDay,
-} from "./jobInfo";
-import { embedLogoUrlInHtml } from "./emailImageEmbed";
-import { type TrackerNotificationBranding } from "./trackerNotificationEmail";
-import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect";
-import { loadAllProjectsForField } from "./fieldTrackerProject";
+} from "./jobInfo.js";
+import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
+import { type TrackerNotificationBranding } from "./trackerNotificationEmail.js";
+import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail.js";
+import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
+import { loadAllProjectsForField } from "./fieldTrackerProject.js";
 
 /** Days before Billing Due day to email the ICBI PM. */
 export const BILLING_DUE_REMINDER_DAYS_BEFORE = 4;

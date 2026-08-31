@@ -26,4 +26,4 @@ export function nextTransmittalNumber(value: string | number | null | undefined)
   return formatTransmittalNumber(parseTransmittalNumber(value) + 1);
 }
 
-export { transmittalFilename } from "./pdfFilenames";
+export { transmittalFilename } from "./pdfFilenames.js";

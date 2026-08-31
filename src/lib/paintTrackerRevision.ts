@@ -1,4 +1,4 @@
-import type { PaintTrackerState } from "../types/fieldTracker";
+import type { PaintTrackerState } from "../types/fieldTracker.js";
 
 export type TrackerRevisionFields = {
   revision: boolean;

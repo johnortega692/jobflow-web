@@ -1,4 +1,4 @@
-import { authFetch } from "./apiAuth";
+import { authFetch } from "./apiAuth.js";
 
 type GoogleSheetsProxyRequest = {
   url?: string;

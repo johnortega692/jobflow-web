@@ -1,13 +1,13 @@
-import { loadEffectiveUserSettings } from "./orgSettings";
-import { parseProjectDataBlob } from "./jobInfo";
-import { supabase } from "./supabase";
+import { loadEffectiveUserSettings } from "./orgSettings.js";
+import { parseProjectDataBlob } from "./jobInfo.js";
+import { supabase } from "./supabase.js";
 import {
   fieldViewRpcAuthArgs,
   loadFieldViewSession,
   noteFieldViewSessionFailure,
-} from "./fieldViewAuth";
-import type { Database, Json } from "../types/database";
-import type { ProjectTradeData } from "../types/tradeDocuments";
+} from "./fieldViewAuth.js";
+import type { Database, Json } from "../types/database.js";
+import type { ProjectTradeData } from "../types/tradeDocuments.js";
 
 export type ProjectActivityAction =
   | "project_created"

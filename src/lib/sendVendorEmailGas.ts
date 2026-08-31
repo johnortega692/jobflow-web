@@ -1,5 +1,5 @@
-import { googleSheetsPost } from "./googleSheetsApi";
-import type { SendVendorEmailRequest } from "./sendVendorEmail";
+import { googleSheetsPost } from "./googleSheetsApi.js";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 
 export async function sendVendorEmailViaGas(
   baseUrl: string | undefined,

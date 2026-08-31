@@ -1,4 +1,4 @@
-import type { PaintItem } from "../types/tradeDocuments";
+import type { PaintItem } from "../types/tradeDocuments.js";
 
 /** Excel-style column labels: A…Z, AA, AB… */
 export function paintRowAutoLabel(index: number): string {

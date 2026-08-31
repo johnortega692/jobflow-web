@@ -1,6 +1,6 @@
-import { loadOrgSettingsBlobAdmin } from "./orgSettingsAdmin";
-import { normalizeTrackerEmailSchedule } from "./trackerEmailSchedule";
-import { getSupabaseAdmin } from "./supabaseAdmin";
+import { loadOrgSettingsBlobAdmin } from "./orgSettingsAdmin.js";
+import { normalizeTrackerEmailSchedule } from "./trackerEmailSchedule.js";
+import { getSupabaseAdmin } from "./supabaseAdmin.js";
 
 /** Sentinel target id — cron runs once using org_settings (shared schedule + notify email). */
 export const ORG_TRACKER_CRON_TARGET = "__org_tracker__";

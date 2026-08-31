@@ -1,4 +1,4 @@
-import type { PaintVendorLabel } from "../lib/googleSheetsConfig";
+import type { PaintVendorLabel } from "../lib/googleSheetsConfig.js";
 
 export type PaintTrackerState = {
   matchExisting: boolean;

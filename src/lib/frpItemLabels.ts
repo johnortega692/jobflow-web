@@ -1,4 +1,4 @@
-import type { FrpItem } from "../types/tradeDocuments";
+import type { FrpItem } from "../types/tradeDocuments.js";
 
 /** Auto-label sequence: F-1, F-2… */
 export function frpRowAutoLabel(index: number): string {

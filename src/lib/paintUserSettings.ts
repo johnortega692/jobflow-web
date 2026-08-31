@@ -1,12 +1,12 @@
-import { loadRawUserSettings } from "./budgetLibrary";
-import { normalizeGoogleUrls } from "./googleSheetsConfig";
-import { loadDefaultPaintVendorsFromJson, type PaintVendor } from "./paintVendorEmail";
-import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad";
-import type { TrackerEmailSchedule } from "./trackerEmailSchedule";
+import { loadRawUserSettings } from "./budgetLibrary.js";
+import { normalizeGoogleUrls } from "./googleSheetsConfig.js";
+import { loadDefaultPaintVendorsFromJson, type PaintVendor } from "./paintVendorEmail.js";
+import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad.js";
+import type { TrackerEmailSchedule } from "./trackerEmailSchedule.js";
 
-export type { PaintVendor } from "./paintVendorEmail";
-import type { EmailSignatureSettings } from "./emailSignature";
-export type { EmailSignatureSettings } from "./emailSignature";
+export type { PaintVendor } from "./paintVendorEmail.js";
+import type { EmailSignatureSettings } from "./emailSignature.js";
+export type { EmailSignatureSettings } from "./emailSignature.js";
 
 export type SuperEmail = { name: string; email: string };
 
@@ -81,7 +81,7 @@ export async function loadPaintUserSettings(userId: string): Promise<PaintUserSe
   return settings;
 }
 
-export { DEFAULT_TRACKER_EMAIL_SCHEDULE, type TrackerEmailSchedule } from "./trackerEmailSchedule";
+export { DEFAULT_TRACKER_EMAIL_SCHEDULE, type TrackerEmailSchedule } from "./trackerEmailSchedule.js";
 
 export function listOpenBrushoutPreps(preps: BrushoutPrepRecord[]): BrushoutPrepRecord[] {
   return preps.filter((p) => {

@@ -1,6 +1,6 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
 
-import { sendVendorEmailViaGas } from "./sendVendorEmailGas";
+import { sendVendorEmailViaGas } from "./sendVendorEmailGas.js";
 
 export type SendVendorEmailRequest = {
   to: string[];

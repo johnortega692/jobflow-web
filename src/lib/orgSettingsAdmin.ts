@@ -1,5 +1,5 @@
-import { mergeOrgAndPersonalSettings } from "./orgSettingsKeys";
-import { getSupabaseAdmin } from "./supabaseAdmin";
+import { mergeOrgAndPersonalSettings } from "./orgSettingsKeys.js";
+import { getSupabaseAdmin } from "./supabaseAdmin.js";
 
 export async function loadOrgSettingsBlobAdmin(): Promise<Record<string, unknown>> {
   const { data, error } = await getSupabaseAdmin()

@@ -1,4 +1,4 @@
-import type { SendVendorEmailRequest } from "./sendVendorEmail";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 
 /** Field Tools / Field Request Order Apps Script payload (`action=sendOrderEmail`). */
 type SendOrderEmailParams = {

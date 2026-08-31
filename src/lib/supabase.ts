@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "../types/database";
+import type { Database } from "../types/database.js";
 
 // This module is shared by browser helpers and server-side Vercel functions.
 // Vite replaces these process.env expressions in the browser bundle; Node reads
