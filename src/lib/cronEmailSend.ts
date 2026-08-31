@@ -1,5 +1,5 @@
 import { runSendVendorEmail } from "../../server/sendVendorEmailCore";
-import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGas";
+import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect";
 import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect";
 import type { SendVendorEmailRequest } from "./sendVendorEmail";
 
