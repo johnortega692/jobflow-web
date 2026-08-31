@@ -1,7 +1,7 @@
-import { isSupabaseAdminConfigured } from "../src/lib/supabaseAdmin";
-import { runPinLockoutNotify } from "../src/lib/pinLockoutNotifyCore";
-import { runTrackerEmailCron, type CronRunResult } from "../src/lib/trackerEmailCronCore";
-import type { TrackerEmailCronSlot } from "../src/lib/trackerEmailSchedule";
+import { isSupabaseAdminConfigured } from "../src/lib/supabaseAdmin.js";
+import { runPinLockoutNotify } from "../src/lib/pinLockoutNotifyCore.js";
+import { runTrackerEmailCron, type CronRunResult } from "../src/lib/trackerEmailCronCore.js";
+import type { TrackerEmailCronSlot } from "../src/lib/trackerEmailSchedule.js";
 
 type VercelRequest = {
   method?: string;

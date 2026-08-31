@@ -1,4 +1,4 @@
-import { runPinLockoutNotify } from "../src/lib/pinLockoutNotifyCore";
+import { runPinLockoutNotify } from "../src/lib/pinLockoutNotifyCore.js";
 
 type VercelRequest = {
   method?: string;
