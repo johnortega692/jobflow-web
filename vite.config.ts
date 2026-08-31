@@ -24,6 +24,12 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(mode === "production" ? "production" : "development"),
+      "process.env.VITE_SUPABASE_URL": JSON.stringify(env.VITE_SUPABASE_URL ?? ""),
+      "process.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(env.VITE_SUPABASE_ANON_KEY ?? ""),
+      "process.env.VITE_COMPANY_NAME": JSON.stringify(env.VITE_COMPANY_NAME ?? ""),
+    },
     plugins: [
       react(),
       {

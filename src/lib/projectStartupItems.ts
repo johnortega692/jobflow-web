@@ -146,7 +146,7 @@ function passthroughCustomItem(item: StartupChecklistItem): StartupChecklistItem
 }
 
 function assertCustomItemsPreserved(before: StartupChecklistItem[], after: StartupChecklistItem[]): void {
-  if (import.meta.env.PROD) return;
+  if (process.env.NODE_ENV === "production") return;
   const catalogIds = new Set(STARTUP_CHECKLIST_CATALOG.map((s) => s.id));
   for (const orig of before) {
     if (catalogIds.has(orig.id) || orig.id === LEGACY_BRUSHOUTS_WC_SAMPLES_ID) continue;

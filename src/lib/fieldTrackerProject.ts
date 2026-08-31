@@ -529,7 +529,7 @@ export async function loadFieldViewCompanyName(): Promise<string> {
     /* fall through */
   }
   return resolveDisplayCompanyName(
-    import.meta.env.VITE_COMPANY_NAME?.trim() || "Ironwood Commercial Builders",
+    process.env.VITE_COMPANY_NAME?.trim() || "Ironwood Commercial Builders",
   );
 }
 
