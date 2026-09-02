@@ -58,7 +58,9 @@ function pushListGroup(
 }
 
 export function orderTypeLabel(t: string): string {
-  return t === "job_scope_kit" ? "Job Scope Kit" : "Field Request";
+  if (t === "job_scope_kit") return "Job Scope Kit";
+  if (t === "last_min") return "Last-Min";
+  return "Field Request";
 }
 
 export function buildOrderDetailGroups(order: FieldToolsOrder): OrderCartGroup[] {

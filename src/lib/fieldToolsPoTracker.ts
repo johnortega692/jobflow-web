@@ -39,7 +39,7 @@ type DispatchRecord = {
     id: string;
     job_number: string;
     job_name: string;
-    order_type: "field_request" | "job_scope_kit";
+    order_type: "field_request" | "job_scope_kit" | "last_min";
     submitted_by_name: string;
     date_needed: string | null;
     created_at: string;
@@ -69,6 +69,10 @@ function vendorFromOrder(
     return paint || sundries;
   }
 
+  if (dispatchType === "last_min") {
+    return String(payload.storeName ?? "").trim() || paint || sundries;
+  }
+
   if (dispatchType === "job_scope_kit" || dispatchType === "material") {
     return paint || sundries;
   }
@@ -88,6 +92,8 @@ function dispatchTypeLabel(type: string): string {
       return materialOrderScopeLabel("frp");
     case "fwp":
       return materialOrderScopeLabel("fwp");
+    case "last_min":
+      return "Last-Min";
     default:
       return type.replace(/_/g, " ");
   }
@@ -95,6 +101,7 @@ function dispatchTypeLabel(type: string): string {
 
 function orderTypeLabel(type: string): string {
   if (type === "job_scope_kit") return "Job Scope Kit";
+  if (type === "last_min") return "Last-Min";
   if (type === "material_order") return "Material order";
   return "Field Request";
 }

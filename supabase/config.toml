@@ -7,3 +7,9 @@ verify_jwt = false
 
 [functions.field-tools-link-reminders]
 verify_jwt = false
+
+[functions.field-tools-order-receipts]
+verify_jwt = false
+
+[functions.field-tools-submit-last-min]
+verify_jwt = false

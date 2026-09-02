@@ -178,6 +178,17 @@ function parseEmailList(raw: string): string[] {
     .filter(Boolean);
 }
 
+function parseJobCodeList(raw: string): string[] {
+  return raw
+    .split(/[,;]/)
+    .map((code) => code.trim().split(/\s+/)[0]?.toUpperCase() ?? "")
+    .filter(Boolean);
+}
+
+function jobCodeKey(jobNumber: string): string {
+  return jobNumber.trim().split(/\s+/)[0]?.toUpperCase() ?? "";
+}
+
 function asUuid(value: string | undefined): string {
   const s = (value ?? "").trim();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s) ? s : "";
@@ -356,10 +367,10 @@ Deno.serve(async (req) => {
 
     const { data: orderSettings } = await supabase
       .from("field_tools_order_settings")
-      .select("global_cc_emails")
+      .select("global_cc_emails, global_cc_skip_job_codes")
       .eq("id", 1)
       .maybeSingle();
-    const globalCcEmails = parseEmailList(String(orderSettings?.global_cc_emails ?? ""));
+    const skipGlobalCcJobs = parseJobCodeList(String(orderSettings?.global_cc_skip_job_codes ?? ""));
 
     const clientSubmitId = asUuid(body.client_submit_id);
     const resendOrderId = asUuid(body.resend_order_id);
@@ -437,6 +448,10 @@ Deno.serve(async (req) => {
     const jobCode = o.job_number.trim();
     const jobName = (o.job_name ?? (o.payload.jobName as string) ?? "").trim();
     const payload = o.payload ?? {};
+    const skipAlwaysCc = skipGlobalCcJobs.includes(jobCodeKey(jobCode));
+    const globalCcEmails = skipAlwaysCc
+      ? []
+      : parseEmailList(String(orderSettings?.global_cc_emails ?? ""));
 
     if (!stored) {
       const { data: accessProfile } = await supabase
