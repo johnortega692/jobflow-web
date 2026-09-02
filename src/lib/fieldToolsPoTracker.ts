@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-import type { FieldToolsOrder } from "../types/fieldToolsOrder";
+import type { FieldToolsOrder, FieldToolsOrderType } from "../types/fieldToolsOrder";
 import {
   listMaterialOrderPosForJobs,
   materialOrderScopeLabel,
@@ -12,7 +12,7 @@ export type FieldToolsPoDispatchRow = {
   poNumber: string;
   dispatchType: string;
   orderId: string;
-  orderType: "field_request" | "job_scope_kit" | "material_order";
+  orderType: FieldToolsOrderType | "material_order";
   source: "field_tools" | "jobflow_material";
   jobNumber: string;
   jobName: string;
@@ -39,7 +39,7 @@ type DispatchRecord = {
     id: string;
     job_number: string;
     job_name: string;
-    order_type: "field_request" | "job_scope_kit" | "last_min";
+    order_type: FieldToolsOrderType;
     submitted_by_name: string;
     date_needed: string | null;
     created_at: string;
