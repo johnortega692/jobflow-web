@@ -1,6 +1,4 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
 import { DateInput } from "../../components/DateInput";
 import { saveWcInstallDate, type FieldWcItemRow } from "../../lib/fieldTrackerProject";
 import { wcDotClass, wcPillClass, wcStatusLabel, type WcFieldStatus } from "../../lib/fieldTrackerStatus";
@@ -66,7 +64,6 @@ function InstallDateCell({
 }
 
 export function FieldWallcoveringDashboardPage() {
-  const { user } = useAuth();
   const { wcRows, loading, reload, mobileView } = useFieldDashboard();
   const [search, setSearch] = useState("");
   const [pm, setPm] = useState("");
@@ -184,17 +181,7 @@ export function FieldWallcoveringDashboardPage() {
                   tabIndex={0}
                 >
                   <div className={`gh-chevron${open ? " open" : ""}`}>▶</div>
-                  {user ? (
-                    <Link
-                      className="gh-job-num job-link"
-                      to={`/projects/${group.projectId}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {group.jobNumber}
-                    </Link>
-                  ) : (
-                    <span className="gh-job-num">{group.jobNumber}</span>
-                  )}
+                  <span className="gh-job-num">{group.jobNumber}</span>
                   <div>
                     <div className="gh-name">{group.jobName}</div>
                     <div className="gh-gc">{group.gcName}</div>

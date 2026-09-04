@@ -408,14 +408,6 @@ export function PaintTrackerStatusSection({
               onChange={(v) => patchTracker({ followUp: v })}
             />
           </label>
-          <label>
-            Team
-            <input
-              value={tracker.creativeTeam}
-              disabled={saving}
-              onChange={(e) => patchTracker({ creativeTeam: e.target.value })}
-            />
-          </label>
           <label className="grid-span-2">
             Revision notes
             <textarea

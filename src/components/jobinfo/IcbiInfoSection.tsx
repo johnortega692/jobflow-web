@@ -154,6 +154,14 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
             onChange={(e) => onChange({ icbi_foreman_email: e.target.value })}
           />
         </label>
+        <label className="grid-span-2">
+          Team
+          <input
+            value={j.icbi_team}
+            placeholder="Internal trade or division sharing this job"
+            onChange={(e) => onChange({ icbi_team: e.target.value })}
+          />
+        </label>
         <label>
           Super
           {supers.length > 0 ? (

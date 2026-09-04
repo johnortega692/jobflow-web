@@ -47,6 +47,8 @@ export type JobInfoData = {
   icbi_foreman: string;
   /** Foreman email — CC on tracker notifications and vendor emails for this project */
   icbi_foreman_email: string;
+  /** Internal trade / division sharing this job (Field View Division). */
+  icbi_team: string;
   /** ICBI / Field Tools super email (from Field Tools profile on new project) */
   icbi_super_email: string;
   /** ICBI is also the GC on this project — self-perform paint POs get a trailing "P" (e.g. 1126-001P) to tell them apart from GC-side PO accounting. */
@@ -129,6 +131,7 @@ export function defaultJobInfo(): JobInfoData {
     icbi_engineer: "",
     icbi_foreman: "",
     icbi_foreman_email: "",
+    icbi_team: "",
     icbi_super_email: "",
     icbi_is_gc: false,
     field_request_pm: "",

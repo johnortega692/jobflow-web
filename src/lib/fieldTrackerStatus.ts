@@ -80,6 +80,101 @@ export function paintStatusLabel(status: PaintFieldStatus): string {
   return status;
 }
 
+export type SubmittalCardStepId = "ordered" | "submitted" | "revision" | "approved";
+
+export type SubmittalCardStep = {
+  id: SubmittalCardStepId;
+  label: string;
+  done: boolean;
+  current: boolean;
+};
+
+export type SubmittalCardState = {
+  status: PaintFieldStatus;
+  statusLabel: string;
+  description: string;
+  steps: SubmittalCardStep[];
+  showSteps: boolean;
+  tone: "approved" | "revision" | "progress" | "idle" | "skip";
+};
+
+export function paintSubmittalStatusDescription(status: PaintFieldStatus): string {
+  switch (status) {
+    case "Not Needed":
+      return "No paint submittal is required for this job.";
+    case "Match Existing":
+      return "This job is matching existing paint instead of a new submittal.";
+    case "Not Started":
+      return "Submittal has not been ordered yet.";
+    case "Submittal Ordered":
+      return "Submittal is ordered and waiting to be sent for approval.";
+    case "Submitted for Approval":
+      return "Submittal was sent to the GC and is waiting for approval.";
+    case "Needs Revision":
+      return "GC requested changes. Submittal needs to be revised and resubmitted.";
+    case "Approved":
+      return "Paint submittal is approved.";
+  }
+}
+
+export function paintSubmittalCardState(tracker: PaintTrackerState): SubmittalCardState {
+  const status = paintFieldStatus(tracker);
+  const statusLabel = paintStatusLabel(status);
+  const description = paintSubmittalStatusDescription(status);
+  const skipPath = status === "Not Needed" || status === "Match Existing";
+
+  let tone: SubmittalCardState["tone"] = "progress";
+  if (status === "Approved") tone = "approved";
+  else if (status === "Needs Revision") tone = "revision";
+  else if (skipPath) tone = "skip";
+  else if (status === "Not Started") tone = "idle";
+
+  let currentId: SubmittalCardStepId | null = null;
+  if (status === "Not Started" || status === "Submittal Ordered") currentId = "ordered";
+  else if (status === "Submitted for Approval") currentId = "submitted";
+  else if (status === "Needs Revision") currentId = "revision";
+  else if (status === "Approved") currentId = "approved";
+
+  const orderedDone = tracker.submittalOrdered || tracker.approved;
+  const submittedDone = tracker.submittedForApproval || tracker.approved;
+  const revisionDone = tracker.approved || (tracker.revision && currentId !== "revision");
+  const approvedDone = tracker.approved;
+
+  return {
+    status,
+    statusLabel,
+    description,
+    showSteps: !skipPath,
+    tone,
+    steps: [
+      {
+        id: "ordered",
+        label: "Submittal Ordered",
+        done: orderedDone && currentId !== "ordered",
+        current: currentId === "ordered",
+      },
+      {
+        id: "submitted",
+        label: "Sent for Approval",
+        done: submittedDone && currentId !== "submitted",
+        current: currentId === "submitted",
+      },
+      {
+        id: "revision",
+        label: "Needs Revision",
+        done: Boolean(revisionDone && currentId !== "revision"),
+        current: currentId === "revision",
+      },
+      {
+        id: "approved",
+        label: "Approved",
+        done: approvedDone,
+        current: currentId === "approved",
+      },
+    ],
+  };
+}
+
 export function wcStatusLabel(status: WcFieldStatus): string {
   if (status === "Submitted for Approval") return "Sent for Approval";
   return status;

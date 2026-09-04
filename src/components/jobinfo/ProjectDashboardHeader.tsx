@@ -11,6 +11,7 @@ import {
   icbiSuperintendent,
   jobFullAddressOneLine,
   normalizeBillingDueDay,
+  projectTeamName,
   trackJobLabel,
   wcTrackerJobLabel,
 } from "../../lib/jobInfo";
@@ -83,6 +84,7 @@ export function ProjectDashboardHeader({
   const jobAddress = jobFullAddressOneLine(project, j);
   const billingDueDay = normalizeBillingDueDay(j.billing_due_day);
   const billingDueLabel = billingDueDay ? billingDueDayLabel(billingDueDay) : "";
+  const teamName = projectTeamName(j, paintTracker);
 
   return (
     <header className="card job-dashboard-header job-dashboard-header--snapshot">
@@ -130,9 +132,9 @@ export function ProjectDashboardHeader({
               {paintTracker.paintVendor}
             </span>
           )}
-          {paintTracker.creativeTeam.trim() && (
+          {teamName && (
             <span className="job-dashboard-pill job-dashboard-pill--team" role="listitem">
-              {paintTracker.creativeTeam.trim()}
+              {teamName}
             </span>
           )}
           {j.public_works && (

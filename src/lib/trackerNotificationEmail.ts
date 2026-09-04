@@ -1,7 +1,7 @@
 import type { ProjectForm } from "../types/database.js";
 import type { PaintTrackerState } from "../types/fieldTracker.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
-import { formatGcSuperFieldDisplay, gcSuperintendentContact } from "./jobInfo.js";
+import { formatGcSuperFieldDisplay, gcSuperintendentContact, projectTeamName } from "./jobInfo.js";
 import { sendVendorEmailAsOrderEmailViaGas } from "./sendOrderEmailGas.js";
 
 export type PaintNotificationJobData = {
@@ -71,7 +71,7 @@ export function projectToPaintNotificationJobData(
     gcSuper: formatGcSuperFieldDisplay(gcSuper) || gcSuper.name,
     startDate: j.start_date.trim(),
     paintVendor: tracker.paintVendor,
-    creativeTeam: tracker.creativeTeam.trim(),
+    creativeTeam: projectTeamName(j, tracker),
     nightsWeekends: tracker.nightsWeekends,
     revisionNotes: tracker.revisionNotes.trim(),
   };

@@ -3,7 +3,7 @@ import { DateInput } from "../DateInput";
 import { useAuth } from "../../contexts/AuthContext";
 import { loadContactDirectory, lookupGeneralContractor } from "../../lib/contactDirectory";
 import { supabase } from "../../lib/supabase";
-import { jobCityZipCountyLine, normalizeJobInfo, parseProjectDataBlob, syncLegacyFieldOrderFields } from "../../lib/jobInfo";
+import { jobCityZipCountyLine, normalizeJobInfo, parseProjectDataBlob, seedJobInfoTeamFromTracker, syncLegacyFieldOrderFields } from "../../lib/jobInfo";
 import { applyProposalImportPatch, importJobInfoFromProposalPdf } from "../../lib/proposalPdfImport";
 import { commitProjectUpdate, recordProjectActivity } from "../../lib/projectActivity";
 import {
@@ -20,11 +20,13 @@ import {
 import { syncProjectStartDateToManpower } from "../../lib/syncProjectStartDate";
 import { paintWcReassignMode } from "../../lib/reassignPaintWallcovering";
 import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSync";
+import { resolvePaintTracker } from "../../lib/fieldTrackerProject";
+import { parseProjectTradeData } from "../../types/tradeDocuments";
 import { IcbiInfoSection } from "./IcbiInfoSection";
 import { ReassignJobNumbersModal } from "./ReassignJobNumbersModal";
 import { StartupChecklistConfigSection } from "./StartupChecklistConfigSection";
 import { TradeAppsSyncSection } from "./TradeAppsSyncSection";
-import type { ProjectForm } from "../../types/database";
+import type { Json, ProjectForm } from "../../types/database";
 import type { GcEntry } from "../../types/contactDirectory";
 import { JOB_COST_TYPES, JOB_TYPES, type JobInfoData } from "../../types/jobInfo";
 
@@ -72,7 +74,13 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
 
   useEffect(() => {
     if (open) {
-      setProject(initial);
+      setProject({
+        ...initial,
+        jobInfo: seedJobInfoTeamFromTracker(
+          initial.jobInfo,
+          resolvePaintTracker(parseProjectTradeData(initial.data as Json)).creativeTeam,
+        ),
+      });
       setActiveTab(initialTab);
       setReassignOpen(false);
     }

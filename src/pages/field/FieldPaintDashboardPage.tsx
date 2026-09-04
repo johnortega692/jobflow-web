@@ -1,16 +1,22 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
 import { DateInput } from "../../components/DateInput";
 import {
   paintJobSmsText,
   saveProjectStartDate,
   type FieldPaintRow,
 } from "../../lib/fieldTrackerProject";
-import { paintPillClass, paintStatusLabel, type PaintFieldStatus } from "../../lib/fieldTrackerStatus";
 import {
+  paintPillClass,
+  paintStatusLabel,
+  paintSubmittalCardState,
+  type PaintFieldStatus,
+  type SubmittalCardState,
+} from "../../lib/fieldTrackerStatus";
+import {
+  paintMobilizeCardState,
   siteReadyColumnPillClass,
   siteReadyColumnStatuses,
+  type MobilizeCardState,
   type SiteReadyColumnStatus,
 } from "../../lib/startupSiteReadyDigest";
 import {
@@ -32,13 +38,10 @@ const STATUS_OPTIONS: { value: PaintFieldStatus; label: string }[] = [
   { value: "Not Needed", label: "Not Needed" },
 ];
 
-type PaintDashboardRow = FieldPaintRow & { siteReady: SiteReadyColumnStatus[] };
-
-function rowClass(status: PaintFieldStatus): string {
-  if (status === "Not Needed") return "row-no-paint";
-  if (status === "Needs Revision") return "row-revision";
-  return "";
-}
+type PaintDashboardRow = FieldPaintRow & {
+  siteReady: SiteReadyColumnStatus[];
+  mobilize: MobilizeCardState;
+};
 
 function GcSuperCell({ row, linkPhone = false }: { row: FieldPaintRow; linkPhone?: boolean }) {
   if (!row.gcSuperName && !row.gcSuperPhone) return <>—</>;
@@ -114,6 +117,81 @@ function CopyActions({ row }: { row: FieldPaintRow }) {
   );
 }
 
+function CheckGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M6.4 11.3 3.2 8.1l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z"
+      />
+    </svg>
+  );
+}
+
+function SubmittalStatusCard({ state }: { state: SubmittalCardState }) {
+  return (
+    <div className={`submittal-card submittal-card--${state.tone}`}>
+      <div className="submittal-card-head">
+        <div className="submittal-card-title">Submittal</div>
+        <div className="submittal-card-progress">{state.statusLabel}</div>
+      </div>
+      <p className="submittal-card-desc">{state.description}</p>
+      {state.showSteps ? (
+        <ol className="submittal-card-list">
+          {state.steps.map((step, index) => {
+            const kind = step.current ? "current" : step.done ? "done" : "future";
+            return (
+              <li key={step.id} className={`submittal-card-item submittal-card-item--${kind}`}>
+                <span className="submittal-card-index" aria-hidden="true">
+                  {step.done && !step.current ? <CheckGlyph /> : index + 1}
+                </span>
+                <span className="submittal-card-label">{step.label}</span>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
+function MobilizeStatusCard({ state }: { state: MobilizeCardState }) {
+  const tone = state.ready ? "ready" : state.done === 0 ? "pending" : "partial";
+  return (
+    <div className={`mobilize-card mobilize-card--${tone}`}>
+      <div className="mobilize-card-head">
+        <span className="mobilize-card-icon" aria-hidden="true">
+          {state.ready ? <CheckGlyph /> : null}
+        </span>
+        <div className="mobilize-card-title">Startup Requirements</div>
+        <div className="mobilize-card-progress">
+          {state.done}/{state.total} Complete
+        </div>
+      </div>
+      <ul className="mobilize-card-list">
+        {state.items.map((item) => (
+          <li
+            key={item.id}
+            className={`mobilize-card-item${item.done ? " mobilize-card-item--done" : ""}`}
+            title={item.detail}
+          >
+            <span className="mobilize-card-check" aria-hidden="true">
+              {item.done ? <CheckGlyph /> : null}
+            </span>
+            <span>{item.label}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mobilize-card-footer">
+        <span className="mobilize-card-footer-icon" aria-hidden="true">
+          {state.ready ? <CheckGlyph /> : null}
+        </span>
+        {state.ready ? "Ready to Mobilize" : "Not Ready to Mobilize"}
+      </div>
+    </div>
+  );
+}
+
 function SiteReadyPills({ statuses }: { statuses: SiteReadyColumnStatus[] }) {
   if (!statuses.length) return <>—</>;
   return (
@@ -126,7 +204,6 @@ function SiteReadyPills({ statuses }: { statuses: SiteReadyColumnStatus[] }) {
 }
 
 export function FieldPaintDashboardPage() {
-  const { user } = useAuth();
   const { paintRows, projects, loading, reload, mobileView } = useFieldDashboard();
   const [search, setSearch] = useState("");
   const [pm, setPm] = useState("");
@@ -142,6 +219,7 @@ export function FieldPaintDashboardPage() {
       return {
         ...row,
         siteReady: project ? siteReadyColumnStatuses(project) : [],
+        mobilize: paintMobilizeCardState(project),
       };
     });
   }, [paintRows, projects]);
@@ -208,11 +286,10 @@ export function FieldPaintDashboardPage() {
           </div>
           {filtered.map((row) => {
             const open = expanded[row.projectId] ?? false;
-            const statusClass = rowClass(row.status);
             return (
               <div
                 key={row.projectId}
-                className={`job-group field-mobile-card-wrap${statusClass ? ` ${statusClass}` : ""}`}
+                className={`job-group field-mobile-card-wrap${open ? " open" : ""}`}
               >
                 <div
                   className={`group-header field-mobile-card-header${open ? " open" : ""}`}
@@ -224,17 +301,7 @@ export function FieldPaintDashboardPage() {
                 >
                   <div className={`gh-chevron${open ? " open" : ""}`}>▶</div>
                   <div className="field-mobile-card-summary">
-                    {user ? (
-                      <Link
-                        className="job-link field-mobile-job"
-                        to={`/projects/${row.projectId}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {row.jobNumber}
-                      </Link>
-                    ) : (
-                      <span className="field-mobile-job">{row.jobNumber}</span>
-                    )}
+                    <span className="field-mobile-job">{row.jobNumber}</span>
                     <div className="field-mobile-title">
                       {row.jobName}
                       {row.nightsWeekends && <span className="badge-nw">Night/Weekend</span>}
@@ -248,6 +315,10 @@ export function FieldPaintDashboardPage() {
                 </div>
                 {open && (
                   <div className="group-detail open field-mobile-card-body">
+                    <div className="paint-group-detail-card">
+                      <SubmittalStatusCard state={paintSubmittalCardState(row.tracker)} />
+                      <MobilizeStatusCard state={row.mobilize} />
+                    </div>
                     <dl className="field-mobile-dl">
                       <div>
                         <dt>Address</dt>
@@ -274,12 +345,6 @@ export function FieldPaintDashboardPage() {
                       <div>
                         <dt>PM</dt>
                         <dd>{row.pm || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>Site Ready</dt>
-                        <dd>
-                          <SiteReadyPills statuses={row.siteReady} />
-                        </dd>
                       </div>
                       {row.revisionNotes ? (
                         <div className="field-revision-notes">
@@ -311,11 +376,10 @@ export function FieldPaintDashboardPage() {
 
           {filtered.map((row) => {
             const open = expanded[row.projectId] ?? false;
-            const statusClass = rowClass(row.status);
             return (
               <div
                 key={row.projectId}
-                className={`job-group${statusClass ? ` ${statusClass}` : ""}`}
+                className={`job-group${open ? " open" : ""}`}
               >
                 <div
                   className={`group-header paint-group-header${open ? " open" : ""}`}
@@ -326,17 +390,7 @@ export function FieldPaintDashboardPage() {
                   aria-expanded={open}
                 >
                   <div className={`gh-chevron${open ? " open" : ""}`}>▶</div>
-                  {user ? (
-                    <Link
-                      className="gh-job-num job-link"
-                      to={`/projects/${row.projectId}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {row.jobNumber}
-                    </Link>
-                  ) : (
-                    <span className="gh-job-num">{row.jobNumber}</span>
-                  )}
+                  <span className="gh-job-num">{row.jobNumber}</span>
                   <div>
                     <div className="gh-name">
                       {row.jobName}
@@ -352,7 +406,7 @@ export function FieldPaintDashboardPage() {
                     />
                   </div>
                   <div className="paint-header-field">
-                    <div className="paint-detail-label">Site Ready</div>
+                    <div className="paint-detail-label">Mobilize</div>
                     <SiteReadyPills statuses={row.siteReady} />
                   </div>
                   <div className="paint-header-field">
@@ -364,27 +418,31 @@ export function FieldPaintDashboardPage() {
                 {open && (
                   <div className="group-detail open">
                     <div className="paint-group-detail">
-                      <div>
+                      <div className="paint-detail-address">
                         <div className="paint-detail-label">Address</div>
                         <div>{row.jobAddress || "—"}</div>
                       </div>
-                      <div>
+                      <div className="paint-detail-gcsuper">
                         <div className="paint-detail-label">GC Super</div>
                         <GcSuperCell row={row} />
                       </div>
-                      <div>
+                      <div className="paint-detail-paint">
                         <div className="paint-detail-label">Paint</div>
                         <div>{row.paintVendor || "—"}</div>
                       </div>
-                      <div>
+                      <div className="paint-group-detail-card">
+                        <SubmittalStatusCard state={paintSubmittalCardState(row.tracker)} />
+                        <MobilizeStatusCard state={row.mobilize} />
+                      </div>
+                      <div className="paint-detail-division">
                         <div className="paint-detail-label">Division</div>
                         <div>{row.division || "—"}</div>
                       </div>
-                      <div>
+                      <div className="paint-detail-start">
                         <div className="paint-detail-label">Start date</div>
                         <PaintStartDateCell row={row} onSaved={() => void reload()} />
                       </div>
-                      <div>
+                      <div className="paint-detail-copy">
                         <div className="paint-detail-label">Copy</div>
                         <CopyActions row={row} />
                       </div>

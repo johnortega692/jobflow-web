@@ -65,6 +65,45 @@ export function siteReadyColumnPillClass(status: SiteReadyColumnStatus): string 
   return "pill-site-coi";
 }
 
+export type MobilizeRequirementId = "contract" | "coi";
+
+export type MobilizeRequirement = {
+  id: MobilizeRequirementId;
+  label: string;
+  done: boolean;
+  detail?: string;
+};
+
+export type MobilizeCardState = {
+  items: MobilizeRequirement[];
+  done: number;
+  total: number;
+  ready: boolean;
+};
+
+/**
+ * Field View job-detail card: Executed Contract and COI.
+ */
+export function paintMobilizeCardState(project: ProjectForm | undefined): MobilizeCardState {
+  if (!project) {
+    const checklist: MobilizeRequirement[] = [
+      { id: "contract", label: "Executed Contract", done: false },
+      { id: "coi", label: "Certificate of Insurance (COI)", done: false },
+    ];
+    return { items: checklist, done: 0, total: checklist.length, ready: false };
+  }
+
+  const items = parseDashboardStartupItems(project).items;
+  const contractDone = siteReadyGateDone(items, "executed_subcontract");
+  const coiDone = siteReadyGateDone(items, "coi_sent");
+  const checklist: MobilizeRequirement[] = [
+    { id: "contract", label: "Executed Contract", done: contractDone },
+    { id: "coi", label: "Certificate of Insurance (COI)", done: coiDone },
+  ];
+  const done = checklist.filter((row) => row.done).length;
+  return { items: checklist, done, total: checklist.length, ready: done === checklist.length };
+}
+
 export type SiteReadyMissingItem = {
   id: string;
   label: string;

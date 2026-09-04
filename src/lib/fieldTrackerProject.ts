@@ -1,5 +1,5 @@
 import { syncProjectStartDateToManpower } from "./syncProjectStartDate.js";
-import { formatGcSuperFieldDisplay, gcSuperintendentContact, icbiProjectManager, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo.js";
+import { formatGcSuperFieldDisplay, gcSuperintendentContact, icbiProjectManager, jobFullAddressOneLine, parseProjectDataBlob, projectHasWallcovering, projectTeamName, wcTrackerJobName, wcTrackerJobNumber } from "./jobInfo.js";
 import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus.js";
 import { normalizePaintVendor } from "./paintTrackerSync.js";
 import { resolveDisplayCompanyName } from "./displayCompanyName.js";
@@ -475,7 +475,7 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
     startDate: j.start_date.trim(),
     paintVendor: tracker.paintVendor,
     status: paintFieldStatus(tracker),
-    division: tracker.creativeTeam.trim() || j.icbi_foreman.trim(),
+    division: projectTeamName(j, tracker),
     pm: icbiProjectManager(j),
     revisionNotes: tracker.revisionNotes.trim(),
     tracker,

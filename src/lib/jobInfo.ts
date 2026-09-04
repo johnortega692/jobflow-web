@@ -98,6 +98,7 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     icbi_engineer: str(o.icbi_engineer),
     icbi_foreman: str(o.icbi_foreman),
     icbi_foreman_email: str(o.icbi_foreman_email),
+    icbi_team: str(o.icbi_team),
     icbi_super_email: str(o.icbi_super_email),
     icbi_is_gc: Boolean(o.icbi_is_gc),
     field_request_pm: str(o.field_request_pm),
@@ -139,6 +140,21 @@ export function icbiProjectManager(info: JobInfoData | undefined): string {
 /** ICBI PM email for Field Tools order CC. */
 export function icbiPmEmail(info: JobInfoData | undefined): string {
   return info?.icbi_pm_email?.trim() ?? "";
+}
+
+/** Internal trade / division. Prefers Job Info, then legacy Material Tracker Team. */
+export function projectTeamName(
+  info: JobInfoData | undefined,
+  tracker?: { creativeTeam?: string } | null,
+): string {
+  return info?.icbi_team?.trim() || tracker?.creativeTeam?.trim() || "";
+}
+
+/** Prefill Job Info Team from the old Material Tracker field when Team is empty. */
+export function seedJobInfoTeamFromTracker(info: JobInfoData, creativeTeam: string): JobInfoData {
+  if (info.icbi_team.trim()) return info;
+  const team = creativeTeam.trim();
+  return team ? { ...info, icbi_team: team } : info;
 }
 
 /** Copy ICBI fields into legacy field_request_* keys before persisting. */
