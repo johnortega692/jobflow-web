@@ -30,7 +30,7 @@ export async function googleSheetsGet(
   query: Record<string, string>,
 ): Promise<{ status: number; json: unknown; text: string }> {
   const clean = baseUrl.trim().replace(/\?.*$/, "");
-  if (!clean) throw new Error("Google Sheets URL not configured in Settings.");
+  if (!clean) throw new Error("Field Request Order URL not configured in Settings → Mailing Settings.");
 
   const proxy = await googleSheetsProxy({ url: clean, method: "GET", query });
   const text = proxy.body ?? "";
@@ -49,7 +49,7 @@ export async function googleSheetsPost(
   query?: Record<string, string>,
 ): Promise<{ status: number; json: unknown; text: string }> {
   const clean = baseUrl.trim().replace(/\?.*$/, "");
-  if (!clean) throw new Error("Google Sheets URL not configured in Settings.");
+  if (!clean) throw new Error("Field Request Order URL not configured in Settings → Mailing Settings.");
 
   const proxy = await googleSheetsProxy({ url: clean, method: "POST", query, payload });
   const text = proxy.body ?? "";

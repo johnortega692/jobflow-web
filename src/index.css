@@ -72,6 +72,52 @@ input.date-input {
   min-height: 2.5rem;
 }
 
+.date-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.date-input-row .date-input {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.date-today-btn {
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.date-today-btn:hover:not(:disabled) {
+  background: transparent;
+  opacity: 0.8;
+}
+
+.date-today-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.date-today-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
 .google-sheets-settings label > .muted.small {
   display: block;
   margin-top: 0.25rem;

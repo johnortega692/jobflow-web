@@ -103,6 +103,13 @@ function upsertJobInJobsSheet_(data) {
       var data = JSON.parse(e.postData.contents);
       return handleBrushoutsData(data);
     }
+
+    if (e.parameter && e.parameter.action === 'sendJobFlowEmail') {
+      var jobFlowMail = JSON.parse(e.postData.contents);
+      var jobFlowResult = sendJobFlowEmail_(jobFlowMail);
+      return ContentService.createTextOutput(JSON.stringify(jobFlowResult))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 */
 
 
@@ -118,6 +125,13 @@ function doPost_JobFlowExample(e) {
     if (e.parameter && e.parameter.sheet === 'brushouts') {
       var brushoutsData = JSON.parse(e.postData.contents);
       return handleBrushoutsData(brushoutsData);
+    }
+
+    if (e.parameter && e.parameter.action === 'sendJobFlowEmail') {
+      var jobFlowMail = JSON.parse(e.postData.contents);
+      var jobFlowResult = sendJobFlowEmail_(jobFlowMail);
+      return ContentService.createTextOutput(JSON.stringify(jobFlowResult))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
     return ContentService.createTextOutput(JSON.stringify({
@@ -147,3 +161,50 @@ var BRUSHOUT_MAX_COLORS = 25;
 
 // Paste handleBrushoutsData + helpers from ../brushouts_handler.js (same file as doPost).
 // After pasting, Deploy → Manage deployments → New version.
+
+// =============================================================================
+// JobFlow digest / reminder email — same GmailApp path as sendOrderEmail_,
+// but HTML-only (no dummy PDF). Field Tools orders keep sendOrderEmail_.
+//
+// In doPost, next to the existing sendOrderEmail branch:
+//
+//     if (e.parameter && e.parameter.action === 'sendJobFlowEmail') {
+//       var jobFlowMail = JSON.parse(e.postData.contents);
+//       var jobFlowResult = sendJobFlowEmail_(jobFlowMail);
+//       return ContentService.createTextOutput(JSON.stringify(jobFlowResult))
+//         .setMimeType(ContentService.MimeType.JSON);
+//     }
+//
+// Then Deploy → Manage deployments → Edit → New version → Deploy.
+// =============================================================================
+
+function sendJobFlowEmail_(data) {
+  if (!data.to || !String(data.to).trim()) {
+    return { success: false, error: 'Missing to address' };
+  }
+
+  var html = data.htmlBody || data.html || '';
+  var text = data.text || '';
+  if (html && !text) {
+    text = 'This message contains HTML formatting. Open in an HTML-capable email client.';
+  }
+  if (!html && !text) {
+    return { success: false, error: 'Email body is required.' };
+  }
+
+  var senderName = data.senderName || 'JobFlow';
+  var options = {
+    cc: data.cc || '',
+    name: senderName
+  };
+  if (html) options.htmlBody = html;
+
+  GmailApp.sendEmail(
+    String(data.to).trim(),
+    data.subject || 'JobFlow',
+    text,
+    options
+  );
+
+  return { success: true, message: 'Email sent to ' + data.to };
+}

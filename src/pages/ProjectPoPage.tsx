@@ -188,7 +188,7 @@ export function ProjectPoPage() {
       <div className="stack po-tracker-page">
         <div className="banner banner-warn">
           Order history is hidden while this project is hidden from Field Tools. Uncheck{" "}
-          <strong>Hide from Field Tools ordering, order history, and Manpower Cal</strong> in Job
+          <strong>Hide from Field Tools ordering, Field View, digest emails, order history, and Manpower Cal</strong> in Job
           setup to show PO tracking again.
         </div>
       </div>

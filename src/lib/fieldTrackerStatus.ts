@@ -29,6 +29,15 @@ export function paintFieldStatus(tracker: PaintTrackerState): PaintFieldStatus {
   return "Not Started";
 }
 
+/** Weekly digest "Needs Submittal Ordering" — Not Needed / approved / in-progress jobs stay out. */
+export function paintNeedsSubmittalOrdering(tracker: PaintTrackerState): boolean {
+  if (tracker.noPaint) return false;
+  if (tracker.approved || tracker.revision || tracker.submittedForApproval || tracker.submittalOrdered) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Per-line required lifecycle. Field measurement and shops are optional
  * requirements tracked separately and do not advance the lifecycle status.
@@ -126,6 +135,13 @@ export function applyWcLineStage(line: WcTrackerLineState, stage: WcFieldStatus)
     approvalReceived: reached >= 2 && !line.approvalReceived.trim() ? today : line.approvalReceived,
     dateOrdered: reached >= 3 && !line.dateOrdered.trim() ? today : line.dateOrdered,
   };
+}
+
+/** Filling Date Ordered marks Material Ordered. Clearing the date does not roll the stage back. */
+export function applyWcDateOrdered(line: WcTrackerLineState, dateOrdered: string): WcTrackerLineState {
+  if (!dateOrdered.trim()) return { ...line, dateOrdered };
+  if (line.delivered || line.materialOrder) return { ...line, dateOrdered };
+  return { ...applyWcLineStage(line, "Material Ordered"), dateOrdered };
 }
 
 export function paintPillClass(status: PaintFieldStatus): string {

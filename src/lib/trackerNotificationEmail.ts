@@ -2,7 +2,7 @@ import type { ProjectForm } from "../types/database.js";
 import type { PaintTrackerState } from "../types/fieldTracker.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import { formatGcSuperFieldDisplay, gcSuperintendentContact } from "./jobInfo.js";
-import { sendVendorEmail } from "./sendVendorEmail.js";
+import { sendVendorEmailAsOrderEmailViaGas } from "./sendOrderEmailGas.js";
 
 export type PaintNotificationJobData = {
   jobNumber: string;
@@ -574,17 +574,14 @@ export async function sendPaintTrackerNotifications(options: {
 
     const htmlForSend = await embedLogoUrlInHtml(html, logoUrl);
 
-    await sendVendorEmail(
-      {
-        to: recipients.to,
-        cc: recipients.cc,
-        subject,
-        html: htmlForSend,
-        text: "This message contains HTML formatting. Open in an HTML-capable email client.",
-        from_name: fromName,
-      },
-      { gasUrl },
-    );
+    await sendVendorEmailAsOrderEmailViaGas(gasUrl, {
+      to: recipients.to,
+      cc: recipients.cc,
+      subject,
+      html: htmlForSend,
+      text: "This message contains HTML formatting. Open in an HTML-capable email client.",
+      from_name: fromName,
+    });
 
     sent.push(kind);
   }

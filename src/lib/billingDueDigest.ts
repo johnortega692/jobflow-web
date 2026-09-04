@@ -8,9 +8,11 @@ import {
 } from "./jobInfo.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import { type TrackerNotificationBranding } from "./trackerNotificationEmail.js";
-import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail.js";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
+import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
+import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 import { loadAllProjectsForField } from "./fieldTrackerProject.js";
+import { loadVisibleProjectsForTrackerEmails } from "./projectFieldAppVisibility.js";
 
 /** Days before Billing Due day to email the ICBI PM. */
 export const BILLING_DUE_REMINDER_DAYS_BEFORE = 4;
@@ -304,7 +306,7 @@ export async function sendBillingDueDigest(options: {
     if (options.gasPost) {
       await options.gasPost(options.gasUrl, payload);
     } else {
-      await sendVendorEmail(payload, { gasUrl: options.gasUrl });
+      await sendVendorEmailAsOrderEmailDirect(options.gasUrl, payload);
     }
     jobCount += group.alerts.length;
   }
@@ -315,12 +317,12 @@ export async function sendBillingDueDigest(options: {
 export async function sendBillingDueDigestViaGasDirect(
   options: Omit<Parameters<typeof sendBillingDueDigest>[0], "gasPost">,
 ): Promise<{ sent: boolean; count: number; pmCount: number; skippedNoPm: number }> {
-  return sendBillingDueDigest({ ...options, gasPost: sendVendorEmailGasDirect });
+  return sendBillingDueDigest({ ...options, gasPost: sendVendorEmailAsOrderEmailDirect });
 }
 
 export async function loadProjectsForBillingDueDigest(): Promise<{
   projects: ProjectForm[];
   error: string | null;
 }> {
-  return loadAllProjectsForField();
+  return loadVisibleProjectsForTrackerEmails(loadAllProjectsForField);
 }

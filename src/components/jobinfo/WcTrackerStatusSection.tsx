@@ -239,19 +239,20 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
                 </thead>
                 <tbody>
                   {lines.map((line) => {
-                    const fieldStatus = wcFieldStatus(line);
                     const isOpen = expandedId === line.id;
-                    const lineName = line.label.trim() || line.wallcoveringName.trim() || "line";
+                    const displayLine = isOpen && editing ? editing.line : line;
+                    const fieldStatus = wcFieldStatus(displayLine);
+                    const lineName = displayLine.label.trim() || displayLine.wallcoveringName.trim() || "line";
                     return (
                       <Fragment key={line.id}>
                         <tr
                           className={`wc-tracker-line-row${isOpen ? " wc-tracker-line-row--open" : ""}`}
                           onClick={() => toggleRow(line)}
                         >
-                          <td>{line.label.trim() || "—"}</td>
+                          <td>{displayLine.label.trim() || "—"}</td>
                           <td>
-                            {line.wallcoveringName.trim() || "—"}
-                            {line.panels && " ⚠️"}
+                            {displayLine.wallcoveringName.trim() || "—"}
+                            {displayLine.panels && " ⚠️"}
                           </td>
                           {/* Status stays editable in the collapsed row; don't let it toggle the expand. */}
                           <td onClick={(e) => e.stopPropagation()}>
@@ -269,8 +270,8 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
                               ))}
                             </select>
                           </td>
-                          <td>{formatListDate(line.installDate)}</td>
-                          <td>{formatListDate(line.dateOrdered)}</td>
+                          <td>{formatListDate(displayLine.installDate)}</td>
+                          <td>{formatListDate(displayLine.dateOrdered)}</td>
                           <td className="wc-tracker-list-actions">
                             <button
                               type="button"

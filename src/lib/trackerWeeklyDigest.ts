@@ -5,14 +5,17 @@ import {
   buildFieldWcRows,
   loadAllProjectsForField,
 } from "./fieldTrackerProject.js";
+import { paintNeedsSubmittalOrdering } from "./fieldTrackerStatus.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import {
   resolveTrackerNotificationRecipients,
   type TrackerNotificationBranding,
 } from "./trackerNotificationEmail.js";
-import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail.js";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
+import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
+import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 import type { WcTrackerLineState } from "../types/fieldTracker.js";
+import { loadVisibleProjectsForTrackerEmails } from "./projectFieldAppVisibility.js";
 
 export type DigestJobItem = {
   job: string;
@@ -104,9 +107,8 @@ export function collectPaintDigestAlerts(projects: ProjectForm[]): PaintDigestAl
 
   for (const project of projects) {
     const row = buildFieldPaintRow(project);
-    if (!row.jobNumber || row.tracker.noPaint) continue;
-
     const t = row.tracker;
+    if (!row.jobNumber || t.noPaint) continue;
     const item: DigestJobItem = {
       job: row.jobNumber,
       name: row.jobName,
@@ -121,7 +123,7 @@ export function collectPaintDigestAlerts(projects: ProjectForm[]): PaintDigestAl
       alerts.overdueApproval.push({ ...item, status: "Submitted for approval" });
     } else if (t.submittalOrdered && !t.approved) {
       alerts.awaitingApproval.push({ ...item, status: "Submittal ordered" });
-    } else if (!t.submittalOrdered && !t.approved) {
+    } else if (paintNeedsSubmittalOrdering(t)) {
       alerts.needsOrdering.push({
         ...item,
         status: t.matchExisting ? "Match existing — order brush outs" : undefined,
@@ -575,18 +577,18 @@ export async function sendWeeklyTrackerDigest(options: {
     return;
   }
 
-  await sendVendorEmail(payload, { gasUrl: options.gasUrl });
+  await sendVendorEmailAsOrderEmailDirect(options.gasUrl, payload);
 }
 
 export async function sendWeeklyTrackerDigestViaGasDirect(
   options: Omit<Parameters<typeof sendWeeklyTrackerDigest>[0], "gasPost">,
 ): Promise<void> {
-  return sendWeeklyTrackerDigest({ ...options, gasPost: sendVendorEmailGasDirect });
+  return sendWeeklyTrackerDigest({ ...options, gasPost: sendVendorEmailAsOrderEmailDirect });
 }
 
 export async function loadProjectsForWeeklyDigest(): Promise<{
   projects: ProjectForm[];
   error: string | null;
 }> {
-  return loadAllProjectsForField();
+  return loadVisibleProjectsForTrackerEmails(loadAllProjectsForField);
 }

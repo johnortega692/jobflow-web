@@ -28,7 +28,7 @@ export function GoogleSheetsSettingsSection({ onDirtyChange, onBindActions }: Se
       .then((orgUrls) => {
         setUrls(orgUrls);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Could not load Google Sheets settings"))
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load mailing settings"))
       .finally(() => setLoading(false));
   }, [user?.id]);
 
@@ -50,7 +50,7 @@ export function GoogleSheetsSettingsSection({ onDirtyChange, onBindActions }: Se
       return false;
     }
     markSaved();
-    setMessage("Shared Google Apps Script URLs saved.");
+    setMessage("Mailing settings saved.");
     return true;
   }, [markSaved, urls, user?.id]);
 
@@ -72,7 +72,7 @@ export function GoogleSheetsSettingsSection({ onDirtyChange, onBindActions }: Se
     await persist();
   }
 
-  if (loading) return <p className="muted">Loading Google Sheets settings…</p>;
+  if (loading) return <p className="muted">Loading mailing settings…</p>;
 
   return (
     <form className="stack google-sheets-settings" onSubmit={(e) => void onSave(e)}>
@@ -81,11 +81,11 @@ export function GoogleSheetsSettingsSection({ onDirtyChange, onBindActions }: Se
       )}
 
       <section className="stack">
-        <h2>Google Apps Script URLs</h2>
+        <h2>Mailing Settings</h2>
         <p className="muted small">
-          Shared for everyone in JobFlow. Deploy each script with <strong>Anyone</strong> access.
-          <strong> Field Request Order URL</strong> is the primary send path for Field Tools and automatic
-          JobFlow Schedules digests (<code>sendOrderEmail</code>). Dashboard Web App URL is a fallback.
+          Shared for everyone in JobFlow. Deploy the Field Request Order script with{" "}
+          <strong>Anyone</strong> access. This URL is the Gmail send path for Field Tools and all
+          JobFlow emails (<code>sendJobFlowEmail</code>).
         </p>
         {GOOGLE_URL_FIELDS.map(({ key, title, hint }) => (
           <label key={key}>
@@ -103,7 +103,7 @@ export function GoogleSheetsSettingsSection({ onDirtyChange, onBindActions }: Se
 
       <div className="row-gap">
         <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? "Saving…" : "Save Google Sheets settings"}
+          {saving ? "Saving…" : "Save mailing settings"}
         </button>
       </div>
     </form>

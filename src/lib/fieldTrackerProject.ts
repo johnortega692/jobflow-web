@@ -648,7 +648,7 @@ export async function savePaintTrackerState(
   if (error) return error;
   const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
   const vendor = normalizePaintVendor(tracker.paintVendor);
-  const normalizedTracker = { ...tracker, paintVendor: vendor };
+  const normalizedTracker = normalizePaintTrackerState({ ...tracker, paintVendor: vendor });
   const paintSubmittal = normalizePaintSubmittal(trade.paint_submittal);
   const vendorChanged = normalizePaintVendor(paintSubmittal.paint_vendor ?? "") !== vendor;
   const orderedChanged = Boolean(paintSubmittal.submittal_ordered) !== tracker.submittalOrdered;

@@ -134,7 +134,7 @@ export function normalizePaintTrackerState(raw: unknown): PaintTrackerState {
     fsi: Boolean(o.fsi),
     paintVendor: (String(o.paintVendor ?? base.paintVendor) as PaintVendorLabel) || "PPG",
     creativeTeam: String(o.creativeTeam ?? ""),
-    followUp: String(o.followUp ?? ""),
+    followUp: Boolean(o.approved) ? "" : String(o.followUp ?? ""),
   };
 }
 

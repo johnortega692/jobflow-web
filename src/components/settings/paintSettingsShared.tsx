@@ -35,13 +35,13 @@ import {
 function scheduleSendChannel(data: PaintUserSettings) {
   const urls = resolveScheduleEmailUrls(data.google_urls);
   const gasPost = createBrowserScheduleEmailPoster(urls);
-  const gasUrl = urls.fieldOrderUrl || urls.dashboardUrl;
+  const gasUrl = urls.fieldOrderUrl;
   return { urls, gasPost, gasUrl };
 }
 
-function missingScheduleEmailError(urls: { fieldOrderUrl: string; dashboardUrl: string }): string {
-  if (!urls.fieldOrderUrl && !urls.dashboardUrl) {
-    return "Set Field Request Order URL in Settings → Google Sheets (same URL Field Tools uses for emails).";
+function missingScheduleEmailError(urls: { fieldOrderUrl: string }): string {
+  if (!urls.fieldOrderUrl) {
+    return "Set Field Request Order URL in Settings → Mailing Settings (same URL Field Tools uses for emails).";
   }
   return "";
 }

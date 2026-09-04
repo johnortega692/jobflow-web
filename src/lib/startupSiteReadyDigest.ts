@@ -1,5 +1,5 @@
 import type { ProjectForm } from "../types/database.js";
-import { collectProjectIcbiStaffCc, jobFullAddressOneLine } from "./jobInfo.js";
+import { jobFullAddressOneLine } from "./jobInfo.js";
 import { parseFlexibleDate } from "./dateInputUtils.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import {
@@ -14,8 +14,9 @@ import {
   resolveTrackerNotificationRecipients,
   type TrackerNotificationBranding,
 } from "./trackerNotificationEmail.js";
-import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail.js";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
+import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
+import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 
 /** Gate items that must be done before manpower belongs on site. */
 export const SITE_READY_GATE_ITEM_IDS = ["executed_subcontract", "coi_sent"] as const;
@@ -32,6 +33,37 @@ export const SITE_READY_SNAPSHOT_DAYS = 14;
 
 /** Urgent escalation band inside the weekly email. */
 export const SITE_READY_ESCALATION_DAYS = 7;
+
+export type SiteReadyColumnStatus = "Ready" | "Not Ready" | "Contract" | "COI";
+
+function siteReadyGateDone(items: StartupChecklistItem[], id: string): boolean {
+  const item = items.find((entry) => entry.id === id);
+  if (!item) return false;
+  return !item.enabled || item.complete;
+}
+
+/**
+ * Paint Dashboard Site Ready column.
+ * Ready = both Return executed contract and Send COI are on.
+ * Not Ready = neither is on.
+ * Status names the gate that is still off when only one is on.
+ */
+export function siteReadyColumnStatuses(project: ProjectForm): SiteReadyColumnStatus[] {
+  const items = parseDashboardStartupItems(project).items;
+  const contractDone = siteReadyGateDone(items, "executed_subcontract");
+  const coiDone = siteReadyGateDone(items, "coi_sent");
+  if (contractDone && coiDone) return ["Ready"];
+  if (!contractDone && !coiDone) return ["Not Ready"];
+  if (!coiDone) return ["COI"];
+  return ["Contract"];
+}
+
+export function siteReadyColumnPillClass(status: SiteReadyColumnStatus): string {
+  if (status === "Ready") return "pill-site-ready";
+  if (status === "Not Ready") return "pill-site-not-ready";
+  if (status === "Contract") return "pill-site-contract";
+  return "pill-site-coi";
+}
 
 export type SiteReadyMissingItem = {
   id: string;
@@ -345,10 +377,7 @@ export async function sendSiteReadyDigest(options: {
   const otherAttention = collectOtherAttentionAlerts(options.projects);
   if (!alerts.length && !otherAttention.length) return { sent: false, count: 0 };
 
-  const recipients = resolveTrackerNotificationRecipients(
-    options.primaryEmail,
-    collectProjectIcbiStaffCc(options.projects),
-  );
+  const recipients = resolveTrackerNotificationRecipients(options.primaryEmail);
   if (!recipients) {
     throw new Error("Set email on your Profile (Settings → Profile & letterhead).");
   }
@@ -381,7 +410,7 @@ export async function sendSiteReadyDigest(options: {
   if (options.gasPost) {
     await options.gasPost(options.gasUrl, payload);
   } else {
-    await sendVendorEmail(payload, { gasUrl: options.gasUrl });
+    await sendVendorEmailAsOrderEmailDirect(options.gasUrl, payload);
   }
 
   return { sent: true, count: totalJobs };
@@ -390,5 +419,5 @@ export async function sendSiteReadyDigest(options: {
 export async function sendSiteReadyDigestViaGasDirect(
   options: Omit<Parameters<typeof sendSiteReadyDigest>[0], "gasPost">,
 ): Promise<{ sent: boolean; count: number }> {
-  return sendSiteReadyDigest({ ...options, gasPost: sendVendorEmailGasDirect });
+  return sendSiteReadyDigest({ ...options, gasPost: sendVendorEmailAsOrderEmailDirect });
 }

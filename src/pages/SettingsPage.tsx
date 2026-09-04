@@ -32,7 +32,7 @@ const SETTINGS_TABS = [
   { id: "project-staff", label: "Project staff", adminOnly: true as const },
   { id: "vendors", label: "Vendors, architects & GCs" },
   { id: "delivery", label: "Delivery" },
-  { id: "google", label: "Google Sheets", adminOnly: true as const },
+  { id: "google", label: "Mailing Settings", adminOnly: true as const },
   { id: "budget", label: "Budget", adminOnly: true as const },
   { id: "paint-catalog", label: "Paint products & sheens" },
   { id: "spec-sections", label: "Spec sections" },

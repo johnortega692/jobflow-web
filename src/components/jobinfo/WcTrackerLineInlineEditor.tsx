@@ -1,5 +1,5 @@
 import { DateInput } from "../DateInput";
-import { applyWcLineStage, type WcFieldStatus } from "../../lib/fieldTrackerStatus";
+import { applyWcDateOrdered, applyWcLineStage, type WcFieldStatus } from "../../lib/fieldTrackerStatus";
 import { FlagSwitch, StageStepper } from "./StageStepper";
 import type { WcTrackerLineState } from "../../types/fieldTracker";
 
@@ -71,19 +71,19 @@ export function WcTrackerLineInlineEditor({
       <div className="wc-tracker-editor-grid">
         <label>
           Approval received
-          <DateInput value={line.approvalReceived} onChange={(v) => patch({ approvalReceived: v })} />
+          <DateInput todayButton value={line.approvalReceived} onChange={(v) => patch({ approvalReceived: v })} />
         </label>
         <label>
           Date ordered
-          <DateInput value={line.dateOrdered} onChange={(v) => patch({ dateOrdered: v })} />
+          <DateInput todayButton value={line.dateOrdered} onChange={(v) => onChange(applyWcDateOrdered(line, v))} />
         </label>
         <label>
           Ship date
-          <DateInput value={line.shipDate} onChange={(v) => patch({ shipDate: v })} />
+          <DateInput todayButton value={line.shipDate} onChange={(v) => patch({ shipDate: v })} />
         </label>
         <label>
           Install date
-          <DateInput value={line.installDate} onChange={(v) => patch({ installDate: v })} />
+          <DateInput todayButton value={line.installDate} onChange={(v) => patch({ installDate: v })} />
         </label>
       </div>
 
@@ -130,11 +130,11 @@ export function WcTrackerLineInlineEditor({
           </label>
           <label>
             Follow up
-            <DateInput value={line.followUp} onChange={(v) => patch({ followUp: v })} />
+            <DateInput todayButton value={line.followUp} onChange={(v) => patch({ followUp: v })} />
           </label>
           <label>
             ESD follow up
-            <DateInput value={line.esdFollowUp} onChange={(v) => patch({ esdFollowUp: v })} />
+            <DateInput todayButton value={line.esdFollowUp} onChange={(v) => patch({ esdFollowUp: v })} />
           </label>
           <label>
             Tracking

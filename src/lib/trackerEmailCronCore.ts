@@ -89,14 +89,11 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         fieldOrderUrl:
           (paint.google_urls.field_request_order ?? "").trim() ||
           (process.env.GAS_SEND_EMAIL_URL ?? "").trim(),
-        dashboardUrl: (paint.google_urls.paint_tracker ?? "").trim(),
       };
       const resendOk = isResendConfigured();
       const { email: primaryEmail, name: primaryName } = resolvePrimaryRecipient(raw, paint, isOrgRun);
-      if (!urls.fieldOrderUrl && !urls.dashboardUrl && !resendOk) {
-        result.skipped.push(
-          `${label}: missing Field Request Order URL (and Dashboard Web App URL / Resend)`,
-        );
+      if (!urls.fieldOrderUrl && !resendOk) {
+        result.skipped.push(`${label}: missing Field Request Order URL (and Resend)`);
         continue;
       }
 
@@ -125,7 +122,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         companyName,
         companyAddress: letterhead.company_address,
         fromName: `${companyName} Dashboard`.trim(),
-        gasUrl: urls.fieldOrderUrl || urls.dashboardUrl || "resend",
+        gasUrl: urls.fieldOrderUrl || "resend",
         logoUrl: letterhead.logo_url,
         gasPost,
       };

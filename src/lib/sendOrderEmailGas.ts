@@ -1,7 +1,7 @@
 import { googleSheetsPost } from "./googleSheetsApi";
 import type { SendVendorEmailRequest } from "./sendVendorEmail";
 
-/** Field Tools / Field Request Order Apps Script payload (`action=sendOrderEmail`). */
+/** Field Tools / Field Request Order Apps Script payload. */
 export type SendOrderEmailParams = {
   to: string;
   cc?: string;
@@ -12,18 +12,26 @@ export type SendOrderEmailParams = {
   attachmentBase64?: string;
 };
 
-/** Tiny valid PDF — Field Tools GAS expects an attachment; digests are HTML-first. */
+type FieldOrderEmailAction = "sendOrderEmail" | "sendJobFlowEmail";
+
+/** Tiny valid PDF — fallback if sendJobFlowEmail is not deployed yet. */
 const DIGEST_PDF_NAME = "JobFlow-notification.pdf";
 const DIGEST_PDF_BASE64 =
   "JVBERi0xLjAKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iago8PC9UeXBlL1BhZ2UvTWVkaWFCb3hbMCAwIDYxMiA3OTJdPj4KZW5kb2JqCnhyZWYKMCA0CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxMCAwMDAwMCBuIAowMDAwMDAwMDYxIDAwMDAwIG4gCjAwMDAwMDAxMTggMDAwMDAgbiAKdHJhaWxlcgo8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxOTUKJSVFT0YK";
 
-export function vendorPayloadToOrderEmail(payload: SendVendorEmailRequest): SendOrderEmailParams {
+function vendorPayloadToJobFlowEmail(payload: SendVendorEmailRequest): SendOrderEmailParams {
   return {
     to: payload.to.filter(Boolean).join(", "),
     cc: (payload.cc ?? []).filter(Boolean).join(", "),
     subject: payload.subject,
     htmlBody: payload.html,
     senderName: payload.from_name?.trim() || "JobFlow",
+  };
+}
+
+function vendorPayloadToOrderEmail(payload: SendVendorEmailRequest): SendOrderEmailParams {
+  return {
+    ...vendorPayloadToJobFlowEmail(payload),
     attachmentName: DIGEST_PDF_NAME,
     attachmentBase64: DIGEST_PDF_BASE64,
   };
@@ -69,11 +77,12 @@ function parseOrderEmailResponse(
 export async function sendOrderEmailGasDirect(
   baseUrl: string,
   params: SendOrderEmailParams,
+  action: FieldOrderEmailAction = "sendOrderEmail",
 ): Promise<string> {
   const base = baseUrl.trim().replace(/\?.*$/, "");
   if (!base) throw new Error("Field Request Order URL not configured.");
 
-  const url = `${base}?action=sendOrderEmail`;
+  const url = `${base}?action=${action}`;
   const upstream = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -87,11 +96,12 @@ export async function sendOrderEmailGasDirect(
 export async function sendOrderEmailViaGas(
   baseUrl: string,
   params: SendOrderEmailParams,
+  action: FieldOrderEmailAction = "sendOrderEmail",
 ): Promise<string> {
   const { status, text, json } = await googleSheetsPost(
     baseUrl,
     orderEmailBody(params),
-    { action: "sendOrderEmail" },
+    { action },
   );
   const bodyText =
     text ||
@@ -101,17 +111,25 @@ export async function sendOrderEmailViaGas(
   return parseOrderEmailResponse(upstreamOk, status, bodyText);
 }
 
-/** Convert a JobFlow digest payload and send via Field Tools order-email GAS. */
+/** Digests: HTML-only sendJobFlowEmail, then sendOrderEmail + dummy PDF if that action is not deployed. */
 export async function sendVendorEmailAsOrderEmailDirect(
   baseUrl: string,
   payload: SendVendorEmailRequest,
 ): Promise<string> {
-  return sendOrderEmailGasDirect(baseUrl, vendorPayloadToOrderEmail(payload));
+  try {
+    return await sendOrderEmailGasDirect(baseUrl, vendorPayloadToJobFlowEmail(payload), "sendJobFlowEmail");
+  } catch {
+    return sendOrderEmailGasDirect(baseUrl, vendorPayloadToOrderEmail(payload), "sendOrderEmail");
+  }
 }
 
 export async function sendVendorEmailAsOrderEmailViaGas(
   baseUrl: string,
   payload: SendVendorEmailRequest,
 ): Promise<string> {
-  return sendOrderEmailViaGas(baseUrl, vendorPayloadToOrderEmail(payload));
+  try {
+    return await sendOrderEmailViaGas(baseUrl, vendorPayloadToJobFlowEmail(payload), "sendJobFlowEmail");
+  } catch {
+    return sendOrderEmailViaGas(baseUrl, vendorPayloadToOrderEmail(payload), "sendOrderEmail");
+  }
 }

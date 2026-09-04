@@ -119,7 +119,7 @@ export function PaintTrackerStatusSection({
   useEffect(() => {
     if (!user?.id) return;
     void loadPaintUserSettings(user.id).then((s) => {
-      setGasUrl((s.google_urls.paint_tracker ?? "").trim());
+      setGasUrl((s.google_urls.field_request_order ?? "").trim());
     });
   }, [user?.id]);
 
@@ -166,7 +166,7 @@ export function PaintTrackerStatusSection({
     }
 
     if (!gasUrl) {
-      setStatus("Saved. Set Dashboard Web App URL in Settings to send notification emails.");
+      setStatus("Saved. Set Field Request Order URL in Settings → Mailing Settings to send notification emails.");
       return;
     }
 
@@ -252,7 +252,7 @@ export function PaintTrackerStatusSection({
     lastSavedRef.current = next;
 
     if (!gasUrl) {
-      setStatus("Saved. Set Dashboard Web App URL in Settings to send notification emails.");
+      setStatus("Saved. Set Field Request Order URL in Settings → Mailing Settings to send notification emails.");
       setSendRevisionEmailChecked(false);
       return;
     }
@@ -302,9 +302,13 @@ export function PaintTrackerStatusSection({
 
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      void flushSave();
     };
-  }, []);
+  }, [flushSave]);
 
   function patchTracker(patch: Partial<PaintTrackerState>) {
     const lastSaved = lastSavedRef.current ?? resolvedTracker;
@@ -333,10 +337,19 @@ export function PaintTrackerStatusSection({
     setTracker((t) => {
       if (!t) return t;
       const next = { ...t, ...patch };
+      if (next.approved) next.followUp = "";
       trackerRef.current = next;
       return next;
     });
     setError(null);
+    if ("noPaint" in patch) {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      void flushSave();
+      return;
+    }
     scheduleSave();
   }
 
@@ -389,7 +402,11 @@ export function PaintTrackerStatusSection({
           </label>
           <label>
             Follow up
-            <DateInput value={tracker.followUp} onChange={(v) => patchTracker({ followUp: v })} />
+            <DateInput
+              value={tracker.followUp}
+              disabled={saving || tracker.approved}
+              onChange={(v) => patchTracker({ followUp: v })}
+            />
           </label>
           <label>
             Team

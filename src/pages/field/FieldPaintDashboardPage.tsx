@@ -9,6 +9,11 @@ import {
 } from "../../lib/fieldTrackerProject";
 import { paintPillClass, paintStatusLabel, type PaintFieldStatus } from "../../lib/fieldTrackerStatus";
 import {
+  siteReadyColumnPillClass,
+  siteReadyColumnStatuses,
+  type SiteReadyColumnStatus,
+} from "../../lib/startupSiteReadyDigest";
+import {
   FieldEmptyPanel,
   FieldLoadingPanel,
   FieldStatusPill,
@@ -26,6 +31,8 @@ const STATUS_OPTIONS: { value: PaintFieldStatus; label: string }[] = [
   { value: "Approved", label: "Approved" },
   { value: "Not Needed", label: "Not Needed" },
 ];
+
+type PaintDashboardRow = FieldPaintRow & { siteReady: SiteReadyColumnStatus[] };
 
 function rowClass(status: PaintFieldStatus): string {
   if (status === "Not Needed") return "row-no-paint";
@@ -107,9 +114,20 @@ function CopyActions({ row }: { row: FieldPaintRow }) {
   );
 }
 
+function SiteReadyPills({ statuses }: { statuses: SiteReadyColumnStatus[] }) {
+  if (!statuses.length) return <>—</>;
+  return (
+    <span className="field-site-ready-cell">
+      {statuses.map((status) => (
+        <FieldStatusPill key={status} label={status} className={siteReadyColumnPillClass(status)} />
+      ))}
+    </span>
+  );
+}
+
 export function FieldPaintDashboardPage() {
   const { user } = useAuth();
-  const { paintRows, loading, reload, mobileView } = useFieldDashboard();
+  const { paintRows, projects, loading, reload, mobileView } = useFieldDashboard();
   const [search, setSearch] = useState("");
   const [pm, setPm] = useState("");
   const [status, setStatus] = useState("");
@@ -117,14 +135,25 @@ export function FieldPaintDashboardPage() {
   const [allExpanded, setAllExpanded] = useState(false);
   const debouncedSearch = useDebouncedValue(search);
 
+  const rows = useMemo<PaintDashboardRow[]>(() => {
+    const byId = new Map(projects.map((project) => [project.id, project]));
+    return paintRows.map((row) => {
+      const project = byId.get(row.projectId);
+      return {
+        ...row,
+        siteReady: project ? siteReadyColumnStatuses(project) : [],
+      };
+    });
+  }, [paintRows, projects]);
+
   const pmOptions = useMemo(
-    () => [...new Set(paintRows.map((r) => r.pm).filter(Boolean))].sort(),
-    [paintRows],
+    () => [...new Set(rows.map((r) => r.pm).filter(Boolean))].sort(),
+    [rows],
   );
 
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase().trim();
-    return paintRows.filter((row) => {
+    return rows.filter((row) => {
       const text = [row.jobNumber, row.jobName, row.jobAddress, row.gcName, row.gcSuperName, row.gcSuperPhone]
         .join(" ")
         .toLowerCase();
@@ -133,7 +162,7 @@ export function FieldPaintDashboardPage() {
       if (status && row.status !== status) return false;
       return true;
     });
-  }, [paintRows, debouncedSearch, pm, status]);
+  }, [rows, debouncedSearch, pm, status]);
 
   function toggleCard(projectId: string) {
     setExpanded((prev) => ({ ...prev, [projectId]: !prev[projectId] }));
@@ -246,6 +275,12 @@ export function FieldPaintDashboardPage() {
                         <dt>PM</dt>
                         <dd>{row.pm || "—"}</dd>
                       </div>
+                      <div>
+                        <dt>Site Ready</dt>
+                        <dd>
+                          <SiteReadyPills statuses={row.siteReady} />
+                        </dd>
+                      </div>
                       {row.revisionNotes ? (
                         <div className="field-revision-notes">
                           <dt>Revision notes</dt>
@@ -265,64 +300,104 @@ export function FieldPaintDashboardPage() {
         </div>
       ) : (
         <div className="table-view">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Job #</th>
-                <th>Job Name</th>
-                <th>Address</th>
-                <th>GC</th>
-                <th>GC Super</th>
-                <th>Copy</th>
-                <th>Start Date</th>
-                <th>Paint</th>
-                <th>Status</th>
-                <th>Revision notes</th>
-                <th>Division</th>
-                <th>PM</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((row) => (
-                <tr key={row.projectId} className={rowClass(row.status)}>
-                  <td>
-                    {user ? (
-                      <Link className="job-link" to={`/projects/${row.projectId}`}>
-                        {row.jobNumber}
-                      </Link>
-                    ) : (
-                      row.jobNumber
-                    )}
-                  </td>
-                  <td>
-                    {row.jobName}
-                    {row.nightsWeekends && <span className="badge-nw">Night/Weekend</span>}
-                  </td>
-                  <td>{row.jobAddress}</td>
-                  <td>{row.gcName}</td>
-                  <td>
-                    <GcSuperCell row={row} />
-                  </td>
-                  <td>
-                    <CopyActions row={row} />
-                  </td>
-                  <td>
-                    <PaintStartDateCell row={row} onSaved={() => void reload()} />
-                  </td>
-                  <td>{row.paintVendor}</td>
-                  <td>
+          <div className="groups-toolbar">
+            <button type="button" className="expand-all-btn" onClick={toggleExpandAll}>
+              {allExpanded ? "Collapse All" : "Expand All"}
+            </button>
+            <span className="groups-count">
+              {filtered.length} job{filtered.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          {filtered.map((row) => {
+            const open = expanded[row.projectId] ?? false;
+            const statusClass = rowClass(row.status);
+            return (
+              <div
+                key={row.projectId}
+                className={`job-group${statusClass ? ` ${statusClass}` : ""}`}
+              >
+                <div
+                  className={`group-header paint-group-header${open ? " open" : ""}`}
+                  onClick={() => toggleCard(row.projectId)}
+                  onKeyDown={(e) => e.key === "Enter" && toggleCard(row.projectId)}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={open}
+                >
+                  <div className={`gh-chevron${open ? " open" : ""}`}>▶</div>
+                  {user ? (
+                    <Link
+                      className="gh-job-num job-link"
+                      to={`/projects/${row.projectId}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {row.jobNumber}
+                    </Link>
+                  ) : (
+                    <span className="gh-job-num">{row.jobNumber}</span>
+                  )}
+                  <div>
+                    <div className="gh-name">
+                      {row.jobName}
+                      {row.nightsWeekends && <span className="badge-nw">Night/Weekend</span>}
+                    </div>
+                    <div className="gh-gc">{row.gcName || "—"}</div>
+                  </div>
+                  <div className="paint-header-field">
+                    <div className="paint-detail-label">Submittal</div>
                     <FieldStatusPill
                       label={paintStatusLabel(row.status)}
                       className={paintPillClass(row.status)}
                     />
-                  </td>
-                  <td className="field-revision-notes-cell">{row.revisionNotes || "—"}</td>
-                  <td>{row.division}</td>
-                  <td>{row.pm}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <div className="paint-header-field">
+                    <div className="paint-detail-label">Site Ready</div>
+                    <SiteReadyPills statuses={row.siteReady} />
+                  </div>
+                  <div className="paint-header-field">
+                    <div className="paint-detail-label">PM</div>
+                    <span className="gh-pm">{row.pm || "—"}</span>
+                  </div>
+                </div>
+
+                {open && (
+                  <div className="group-detail open">
+                    <div className="paint-group-detail">
+                      <div>
+                        <div className="paint-detail-label">Address</div>
+                        <div>{row.jobAddress || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="paint-detail-label">GC Super</div>
+                        <GcSuperCell row={row} />
+                      </div>
+                      <div>
+                        <div className="paint-detail-label">Paint</div>
+                        <div>{row.paintVendor || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="paint-detail-label">Division</div>
+                        <div>{row.division || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="paint-detail-label">Start date</div>
+                        <PaintStartDateCell row={row} onSaved={() => void reload()} />
+                      </div>
+                      <div>
+                        <div className="paint-detail-label">Copy</div>
+                        <CopyActions row={row} />
+                      </div>
+                      <div className="paint-group-detail-notes">
+                        <div className="paint-detail-label">Revision notes</div>
+                        <div>{row.revisionNotes || "—"}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </>

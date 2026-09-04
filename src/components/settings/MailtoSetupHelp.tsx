@@ -45,8 +45,8 @@ export function MailtoSetupHelp({ compact = false, method = "gmail" }: Props) {
         </p>
       )}
       <p className="muted small">
-        Dashboard contact links always use <strong>mailto:</strong>. Automated paint tracker digests use the{" "}
-        <strong>Dashboard Web App URL</strong> (Settings → Google Apps Script URLs).
+        Dashboard contact links always use <strong>mailto:</strong>. Automated JobFlow emails use the{" "}
+        <strong>Field Request Order URL</strong> (Settings → Mailing Settings).
       </p>
       {method === "mailto" ? (
         <>

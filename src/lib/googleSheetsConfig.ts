@@ -1,20 +1,14 @@
-export type GoogleUrlKey = "paint_tracker" | "field_request_order";
+export type GoogleUrlKey = "field_request_order";
 
 export const GOOGLE_URL_FIELDS: { key: GoogleUrlKey; title: string; hint: string }[] = [
   {
-    key: "paint_tracker",
-    title: "Dashboard Web App URL",
-    hint: "Fallback Gmail send for JobFlow digests if Field Request Order URL is unset. Deploy as Execute as: Me.",
-  },
-  {
     key: "field_request_order",
     title: "Field Request Order URL",
-    hint: "Primary send path for Field Tools and JobFlow Schedules digests (?action=sendOrderEmail). Must match Supabase edge secret GAS_SEND_EMAIL_URL.",
+    hint: "Gmail send for Field Tools orders (sendOrderEmail) and all JobFlow emails (sendJobFlowEmail). Must match Supabase edge secret GAS_SEND_EMAIL_URL.",
   },
 ];
 
 export const DEFAULT_GOOGLE_URLS: Record<GoogleUrlKey, string> = {
-  paint_tracker: "",
   field_request_order: "",
 };
 

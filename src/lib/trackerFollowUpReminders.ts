@@ -10,8 +10,10 @@ import {
   resolveTrackerNotificationRecipients,
   type TrackerNotificationBranding,
 } from "./trackerNotificationEmail.js";
-import { sendVendorEmail, type SendVendorEmailRequest } from "./sendVendorEmail.js";
-import { sendVendorEmailGasDirect, type GasEmailPost } from "./sendVendorEmailGasDirect.js";
+import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js";
+import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
+import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
+import { loadVisibleProjectsForTrackerEmails } from "./projectFieldAppVisibility.js";
 
 export type FollowUpReminderKind = "paint" | "wallcovering" | "installs";
 
@@ -140,7 +142,7 @@ export function collectPaintFollowUpReminders(projects: ProjectForm[]): PaintFol
   const buckets: PaintFollowUpBuckets = { overdue: [], dueToday: [] };
   for (const project of projects) {
     const row = buildFieldPaintRow(project);
-    if (!row.jobNumber || row.tracker.noPaint) continue;
+    if (!row.jobNumber || row.tracker.noPaint || row.tracker.approved) continue;
     pushPaintFollowUp(buckets, row, row.tracker.followUp);
   }
   return buckets;
@@ -493,18 +495,18 @@ export async function sendFollowUpReminder(options: {
     return;
   }
 
-  await sendVendorEmail(payload, { gasUrl: options.gasUrl });
+  await sendVendorEmailAsOrderEmailDirect(options.gasUrl, payload);
 }
 
 export async function sendFollowUpReminderViaGasDirect(
   options: Omit<Parameters<typeof sendFollowUpReminder>[0], "gasPost">,
 ): Promise<void> {
-  return sendFollowUpReminder({ ...options, gasPost: sendVendorEmailGasDirect });
+  return sendFollowUpReminder({ ...options, gasPost: sendVendorEmailAsOrderEmailDirect });
 }
 
 export async function loadProjectsForFollowUpReminders(): Promise<{
   projects: ProjectForm[];
   error: string | null;
 }> {
-  return loadAllProjectsForField();
+  return loadVisibleProjectsForTrackerEmails(loadAllProjectsForField);
 }

@@ -18,7 +18,7 @@ export type SendVendorEmailResult = {
   channel: "gas" | "resend";
 };
 
-/** Prefer Gmail via Dashboard web app when gasUrl is set; otherwise Resend API. */
+/** Prefer Gmail via Field Request Order when gasUrl is set; otherwise Resend API. */
 export async function sendVendorEmail(
   payload: SendVendorEmailRequest,
   options?: { gasUrl?: string; gasAction?: "sendVendorEmail" | "sendJobFlowEmail" },

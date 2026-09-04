@@ -106,9 +106,8 @@ export function TrackerSchedulesSettingsSection({
         )}
         {!(data.google_urls.field_request_order ?? "").trim() ? (
           <p className="muted small">
-            {(data.google_urls.paint_tracker ?? "").trim()
-              ? "Field Request Order URL is empty — scheduled digests will try Dashboard Web App URL, then Resend. Prefer setting Field Request Order URL to match working Field Tools emails."
-              : "Field Request Order URL is empty (Settings → Google Sheets). Digests use the same Apps Script as Field Tools (sendOrderEmail). Cron can still fall back to Dashboard Web App URL or Resend if RESEND_API_KEY and EMAIL_FROM are set on Vercel."}
+            Field Request Order URL is empty (Settings → Mailing Settings). Digests and paint tracker
+            notices use the same Apps Script as Field Tools (<code>sendJobFlowEmail</code>).
           </p>
         ) : null}
       </section>
