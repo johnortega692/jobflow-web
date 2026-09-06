@@ -8,8 +8,10 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import type { GrantableSettingsTabId } from "../config/settingsTabs";
 import { isAppAdmin, loadUserProfileAuth, type AppRole } from "../lib/appRole";
 import { authEmailRedirectTo } from "../lib/authRedirect";
+import { loadStartupChecklistDefaultEnabled, clearStartupChecklistDefaultsCache } from "../lib/startupChecklistDefaults";
 import { supabase } from "../lib/supabase";
 
 interface AuthContextValue {
@@ -21,6 +23,8 @@ interface AuthContextValue {
   isAdmin: boolean;
   isApproved: boolean;
   jobRole: string;
+  /** Grantable Settings tabs. `null` means all grantable tabs. Admins ignore this. */
+  settingsTabAccess: GrantableSettingsTabId[] | null;
   refreshProfile: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
@@ -35,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [appRole, setAppRole] = useState<AppRole | null>(null);
   const [isApproved, setIsApproved] = useState(false);
   const [jobRole, setJobRole] = useState("");
+  const [settingsTabAccess, setSettingsTabAccess] = useState<GrantableSettingsTabId[] | null>(null);
   const [roleLoading, setRoleLoading] = useState(false);
 
   const refreshProfile = useCallback(async () => {
@@ -43,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAppRole(null);
       setIsApproved(false);
       setJobRole("");
+      setSettingsTabAccess(null);
       setRoleLoading(false);
       return;
     }
@@ -51,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAppRole(profile.appRole);
     setIsApproved(profile.isApproved);
     setJobRole(profile.jobRole);
+    setSettingsTabAccess(profile.settingsTabAccess);
     setRoleLoading(false);
   }, [session?.user?.id]);
 
@@ -73,6 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshProfile();
   }, [refreshProfile]);
+
+  useEffect(() => {
+    if (!session?.user) {
+      clearStartupChecklistDefaultsCache();
+      return;
+    }
+    void loadStartupChecklistDefaultEnabled();
+  }, [session?.user?.id]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -105,10 +120,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    clearStartupChecklistDefaultsCache();
     setSession(null);
     setAppRole(null);
     setIsApproved(false);
     setJobRole("");
+    setSettingsTabAccess(null);
   }, []);
 
   const value = useMemo(
@@ -121,12 +138,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: isAppAdmin(appRole),
       isApproved,
       jobRole,
+      settingsTabAccess,
       refreshProfile,
       signIn,
       signUp,
       signOut,
     }),
-    [session, loading, appRole, roleLoading, isApproved, jobRole, refreshProfile, signIn, signUp, signOut],
+    [session, loading, appRole, roleLoading, isApproved, jobRole, settingsTabAccess, refreshProfile, signIn, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

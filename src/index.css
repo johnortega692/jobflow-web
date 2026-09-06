@@ -2559,7 +2559,23 @@ th {
 .settings-nav {
   display: flex;
   flex-direction: column;
+  gap: 0.85rem;
+}
+
+.settings-nav-group {
+  display: flex;
+  flex-direction: column;
   gap: 0.12rem;
+}
+
+.settings-nav-group-label {
+  margin: 0 0 0.15rem;
+  padding: 0 0.65rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .settings-nav-item {
@@ -2617,6 +2633,10 @@ th {
 }
 
 .settings-main-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.65rem;
   margin-bottom: 0.85rem;
 }
 
@@ -2625,6 +2645,28 @@ th {
   font-size: 1.2rem;
   font-weight: 600;
   color: var(--text);
+}
+
+.settings-menu-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-menu-badge--user {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--text);
+}
+
+.settings-menu-badge--admin {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
 }
 
 .settings-nav-toggle {
@@ -2637,6 +2679,71 @@ th {
 
 .settings-tab-panel--hidden {
   display: none;
+}
+
+.settings-user-access-list {
+  gap: 0.85rem;
+}
+
+.settings-user-access-card {
+  gap: 0.85rem;
+}
+
+.settings-user-access-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.settings-user-access-email {
+  margin: 0;
+  font-weight: 600;
+}
+
+.settings-user-access-role {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.65rem;
+}
+
+.settings-user-access-role label {
+  margin: 0;
+  min-width: 10rem;
+}
+
+.settings-user-admin-toggle {
+  margin: 0;
+  min-width: auto;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.settings-user-access-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+
+.settings-user-access-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.settings-user-access-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  gap: 0.35rem 0.85rem;
+}
+
+.settings-user-access-group .settings-nav-group-label {
+  grid-column: 1 / -1;
+  padding-left: 0;
 }
 
 /* Legacy horizontal tabs — kept for reference if reused elsewhere */
@@ -2812,30 +2919,18 @@ th {
   color: var(--text);
 }
 
-.logo-preview,
-.settings-preview-box {
+.logo-preview {
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
 }
 
-.logo-preview img,
-.settings-preview-logo {
+.logo-preview img {
   max-width: 280px;
   max-height: 120px;
   display: block;
   margin: 0 auto;
-}
-
-.settings-preview-box {
-  max-width: 420px;
-  color: #111;
-  background: #fff;
-}
-
-.settings-preview-box .muted {
-  color: #555;
 }
 
 .sds-section h3 {
@@ -9650,6 +9745,10 @@ a.job-tracker-tab {
 .startup-config-badge--due {
   background: rgba(240, 180, 41, 0.12);
   color: #f0c96a;
+}
+
+.settings-startup-defaults {
+  gap: 1.1rem;
 }
 
 .startup-config-prelim-math {

@@ -17,7 +17,7 @@ import {
   startupTaskCounts,
   type AttentionItem,
 } from "../lib/projectDashboardSnapshot";
-import type { StartupChecklistGroup } from "../lib/projectStartupItems";
+import { loadDefaultStartupItems, type StartupChecklistGroup } from "../lib/projectStartupItems";
 import type { Json, ProjectForm } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectForm) => void };
@@ -36,11 +36,14 @@ export function ProjectOverviewPage() {
 
   useEffect(() => {
     setProject(initial);
-    setStartupItems(parseDashboardStartupItems(initial));
+    void loadDefaultStartupItems().then(() => {
+      setStartupItems(parseDashboardStartupItems(initial));
+    });
   }, [initial]);
 
   useEffect(() => {
     void (async () => {
+      await loadDefaultStartupItems();
       const { data } = await supabase.from("projects").select("data").eq("id", projectId).single();
       const blob = parseProjectDataBlob(data?.data);
       const nextProject = { ...project, data: blob as Json };

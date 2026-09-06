@@ -110,7 +110,7 @@ export function JobTrackerPanel({
             className={`job-tracker-tab${activeTab === "log" ? " job-tracker-tab--active" : ""}`}
             onClick={() => selectTab("log")}
           >
-            Log
+            Procurement Log
           </button>
         </div>
       )}
@@ -142,7 +142,7 @@ export function JobTrackerPanel({
         </div>
       ) : (
         <div id="job-tracker-panel-log" role="tabpanel" aria-labelledby="job-tracker-tab-log">
-          <ProcurementLogPanel project={project} projectId={projectId} onProjectUpdate={onProjectUpdate} />
+          <ProcurementLogPanel project={project} projectId={projectId} />
         </div>
       )}
     </section>

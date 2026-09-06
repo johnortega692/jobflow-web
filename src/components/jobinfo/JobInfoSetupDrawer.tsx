@@ -14,6 +14,7 @@ import {
   applyPublicWorksFlag,
   applyWallcoveringScope,
   defaultStartupItems,
+  loadDefaultStartupItems,
   parseStartupItems,
   type StartupItemsState,
 } from "../../lib/projectStartupItems";
@@ -89,6 +90,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
   useEffect(() => {
     if (!open) return;
     void (async () => {
+      await loadDefaultStartupItems();
       const { data, error: err } = await supabase.from("projects").select("data").eq("id", projectId).single();
       if (err) return;
       const blob = parseProjectDataBlob(data?.data);

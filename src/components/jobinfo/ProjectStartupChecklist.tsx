@@ -19,6 +19,7 @@ import {
 } from "../../lib/projectStartupChecklist";
 import {
   defaultStartupItems,
+  loadDefaultStartupItems,
   parseStartupItems,
   toggleStartupItemComplete,
   withSubmitBrushoutsFromMaterialTracker,
@@ -119,6 +120,7 @@ export function ProjectStartupChecklist({
       setLoading(true);
       setError(null);
       try {
+        await loadDefaultStartupItems();
         const { data, error: err } = await supabase
           .from("projects")
           .select("data")

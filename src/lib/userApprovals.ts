@@ -1,4 +1,8 @@
 import { supabase } from "./supabase";
+import {
+  normalizeGrantableSettingsTabs,
+  type GrantableSettingsTabId,
+} from "../config/settingsTabs";
 
 export type PendingUser = {
   userId: string;
@@ -11,6 +15,8 @@ export type ApprovedUser = {
   email: string;
   jobRole: string;
   approvedAt: string;
+  appRole: "admin" | "user";
+  settingsTabs: GrantableSettingsTabId[] | null;
 };
 
 type PendingUserRow = {
@@ -24,6 +30,8 @@ type ApprovedUserRow = {
   email: string | null;
   job_role: string | null;
   approved_at: string | null;
+  app_role: string | null;
+  settings_tabs: string[] | null;
 };
 
 export async function loadPendingUsers(): Promise<{ users: PendingUser[]; error: string | null }> {
@@ -57,6 +65,8 @@ export async function loadApprovedUsers(): Promise<{ users: ApprovedUser[]; erro
     email: row.email ?? "",
     jobRole: row.job_role ?? "",
     approvedAt: row.approved_at ?? "",
+    appRole: row.app_role === "admin" ? ("admin" as const) : ("user" as const),
+    settingsTabs: normalizeGrantableSettingsTabs(row.settings_tabs),
   }));
   return { users, error: null };
 }
@@ -65,6 +75,25 @@ export async function setUserJobRole(userId: string, jobRole: string): Promise<s
   const { error } = await supabase.rpc("admin_set_user_job_role", {
     target_user_id: userId,
     p_job_role: jobRole,
+  } as never);
+  return error?.message ?? null;
+}
+
+export async function setUserSettingsTabs(
+  userId: string,
+  tabs: readonly GrantableSettingsTabId[],
+): Promise<string | null> {
+  const { error } = await supabase.rpc("admin_set_user_settings_tabs", {
+    target_user_id: userId,
+    p_settings_tabs: [...tabs],
+  } as never);
+  return error?.message ?? null;
+}
+
+export async function setUserAppRole(userId: string, isAdmin: boolean): Promise<string | null> {
+  const { error } = await supabase.rpc("admin_set_user_app_role", {
+    target_user_id: userId,
+    p_is_admin: isAdmin,
   } as never);
   return error?.message ?? null;
 }

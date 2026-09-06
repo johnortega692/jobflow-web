@@ -130,7 +130,6 @@ export function ProjectRfisPage() {
     <section className="card stack project-rfis-page">
       <div className="row-between" style={{ marginBottom: "1rem" }}>
         <div>
-          <h2>RFIs</h2>
           {rfis.length > 0 && (
             <p className="muted small rfi-list-status-summary">
               {statusSummary.total} RFI(s) · {statusSummary.open} Open · {statusSummary.closed} Closed

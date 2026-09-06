@@ -253,7 +253,12 @@ function ProjectLayoutShell() {
           >
             {navOpen ? "Close menu" : activeModule.label}
           </button>
-          {!isDetailView && activeModule.id !== "submittals" && activeModule.id !== "orders" && (
+          {!isDetailView &&
+            activeModule.id !== "overview" &&
+            activeModule.id !== "rfis" &&
+            activeModule.id !== "excel-paste" &&
+            activeModule.id !== "submittals" &&
+            activeModule.id !== "orders" && (
             <div className="page-header project-page-header">
               <h1>{activeModule.label}</h1>
             </div>

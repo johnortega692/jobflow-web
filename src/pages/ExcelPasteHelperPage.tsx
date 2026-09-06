@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { useOutletContext } from "react-router-dom";
 import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import {
@@ -30,7 +30,7 @@ function pickExcelFromDataTransfer(dataTransfer: DataTransfer | null): File | nu
 }
 
 export function ExcelPasteHelperPage() {
-  const { project, projectId } = useOutletContext<Ctx>();
+  const { project } = useOutletContext<Ctx>();
   const { branding } = useLetterhead();
   const uploadRef = useRef<HTMLInputElement>(null);
 
@@ -148,17 +148,6 @@ export function ExcelPasteHelperPage() {
 
   return (
     <div className="stack excel-paste-page">
-      <div>
-        <h2>Excel templates</h2>
-        <p className="muted small">
-          Same as desktop <strong>Fill Templates</strong>: upload your .xlsx, one click writes Job
-          Info text into mapped cells (merged cells included) and <strong>keeps your template
-          fonts and formatting</strong>, then download the filled file. Data from{" "}
-          <Link to={`/projects/${projectId}`}>Job Info</Link> and{" "}
-          <Link to="/settings">Settings</Link>.
-        </p>
-      </div>
-
       {(error || status) && (
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? status}</div>
       )}

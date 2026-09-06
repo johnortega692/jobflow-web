@@ -5,6 +5,10 @@ import {
   STARTUP_CHECKLIST_GROUP_META,
   type StartupCatalogSeed,
 } from "../config/projectStartupItemsCatalog.js";
+import {
+  catalogItemDefaultEnabled,
+  loadStartupChecklistDefaultEnabled,
+} from "./startupChecklistDefaults.js";
 import { PROJECT_STARTUP_OPTIONAL_STEPS } from "../config/projectStartupOptionalSteps.js";
 import { parseFlexibleDate, toIsoDateValue, isoDateToDisplay } from "./dateInputUtils.js";
 import {
@@ -70,7 +74,7 @@ function seedItem(seed: StartupCatalogSeed, patch?: Partial<StartupChecklistItem
     blocking: Boolean(seed.blocking),
     dueDate: null,
     dueDateOverride: false,
-    enabled: seed.defaultEnabled !== false,
+    enabled: catalogItemDefaultEnabled(seed),
     complete: false,
     completedBy: null,
     completedAt: null,
@@ -83,6 +87,12 @@ export function defaultStartupItems(): StartupItemsState {
     version: 2,
     items: STARTUP_CHECKLIST_CATALOG.map((seed) => seedItem(seed)),
   };
+}
+
+/** Hydrate org defaults, then return the catalog seeded for a new job. */
+export async function loadDefaultStartupItems(): Promise<StartupItemsState> {
+  await loadStartupChecklistDefaultEnabled();
+  return defaultStartupItems();
 }
 
 function isCatalogItemId(id: string): boolean {

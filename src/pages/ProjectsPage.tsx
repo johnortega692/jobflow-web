@@ -35,6 +35,7 @@ import {
 } from "../lib/icbiPmDefaults";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
+import { loadDefaultStartupItems } from "../lib/projectStartupItems";
 import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
 import { formatDateTime } from "../lib/strings";
 import { type Project } from "../types/database";
@@ -129,6 +130,7 @@ export function ProjectsPage() {
     const [{ data, error: err }, doneRes] = await Promise.all([
       supabase.from("projects").select("*").order("updated_at", { ascending: false }),
       listDoneProjectIds(),
+      loadDefaultStartupItems(),
     ]);
     setLoading(false);
     if (err) {
@@ -219,6 +221,7 @@ export function ProjectsPage() {
       ...(!pmContact ? jobInfoPatchFromProfilePm(profile, staffPms, jobRole) : {}),
     };
     const billing = defaultProjectBilling();
+    const startupItems = await loadDefaultStartupItems();
     const { data: inserted, error: err } = await supabase
       .from("projects")
       .insert({
@@ -226,7 +229,7 @@ export function ProjectsPage() {
         job_name: trimmedName,
         created_by: userId,
         updated_by: userId,
-        data: { job_info: jobInfo, billing },
+        data: { job_info: jobInfo, billing, startup_items: startupItems },
       })
       .select("id")
       .single();

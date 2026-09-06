@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { CompletedProjectsSettingsSection } from "../components/settings/CompletedProjectsSettingsSection";
 import { BudgetCatalogSettingsSection } from "../components/settings/BudgetCatalogSettingsSection";
@@ -8,6 +8,7 @@ import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalog
 import { PaintVendorsSettingsSection } from "../components/settings/PaintVendorsSettingsSection";
 import { SpecSectionsSettingsSection } from "../components/settings/SpecSectionsSettingsSection";
 import { TransmittalCategoriesSettingsSection } from "../components/settings/TransmittalCategoriesSettingsSection";
+import { StartupChecklistSettingsSection } from "../components/settings/StartupChecklistSettingsSection";
 import { EmailSignatureSettingsSection } from "../components/settings/EmailSignatureSettingsSection";
 import { TrackerSchedulesSettingsSection } from "../components/settings/TrackerSchedulesSettingsSection";
 import { ProjectStaffSettingsSection } from "../components/settings/ProjectStaffSettingsSection";
@@ -20,44 +21,32 @@ import { WorkOrderSettingsSection } from "../components/settings/WorkOrderSettin
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import { uploadLetterheadLogo } from "../lib/letterheadSettings";
-import { pdfSignerDisplayName } from "../lib/printCore";
 import { useSettingsDirtyTracker } from "../lib/useSettingsDirtyTracker";
 import { jobRoleLabel } from "../types/jobRoles";
+import {
+  SETTINGS_MENU_GROUP_META,
+  SETTINGS_TABS,
+  isSettingsTabVisible,
+  settingsMenuGroup,
+  settingsTabLabel,
+  type SettingsMenuGroup,
+  type SettingsTab,
+  type SettingsTabId,
+} from "../config/settingsTabs";
 import type { LetterheadPdfVisibility } from "../types/letterheadSettings";
-
-const SETTINGS_TABS = [
-  { id: "profile", label: "Profile & letterhead" },
-  { id: "users", label: "User approvals", adminOnly: true as const },
-  { id: "completed-projects", label: "Completed projects", adminOnly: true as const },
-  { id: "project-staff", label: "Project staff", adminOnly: true as const },
-  { id: "vendors", label: "Vendors, architects & GCs" },
-  { id: "delivery", label: "Delivery" },
-  { id: "google", label: "Mailing Settings", adminOnly: true as const },
-  { id: "budget", label: "Budget", adminOnly: true as const },
-  { id: "paint-catalog", label: "Paint products & sheens" },
-  { id: "spec-sections", label: "Spec sections" },
-  { id: "transmittal-categories", label: "Transmittal categories" },
-  { id: "paint-vendors", label: "Paint vendors" },
-  { id: "email-signature", label: "Email signature" },
-  { id: "tracker-schedules", label: "Schedules" },
-  { id: "work-orders", label: "Work orders" },
-] as const;
-
-type SettingsTab = (typeof SETTINGS_TABS)[number];
-type SettingsTabId = SettingsTab["id"];
 
 type PendingLeave =
   | { kind: "tab"; tab: SettingsTabId }
   | { kind: "route"; to: string };
 
 function tabLabel(tabId: SettingsTabId): string {
-  return SETTINGS_TABS.find((t) => t.id === tabId)?.label ?? "Settings";
+  return settingsTabLabel(tabId);
 }
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAdmin, roleLoading, jobRole } = useAuth();
+  const { user, isAdmin, roleLoading, jobRole, settingsTabAccess } = useAuth();
   const { profile, settings, branding, loading, saving, error, setSettings, setProfile, save, reload } =
     useLetterhead();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -95,6 +84,10 @@ export function SettingsPage() {
   );
   const onTransmittalCategoriesDirty = useCallback(
     (dirty: boolean) => setTabDirty("transmittal-categories", dirty),
+    [setTabDirty],
+  );
+  const onStartupChecklistDirty = useCallback(
+    (dirty: boolean) => setTabDirty("startup-checklist", dirty),
     [setTabDirty],
   );
   const onPaintVendorsDirty = useCallback(
@@ -143,35 +136,39 @@ export function SettingsPage() {
   }, [getProfileDirty, markProfileSaved, profileReady, reload, save]);
 
   const sharedSettingsReadOnly = !roleLoading && !isAdmin;
-  const visibleTabs = SETTINGS_TABS.filter((tab) => !("adminOnly" in tab && tab.adminOnly) || isAdmin);
+  const visibleTabs = useMemo(
+    () => SETTINGS_TABS.filter((tab) => isSettingsTabVisible(tab, isAdmin, settingsTabAccess)),
+    [isAdmin, settingsTabAccess],
+  );
+  const navGroups = useMemo(() => {
+    const groups: { id: SettingsMenuGroup; tabs: SettingsTab[] }[] = [
+      { id: "user", tabs: [] },
+      { id: "admin", tabs: [] },
+    ];
+    for (const tab of visibleTabs) {
+      const group = groups.find((row) => row.id === settingsMenuGroup(tab));
+      group?.tabs.push(tab);
+    }
+    return groups.filter((group) => group.tabs.length > 0);
+  }, [visibleTabs]);
 
   useEffect(() => {
-    if (!roleLoading && activeTab === "users" && !isAdmin) {
-      setActiveTab("profile");
+    if (roleLoading) return;
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0]?.id ?? "profile");
     }
-    if (!roleLoading && activeTab === "completed-projects" && !isAdmin) {
-      setActiveTab("profile");
-    }
-    if (!roleLoading && activeTab === "project-staff" && !isAdmin) {
-      setActiveTab("profile");
-    }
-    if (!roleLoading && activeTab === "google" && !isAdmin) {
-      setActiveTab("profile");
-    }
-    if (!roleLoading && activeTab === "budget" && !isAdmin) {
-      setActiveTab("profile");
-    }
-  }, [activeTab, isAdmin, roleLoading]);
+  }, [activeTab, roleLoading, visibleTabs]);
 
   useEffect(() => {
     if (roleLoading) return;
     const tab = (location.state as { tab?: string } | null)?.tab;
     if (!tab) return;
     const resolvedTab = tab === "paint-email" ? "paint-vendors" : tab;
-    if (!SETTINGS_TABS.some((t) => t.id === resolvedTab)) return;
-    if (("adminOnly" in (SETTINGS_TABS.find((t) => t.id === resolvedTab) ?? {})) && !isAdmin) return;
+    const meta = SETTINGS_TABS.find((t) => t.id === resolvedTab);
+    if (!meta) return;
+    if (!isSettingsTabVisible(meta, isAdmin, settingsTabAccess)) return;
     setActiveTab(resolvedTab as SettingsTabId);
-  }, [roleLoading, isAdmin, location.state]);
+  }, [roleLoading, isAdmin, location.state, settingsTabAccess]);
 
   function isActiveTabDirty(): boolean {
     return sectionActionsRef.current[activeTab]?.getIsDirty() ?? Boolean(dirtyTabs[activeTab]);
@@ -280,8 +277,8 @@ export function SettingsPage() {
             {!roleLoading && !isAdmin && (
               <>
                 {" "}
-                Company letterhead and integration sections are shared for everyone. You can edit your
-                profile; other sections are view-only unless you are an admin.
+                Company sections you can open are listed in the sidebar. You can edit your profile;
+                shared company sections are view-only unless you are an admin.
               </>
             )}
           </p>
@@ -314,26 +311,44 @@ export function SettingsPage() {
 
         <aside id="settings-sidebar" className="settings-sidebar" aria-label="Settings sections">
           <nav className="settings-nav">
-            {visibleTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`settings-nav-item${activeTab === tab.id ? " settings-nav-item--active" : ""}${dirtyTabs[tab.id] ? " settings-nav-item--dirty" : ""}`}
-                aria-current={activeTab === tab.id ? "page" : undefined}
-                onClick={() => requestTabChange(tab.id)}
-              >
-                <span className="settings-nav-item-label">{tab.label}</span>
-                {dirtyTabs[tab.id] ? (
-                  <span className="settings-nav-item-dot" aria-label="Unsaved changes" title="Unsaved changes" />
-                ) : null}
-              </button>
-            ))}
+            {navGroups.map((group) => {
+              const meta = SETTINGS_MENU_GROUP_META[group.id];
+              return (
+                <div key={group.id} className="settings-nav-group">
+                  <p className="settings-nav-group-label" title={meta.hint}>
+                    {meta.label}
+                  </p>
+                  {group.tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={`settings-nav-item${activeTab === tab.id ? " settings-nav-item--active" : ""}${dirtyTabs[tab.id] ? " settings-nav-item--dirty" : ""}`}
+                      aria-current={activeTab === tab.id ? "page" : undefined}
+                      onClick={() => requestTabChange(tab.id)}
+                    >
+                      <span className="settings-nav-item-label">{tab.label}</span>
+                      {dirtyTabs[tab.id] ? (
+                        <span className="settings-nav-item-dot" aria-label="Unsaved changes" title="Unsaved changes" />
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
           </nav>
         </aside>
 
         <div className="settings-main">
           <div className="settings-main-header">
             <h2 className="settings-main-title">{activeTabMeta?.label ?? "Settings"}</h2>
+            {activeTabMeta ? (
+              <span
+                className={`settings-menu-badge settings-menu-badge--${settingsMenuGroup(activeTabMeta)}`}
+                title={SETTINGS_MENU_GROUP_META[settingsMenuGroup(activeTabMeta)].hint}
+              >
+                {SETTINGS_MENU_GROUP_META[settingsMenuGroup(activeTabMeta)].label}
+              </span>
+            ) : null}
           </div>
 
       <div
@@ -572,41 +587,6 @@ export function SettingsPage() {
           </section>
           )}
 
-          <section className="stack settings-preview">
-            <h2>PDF preview</h2>
-            <p className="muted small">How your letterhead and signature appear on printed PDFs.</p>
-            <div className="settings-preview-box">
-              {branding.logoUrl ? (
-                <img className="settings-preview-logo" src={branding.logoUrl} alt="" />
-              ) : branding.companyName ? (
-                <strong>{branding.companyName}</strong>
-              ) : null}
-              {branding.companyContactLine ? (
-                <p className="muted small">{branding.companyContactLine}</p>
-              ) : null}
-              {(branding.footerName || branding.footerPhone || branding.footerEmail) && (
-                <p className="small">
-                  Thank you,
-                  <br />
-                  <br />
-                  {pdfSignerDisplayName(branding) || null}
-                  {branding.footerPhone ? (
-                    <>
-                      {pdfSignerDisplayName(branding) ? <br /> : null}
-                      {branding.footerPhone}
-                    </>
-                  ) : null}
-                  {branding.footerEmail ? (
-                    <>
-                      <br />
-                      {branding.footerEmail}
-                    </>
-                  ) : null}
-                </p>
-              )}
-            </div>
-          </section>
-
           <div className="row-gap">
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? "Saving…" : "Save settings"}
@@ -712,6 +692,17 @@ export function SettingsPage() {
           readOnly={sharedSettingsReadOnly}
           onDirtyChange={sharedSettingsReadOnly ? undefined : onTransmittalCategoriesDirty}
           onBindActions={(actions) => bindSectionActions("transmittal-categories", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "startup-checklist" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "startup-checklist"}
+      >
+        <StartupChecklistSettingsSection
+          readOnly={sharedSettingsReadOnly}
+          onDirtyChange={sharedSettingsReadOnly ? undefined : onStartupChecklistDirty}
+          onBindActions={(actions) => bindSectionActions("startup-checklist", actions)}
         />
       </div>
 

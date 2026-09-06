@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  GRANTABLE_SETTINGS_TABS,
+  SETTINGS_MENU_GROUP_META,
+  defaultGrantableSettingsTabIds,
+  effectiveGrantableSettingsTabs,
+  settingsMenuGroup,
+  type GrantableSettingsTabId,
+} from "../../config/settingsTabs";
+import {
   approveUser,
   loadApprovedUsers,
   loadPendingUsers,
   rejectUser,
   setUserJobRole,
+  setUserSettingsTabs,
+  setUserAppRole,
   type ApprovedUser,
   type PendingUser,
 } from "../../lib/userApprovals";
@@ -24,11 +34,20 @@ function formatWhen(value: string): string {
   });
 }
 
+function sameTabIds(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.every((id, i) => id === right[i]);
+}
+
 export function UserApprovalsSettingsSection() {
   const { user, refreshProfile } = useAuth();
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<ApprovedUser[]>([]);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, string>>({});
+  const [tabDrafts, setTabDrafts] = useState<Record<string, GrantableSettingsTabId[]>>({});
+  const [adminDrafts, setAdminDrafts] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [approvedLoading, setApprovedLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,12 +75,20 @@ export function UserApprovalsSettingsSection() {
       setError(result.error);
       setApprovedUsers([]);
       setRoleDrafts({});
+      setTabDrafts({});
+      setAdminDrafts({});
       return;
     }
     setApprovedUsers(result.users);
     setRoleDrafts(
-      Object.fromEntries(result.users.map((user) => [user.userId, normalizeJobRoleSlug(user.jobRole)])),
+      Object.fromEntries(result.users.map((row) => [row.userId, normalizeJobRoleSlug(row.jobRole)])),
     );
+    setTabDrafts(
+      Object.fromEntries(
+        result.users.map((row) => [row.userId, effectiveGrantableSettingsTabs(row.settingsTabs)]),
+      ),
+    );
+    setAdminDrafts(Object.fromEntries(result.users.map((row) => [row.userId, row.appRole === "admin"])));
   }, []);
 
   const reload = useCallback(async () => {
@@ -86,12 +113,12 @@ export function UserApprovalsSettingsSection() {
     await reload();
   }
 
-  async function onReject(user: PendingUser) {
-    if (!window.confirm(`Reject and delete the account for ${user.email}?`)) return;
-    setBusyId(user.userId);
+  async function onReject(pending: PendingUser) {
+    if (!window.confirm(`Reject and delete the account for ${pending.email}?`)) return;
+    setBusyId(pending.userId);
     setMessage(null);
     setError(null);
-    const err = await rejectUser(user.userId);
+    const err = await rejectUser(pending.userId);
     setBusyId(null);
     if (err) {
       setError(err);
@@ -101,19 +128,62 @@ export function UserApprovalsSettingsSection() {
     await reload();
   }
 
-  async function onSaveRole(approvedUser: ApprovedUser) {
+  function toggleTab(userId: string, tabId: GrantableSettingsTabId) {
+    setTabDrafts((prev) => {
+      const current = prev[userId] ?? defaultGrantableSettingsTabIds();
+      const next = current.includes(tabId)
+        ? current.filter((id) => id !== tabId)
+        : [...current, tabId];
+      return { ...prev, [userId]: next };
+    });
+  }
+
+  async function onSaveUser(approvedUser: ApprovedUser) {
     const nextRole = normalizeJobRoleSlug(roleDrafts[approvedUser.userId] ?? "");
-    if (nextRole === normalizeJobRoleSlug(approvedUser.jobRole)) return;
+    const nextTabs = tabDrafts[approvedUser.userId] ?? defaultGrantableSettingsTabIds();
+    const nextIsAdmin = Boolean(adminDrafts[approvedUser.userId]);
+    const wasAdmin = approvedUser.appRole === "admin";
+    const roleDirty = nextRole !== normalizeJobRoleSlug(approvedUser.jobRole);
+    const adminDirty = nextIsAdmin !== wasAdmin;
+    const tabsDirty =
+      !nextIsAdmin && !sameTabIds(nextTabs, effectiveGrantableSettingsTabs(approvedUser.settingsTabs));
+    if (!roleDirty && !tabsDirty && !adminDirty) return;
+
+    if (adminDirty) {
+      const ok = window.confirm(
+        nextIsAdmin
+          ? `Give ${approvedUser.email || "this user"} JobFlow admin access? They will be able to edit company settings for everyone.`
+          : `Remove JobFlow admin access from ${approvedUser.email || "this user"}? They will only see the Settings sections you grant.`,
+      );
+      if (!ok) return;
+    }
+
     setBusyId(approvedUser.userId);
     setMessage(null);
     setError(null);
-    const err = await setUserJobRole(approvedUser.userId, nextRole);
+    const errors: string[] = [];
+    if (adminDirty && !nextIsAdmin) {
+      const err = await setUserAppRole(approvedUser.userId, false);
+      if (err) errors.push(err);
+    }
+    if (!errors.length && roleDirty) {
+      const err = await setUserJobRole(approvedUser.userId, nextRole);
+      if (err) errors.push(err);
+    }
+    if (!errors.length && tabsDirty) {
+      const err = await setUserSettingsTabs(approvedUser.userId, nextTabs);
+      if (err) errors.push(err);
+    }
+    if (!errors.length && adminDirty && nextIsAdmin) {
+      const err = await setUserAppRole(approvedUser.userId, true);
+      if (err) errors.push(err);
+    }
     setBusyId(null);
-    if (err) {
-      setError(err);
+    if (errors.length) {
+      setError(errors.join(" "));
       return;
     }
-    setMessage(`Role updated for ${approvedUser.email || approvedUser.userId}.`);
+    setMessage(`Updated ${approvedUser.email || approvedUser.userId}.`);
     if (user?.id === approvedUser.userId) {
       await refreshProfile();
     }
@@ -144,25 +214,25 @@ export function UserApprovalsSettingsSection() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
-                  <tr key={user.userId}>
-                    <td>{user.email || user.userId}</td>
-                    <td className="muted">{formatWhen(user.createdAt)}</td>
+                {users.map((pending) => (
+                  <tr key={pending.userId}>
+                    <td>{pending.email || pending.userId}</td>
+                    <td className="muted">{formatWhen(pending.createdAt)}</td>
                     <td>
                       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
-                          disabled={busyId === user.userId}
-                          onClick={() => void onApprove(user.userId)}
+                          disabled={busyId === pending.userId}
+                          onClick={() => void onApprove(pending.userId)}
                         >
-                          {busyId === user.userId ? "…" : "Approve"}
+                          {busyId === pending.userId ? "…" : "Approve"}
                         </button>
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          disabled={busyId === user.userId}
-                          onClick={() => void onReject(user)}
+                          disabled={busyId === pending.userId}
+                          onClick={() => void onReject(pending)}
                         >
                           Reject
                         </button>
@@ -179,37 +249,63 @@ export function UserApprovalsSettingsSection() {
       <section className="stack">
         <h2>Team roles</h2>
         <p className="muted small">
-          Informational office roles shown on each user&apos;s profile. Only admins can change these.
+          Informational office roles shown on each user&apos;s profile. Use <strong>Admin access</strong> to
+          give another person full company Settings (same as your Admin badge). You cannot change your
+          own admin access or remove the last admin. Regular users only see the Settings sections you
+          check below. Profile & letterhead is always available.
         </p>
         {approvedLoading ? (
           <p className="muted">Loading approved users…</p>
         ) : approvedUsers.length === 0 ? (
           <p className="muted">No approved users yet.</p>
         ) : (
-          <div className="card">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Approved</th>
-                  <th>Role</th>
-                  <th aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {approvedUsers.map((user) => {
-                  const draft = roleDrafts[user.userId] ?? normalizeJobRoleSlug(user.jobRole);
-                  const dirty = draft !== normalizeJobRoleSlug(user.jobRole);
-                  return (
-                    <tr key={user.userId}>
-                      <td>{user.email || user.userId}</td>
-                      <td className="muted">{formatWhen(user.approvedAt)}</td>
-                      <td>
+          <div className="stack settings-user-access-list">
+            {approvedUsers.map((approvedUser) => {
+              const draft = roleDrafts[approvedUser.userId] ?? normalizeJobRoleSlug(approvedUser.jobRole);
+              const tabDraft =
+                tabDrafts[approvedUser.userId] ?? effectiveGrantableSettingsTabs(approvedUser.settingsTabs);
+              const adminDraft = adminDrafts[approvedUser.userId] ?? approvedUser.appRole === "admin";
+              const wasAdmin = approvedUser.appRole === "admin";
+              const isSelf = user?.id === approvedUser.userId;
+              const savedAdminCount = approvedUsers.filter((row) => row.appRole === "admin").length;
+              const isLastAdmin = wasAdmin && savedAdminCount <= 1;
+              const adminLocked = isSelf || isLastAdmin;
+              const roleDirty = draft !== normalizeJobRoleSlug(approvedUser.jobRole);
+              const adminDirty = adminDraft !== wasAdmin;
+              const tabsDirty =
+                !adminDraft &&
+                !sameTabIds(tabDraft, effectiveGrantableSettingsTabs(approvedUser.settingsTabs));
+              const dirty = roleDirty || tabsDirty || adminDirty;
+              return (
+                <div key={approvedUser.userId} className="card stack settings-user-access-card">
+                  <div className="settings-user-access-head">
+                    <div>
+                      <p className="settings-user-access-email">{approvedUser.email || approvedUser.userId}</p>
+                      <p className="muted small" style={{ margin: 0 }}>
+                        Approved {formatWhen(approvedUser.approvedAt)}
+                        {wasAdmin ? " · Admin" : ""}
+                        {isSelf ? " · you" : ""}
+                      </p>
+                    </div>
+                    <div className="settings-user-access-role">
+                      <label className="checkbox-row settings-user-admin-toggle">
+                        <input
+                          type="checkbox"
+                          checked={adminDraft}
+                          disabled={busyId === approvedUser.userId || adminLocked}
+                          onChange={(e) =>
+                            setAdminDrafts((prev) => ({ ...prev, [approvedUser.userId]: e.target.checked }))
+                          }
+                        />
+                        Admin access
+                      </label>
+                      <label>
+                        Role
                         <select
                           value={draft}
-                          disabled={busyId === user.userId}
+                          disabled={busyId === approvedUser.userId}
                           onChange={(e) =>
-                            setRoleDrafts((prev) => ({ ...prev, [user.userId]: e.target.value }))
+                            setRoleDrafts((prev) => ({ ...prev, [approvedUser.userId]: e.target.value }))
                           }
                         >
                           {JOB_ROLE_OPTIONS.map((option) => (
@@ -218,24 +314,93 @@ export function UserApprovalsSettingsSection() {
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={!dirty || busyId === approvedUser.userId}
+                        onClick={() => void onSaveUser(approvedUser)}
+                      >
+                        {busyId === approvedUser.userId ? "…" : "Save"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isSelf ? (
+                    <p className="muted small" style={{ margin: 0 }}>
+                      You cannot change your own admin access.
+                    </p>
+                  ) : isLastAdmin ? (
+                    <p className="muted small" style={{ margin: 0 }}>
+                      This is the last admin, so admin access cannot be removed.
+                    </p>
+                  ) : adminDraft ? (
+                    <p className="muted small" style={{ margin: 0 }}>
+                      This account is an admin and always has every Settings section.
+                    </p>
+                  ) : (
+                    <div className="stack">
+                      <div className="settings-user-access-tools">
+                        <p className="muted small" style={{ margin: 0 }}>
+                          Settings access
+                        </p>
+                        <div className="row-gap wrap">
                           <button
                             type="button"
-                            className="btn btn-primary btn-sm"
-                            disabled={!dirty || busyId === user.userId}
-                            onClick={() => void onSaveRole(user)}
+                            className="link-btn small"
+                            disabled={busyId === approvedUser.userId}
+                            onClick={() =>
+                              setTabDrafts((prev) => ({
+                                ...prev,
+                                [approvedUser.userId]: defaultGrantableSettingsTabIds(),
+                              }))
+                            }
                           >
-                            {busyId === user.userId ? "…" : "Save"}
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            className="link-btn small"
+                            disabled={busyId === approvedUser.userId}
+                            onClick={() =>
+                              setTabDrafts((prev) => ({ ...prev, [approvedUser.userId]: [] }))
+                            }
+                          >
+                            Clear
                           </button>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                      <div className="settings-user-access-grid">
+                        {(["user", "admin"] as const).map((groupId) => {
+                          const rows = GRANTABLE_SETTINGS_TABS.filter(
+                            (tab) => settingsMenuGroup(tab) === groupId,
+                          );
+                          if (!rows.length) return null;
+                          return (
+                            <div key={groupId} className="settings-user-access-group">
+                              <p className="settings-nav-group-label">
+                                {SETTINGS_MENU_GROUP_META[groupId].label}
+                              </p>
+                              {rows.map((tab) => (
+                                <label key={tab.id} className="check">
+                                  <input
+                                    type="checkbox"
+                                    checked={tabDraft.includes(tab.id)}
+                                    disabled={busyId === approvedUser.userId}
+                                    onChange={() => toggleTab(approvedUser.userId, tab.id)}
+                                  />
+                                  {tab.label}
+                                </label>
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
