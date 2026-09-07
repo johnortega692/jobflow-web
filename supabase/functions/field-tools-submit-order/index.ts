@@ -762,11 +762,12 @@ Deno.serve(async (req) => {
           break;
         }
         case "rental": {
-          subject = `${formatJobProjectLabel(jobCode, jobName)} — Rental Order`;
+          subject = `${formatJobProjectLabel(jobCode, jobName)} — Rental Order${poNumber ? ` — PO# ${poNumber}` : ""}`;
           attachmentName = `${jobCode}-rental.pdf`;
           vendorLabel = rentalVendor?.name ?? "";
           pdfBytes = await buildListPdf({
             ...baseMeta,
+            poNumber,
             title: "Rental Order",
             sectionLabel: "Rental Equipment",
             items: rentalItems,
