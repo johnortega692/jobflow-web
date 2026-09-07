@@ -4,6 +4,7 @@ import {
   buildOrderDetailGroups,
   buildOrderDetailRows,
   countCartGroups,
+  orderHaulOffPhotoSrc,
   orderTypeLabel,
 } from "../../lib/fieldToolsOrderView";
 import type { FieldToolsOrder } from "../../types/fieldToolsOrder";
@@ -61,6 +62,7 @@ export function FieldToolsOrderViewModal({
   const groups = order ? buildOrderDetailGroups(order) : [];
   const detailRows = order ? buildOrderDetailRows(order) : [];
   const totalItems = countCartGroups(groups);
+  const haulOffPhoto = order ? orderHaulOffPhotoSrc(order) : null;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -152,6 +154,17 @@ export function FieldToolsOrderViewModal({
             ) : (
               <p className="muted">No line items recorded for this order.</p>
             )}
+
+            {haulOffPhoto ? (
+              <div className="field-tools-order-cart">
+                <p className="field-tools-order-cart-title">Haul Out photo</p>
+                <img
+                  src={haulOffPhoto}
+                  alt="Haul out location"
+                  style={{ width: "100%", maxHeight: 320, objectFit: "contain", borderRadius: 8 }}
+                />
+              </div>
+            ) : null}
           </>
         )}
       </div>

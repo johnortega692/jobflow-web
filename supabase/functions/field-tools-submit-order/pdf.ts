@@ -44,6 +44,10 @@ export type ListPdfInput = {
   sectionLabel: string;
   items: LineItem[];
   vendorOrRep?: string;
+  photoBase64?: string;
+  pm?: string;
+  super?: string;
+  jobAddress?: string;
 };
 
 const PAGE_W = 612;
@@ -598,6 +602,8 @@ export async function buildListPdf(input: ListPdfInput): Promise<Uint8Array> {
     { label: "Ordered by:", value: input.orderedBy ?? "" },
     { label: "Date needed:", value: formatDateNeeded(input.dateNeeded), bold: true },
     { label: `${input.siteContactLabel ?? "Site contact"}:`, value: input.siteContact },
+    { label: "Address:", value: input.jobAddress ?? "" },
+    { label: "PM / Super:", value: [input.pm, input.super].filter(Boolean).join("  |  ") },
     { label: "Vendor / Rep:", value: input.vendorOrRep ?? "" },
     {
       label: "Order total:",
@@ -618,8 +624,55 @@ export async function buildListPdf(input: ListPdfInput): Promise<Uint8Array> {
     { key: "detail", label: "Detail", width: contentW * 0.35 },
   ]);
 
+  if (input.photoBase64?.trim()) {
+    await drawPhotoPage(doc, fontBold, input.photoBase64);
+  }
+
   stampAllPageFooters(doc, font, fontBold, input.branding, totalItems, layout.generatedAt);
   return doc.save();
+}
+
+function base64ToBytes(raw: string): Uint8Array {
+  let v = raw.trim();
+  const comma = v.indexOf(",");
+  if (v.startsWith("data:") && comma >= 0) v = v.slice(comma + 1);
+  const bin = atob(v.replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function drawPhotoPage(doc: PDFDocument, fontBold: PdfFont, photoBase64: string): Promise<void> {
+  try {
+    const bytes = base64ToBytes(photoBase64);
+    let img;
+    try {
+      img = await doc.embedJpg(bytes);
+    } catch {
+      img = await doc.embedPng(bytes);
+    }
+    const page = doc.addPage([PAGE_W, PAGE_H]);
+    page.drawText("Pick Up Location", {
+      x: MARGIN,
+      y: PAGE_H - MARGIN - 14,
+      size: 12,
+      font: fontBold,
+      color: NAVY,
+    });
+    const maxW = PAGE_W - MARGIN * 2;
+    const maxH = PAGE_H - MARGIN * 2 - 36 - FOOTER_TOP;
+    const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    page.drawImage(img, {
+      x: MARGIN,
+      y: PAGE_H - MARGIN - 24 - h,
+      width: w,
+      height: h,
+    });
+  } catch {
+    /* skip unreadable photo */
+  }
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {

@@ -25,6 +25,7 @@ export type EmailHtmlInput = {
   vendorLabel?: string;
   pm?: string;
   super?: string;
+  jobAddress?: string;
   sections: { title: string; lines: string[] }[];
 };
 
@@ -41,6 +42,7 @@ export function buildOrderEmailHtml(input: EmailHtmlInput): string {
   const metaRows = [
     input.poNumber ? metaRow("PO Number", input.poNumber, true) : "",
     metaRow("Project", jobLabel),
+    input.jobAddress ? metaRow("Address", input.jobAddress) : "",
     input.orderedBy ? metaRow("Ordered by", input.orderedBy) : "",
     input.dateNeeded ? metaRow("Date needed", formatDateNeeded(input.dateNeeded), true) : "",
     input.siteContact ? metaRow(input.siteContactLabel ?? "Site contact", input.siteContact) : "",
@@ -214,7 +216,7 @@ export function orderTitleForType(type: string): string {
     case "wallcovering":
       return "Wallcovering Order";
     case "haul_off":
-      return "Haul Off Request";
+      return "Haul Out Request";
     default:
       return "Field Order";
   }

@@ -22,7 +22,40 @@ type PayloadLine = {
 type FieldRequestSections = {
   haulOffActive?: boolean;
   haulOffNotes?: string;
+  haulOffStartTime?: string;
+  haulOffEndTime?: string;
+  haulOffAccess?: string;
+  haulOffGarageHeight?: string;
+  haulOffHelpAvailable?: boolean | null;
+  haulOffImageBase64?: string;
 };
+
+function formatHourLabel(hour24: string): string {
+  const n = Number(hour24);
+  if (!Number.isFinite(n)) return hour24;
+  const hours = Math.floor(n);
+  const minutes = Math.round((n - hours) * 60);
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const h12 = hours % 12 || 12;
+  return `${h12}:${String(minutes).padStart(2, "0")} ${ampm}`;
+}
+
+function haulOffDetail(sections: FieldRequestSections): string {
+  const parts: string[] = [];
+  const start = (sections.haulOffStartTime ?? "").trim();
+  const end = (sections.haulOffEndTime ?? "").trim();
+  if (start && end) parts.push(`${formatHourLabel(start)} – ${formatHourLabel(end)}`);
+  if (sections.haulOffAccess === "street") parts.push("Street");
+  if (sections.haulOffAccess === "garage") {
+    const height = (sections.haulOffGarageHeight ?? "").trim();
+    parts.push(height ? `Parking garage (${height})` : "Parking garage");
+  }
+  if (sections.haulOffHelpAvailable === true) parts.push("Help available: Yes");
+  if (sections.haulOffHelpAvailable === false) parts.push("Help available: No");
+  const notes = sections.haulOffNotes?.trim();
+  if (notes) parts.push(notes);
+  return parts.join(" · ");
+}
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
@@ -60,6 +93,7 @@ function pushListGroup(
 export function orderTypeLabel(t: string): string {
   if (t === "job_scope_kit") return "Job Scope Kit";
   if (t === "last_min") return "Last-Min";
+  if (t === "haul_off") return "Haul Out";
   return "Field Request";
 }
 
@@ -86,12 +120,12 @@ export function buildOrderDetailGroups(order: FieldToolsOrder): OrderCartGroup[]
 
   if (sections?.haulOffActive) {
     groups.push({
-      section: "Haul Off",
+      section: "Haul Out",
       items: [
         {
           id: "haulOff",
-          name: "Haul off request",
-          detail: sections.haulOffNotes?.trim() || undefined,
+          name: "Haul out request",
+          detail: haulOffDetail(sections) || undefined,
           quantity: "1×",
         },
       ],
@@ -124,11 +158,31 @@ export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
   if (dateNeeded) {
     const delivery = order.delivery_type || asString(payload.deliveryType);
     const deliveryLabel =
-      delivery === "delivery" ? "Delivery" : delivery === "willCall" ? "Will call" : delivery;
+      delivery === "delivery" ? "Delivery" : delivery === "willCall" ? "Will call" : "";
     rows.push({
       label: "Needed",
       value: deliveryLabel ? `${formatDateNeeded(dateNeeded)} · ${deliveryLabel}` : formatDateNeeded(dateNeeded),
     });
+  }
+
+  const sections = (payload.sections as FieldRequestSections | undefined) ?? undefined;
+  if (sections?.haulOffActive) {
+    const start = (sections.haulOffStartTime ?? "").trim();
+    const end = (sections.haulOffEndTime ?? "").trim();
+    if (start && end) {
+      rows.push({ label: "Time frame", value: `${formatHourLabel(start)} – ${formatHourLabel(end)}` });
+    }
+    if (sections.haulOffAccess === "street") rows.push({ label: "Location", value: "Street" });
+    if (sections.haulOffAccess === "garage") {
+      const height = (sections.haulOffGarageHeight ?? "").trim();
+      rows.push({
+        label: "Location",
+        value: height ? `Parking garage (${height})` : "Parking garage",
+      });
+    }
+    if (sections.haulOffHelpAvailable === true || sections.haulOffHelpAvailable === false) {
+      rows.push({ label: "Help available", value: sections.haulOffHelpAvailable ? "Yes" : "No" });
+    }
   }
 
   const vendor = asString(payload.vendor);
@@ -143,6 +197,9 @@ export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
 
   const superName = asString(payload.super);
   if (superName) rows.push({ label: "Super", value: superName });
+
+  const jobAddress = asString(payload.jobAddress) || asString(payload.deliveryAddress);
+  if (jobAddress) rows.push({ label: "Address", value: jobAddress });
 
   const foreman = asString(payload.foreman);
   if (foreman) rows.push({ label: "Foreman", value: foreman });
@@ -160,6 +217,14 @@ export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
   if (notes) rows.push({ label: "Notes", value: notes });
 
   return rows;
+}
+
+export function orderHaulOffPhotoSrc(order: FieldToolsOrder): string | null {
+  const sections = order.payload?.sections as FieldRequestSections | undefined;
+  const b = sections?.haulOffImageBase64?.trim() ?? "";
+  if (!b) return null;
+  if (b.startsWith("data:")) return b;
+  return `data:image/jpeg;base64,${b}`;
 }
 
 export function countCartGroups(groups: OrderCartGroup[]): number {

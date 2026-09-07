@@ -67,14 +67,59 @@ function pushGroup(
   groups.push({ section: key === "paint" && vendor ? `${title} · ${vendor}` : title, items });
 }
 
+function haulOffAuditDetail(sections: {
+  haulOffNotes?: string;
+  haulOffStartTime?: string;
+  haulOffEndTime?: string;
+  haulOffAccess?: string;
+  haulOffGarageHeight?: string;
+  haulOffHelpAvailable?: boolean | null;
+}): string {
+  const parts: string[] = [];
+  const start = (sections.haulOffStartTime ?? "").trim();
+  const end = (sections.haulOffEndTime ?? "").trim();
+  if (start && end) {
+    const fmt = (h: string) => {
+      const n = Number(h);
+      if (!Number.isFinite(n)) return h;
+      const hours = Math.floor(n);
+      const minutes = Math.round((n - hours) * 60);
+      const ampm = hours >= 12 ? "PM" : "AM";
+      return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${ampm}`;
+    };
+    parts.push(`${fmt(start)} – ${fmt(end)}`);
+  }
+  if (sections.haulOffAccess === "street") parts.push("Street");
+  if (sections.haulOffAccess === "garage") {
+    const height = (sections.haulOffGarageHeight ?? "").trim();
+    parts.push(height ? `Parking garage (${height})` : "Parking garage");
+  }
+  if (sections.haulOffHelpAvailable === true) parts.push("Help available: Yes");
+  if (sections.haulOffHelpAvailable === false) parts.push("Help available: No");
+  const notes = sections.haulOffNotes?.trim();
+  if (notes) parts.push(notes);
+  return parts.join(" · ");
+}
+
 export function orderTypeLabel(t: string): string {
-  return t === "job_scope_kit" ? "Job Scope Kit" : "Field Request";
+  if (t === "job_scope_kit") return "Job Scope Kit";
+  if (t === "last_min") return "Last-Min";
+  if (t === "haul_off") return "Haul Out";
+  return "Field Request";
 }
 
 export function buildAuditItemGroups(order: AuditOrder): AuditItemGroup[] {
   const payload = order.payload ?? {};
   const lists = payload.lists as Record<string, unknown> | undefined;
-  const sections = payload.sections as { haulOffActive?: boolean; haulOffNotes?: string } | undefined;
+  const sections = payload.sections as {
+    haulOffActive?: boolean;
+    haulOffNotes?: string;
+    haulOffStartTime?: string;
+    haulOffEndTime?: string;
+    haulOffAccess?: string;
+    haulOffGarageHeight?: string;
+    haulOffHelpAvailable?: boolean | null;
+  } | undefined;
   const vendor = asString(payload.vendor);
   const groups: AuditItemGroup[] = [];
 
@@ -87,8 +132,8 @@ export function buildAuditItemGroups(order: AuditOrder): AuditItemGroup[] {
 
   if (sections?.haulOffActive) {
     groups.push({
-      section: "Haul Off",
-      items: [{ name: "Haul off request", detail: sections.haulOffNotes?.trim() || undefined, quantity: "1×" }],
+      section: "Haul Out",
+      items: [{ name: "Haul out request", detail: haulOffAuditDetail(sections) || undefined, quantity: "1×" }],
     });
   }
 
@@ -110,7 +155,7 @@ export function buildAuditMetaLines(order: AuditOrder): string[] {
   if (dateNeeded) {
     const delivery = order.delivery_type || asString(payload.deliveryType);
     const deliveryLabel =
-      delivery === "delivery" ? "Delivery" : delivery === "willCall" ? "Will call" : delivery;
+      delivery === "delivery" ? "Delivery" : delivery === "willCall" ? "Will call" : "";
     const formattedDate = formatDateNeeded(String(dateNeeded));
     lines.push(`Needed: ${formattedDate}${deliveryLabel ? ` · ${deliveryLabel}` : ""}`);
   }

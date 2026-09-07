@@ -42,7 +42,7 @@ type SubmitBody = {
   order?: {
     job_number: string;
     job_name?: string;
-    order_type: "field_request" | "job_scope_kit";
+    order_type: "field_request" | "job_scope_kit" | "haul_off";
     submitted_by_profile_id: string;
     submitted_by_name: string;
     submitted_by_email: string;
@@ -69,6 +69,7 @@ type IcbiOrderContacts = {
   super: string;
   superEmail: string;
   foremanEmail: string;
+  jobAddress: string;
   /** ICBI is also the GC on this project — paint POs get a trailing "P" suffix. */
   isGc: boolean;
 };
@@ -92,6 +93,19 @@ function isIcbiGcFlag(value: unknown): boolean {
   return value === true || String(value ?? "").trim().toLowerCase() === "true";
 }
 
+function jobAddressFromProject(
+  row: { job_address?: string | null; job_address2?: string | null },
+  ji: Record<string, unknown>,
+): string {
+  const street = strField(row.job_address);
+  const cityLine =
+    [strField(ji.job_city), strField(ji.job_zip), strField(ji.job_county)].filter(Boolean).join(", ") ||
+    strField(row.job_address2);
+  const fromProject = [street, cityLine].filter(Boolean).join(", ");
+  if (fromProject) return fromProject;
+  return strField(ji.gc_address);
+}
+
 async function loadIcbiOrderContacts(
   supabase: ReturnType<typeof createClient>,
   jobCode: string,
@@ -99,18 +113,29 @@ async function loadIcbiOrderContacts(
   projectId = "",
 ): Promise<IcbiOrderContacts | null> {
   if (projectId) {
-    const { data } = await supabase.from("projects").select("data").eq("id", projectId).maybeSingle();
+    const { data } = await supabase
+      .from("projects")
+      .select("job_address, job_address2, data")
+      .eq("id", projectId)
+      .maybeSingle();
     if (data) {
       const ji = jobInfoFromProjectData(data.data);
-      return contactsFromJobInfo(ji);
+      return contactsFromJobInfo(ji, data);
     }
   }
 
   const { data } = await supabase
     .from("projects")
-    .select("id, job_number, job_name, data")
+    .select("id, job_number, job_name, job_address, job_address2, data")
     .ilike("job_number", jobCode);
-  const rows = (data ?? []) as { id: string; job_number: string; job_name: string | null; data: unknown }[];
+  const rows = (data ?? []) as {
+    id: string;
+    job_number: string;
+    job_name: string | null;
+    job_address?: string | null;
+    job_address2?: string | null;
+    data: unknown;
+  }[];
   if (!rows.length) return null;
 
   const code = jobCode.trim().toLowerCase();
@@ -122,16 +147,20 @@ async function loadIcbiOrderContacts(
     : undefined;
   const picked = named ?? pool[0];
   if (!picked) return null;
-  return contactsFromJobInfo(jobInfoFromProjectData(picked.data));
+  return contactsFromJobInfo(jobInfoFromProjectData(picked.data), picked);
 }
 
-function contactsFromJobInfo(ji: Record<string, unknown>): IcbiOrderContacts {
+function contactsFromJobInfo(
+  ji: Record<string, unknown>,
+  row?: { job_address?: string | null; job_address2?: string | null },
+): IcbiOrderContacts {
   return {
     pm: strField(ji.icbi_pm) || strField(ji.field_request_pm),
     pmEmail: strField(ji.icbi_pm_email),
     super: strField(ji.field_request_super),
     superEmail: strField(ji.icbi_super_email),
     foremanEmail: strField(ji.icbi_foreman_email),
+    jobAddress: row ? jobAddressFromProject(row, ji) : strField(ji.gc_address),
     isGc: isIcbiGcFlag(ji.icbi_is_gc),
   };
 }
@@ -262,6 +291,36 @@ function buildMaterialOrderAttachmentName(jobCode: string, jobName: string, poNu
   const po = sanitizeAttachmentPart(poNumber).replace(/^PO[-#]?\s*/i, "");
   parts.push(po ? `PO-${po}` : "PO-order");
   return `${parts.join(" ")}.pdf`;
+}
+
+function formatHourLabel(hour24: string): string {
+  const n = Number(hour24);
+  if (!Number.isFinite(n)) return hour24;
+  const hours = Math.floor(n);
+  const minutes = Math.round((n - hours) * 60);
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const h12 = hours % 12 || 12;
+  return `${h12}:${String(minutes).padStart(2, "0")} ${ampm}`;
+}
+
+function haulOffDetailLines(sections: Record<string, unknown> | undefined): string[] {
+  if (!sections) return [];
+  const lines: string[] = [];
+  const start = String(sections.haulOffStartTime ?? "").trim();
+  const end = String(sections.haulOffEndTime ?? "").trim();
+  if (start && end) lines.push(`Time frame: ${formatHourLabel(start)} – ${formatHourLabel(end)}`);
+  const access = String(sections.haulOffAccess ?? "");
+  const height = String(sections.haulOffGarageHeight ?? "").trim();
+  if (access === "street") lines.push("Pick Up Location: Street");
+  if (access === "garage") {
+    lines.push(height ? `Pick Up Location: Parking garage (height ${height})` : "Pick Up Location: Parking garage");
+  }
+  if (sections.haulOffHelpAvailable === true) lines.push("Help available: Yes");
+  if (sections.haulOffHelpAvailable === false) lines.push("Help available: No");
+  const notes = String(sections.haulOffNotes ?? "").trim();
+  if (notes) lines.push(`Pick Up Information: ${notes}`);
+  if (String(sections.haulOffImageBase64 ?? "").trim()) lines.push("Photo: see attached PDF");
+  return lines;
 }
 
 async function sendGasEmail(params: {
@@ -428,7 +487,7 @@ Deno.serve(async (req) => {
       ? {
           job_number: stored.job_number,
           job_name: stored.job_name ?? "",
-          order_type: stored.order_type as "field_request" | "job_scope_kit",
+          order_type: stored.order_type as "field_request" | "job_scope_kit" | "haul_off",
           submitted_by_profile_id: stored.submitted_by_profile_id ?? trustedProfile.id,
           submitted_by_name: trustedProfile.name,
           submitted_by_email: trustedProfile.email,
@@ -568,6 +627,10 @@ Deno.serve(async (req) => {
     const pmEmail = icbi ? icbi.pmEmail : String(payload.pmEmail ?? "");
     const superName = icbi?.super || String(payload.super ?? "");
     const superEmail = icbi ? icbi.superEmail : String(payload.superEmail ?? "");
+    const jobAddress =
+      icbi?.jobAddress ||
+      strField(payload.jobAddress) ||
+      strField(payload.deliveryAddress);
     const foreman = icbi
       ? icbi.foremanEmail || trustedProfile.email
       : String(payload.foreman ?? trustedProfile.email);
@@ -652,6 +715,7 @@ Deno.serve(async (req) => {
       let attachmentName: string;
       let emailSections: { title: string; lines: string[] }[] = [];
       let vendorLabel = "";
+      let emailNotes = o.notes;
       let emailOrderTitle = orderTitleForType(spec.type);
 
       switch (spec.type) {
@@ -736,17 +800,24 @@ Deno.serve(async (req) => {
           break;
         }
         case "haul_off": {
+          const haulLines = haulOffDetailLines(sections);
           const haulNotes = String(sections?.haulOffNotes ?? o.notes ?? "");
-          subject = `${formatJobProjectLabel(jobCode, jobName)} — Haul Off Request`;
+          const photo = String(sections?.haulOffImageBase64 ?? "").trim();
+          subject = `${formatJobProjectLabel(jobCode, jobName)} — Haul Out Request`;
           attachmentName = `${jobCode}-haul-off.pdf`;
+          emailNotes = "";
           pdfBytes = await buildListPdf({
             ...baseMeta,
-            title: "Haul Off Request",
-            sectionLabel: "Instructions",
-            items: [{ name: haulNotes || "See notes" }],
-            notes: haulNotes,
+            notes: "",
+            title: "Haul Out Request",
+            sectionLabel: "Haul Out",
+            items: (haulLines.length ? haulLines : [haulNotes || "See notes"]).map((name) => ({ name })),
+            photoBase64: photo || undefined,
+            pm,
+            super: superName,
+            jobAddress,
           });
-          emailSections = [{ title: "Haul off", lines: [haulNotes] }];
+          emailSections = [{ title: "Haul Out", lines: haulLines.length ? haulLines : [haulNotes] }];
           break;
         }
         default:
@@ -798,10 +869,11 @@ Deno.serve(async (req) => {
         siteContact: o.site_contact,
         siteContactLabel,
         dateNeeded: o.date_needed ?? "",
-        notes: o.notes,
+        notes: emailNotes,
         vendorLabel: vendorLabel || undefined,
         pm: pm || undefined,
         super: superName || undefined,
+        jobAddress: spec.type === "haul_off" ? jobAddress || undefined : undefined,
         sections: emailSections,
       });
       htmlBody = await embedLogoUrlInHtml(htmlBody, branding.logoUrl);
