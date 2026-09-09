@@ -1537,6 +1537,51 @@ label {
   color: var(--muted);
 }
 
+.password-field {
+  position: relative;
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.password-field input {
+  margin-top: 0;
+  padding-right: 2.6rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  transform: translateY(-50%);
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  color: var(--text);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.password-toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
+}
+
 .banner {
   padding: 0.65rem 0.8rem;
   border-radius: 8px;

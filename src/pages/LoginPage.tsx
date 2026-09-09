@@ -12,6 +12,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (!loading && !roleLoading && user && isApproved) {
     return <Navigate to="/projects" replace />;
@@ -45,7 +46,6 @@ export function LoginPage() {
     <div className="center-screen">
       <div className="auth-card">
         <h1>JobFlow</h1>
-        <p className="muted">Sign in to manage projects and RFIs.</p>
 
         {!isSupabaseConfigured && (
           <div className="banner banner-warn">
@@ -67,14 +67,26 @@ export function LoginPage() {
           </label>
           <label>
             Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            />
+            <span className="password-field">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((open) => !open)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <PasswordHideIcon /> : <PasswordShowIcon />}
+              </button>
+            </span>
           </label>
           {error && <div className="banner banner-error">{error}</div>}
           {message && <div className="banner banner-ok">{message}</div>}
@@ -102,5 +114,32 @@ export function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+function PasswordShowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.2 12s3.6-7 9.8-7 9.8 7 9.8 7-3.6 7-9.8 7-9.8-7-9.8-7z"
+      />
+      <circle cx="12" cy="12" r="3" strokeWidth="1.75" />
+    </svg>
+  );
+}
+
+function PasswordHideIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 3l18 18M10.6 10.6A3 3 0 0 0 13.4 13.4M9.9 5.1A10.8 10.8 0 0 1 12 5c6.2 0 9.8 7 9.8 7a16.7 16.7 0 0 1-3.3 3.8M6.1 6.1C3.9 7.6 2.2 12 2.2 12s3.6 7 9.8 7c1.5 0 2.9-.3 4.1-.9"
+      />
+    </svg>
   );
 }
