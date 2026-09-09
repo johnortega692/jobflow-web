@@ -24,6 +24,7 @@ import {
   paintRowAutoLabel,
 } from "../lib/paintItemLabels";
 import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
+import type { ExtractedPaintRow } from "../lib/paintImageImport";
 import { applyTransmittalContractIfDistinct, gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";

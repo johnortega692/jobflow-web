@@ -105,7 +105,7 @@ export function EmailVendorModal({
   const paintItems = items as PaintItem[];
 
   const [vendorIdx, setVendorIdx] = useState<number | "">("");
-  const [subject, setSubject] = useState(() => {
+  const [subject] = useState(() => {
     if (isAtticStock) return buildAtticStockEmailSubject(jobNumber, jobName);
     if (isPrep) return buildPrepEmailSubject(prepSite);
     return buildVendorEmailSubject(jobNumber, jobName, submittalType);
