@@ -140,7 +140,7 @@ export function ImportApprovedBrushoutsModal({
           ) : colorRows.length === 0 ? (
             <p className="muted small">This package has no lines with colors.</p>
           ) : (
-            colorRows.map(({ index, item, line, status }) => (
+            colorRows.map(({ index, line, status }) => (
               <label key={`${sourceId}-${index}`} className="brushouts-send-row check" role="listitem">
                 <input
                   type="checkbox"
@@ -149,11 +149,7 @@ export function ImportApprovedBrushoutsModal({
                   onChange={() => toggle(index)}
                 />
                 <span className="brushouts-send-row-main">
-                  <span className="brushouts-send-label">
-                    {item.label.trim() || `Row ${index + 1}`}
-                    {item.floor.trim() ? ` · ${item.floor.trim()}` : ""}
-                  </span>
-                  <span className="brushouts-send-color muted small">{line}</span>
+                  <span className="brushouts-send-color">{line}</span>
                 </span>
                 <span className={statusClass(status)}>{IMPORT_STATUS_LABEL[status]}</span>
               </label>

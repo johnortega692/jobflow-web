@@ -6277,14 +6277,8 @@ tr.budget-hours-pdf-hidden td {
 
 .brushouts-send-row-main {
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
+  align-items: center;
   min-width: 0;
-}
-
-.brushouts-send-label {
-  font-weight: 600;
-  font-size: 0.9rem;
 }
 
 .brushouts-send-color {

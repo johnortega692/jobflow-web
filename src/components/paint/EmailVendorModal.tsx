@@ -432,7 +432,7 @@ export function EmailVendorModal({
               {colorRows.length === 0 ? (
                 <p className="muted small">No paint colors on this list yet.</p>
               ) : (
-                colorRows.map(({ index, item, line, status }) => (
+                colorRows.map(({ index, line, status }) => (
                   <label key={`brushout-color-${index}`} className="brushouts-send-row check" role="listitem">
                     <input
                       type="checkbox"
@@ -440,11 +440,7 @@ export function EmailVendorModal({
                       onChange={() => toggleColor(index)}
                     />
                     <span className="brushouts-send-row-main">
-                      <span className="brushouts-send-label">
-                        {item.label.trim() || `Row ${index + 1}`}
-                        {item.floor.trim() ? ` · ${item.floor.trim()}` : ""}
-                      </span>
-                      <span className="brushouts-send-color muted small">{line}</span>
+                      <span className="brushouts-send-color">{line}</span>
                     </span>
                     {hasPreviousOrder ? <span className={orderStatusClass(status)}>{ORDER_STATUS_LABEL[status]}</span> : null}
                   </label>
