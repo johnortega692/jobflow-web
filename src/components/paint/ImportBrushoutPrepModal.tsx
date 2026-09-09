@@ -45,9 +45,9 @@ export function ImportBrushoutPrepModal({ preps, onImport, onClose }: Props) {
     return (
       <div className="modal-backdrop" onClick={onClose}>
         <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
-          <h3>Import brush-out prep</h3>
+          <h3>Import request</h3>
           <p className="muted">
-            No open brush-out preps. Create one on the{" "}
+            No open brush-out requests. Create one on the{" "}
             <Link to="/brush-out-request">Brush-out request</Link> page, save it, then import here.
           </p>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -61,9 +61,9 @@ export function ImportBrushoutPrepModal({ preps, onImport, onClose }: Props) {
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div className="modal card stack paint-prep-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Import brush-out prep</h3>
+        <h3>Import request</h3>
         <p className="muted small">
-          Import paint lines from a saved brush-out prep into this job&apos;s paint submittals.
+          Import paint lines from a saved brush-out request into this job&apos;s paint submittals.
         </p>
 
         <div className="table-wrap">

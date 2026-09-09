@@ -72,6 +72,25 @@ export function latestIssuedHistoryEntryForPackage(
   return best;
 }
 
+/** Issued/locked package immediately before this revision (same submittal number). */
+export function previousIssuedHistoryEntryForRevision(
+  history: SubmittalHistoryEntry[],
+  submittalNumber: number,
+  currentRevision: number,
+): SubmittalHistoryEntry | undefined {
+  const current = normalizeRevisionNumber(currentRevision);
+  let best: SubmittalHistoryEntry | undefined;
+  for (const entry of history) {
+    if (entry.submittal_number !== submittalNumber) continue;
+    const normalized = normalizeHistoryEntry(entry);
+    if (!isLockedPackageStatus(normalized.issue_status)) continue;
+    const rev = normalizeRevisionNumber(entry.revision_number);
+    if (rev >= current) continue;
+    if (!best || rev > normalizeRevisionNumber(best.revision_number)) best = entry;
+  }
+  return best;
+}
+
 /** Latest revision saved in history for a submittal package number (any status). */
 export function latestHistoryEntryForPackage(
   history: SubmittalHistoryEntry[],

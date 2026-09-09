@@ -134,11 +134,11 @@ export function BrushOutRequestPage() {
   function onImported(rows: ExtractedPaintRow[]) {
     const mapped: PaintItem[] = rows.map((r) => ({
       label: r.label,
-      floor: r.floor,
+      floor: "",
       manufacturer: r.manufacturer,
       color: r.color,
-      product: r.product,
-      sheen: r.sheen,
+      product: "",
+      sheen: "",
       previous_color: "",
     }));
     setDraft((d) => {

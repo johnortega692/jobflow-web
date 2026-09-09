@@ -1,6 +1,7 @@
 import {
   latestHistoryEntryForPackage,
   latestHistoryEntryPerPackage,
+  previousIssuedHistoryEntryForRevision,
   resolveHistoryEntryForSheet,
 } from "../lib/submittalHistory";
 import type { PaintItem, ProjectTradeData, TransmittalData } from "../types/tradeDocuments";
@@ -265,7 +266,14 @@ export async function buildTransmittalDownloadPdf(
         revisionNumber: paintData.revision_number,
         revisionNote: paintData.revision_note,
         submittalType: paintData.submittal_type,
-        sections: buildPaintSubmittalSections(paintData),
+        sections: buildPaintSubmittalSections(
+          paintData,
+          (previousIssuedHistoryEntryForRevision(
+            tradeData.paint_submittal_history ?? [],
+            paintData.submittal_number,
+            paintData.revision_number,
+          )?.items as PaintItem[] | undefined) ?? [],
+        ),
       }),
     );
   }

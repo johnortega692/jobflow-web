@@ -34,9 +34,6 @@ type ExtractedPaintRow = {
   label: string;
   manufacturer: string;
   color: string;
-  product: string;
-  sheen: string;
-  floor: string;
 };
 
 type PaintBody = { image_base64?: string; media_type?: string };
@@ -67,10 +64,6 @@ function normalizeRow(raw: Record<string, unknown>): ExtractedPaintRow | null {
   if (!label) return null;
   let manufacturer = String(raw.manufacturer ?? "").trim();
   let color = String(raw.color ?? "").trim();
-  const product = String(raw.product ?? "").trim();
-  const sheen = String(raw.sheen ?? "").trim();
-  const floor = String(raw.floor ?? "").trim();
-
   if (!manufacturer && color) {
     const upper = color.toUpperCase();
     for (const mfr of MANUFACTURERS) {
@@ -83,21 +76,20 @@ function normalizeRow(raw: Record<string, unknown>): ExtractedPaintRow | null {
   }
   if (manufacturer) manufacturer = abbreviateManufacturer(manufacturer);
 
-  return { label, manufacturer, color, product, sheen, floor };
+  return { label, manufacturer, color };
 }
 
 const PROMPT = `Look at this image of a paint schedule or paint color table. Extract every paint item you can see.
 
-For each item return:
+For each item return ONLY:
 - label: item ID (e.g. PT-1, P-15, PT-02)
 - manufacturer: paint manufacturer if visible (e.g. Benjamin Moore, Sherwin-Williams, Dunn-Edwards, Kelly Moore, PPG, Behr)
 - color: color name and/or code WITHOUT the manufacturer prefix (e.g. "Simply White 2143-70", "Dark & Stormy DET572")
-- product: product line if shown (e.g. Regal Select, Duration, Ultra Spec)
-- sheen: finish/sheen if shown (e.g. Flat, Eggshell, Semi-Gloss)
-- floor: floor/location if shown (e.g. 1st Floor)
+
+Do NOT extract product line, sheen/finish, floor, or location. Ignore those columns even if they are in the image.
 
 Return ONLY a JSON array of objects with those keys. No markdown. Example:
-[{"label":"PT-1","manufacturer":"Kelly Moore","color":"Whitest White KMW43","product":"","sheen":"Flat","floor":""}]`;
+[{"label":"PT-1","manufacturer":"Kelly Moore","color":"Whitest White KMW43"}]`;
 
 function parseBody(raw: unknown): PaintBody {
   if (raw && typeof raw === "object" && !Buffer.isBuffer(raw)) {

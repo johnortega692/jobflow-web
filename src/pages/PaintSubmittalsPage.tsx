@@ -23,14 +23,15 @@ import {
   paintItemsReadiness,
   paintRowAutoLabel,
 } from "../lib/paintItemLabels";
-import type { ExtractedPaintRow } from "../lib/paintImageImport";
-import { applyTransmittalContractIfDistinct, gcSuperEmail, gcSuperintendentContact, projectPrintInfo } from "../lib/jobInfo";
+import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
+import { applyTransmittalContractIfDistinct, gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
 import { patchPaintTrackerSubmittalOrdered, reloadProject, resolvePaintTracker, withSyncedPaintVendor } from "../lib/fieldTrackerProject";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
+  previousIssuedHistoryEntryForRevision,
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
@@ -187,6 +188,17 @@ export function PaintSubmittalsPage() {
   );
   const showPreviousColor = draft.submittal_type === "substitution";
   const draftLocked = submittalDraftIsLocked(draft);
+  const previouslyOrderedItems = useMemo(() => {
+    if (draft.revision_number < 1) return [];
+    const entry = previousIssuedHistoryEntryForRevision(
+      history,
+      draft.submittal_number,
+      draft.revision_number,
+    );
+    return (entry?.items as PaintItem[] | undefined) ?? [];
+  }, [draft.revision_number, draft.submittal_number, history]);
+  const showRevisionChange =
+    !showPreviousColor && previouslyOrderedItems.some((item) => item.color.trim() || item.label.trim());
   const autoLabel = draft.auto_label !== false;
   const secondaryOn = paintDualSpecEnabled(draft);
   const secondaryLabel = paintSpecSectionShortLabel(draft.spec_sections?.[1] ?? "");
@@ -289,6 +301,8 @@ export function PaintSubmittalsPage() {
     return (
       <div
         className={`paint-items-grid${showPreviousColor ? " paint-items-grid--substitution" : ""}${
+          showRevisionChange ? " paint-items-grid--revision-status" : ""
+        }${
           !options.showFloor ? " paint-items-grid--no-floor" : ""
         }${dragFrom !== null && dragOverScope === options.scope ? " paint-items-grid--scope-dragover" : ""}`}
         role="table"
@@ -318,6 +332,7 @@ export function PaintSubmittalsPage() {
           {showPreviousColor && <span className="paint-col-head paint-col-prev">Previous</span>}
           <span className="paint-col-head paint-col-product">Product</span>
           <span className="paint-col-head paint-col-sheen">Sheen</span>
+          {showRevisionChange && <span className="paint-col-head paint-col-rev-status">Status</span>}
           <span className="paint-col-head paint-col-head-actions" aria-hidden />
         </div>
         {indexedRows.map(({ item, index }) => (
@@ -331,6 +346,9 @@ export function PaintSubmittalsPage() {
             colors={colors}
             showPreviousColor={showPreviousColor}
             showFloor={options.showFloor}
+            revisionChange={
+              showRevisionChange ? paintRevisionChangeLabel(item, previouslyOrderedItems) : null
+            }
             autoLabel={autoLabel}
             dragging={dragFrom === index}
             dragOver={dragOver === index}
@@ -409,11 +427,11 @@ export function PaintSubmittalsPage() {
   function onImported(rows: ExtractedPaintRow[]) {
     const mapped: PaintItem[] = rows.map((r) => ({
       label: r.label,
-      floor: r.floor,
+      floor: "",
       manufacturer: r.manufacturer,
       color: r.color,
-      product: r.product,
-      sheen: r.sheen,
+      product: "",
+      sheen: "",
       previous_color: "",
       spec_scope: "primary" as const,
     }));
@@ -455,7 +473,12 @@ export function PaintSubmittalsPage() {
   async function onDownloadPdf() {
     if (!confirmGapsIfNeeded()) return;
     try {
-      await downloadPaintSubmittal(projectPrintInfo(project, project.jobInfo), draft, branding);
+      await downloadPaintSubmittal(
+        projectPrintInfo(project, project.jobInfo),
+        draft,
+        branding,
+        previouslyOrderedItems,
+      );
       let nextHistory = history;
       if (draftLocked) {
         nextHistory = addSubmittalToHistory(
@@ -640,6 +663,18 @@ export function PaintSubmittalsPage() {
       <p className="sds-filename-preview muted small">
         Filename: <code>{submittalPdfFilename}</code>
       </p>
+      <p className="muted small submittal-package-hint">
+        Added colors or a color switch after the first package was issued: use{" "}
+        <strong>Create next revision</strong> (same submittal number). It copies the list — change the
+        color on the existing row, and <strong>Add row</strong> for new colors. Do not import the whole
+        schedule again, or labels will duplicate. <strong>Download PDF</strong> on the revision is a new
+        file for the GC: the full updated list, Revision number, and your revision note. Lines are marked{" "}
+        <strong>NEW</strong>, <strong>REVISED</strong>, <strong>Removed</strong>, or <strong>No Change</strong> against
+        the previous issued
+        package. It does not replace the first PDF they already received. <strong>Order Brushouts</strong> lets
+        you check which colors to request — on a revision, new and switched colors are selected; use All if you
+        need every color again.
+      </p>
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
@@ -665,7 +700,7 @@ export function PaintSubmittalsPage() {
         </label>
         <span className="paint-action-sep" aria-hidden="true" />
         <button type="button" className="btn btn-secondary" onClick={() => setPrepOpen(true)}>
-          Import Prep List
+          Import Request
         </button>
         <Link className="btn btn-secondary" to={`/projects/${projectId}/approved-brushouts`}>
           Approved brush-outs
@@ -909,9 +944,14 @@ export function PaintSubmittalsPage() {
           superName={gcSuperintendentContact(project.jobInfo).name}
           superEmail={gcSuperEmail(project.jobInfo)}
           superRoleLabel="GC super"
+          staffSuperName={icbiSuperintendent(project.jobInfo)}
+          staffSuperEmail={icbiSuperEmail(project.jobInfo)}
+          staffSuperRoleLabel="Super"
           foremanName={project.jobInfo?.icbi_foreman}
           foremanEmail={project.jobInfo?.icbi_foreman_email}
           composeEmailMethod={userSettings.compose_email_method}
+          previouslyOrderedItems={previouslyOrderedItems}
+          includeItemFloor={draft.show_floor === true}
           onClose={() => {
             setEmailOpen(false);
             setEmailDraft(null);

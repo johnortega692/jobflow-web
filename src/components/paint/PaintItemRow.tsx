@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
 import { FLOOR_ORDER } from "../../lib/printCore";
 import {
   abbreviateVendorKey,
@@ -9,7 +9,7 @@ import {
   type PaintColorsDb,
   type PaintProduct,
 } from "../../lib/paintCatalog";
-import type { PaintItem } from "../../types/tradeDocuments";
+import { nextPaintRevisionChange, type PaintItem, type PaintRevisionChange } from "../../types/tradeDocuments";
 import { ColorLookupModal } from "./ColorLookupModal";
 import { PaintProductSelect, PaintSheenSelect } from "./PaintFieldSelects";
 
@@ -22,6 +22,7 @@ type Props = {
   colors: PaintColorsDb | null;
   showPreviousColor: boolean;
   showFloor: boolean;
+  revisionChange?: PaintRevisionChange | null;
   autoLabel: boolean;
   dragging: boolean;
   dragOver: boolean;
@@ -53,6 +54,7 @@ export function PaintItemRow({
   colors,
   showPreviousColor,
   showFloor,
+  revisionChange = null,
   autoLabel,
   dragging,
   dragOver,
@@ -75,6 +77,13 @@ export function PaintItemRow({
   useEffect(() => {
     setProductDisplay(item.product ? getProductDisplay(products, item.product) : "");
   }, [item.product, products]);
+
+  const floorOptions = useMemo(() => {
+    const listed = FLOOR_ORDER.filter(Boolean);
+    const current = item.floor.trim();
+    if (current && !listed.includes(current)) return [current, ...listed];
+    return listed;
+  }, [item.floor]);
 
   const runColorLookup = useCallback(() => {
     if (!colors || shouldSkipColorLookup(item.color)) return;
@@ -155,7 +164,7 @@ export function PaintItemRow({
               aria-label={`Floor row ${index + 1}`}
             >
               <option value="">—</option>
-              {FLOOR_ORDER.filter(Boolean).map((f) => (
+              {floorOptions.map((f) => (
                 <option key={f} value={f}>
                   {f}
                 </option>
@@ -220,6 +229,28 @@ export function PaintItemRow({
             onChange={(sheen) => onChange({ sheen })}
           />
         </div>
+
+        {revisionChange ? (
+          <div className="paint-col paint-col-rev-status" role="cell">
+            <button
+              type="button"
+              className={`paint-rev-status${
+                revisionChange === "NEW"
+                  ? " paint-rev-status--new"
+                  : revisionChange === "REVISED"
+                    ? " paint-rev-status--revised"
+                    : revisionChange === "Removed"
+                      ? " paint-rev-status--removed"
+                      : " paint-rev-status--unchanged"
+              }`}
+              title="Click to change status (REVISED → NEW → No Change → Removed)"
+              aria-label={`Status ${revisionChange}. Click to change.`}
+              onClick={() => onChange({ revision_change: nextPaintRevisionChange(revisionChange) })}
+            >
+              {revisionChange}
+            </button>
+          </div>
+        ) : null}
 
         <div className="paint-row-actions" role="cell">
           <button

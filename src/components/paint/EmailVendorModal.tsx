@@ -22,6 +22,24 @@ import {
   type AtticStockPaintItem,
   type PaintVendor,
 } from "../../lib/paintVendorEmail";
+import {
+  brushoutColorLine,
+  brushoutOrderLineStatus,
+  defaultBrushoutOrderSelection,
+  type BrushoutOrderLineStatus,
+} from "../../lib/paintBrushouts";
+
+const ORDER_STATUS_LABEL: Record<BrushoutOrderLineStatus, string> = {
+  new: "New",
+  switched: "Switched",
+  unchanged: "On list",
+};
+
+function orderStatusClass(status: BrushoutOrderLineStatus): string {
+  if (status === "unchanged") return "brushout-status-pill brushout-status-pill--on-sheet";
+  if (status === "switched") return "brushout-status-pill brushout-status-pill--revised";
+  return "brushout-status-pill brushout-status-pill--new";
+}
 
 type Props = {
   jobNumber: string;
@@ -36,6 +54,10 @@ type Props = {
   superEmail?: string;
   /** Label next to the super CC checkbox (e.g. "GC super" or "ICBI super"). */
   superRoleLabel?: string;
+  /** Job setup Super (ICBI) — always CC'd when present. */
+  staffSuperName?: string;
+  staffSuperEmail?: string;
+  staffSuperRoleLabel?: string;
   foremanName?: string;
   foremanEmail?: string;
   composeEmailMethod?: ComposeEmailMethod;
@@ -43,6 +65,10 @@ type Props = {
   atticCustomItems?: AtticStockCustomItem[];
   prepSite?: string;
   prepGc?: string;
+  /** Last issued package items — used to pre-check new / switched colors on a revision. */
+  previouslyOrderedItems?: PaintItem[];
+  /** When false, stored floor text is omitted from the order list and email. */
+  includeItemFloor?: boolean;
   onClose: () => void;
 };
 
@@ -58,6 +84,9 @@ export function EmailVendorModal({
   superName = "",
   superEmail = "",
   superRoleLabel = "super",
+  staffSuperName = "",
+  staffSuperEmail = "",
+  staffSuperRoleLabel = "Super",
   foremanName = "",
   foremanEmail = "",
   composeEmailMethod = "gmail",
@@ -65,11 +94,15 @@ export function EmailVendorModal({
   atticCustomItems = [],
   prepSite = "",
   prepGc = "",
+  previouslyOrderedItems = [],
+  includeItemFloor = true,
   onClose,
 }: Props) {
   const isAtticStock = mode === "attic_stock";
   const isPrep = mode === "prep";
+  const showItemPicker = !isAtticStock;
   const atticPaintItems = items as AtticStockPaintItem[];
+  const paintItems = items as PaintItem[];
 
   const [vendorIdx, setVendorIdx] = useState<number | "">("");
   const [subject, setSubject] = useState(() => {
@@ -98,12 +131,73 @@ export function EmailVendorModal({
   const activeSignature = includeSignature ? signature : undefined;
   const ccList = useMemo(() => {
     const list: string[] = [];
-    const foreman = foremanEmail.trim();
-    if (foreman) list.push(foreman);
+    const pushUnique = (email: string) => {
+      const addr = email.trim();
+      if (addr && !list.includes(addr)) list.push(addr);
+    };
+    pushUnique(foremanEmail);
+    pushUnique(staffSuperEmail);
     const superAddr = superEmail.trim();
-    if (includeSuperCc && superAddr && !list.includes(superAddr)) list.push(superAddr);
+    if (includeSuperCc) pushUnique(superAddr);
     return list;
-  }, [foremanEmail, includeSuperCc, superEmail]);
+  }, [foremanEmail, staffSuperEmail, includeSuperCc, superEmail]);
+
+  const colorRows = useMemo(
+    () =>
+      paintItems
+        .map((item, index) => ({
+          item,
+          index,
+          line: brushoutColorLine(includeItemFloor ? item : { ...item, floor: "" }),
+          status: brushoutOrderLineStatus(item, previouslyOrderedItems),
+        }))
+        .filter((row) => row.line),
+    [paintItems, previouslyOrderedItems, includeItemFloor],
+  );
+
+  const [selected, setSelected] = useState<Set<number>>(() =>
+    defaultBrushoutOrderSelection(paintItems, previouslyOrderedItems),
+  );
+
+  useEffect(() => {
+    setSelected(defaultBrushoutOrderSelection(paintItems, previouslyOrderedItems));
+  }, [paintItems, previouslyOrderedItems]);
+
+  const orderItems = useMemo(() => {
+    const picked = showItemPicker ? paintItems.filter((_, index) => selected.has(index)) : paintItems;
+    if (includeItemFloor) return picked;
+    return picked.map((item) => ({ ...item, floor: "" }));
+  }, [paintItems, selected, showItemPicker, includeItemFloor]);
+
+  function toggleColor(index: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function selectPreset(mode: "all" | "changes" | "none") {
+    if (mode === "none") {
+      setSelected(new Set());
+      return;
+    }
+    if (mode === "all") {
+      setSelected(new Set(colorRows.map((row) => row.index)));
+      return;
+    }
+    setSelected(
+      new Set(
+        colorRows
+          .filter((row) => row.status === "new" || row.status === "switched")
+          .map((row) => row.index),
+      ),
+    );
+  }
+
+  const hasPreviousOrder = previouslyOrderedItems.some((item) => item.color.trim());
+  const selectedCount = colorRows.filter((row) => selected.has(row.index)).length;
 
   const plainBody = useMemo(
     () => {
@@ -123,7 +217,7 @@ export function EmailVendorModal({
           vendor,
           prepSite,
           prepGc,
-          items as PaintItem[],
+          orderItems,
           defaultQty,
           activeSignature,
         );
@@ -132,7 +226,7 @@ export function EmailVendorModal({
         vendor,
         jobNumber,
         jobName,
-        items as PaintItem[],
+        orderItems,
         submittalType,
         defaultQty,
         activeSignature,
@@ -148,7 +242,7 @@ export function EmailVendorModal({
       atticCustomItems,
       prepSite,
       prepGc,
-      items,
+      orderItems,
       submittalType,
       defaultQty,
       activeSignature,
@@ -174,7 +268,7 @@ export function EmailVendorModal({
           vendor,
           prepSite,
           prepGc,
-          items as PaintItem[],
+          orderItems,
           defaultQty,
           activeSignature,
           effectiveLogoUrl,
@@ -184,7 +278,7 @@ export function EmailVendorModal({
         vendor,
         jobNumber,
         jobName,
-        items as PaintItem[],
+        orderItems,
         submittalType,
         defaultQty,
         activeSignature,
@@ -201,7 +295,7 @@ export function EmailVendorModal({
       atticCustomItems,
       prepSite,
       prepGc,
-      items,
+      orderItems,
       submittalType,
       defaultQty,
       activeSignature,
@@ -270,11 +364,6 @@ export function EmailVendorModal({
           </select>
         </label>
 
-        <label>
-          Subject
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} />
-        </label>
-
         <label className="check">
           <input
             type="checkbox"
@@ -284,7 +373,7 @@ export function EmailVendorModal({
           Include signature
         </label>
 
-        {(superEmail.trim() || foremanEmail.trim()) && (
+        {(superEmail.trim() || staffSuperEmail.trim() || foremanEmail.trim()) && (
           <fieldset className="stack">
             <legend className="paint-col-head">CC recipients (Job setup)</legend>
             {foremanEmail.trim() ? (
@@ -294,6 +383,15 @@ export function EmailVendorModal({
                   ? `${foremanName.trim()} (${foremanEmail.trim()})`
                   : foremanEmail.trim()}{" "}
                 — foreman
+              </label>
+            ) : null}
+            {staffSuperEmail.trim() ? (
+              <label className="check">
+                <input type="checkbox" checked disabled readOnly />
+                {staffSuperName.trim()
+                  ? `${staffSuperName.trim()} (${staffSuperEmail.trim()})`
+                  : staffSuperEmail.trim()}{" "}
+                — {staffSuperRoleLabel}
               </label>
             ) : null}
             {superEmail.trim() ? (
@@ -312,18 +410,70 @@ export function EmailVendorModal({
           </fieldset>
         )}
 
-        <div className="stack">
-          <p className="paint-col-head">Message preview</p>
-          <div
-            className="paint-email-html-preview paint-email-html-preview--full"
-            dangerouslySetInnerHTML={{ __html: htmlBody }}
-          />
+        {showItemPicker && (
+          <fieldset className="stack">
+            <legend className="paint-col-head">
+              Colors in this order ({selectedCount} of {colorRows.length})
+            </legend>
+            <div className="row-gap wrap brushouts-send-presets">
+              {hasPreviousOrder ? (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => selectPreset("changes")}>
+                  New &amp; switched
+                </button>
+              ) : null}
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => selectPreset("all")}>
+                All
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => selectPreset("none")}>
+                None
+              </button>
+            </div>
+            <div className="brushouts-send-list" role="list">
+              {colorRows.length === 0 ? (
+                <p className="muted small">No paint colors on this list yet.</p>
+              ) : (
+                colorRows.map(({ index, item, line, status }) => (
+                  <label key={`brushout-color-${index}`} className="brushouts-send-row check" role="listitem">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(index)}
+                      onChange={() => toggleColor(index)}
+                    />
+                    <span className="brushouts-send-row-main">
+                      <span className="brushouts-send-label">
+                        {item.label.trim() || `Row ${index + 1}`}
+                        {item.floor.trim() ? ` · ${item.floor.trim()}` : ""}
+                      </span>
+                      <span className="brushouts-send-color muted small">{line}</span>
+                    </span>
+                    {hasPreviousOrder ? <span className={orderStatusClass(status)}>{ORDER_STATUS_LABEL[status]}</span> : null}
+                  </label>
+                ))
+              )}
+            </div>
+          </fieldset>
+        )}
+
+        {isAtticStock ? (
+          <div className="stack">
+            <p className="paint-col-head">Message preview</p>
+            <div
+              className="paint-email-html-preview paint-email-html-preview--full"
+              dangerouslySetInnerHTML={{ __html: htmlBody }}
+            />
+            <p className="muted small">
+              Formatted HTML is copied automatically — compose opens <strong>empty</strong>. Click in the body and press{" "}
+              <strong>Ctrl+V</strong> for tables{includeSignature ? " and signature" : ""}. Use <strong>Copy HTML</strong>{" "}
+              to copy again.
+            </p>
+          </div>
+        ) : (
           <p className="muted small">
             Formatted HTML is copied automatically — compose opens <strong>empty</strong>. Click in the body and press{" "}
             <strong>Ctrl+V</strong> for tables{includeSignature ? " and signature" : ""}. Use <strong>Copy HTML</strong>{" "}
             to copy again.
           </p>
-        </div>
+        )}
 
         {message && <div className="banner banner-ok">{message}</div>}
 
@@ -331,12 +481,12 @@ export function EmailVendorModal({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!vendor || openingGmail}
+            disabled={!vendor || openingGmail || (showItemPicker && selectedCount === 0)}
             onClick={() => void openCompose()}
           >
             {openingGmail ? "Opening…" : composeEmailButtonLabel(composeEmailMethod)}
           </button>
-          <button type="button" className="btn btn-secondary" disabled={!vendor} onClick={() => void copyHtml()}>
+          <button type="button" className="btn btn-secondary" disabled={!vendor || (showItemPicker && selectedCount === 0)} onClick={() => void copyHtml()}>
             Copy HTML
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose}>

@@ -6,9 +6,6 @@ export type ExtractedPaintRow = {
   label: string;
   manufacturer: string;
   color: string;
-  product: string;
-  sheen: string;
-  floor: string;
 };
 
 async function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> {

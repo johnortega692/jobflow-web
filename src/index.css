@@ -2501,6 +2501,11 @@ th {
   min-width: 4.5rem;
 }
 
+.paint-import-preview-table td:nth-child(3) input {
+  min-width: 12rem;
+  width: 100%;
+}
+
 .paint-import-preview-actions {
   padding-top: 0.25rem;
   border-top: 1px solid var(--border);
@@ -6124,7 +6129,12 @@ tr.budget-hours-pdf-hidden td {
 }
 
 /* Fixed content width — matches SDS / paint modules */
-.paint-submittal-page,
+.paint-submittal-page {
+  width: 1200px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .wc-submittal-page,
 .frp-submittal-page,
 .po-tracker-page,
@@ -6476,6 +6486,55 @@ tr.budget-hours-pdf-hidden td {
   flex: 0 0 150px;
   width: 150px;
   min-width: 150px;
+}
+
+.paint-col-rev-status {
+  flex: 0 0 5.5rem;
+  width: 5.5rem;
+  min-width: 5.5rem;
+  justify-content: center;
+}
+
+.paint-rev-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  padding: 0 0.2rem;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  background: transparent;
+  min-height: var(--paint-control-height, 32px);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.paint-rev-status:hover {
+  border-color: var(--border);
+  background: var(--surface2, color-mix(in srgb, var(--text) 6%, transparent));
+}
+
+.paint-rev-status--new {
+  color: #2e7d32;
+}
+
+.paint-rev-status--revised {
+  color: #c62828;
+}
+
+.paint-rev-status--unchanged {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.paint-rev-status--removed {
+  color: #6d4c41;
+  text-decoration: line-through;
 }
 
 .paint-col-head {
@@ -11289,6 +11348,10 @@ input.readonly {
   width: min(820px, 100%);
   max-height: 92vh;
   overflow: auto;
+}
+
+.paint-email-modal .brushouts-send-list {
+  max-height: min(32vh, 14rem);
 }
 
 .paint-email-modal--sticky-actions {

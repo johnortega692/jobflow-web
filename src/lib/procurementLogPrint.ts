@@ -11,7 +11,6 @@ import {
   LETTER_WIDTH,
   MUTED,
   PDF_MARGIN_TOP,
-  PDF_MARGIN_X,
   TEXT,
   wrapLines,
 } from "./pdfDrawCore";
@@ -19,6 +18,8 @@ import {
 // Landscape letter — the 8-column log needs the width.
 const PAGE_W = LETTER_HEIGHT;
 const PAGE_H = LETTER_WIDTH;
+/** Narrower left/right than submittal PDFs so the 8-column table can use the page. */
+const LOG_MARGIN_X = 18;
 
 const HEADER_BG = rgb(0.2, 0.2, 0.2);
 const ROW_ALT = rgb(0.98, 0.98, 0.98);
@@ -64,13 +65,13 @@ function drawHeaderRow(ctx: TableCtx): void {
   const lines = rowCellLines(COLUMNS, ctx.bold, ctx.colWidths);
   const height = Math.max(...lines.map((l) => l.length)) * LINE_H + PAD_Y * 2;
   ctx.page.drawRectangle({
-    x: PDF_MARGIN_X,
+    x: LOG_MARGIN_X,
     y: ctx.y - height,
     width: ctx.usable,
     height,
     color: HEADER_BG,
   });
-  let x = PDF_MARGIN_X;
+  let x = LOG_MARGIN_X;
   lines.forEach((cellLines, i) => {
     cellLines.forEach((line, li) => {
       ctx.page.drawText(line, {
@@ -98,7 +99,7 @@ function drawBodyRow(ctx: TableCtx, cells: string[], alt: boolean): void {
 
   if (alt) {
     ctx.page.drawRectangle({
-      x: PDF_MARGIN_X,
+      x: LOG_MARGIN_X,
       y: ctx.y - height,
       width: ctx.usable,
       height,
@@ -106,7 +107,7 @@ function drawBodyRow(ctx: TableCtx, cells: string[], alt: boolean): void {
     });
   }
 
-  let x = PDF_MARGIN_X;
+  let x = LOG_MARGIN_X;
   lines.forEach((cellLines, i) => {
     ctx.page.drawRectangle({
       x,
@@ -160,7 +161,7 @@ export async function buildProcurementLogPdfBytes(options: {
   let page = doc.addPage([PAGE_W, PAGE_H]);
   const pageWidth = page.getWidth();
   const centerX = pageWidth / 2;
-  const contentWidth = pageWidth - PDF_MARGIN_X * 2;
+  const contentWidth = pageWidth - LOG_MARGIN_X * 2;
   let y = page.getHeight() - PDF_MARGIN_TOP;
 
   // Letterhead header — same layout as the submittal export.
@@ -178,8 +179,8 @@ export async function buildProcurementLogPdfBytes(options: {
   }
 
   page.drawLine({
-    start: { x: PDF_MARGIN_X, y },
-    end: { x: pageWidth - PDF_MARGIN_X, y },
+    start: { x: LOG_MARGIN_X, y },
+    end: { x: pageWidth - LOG_MARGIN_X, y },
     thickness: 1.5,
     color: TEXT,
   });
@@ -201,7 +202,7 @@ export async function buildProcurementLogPdfBytes(options: {
   const detailLineHeight = 13;
 
   page.drawText(`Date: ${formatLongDate(lastUpdate)}`, {
-    x: PDF_MARGIN_X,
+    x: LOG_MARGIN_X,
     y: y - detailFontSize,
     size: detailFontSize,
     font,
@@ -229,7 +230,7 @@ export async function buildProcurementLogPdfBytes(options: {
   ];
   for (const line of infoLines) {
     page.drawText(line, {
-      x: PDF_MARGIN_X,
+      x: LOG_MARGIN_X,
       y: y - detailFontSize,
       size: detailFontSize,
       font,
@@ -246,7 +247,7 @@ export async function buildProcurementLogPdfBytes(options: {
   drawHeaderRow(ctx);
   if (!logRows.length) {
     ctx.page.drawText("No wallcovering materials found for this job.", {
-      x: PDF_MARGIN_X,
+      x: LOG_MARGIN_X,
       y: ctx.y - 14,
       size: 10,
       font,

@@ -128,16 +128,13 @@ export function PaintImportPreviewModal({ rows: initialRows, imageUrl, onConfirm
                     <th>Label</th>
                     <th>Mfr</th>
                     <th>Color</th>
-                    <th>Product</th>
-                    <th>Sheen</th>
-                    <th>Floor</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="muted small">
+                      <td colSpan={4} className="muted small">
                         All rows removed — cancel or paste/import again.
                       </td>
                     </tr>
@@ -155,15 +152,6 @@ export function PaintImportPreviewModal({ rows: initialRows, imageUrl, onConfirm
                         </td>
                         <td>
                           <input value={row.color} onChange={(e) => patchRow(i, { color: e.target.value })} />
-                        </td>
-                        <td>
-                          <input value={row.product} onChange={(e) => patchRow(i, { product: e.target.value })} />
-                        </td>
-                        <td>
-                          <input value={row.sheen} onChange={(e) => patchRow(i, { sheen: e.target.value })} />
-                        </td>
-                        <td>
-                          <input value={row.floor} onChange={(e) => patchRow(i, { floor: e.target.value })} />
                         </td>
                         <td>
                           <button

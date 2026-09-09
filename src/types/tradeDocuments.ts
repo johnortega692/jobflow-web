@@ -16,6 +16,26 @@ export const MAX_PAINT_SPEC_SECTIONS = 2;
 /** Which CSI table a paint line belongs to when optional 2nd spec is enabled. */
 export type PaintItemSpecScope = "primary" | "secondary";
 
+export type PaintRevisionChange = "NEW" | "REVISED" | "No Change" | "Removed";
+
+export const PAINT_REVISION_CHANGE_CYCLE: PaintRevisionChange[] = [
+  "REVISED",
+  "NEW",
+  "No Change",
+  "Removed",
+];
+
+export function parsePaintRevisionChange(raw: unknown): PaintRevisionChange | undefined {
+  return raw === "NEW" || raw === "REVISED" || raw === "No Change" || raw === "Removed"
+    ? raw
+    : undefined;
+}
+
+export function nextPaintRevisionChange(current: PaintRevisionChange): PaintRevisionChange {
+  const index = PAINT_REVISION_CHANGE_CYCLE.indexOf(current);
+  return PAINT_REVISION_CHANGE_CYCLE[(index + 1) % PAINT_REVISION_CHANGE_CYCLE.length]!;
+}
+
 export type PaintItem = {
   label: string;
   floor: string;
@@ -26,6 +46,8 @@ export type PaintItem = {
   product: string;
   sheen: string;
   previous_color: string;
+  /** Manual GC PDF status on a revision. When omitted, compared to the previous issued package. */
+  revision_change?: PaintRevisionChange;
   /** Defaults to primary. Used when package has an optional 2nd spec. */
   spec_scope?: PaintItemSpecScope;
 };
@@ -1198,6 +1220,7 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     ...emptyPaintItem(),
     ...i,
     color_hex: typeof i.color_hex === "string" ? i.color_hex.trim() : "",
+    revision_change: parsePaintRevisionChange(i.revision_change),
     spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
   }));
   const auto_label =

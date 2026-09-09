@@ -19,6 +19,7 @@ import {
   paintSecondarySpecLabel,
 } from "../types/tradeDocuments";
 import { downloadTradeSubmittalPdf, type SubmittalPdfFloorSection } from "./tradeSubmittalPdf";
+import { paintRevisionChangeLabel } from "./paintBrushouts";
 
 const SUBMITTAL_CSS = `
 @page { size: letter; margin: 0.5in 0.55in; }
@@ -92,7 +93,8 @@ table tr { page-break-inside: avoid; break-inside: avoid; }
 
 type ProjectInfo = ProjectPrintInfo;
 
-function paintTableRows(items: PaintItem[], isSub: boolean): string {
+function paintTableRows(items: PaintItem[], isSub: boolean, previousItems: PaintItem[]): string {
+  const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
   return items
     .map((item, i) => {
       const displayColor = item.color.trim();
@@ -106,18 +108,26 @@ function paintTableRows(items: PaintItem[], isSub: boolean): string {
           <td>${esc(item.sheen)}</td>
         </tr>`;
       }
+      const change = markRevision ? paintRevisionChangeLabel(item, previousItems) : null;
+      const changeCell =
+        change === "NEW" || change === "REVISED" || change === "Removed"
+          ? `<td><strong>${esc(change)}</strong></td>`
+          : change
+            ? `<td>${esc(change)}</td>`
+            : "";
       return `<tr>
         <td>${i + 1}</td>
         <td><strong>${esc(displayColor)}</strong></td>
         <td>${esc(item.product)}</td>
         <td>${esc(item.sheen)}</td>
         <td>${esc(item.label)}</td>
+        ${changeCell}
       </tr>`;
     })
     .join("");
 }
 
-function paintTableHead(isSub: boolean): string {
+function paintTableHead(isSub: boolean, markRevision: boolean): string {
   if (isSub) {
     return `<tr>
       <th style="width:5%">#</th>
@@ -126,6 +136,16 @@ function paintTableHead(isSub: boolean): string {
       <th style="width:22%">New Color</th>
       <th style="width:22%">Product</th>
       <th style="width:19%">Sheen</th>
+    </tr>`;
+  }
+  if (markRevision) {
+    return `<tr>
+      <th style="width:5%">#</th>
+      <th style="width:22%">Color</th>
+      <th style="width:22%">Product</th>
+      <th style="width:18%">Sheen</th>
+      <th style="width:15%">Label</th>
+      <th style="width:18%">Status</th>
     </tr>`;
   }
   return `<tr>
@@ -137,7 +157,8 @@ function paintTableHead(isSub: boolean): string {
   </tr>`;
 }
 
-function paintItemRowsForPdf(items: PaintItem[], isSub: boolean): string[][] {
+function paintItemRowsForPdf(items: PaintItem[], isSub: boolean, previousItems: PaintItem[]): string[][] {
+  const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
   return items.map((item, i) => {
     const displayColor = item.color.trim();
     if (isSub) {
@@ -150,27 +171,41 @@ function paintItemRowsForPdf(items: PaintItem[], isSub: boolean): string[][] {
         item.sheen.trim(),
       ];
     }
-    return [String(i + 1), displayColor, item.product.trim(), item.sheen.trim(), item.label.trim()];
+    const row = [String(i + 1), displayColor, item.product.trim(), item.sheen.trim(), item.label.trim()];
+    if (markRevision) row.push(paintRevisionChangeLabel(item, previousItems) ?? "");
+    return row;
   });
 }
 
-function paintSectionColumns(isSub: boolean): Pick<SubmittalPdfFloorSection, "columns" | "colWeights"> {
-  return isSub
-    ? {
-        columns: ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"],
-        colWeights: "auto",
-      }
-    : {
-        columns: ["#", "Color", "Product", "Sheen", "Label"],
-        colWeights: "auto",
-      };
+function paintSectionColumns(
+  isSub: boolean,
+  markRevision: boolean,
+): Pick<SubmittalPdfFloorSection, "columns" | "colWeights"> {
+  if (isSub) {
+    return {
+      columns: ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"],
+      colWeights: "auto",
+    };
+  }
+  if (markRevision) {
+    return {
+      columns: ["#", "Color", "Product", "Sheen", "Label", "Status"],
+      colWeights: "auto",
+    };
+  }
+  return {
+    columns: ["#", "Color", "Product", "Sheen", "Label"],
+    colWeights: "auto",
+  };
 }
 
 export function buildPaintSubmittalSections(
   data: PaintSubmittalData,
+  previousItems: PaintItem[] = [],
 ): SubmittalPdfFloorSection[] {
   const isSub = data.submittal_type === "substitution";
-  const cols = paintSectionColumns(isSub);
+  const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
+  const cols = paintSectionColumns(isSub, markRevision);
   const items = data.items.filter((i) => i.color.trim() || i.label.trim());
   const secondaryOn = paintSecondarySpecEnabled(data);
   const primaryItems = secondaryOn
@@ -190,7 +225,7 @@ export function buildPaintSubmittalSections(
     .map(([floor, floorItems]) => ({
       floorLabel: data.show_floor === true && floor ? floor : undefined,
       ...cols,
-      rows: paintItemRowsForPdf(floorItems, isSub),
+      rows: paintItemRowsForPdf(floorItems, isSub, previousItems),
     }));
 
   if (secondaryItems.length) {
@@ -198,7 +233,7 @@ export function buildPaintSubmittalSections(
       bannerSubject: paintSecondarySpecLabel(data),
       bannerSpec: data.spec_section_secondary,
       ...cols,
-      rows: paintItemRowsForPdf(secondaryItems, isSub),
+      rows: paintItemRowsForPdf(secondaryItems, isSub, previousItems),
     });
   }
 
@@ -209,6 +244,7 @@ export async function downloadPaintSubmittal(
   project: ProjectInfo,
   data: PaintSubmittalData,
   branding: PrintBranding,
+  previousItems: PaintItem[] = [],
 ): Promise<void> {
   const filename = paintSubmittalFilename(
     project.job_name,
@@ -228,7 +264,7 @@ export async function downloadPaintSubmittal(
     revisionNumber: data.revision_number,
     revisionNote: data.revision_note,
     submittalType: data.submittal_type,
-    sections: buildPaintSubmittalSections(data),
+    sections: buildPaintSubmittalSections(data, previousItems),
   });
 }
 
@@ -238,8 +274,10 @@ export function buildPaintSubmittalHtml(
   data: PaintSubmittalData,
   branding: PrintBranding,
   saveFilename?: string,
+  previousItems: PaintItem[] = [],
 ): string {
   const isSub = data.submittal_type === "substitution";
+  const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
   const items = data.items.filter((i) => i.color.trim() || i.label.trim());
   const secondaryOn = paintSecondarySpecEnabled(data);
   const primaryItems = secondaryOn
@@ -262,7 +300,7 @@ export function buildPaintSubmittalHtml(
           .map(
             ([floor, floorItems]) => `
       ${data.show_floor === true && floor ? `<div class="floor-section-title">${esc(floor.toUpperCase())}</div>` : ""}
-      <table><thead>${paintTableHead(isSub)}</thead><tbody>${paintTableRows(floorItems, isSub)}</tbody></table>`,
+      <table><thead>${paintTableHead(isSub, markRevision)}</thead><tbody>${paintTableRows(floorItems, isSub, previousItems)}</tbody></table>`,
           )
           .join("");
 
@@ -270,7 +308,7 @@ export function buildPaintSubmittalHtml(
     secondaryItems.length === 0
       ? ""
       : `${submittalSubjectSpecBannerHtml(paintSecondarySpecLabel(data), data.spec_section_secondary ?? "")}
-      <table><thead>${paintTableHead(isSub)}</thead><tbody>${paintTableRows(secondaryItems, isSub)}</tbody></table>`;
+      <table><thead>${paintTableHead(isSub, markRevision)}</thead><tbody>${paintTableRows(secondaryItems, isSub, previousItems)}</tbody></table>`;
 
   const bodyTables =
     !primaryTables && !secondaryTables
