@@ -44,6 +44,10 @@ export async function saveOrgSettingsPatch(
   userId: string,
 ): Promise<string | null> {
   const orgPatch = pickOrgSettingsPatch(patch);
+  const droppedKeys = Object.keys(patch).filter((key) => key !== "google_urls" && !(key in orgPatch));
+  if (droppedKeys.length) {
+    return `Unrecognized settings keys: ${droppedKeys.join(", ")}`;
+  }
   const { google_urls: googleUrls, ...settingsPatch } = orgPatch as {
     google_urls?: Record<string, string>;
     [key: string]: unknown;

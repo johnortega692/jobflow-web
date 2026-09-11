@@ -26,6 +26,13 @@ import type { SettingsSectionBindings } from "./settingsSectionTypes";
 import { SharedSettingsNotice } from "./SharedSettingsNotice";
 
 type ImportMode = "merge" | "replace";
+type DirectoryTab = "gcs" | "vendors" | "architects";
+
+const DIRECTORY_TABS: { id: DirectoryTab; label: string }[] = [
+  { id: "gcs", label: "GCs" },
+  { id: "vendors", label: "Vendors" },
+  { id: "architects", label: "Architects" },
+];
 
 export function VendorArchitectSettingsSection({
   readOnly = false,
@@ -33,6 +40,7 @@ export function VendorArchitectSettingsSection({
   onBindActions,
 }: SettingsSectionBindings) {
   const { user } = useAuth();
+  const [tab, setTab] = useState<DirectoryTab>("gcs");
   const [data, setData] = useState<ContactDirectorySettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,6 +100,12 @@ export function VendorArchitectSettingsSection({
 
   if (loading) return <p className="muted">Loading contact directory…</p>;
   if (!data || !user?.id) return null;
+
+  const tabCounts: Record<DirectoryTab, number> = {
+    gcs: data.general_contractors.length,
+    vendors: data.material_vendors.length,
+    architects: data.architects.length,
+  };
 
   async function importVendors(file: File | null) {
     if (!file) return;
@@ -215,359 +229,388 @@ export function VendorArchitectSettingsSection({
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
       )}
 
-      <fieldset disabled={readOnly} className="stack settings-shared-fieldset">
-      <section className="stack">
-        <h2>General contractors</h2>
-        <p className="muted small">
-          Saved GCs for Job info. Pick a name in GC Info to fill address and office phone. Import CSV /
-          Excel with columns <strong>Name</strong>, <strong>Address</strong>,{" "}
-          <strong>Office Phone</strong>.
-        </p>
-
-        {!readOnly && (
-        <div className="row-gap wrap contact-import-bar">
-          <label className="check">
-            <input
-              type="radio"
-              name="gc-import-mode"
-              checked={gcImportMode === "merge"}
-              onChange={() => setGcImportMode("merge")}
-            />
-            Merge (skip duplicates)
-          </label>
-          <label className="check">
-            <input
-              type="radio"
-              name="gc-import-mode"
-              checked={gcImportMode === "replace"}
-              onChange={() => setGcImportMode("replace")}
-            />
-            Replace all
-          </label>
-          <input
-            ref={gcFileRef}
-            type="file"
-            accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="sr-only"
-            onChange={(e) => void importGcs(e.target.files?.[0] ?? null)}
-          />
-          <button type="button" className="btn btn-secondary" onClick={() => gcFileRef.current?.click()}>
-            Import CSV / Excel…
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() =>
-              setData((d) =>
-                d ? { ...d, general_contractors: [...d.general_contractors, emptyGcEntry()] } : d,
-              )
-            }
-          >
-            Add GC
-          </button>
-          <span className="muted small">{data.general_contractors.length} GC(s)</span>
+      <div className="contact-directory-folders-wrap">
+        <div className="contact-directory-folders" role="tablist" aria-label="Contact directory">
+          {DIRECTORY_TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              id={`contact-directory-tab-${item.id}`}
+              aria-selected={tab === item.id}
+              aria-controls={`contact-directory-panel-${item.id}`}
+              className={`contact-directory-folder${tab === item.id ? " contact-directory-folder--active" : ""}`}
+              onClick={() => {
+                setTab(item.id);
+                setError(null);
+                setMessage(null);
+              }}
+            >
+              {item.label}
+              <span className="contact-directory-folder-count">{tabCounts[item.id]}</span>
+            </button>
+          ))}
         </div>
-        )}
 
-        <div className="paint-settings-table-wrap settings-scroll-table-wrap">
-          <table className="paint-settings-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Address</th>
-                <th>Office phone</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.general_contractors.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="muted small">
-                    No GCs yet — import a file or add one manually.
-                  </td>
-                </tr>
-              ) : (
-                data.general_contractors.map((g, i) => (
-                  <tr key={`gc-${i}`}>
-                    <td>
-                      <input value={g.name} onChange={(e) => patchGc(i, { name: e.target.value })} />
-                    </td>
-                    <td>
-                      <input
-                        value={g.address}
-                        onChange={(e) => patchGc(i, { address: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={g.office_phone}
-                        onChange={(e) => patchGc(i, { office_phone: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() =>
-                          setData((d) =>
-                            d
-                              ? {
-                                  ...d,
-                                  general_contractors: d.general_contractors.filter((_, j) => j !== i),
-                                }
-                              : d,
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))
+        <fieldset
+          disabled={readOnly}
+          className="contact-directory-folder-panel stack settings-shared-fieldset"
+          role="tabpanel"
+          id={`contact-directory-panel-${tab}`}
+          aria-labelledby={`contact-directory-tab-${tab}`}
+        >
+          {tab === "gcs" && (
+            <>
+              <p className="muted small">
+                Saved GCs for Job info. Pick a name in GC Info to fill address and office phone. Import
+                CSV / Excel with columns <strong>Name</strong>, <strong>Address</strong>,{" "}
+                <strong>Office Phone</strong>.
+              </p>
+
+              {!readOnly && (
+                <div className="row-gap wrap contact-import-bar">
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="gc-import-mode"
+                      checked={gcImportMode === "merge"}
+                      onChange={() => setGcImportMode("merge")}
+                    />
+                    Merge (skip duplicates)
+                  </label>
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="gc-import-mode"
+                      checked={gcImportMode === "replace"}
+                      onChange={() => setGcImportMode("replace")}
+                    />
+                    Replace all
+                  </label>
+                  <input
+                    ref={gcFileRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="sr-only"
+                    onChange={(e) => void importGcs(e.target.files?.[0] ?? null)}
+                  />
+                  <button type="button" className="btn btn-secondary" onClick={() => gcFileRef.current?.click()}>
+                    Import CSV / Excel…
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() =>
+                      setData((d) =>
+                        d ? { ...d, general_contractors: [...d.general_contractors, emptyGcEntry()] } : d,
+                      )
+                    }
+                  >
+                    Add GC
+                  </button>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
-      <section className="stack">
-        <h2>Material vendors</h2>
-        <p className="muted small">
-          Wallcovering sample orders and <strong>Orders by Vendor</strong>. Import from CSV or Excel
-          with columns <strong>Name</strong>, <strong>Email</strong>, <strong>Phone</strong>,{" "}
-          <strong>Products</strong> (same as desktop vendors.xlsx).
-        </p>
+              <div className="paint-settings-table-wrap settings-scroll-table-wrap">
+                <table className="paint-settings-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Address</th>
+                      <th>Office phone</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.general_contractors.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="muted small">
+                          No GCs yet — import a file or add one manually.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.general_contractors.map((g, i) => (
+                        <tr key={`gc-${i}`}>
+                          <td>
+                            <input value={g.name} onChange={(e) => patchGc(i, { name: e.target.value })} />
+                          </td>
+                          <td>
+                            <input
+                              value={g.address}
+                              onChange={(e) => patchGc(i, { address: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={g.office_phone}
+                              onChange={(e) => patchGc(i, { office_phone: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() =>
+                                setData((d) =>
+                                  d
+                                    ? {
+                                        ...d,
+                                        general_contractors: d.general_contractors.filter((_, j) => j !== i),
+                                      }
+                                    : d,
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
-        {!readOnly && (
-        <div className="row-gap wrap contact-import-bar">
-          <label className="check">
-            <input
-              type="radio"
-              name="vendor-import-mode"
-              checked={vendorImportMode === "merge"}
-              onChange={() => setVendorImportMode("merge")}
-            />
-            Merge (skip duplicates)
-          </label>
-          <label className="check">
-            <input
-              type="radio"
-              name="vendor-import-mode"
-              checked={vendorImportMode === "replace"}
-              onChange={() => setVendorImportMode("replace")}
-            />
-            Replace all
-          </label>
-          <input
-            ref={vendorFileRef}
-            type="file"
-            accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="sr-only"
-            onChange={(e) => void importVendors(e.target.files?.[0] ?? null)}
-          />
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => vendorFileRef.current?.click()}
-          >
-            Import CSV / Excel…
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() =>
-              setData((d) =>
-                d ? { ...d, material_vendors: [...d.material_vendors, emptyMaterialVendor()] } : d,
-              )
-            }
-          >
-            Add vendor
-          </button>
-          <span className="muted small">{data.material_vendors.length} vendor(s)</span>
-        </div>
-        )}
+          {tab === "vendors" && (
+            <>
+              <p className="muted small">
+                Wallcovering sample orders and <strong>Orders by Vendor</strong>. Import from CSV or Excel
+                with columns <strong>Name</strong>, <strong>Email</strong>, <strong>Phone</strong>,{" "}
+                <strong>Products</strong> (same as desktop vendors.xlsx).
+              </p>
 
-        <div className="paint-settings-table-wrap settings-scroll-table-wrap">
-          <table className="paint-settings-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Products</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.material_vendors.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="muted small">
-                    No vendors yet — import a file or add one manually.
-                  </td>
-                </tr>
-              ) : (
-                data.material_vendors.map((v, i) => (
-                  <tr key={`mv-${i}`}>
-                    <td>
-                      <input value={v.name} onChange={(e) => patchVendor(i, { name: e.target.value })} />
-                    </td>
-                    <td>
-                      <input
-                        type="email"
-                        value={v.email}
-                        onChange={(e) => patchVendor(i, { email: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input value={v.phone} onChange={(e) => patchVendor(i, { phone: e.target.value })} />
-                    </td>
-                    <td>
-                      <input
-                        value={v.products}
-                        onChange={(e) => patchVendor(i, { products: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() =>
-                          setData((d) =>
-                            d
-                              ? {
-                                  ...d,
-                                  material_vendors: d.material_vendors.filter((_, j) => j !== i),
-                                }
-                              : d,
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))
+              {!readOnly && (
+                <div className="row-gap wrap contact-import-bar">
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="vendor-import-mode"
+                      checked={vendorImportMode === "merge"}
+                      onChange={() => setVendorImportMode("merge")}
+                    />
+                    Merge (skip duplicates)
+                  </label>
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="vendor-import-mode"
+                      checked={vendorImportMode === "replace"}
+                      onChange={() => setVendorImportMode("replace")}
+                    />
+                    Replace all
+                  </label>
+                  <input
+                    ref={vendorFileRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="sr-only"
+                    onChange={(e) => void importVendors(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => vendorFileRef.current?.click()}
+                  >
+                    Import CSV / Excel…
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() =>
+                      setData((d) =>
+                        d ? { ...d, material_vendors: [...d.material_vendors, emptyMaterialVendor()] } : d,
+                      )
+                    }
+                  >
+                    Add vendor
+                  </button>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
-      <section className="stack">
-        <h2>Architects / specifiers</h2>
-        <p className="muted small">
-          Import from CSV or Excel with columns <strong>Company</strong> and <strong>Address</strong>{" "}
-          (same as desktop architects.xlsx). Used for specifier address lookup.
-        </p>
+              <div className="paint-settings-table-wrap settings-scroll-table-wrap">
+                <table className="paint-settings-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Phone</th>
+                      <th>Products</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.material_vendors.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="muted small">
+                          No vendors yet — import a file or add one manually.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.material_vendors.map((v, i) => (
+                        <tr key={`mv-${i}`}>
+                          <td>
+                            <input value={v.name} onChange={(e) => patchVendor(i, { name: e.target.value })} />
+                          </td>
+                          <td>
+                            <input
+                              type="email"
+                              value={v.email}
+                              onChange={(e) => patchVendor(i, { email: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <input value={v.phone} onChange={(e) => patchVendor(i, { phone: e.target.value })} />
+                          </td>
+                          <td>
+                            <input
+                              value={v.products}
+                              onChange={(e) => patchVendor(i, { products: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() =>
+                                setData((d) =>
+                                  d
+                                    ? {
+                                        ...d,
+                                        material_vendors: d.material_vendors.filter((_, j) => j !== i),
+                                      }
+                                    : d,
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
-        {!readOnly && (
-        <div className="row-gap wrap contact-import-bar">
-          <label className="check">
-            <input
-              type="radio"
-              name="architect-import-mode"
-              checked={architectImportMode === "merge"}
-              onChange={() => setArchitectImportMode("merge")}
-            />
-            Merge (skip duplicates)
-          </label>
-          <label className="check">
-            <input
-              type="radio"
-              name="architect-import-mode"
-              checked={architectImportMode === "replace"}
-              onChange={() => setArchitectImportMode("replace")}
-            />
-            Replace all
-          </label>
-          <input
-            ref={architectFileRef}
-            type="file"
-            accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="sr-only"
-            onChange={(e) => void importArchitects(e.target.files?.[0] ?? null)}
-          />
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => architectFileRef.current?.click()}
-          >
-            Import CSV / Excel…
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() =>
-              setData((d) =>
-                d ? { ...d, architects: [...d.architects, emptyArchitectEntry()] } : d,
-              )
-            }
-          >
-            Add architect
-          </button>
-          <span className="muted small">{data.architects.length} architect(s)</span>
-        </div>
-        )}
+          {tab === "architects" && (
+            <>
+              <p className="muted small">
+                Import from CSV or Excel with columns <strong>Company</strong> and{" "}
+                <strong>Address</strong> (same as desktop architects.xlsx). Used for specifier address
+                lookup.
+              </p>
 
-        <div className="paint-settings-table-wrap settings-scroll-table-wrap">
-          <table className="paint-settings-table">
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th>Address</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.architects.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="muted small">
-                    No architects yet — import a file or add one manually.
-                  </td>
-                </tr>
-              ) : (
-                data.architects.map((a, i) => (
-                  <tr key={`arch-${i}`}>
-                    <td>
-                      <input
-                        value={a.company}
-                        onChange={(e) => patchArchitect(i, { company: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={a.address}
-                        onChange={(e) => patchArchitect(i, { address: e.target.value })}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() =>
-                          setData((d) =>
-                            d
-                              ? { ...d, architects: d.architects.filter((_, j) => j !== i) }
-                              : d,
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))
+              {!readOnly && (
+                <div className="row-gap wrap contact-import-bar">
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="architect-import-mode"
+                      checked={architectImportMode === "merge"}
+                      onChange={() => setArchitectImportMode("merge")}
+                    />
+                    Merge (skip duplicates)
+                  </label>
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="architect-import-mode"
+                      checked={architectImportMode === "replace"}
+                      onChange={() => setArchitectImportMode("replace")}
+                    />
+                    Replace all
+                  </label>
+                  <input
+                    ref={architectFileRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="sr-only"
+                    onChange={(e) => void importArchitects(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => architectFileRef.current?.click()}
+                  >
+                    Import CSV / Excel…
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() =>
+                      setData((d) =>
+                        d ? { ...d, architects: [...d.architects, emptyArchitectEntry()] } : d,
+                      )
+                    }
+                  >
+                    Add architect
+                  </button>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      </fieldset>
+
+              <div className="paint-settings-table-wrap settings-scroll-table-wrap">
+                <table className="paint-settings-table">
+                  <thead>
+                    <tr>
+                      <th>Company</th>
+                      <th>Address</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.architects.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="muted small">
+                          No architects yet — import a file or add one manually.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.architects.map((a, i) => (
+                        <tr key={`arch-${i}`}>
+                          <td>
+                            <input
+                              value={a.company}
+                              onChange={(e) => patchArchitect(i, { company: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={a.address}
+                              onChange={(e) => patchArchitect(i, { address: e.target.value })}
+                            />
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() =>
+                                setData((d) =>
+                                  d ? { ...d, architects: d.architects.filter((_, j) => j !== i) } : d,
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </fieldset>
+      </div>
 
       {!readOnly && (
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        {saving ? "Saving…" : "Save directory"}
-      </button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          {saving ? "Saving…" : "Save directory"}
+        </button>
       )}
     </form>
   );

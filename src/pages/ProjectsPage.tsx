@@ -258,12 +258,21 @@ export function ProjectsPage() {
         <div>
           <h1>Projects</h1>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => {
-          if (showForm) resetCreateForm();
-          setShowForm((v) => !v);
-        }}>
-          {showForm ? "Cancel" : "New project"}
-        </button>
+        <div className="page-header-actions">
+          <Link
+            to="/projects/by-gc"
+            className="btn btn-secondary"
+            title="Group this year's projects by GC with job count and contract amount"
+          >
+            Projects by GC
+          </Link>
+          <button type="button" className="btn btn-primary" onClick={() => {
+            if (showForm) resetCreateForm();
+            setShowForm((v) => !v);
+          }}>
+            {showForm ? "Cancel" : "New project"}
+          </button>
+        </div>
       </div>
 
       {error && <div className="banner banner-error">{error}</div>}

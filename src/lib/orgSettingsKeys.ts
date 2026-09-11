@@ -8,6 +8,7 @@ export const ORG_SETTINGS_KEYS = [
   "pdf_show",
   "material_vendors",
   "architects",
+  "general_contractors",
   "delivery_scheduling",
   "paint_products",
   "paint_sheens",

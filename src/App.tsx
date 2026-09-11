@@ -5,6 +5,7 @@ import { ProtectedRoute } from "./components/Layout";
 import { ProjectLayout } from "./components/ProjectLayout";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { ProjectsByGcPage } from "./pages/ProjectsByGcPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectRfisPage } from "./pages/ProjectRfisPage";
 import { RfiEditorPage } from "./pages/RfiEditorPage";
@@ -53,6 +54,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Navigate to="/projects" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/by-gc" element={<ProjectsByGcPage />} />
             <Route path="/workload" element={<CompanyWorkloadPage />} />
             <Route path="/brush-out-request" element={<BrushOutRequestPage />} />
             <Route path="/settings" element={<SettingsPage />} />
