@@ -1,3 +1,4 @@
+import { extractProductName } from "./paintCatalog.js";
 import type { ComposeEmailMethod } from "./paintUserSettings.js";
 import type { EmailSignatureSettings } from "./emailSignature.js";
 import { buildEmailSignatureHtml, buildEmailSignaturePlain, constrainSignatureLogoInHtml } from "./emailSignature.js";
@@ -41,7 +42,7 @@ function escHtml(s: string): string {
 }
 
 function stripProductMfr(product: string): string {
-  return product.replace(/\s*\([A-Z]+\)\s*$/i, "").trim();
+  return extractProductName(product);
 }
 
 function groupByFloor(items: PaintItem[]): [string, PaintItem[]][] {

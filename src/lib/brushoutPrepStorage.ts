@@ -2,6 +2,7 @@ import { commitProjectUpdate } from "./projectActivity";
 import { patchUserSettings, loadRawUserSettings } from "./budgetLibrary";
 import { supabase } from "./supabase";
 import type { BrushoutPrepRecord } from "./paintUserSettings";
+import { dropPaintPlaceholders } from "./paintItemLabels";
 import {
   defaultPaintSubmittal,
   emptyPaintItem,
@@ -171,7 +172,7 @@ export async function linkBrushoutPrepToProject(
   const items =
     mergeMode === "replace"
       ? mapped
-      : [...current.items.filter(paintItemHasContent), ...mapped];
+      : [...dropPaintPlaceholders(current.items), ...mapped];
 
   const nextTrade = {
     ...trade,

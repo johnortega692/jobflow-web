@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
 import { FLOOR_ORDER } from "../../lib/printCore";
 import {
   abbreviateVendorKey,
@@ -70,13 +70,7 @@ export function PaintItemRow({
   const [lookupOpen, setLookupOpen] = useState(false);
   const [lookupQuery, setLookupQuery] = useState("");
   const [lookupMatches, setLookupMatches] = useState<PaintColorMatch[]>([]);
-  const [productDisplay, setProductDisplay] = useState(() =>
-    item.product ? getProductDisplay(products, item.product) : "",
-  );
-
-  useEffect(() => {
-    setProductDisplay(item.product ? getProductDisplay(products, item.product) : "");
-  }, [item.product, products]);
+  const productDisplay = item.product ? getProductDisplay(products, item.product) : "";
 
   const floorOptions = useMemo(() => {
     const listed = FLOOR_ORDER.filter(Boolean);
@@ -211,8 +205,7 @@ export function PaintItemRow({
             value={productDisplay}
             products={products}
             ariaLabel={`Product row ${index + 1}`}
-            onChange={(productName, manufacturer, display) => {
-              setProductDisplay(display);
+            onChange={(productName, manufacturer) => {
               onChange({ product: productName, manufacturer });
             }}
           />

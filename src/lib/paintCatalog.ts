@@ -206,11 +206,12 @@ export function groupProductsForSelect(
     }));
 }
 
+/** Trailing `(SW)` / `(PPG)` manufacturer suffix from a select display value. */
+const TRAILING_MFR_DISPLAY = /\s*\(([^)]+)\)\s*$/;
+
 export function extractProductName(display: string): string {
-  if (display.includes("(") && display.endsWith(")")) {
-    return display.split("(")[0]!.trim();
-  }
-  return display.trim();
+  const trimmed = display.trim();
+  return trimmed.replace(TRAILING_MFR_DISPLAY, "").trim();
 }
 
 export function getProductDisplay(products: PaintProduct[], productName: string): string {
@@ -220,8 +221,32 @@ export function getProductDisplay(products: PaintProduct[], productName: string)
 }
 
 export function extractManufacturerFromDisplay(display: string): string {
-  if (!display || !display.includes("(") || !display.includes(")")) return "";
-  return display.split("(").pop()!.replace(")", "").trim();
+  const trimmed = display.trim();
+  return trimmed.match(TRAILING_MFR_DISPLAY)?.[1]?.trim() ?? "";
+}
+
+/** Map an imported / typed product string onto the catalog when possible. */
+export function matchCatalogPaintProduct(
+  products: PaintProduct[],
+  rawProduct: string,
+  rawManufacturer = "",
+): { product: string; manufacturer: string } {
+  const productName = extractProductName(rawProduct);
+  const manufacturer = extractManufacturerFromDisplay(rawProduct) || rawManufacturer.trim();
+  if (!productName) return { product: "", manufacturer };
+  const lower = productName.toLowerCase();
+  const mfrLower = manufacturer.toLowerCase();
+  const exact = products.find(
+    (p) =>
+      p.product.toLowerCase() === lower &&
+      (!mfrLower || p.manufacturer.toLowerCase() === mfrLower),
+  );
+  if (exact) return exact;
+  const byName = products.find((p) => p.product.toLowerCase() === lower);
+  if (byName) {
+    return { product: byName.product, manufacturer: manufacturer || byName.manufacturer };
+  }
+  return { product: productName, manufacturer };
 }
 
 export function manufacturerForProduct(products: PaintProduct[], productName: string): string {

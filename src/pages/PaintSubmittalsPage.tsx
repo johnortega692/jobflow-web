@@ -20,11 +20,12 @@ import {
 } from "../lib/paintCatalog";
 import {
   applyPaintAutoLabels,
+  dropPaintPlaceholders,
   paintItemsReadiness,
   paintRowAutoLabel,
 } from "../lib/paintItemLabels";
 import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
-import type { ExtractedPaintRow } from "../lib/paintImageImport";
+import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/paintImageImport";
 import { applyTransmittalContractIfDistinct, gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
@@ -72,10 +73,6 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
   const [row] = next.splice(from, 1);
   next.splice(to, 0, row!);
   return next;
-}
-
-function paintItemHasContent(item: PaintItem): boolean {
-  return Boolean(item.label.trim() || item.color.trim() || item.product.trim());
 }
 
 export function PaintSubmittalsPage() {
@@ -419,29 +416,22 @@ export function PaintSubmittalsPage() {
 
   function confirmGapsIfNeeded(): boolean {
     const readiness = paintItemsReadiness(draft.items);
-    if (readiness.complete || (readiness.missingColor === 0 && readiness.missingSheen === 0)) {
-      return true;
-    }
+    if (readiness.complete) return true;
     return window.confirm(readiness.confirmMessage);
   }
 
   function onImported(rows: ExtractedPaintRow[]) {
-    const mapped: PaintItem[] = rows.map((r) => ({
-      label: r.label,
-      floor: "",
-      manufacturer: r.manufacturer,
-      color: r.color,
-      product: "",
-      sheen: "",
-      previous_color: "",
+    const mapped = paintItemsFromExtractedRows(rows, products).map((item) => ({
+      ...item,
       spec_scope: "primary" as const,
     }));
     updateDraft((d) => {
-      const existing = d.items.filter(paintItemHasContent);
+      const existing = dropPaintPlaceholders(d.items);
       const merged = [...existing, ...mapped];
+      const items = merged.length ? merged : [emptyPaintItem()];
       return {
         ...d,
-        items: merged.length ? merged : [emptyPaintItem()],
+        items: withMaybeAutoLabels(items, d.auto_label !== false),
       };
     });
     setError(null);
@@ -451,7 +441,7 @@ export function PaintSubmittalsPage() {
     const mapped = items.length ? items.map((i) => ({ ...emptyPaintItem(), ...i })) : [emptyPaintItem()];
     updateDraft((d) => ({
       ...d,
-      items: replace ? mapped : [...d.items.filter((i) => i.label || i.color || i.product), ...mapped],
+      items: replace ? mapped : [...dropPaintPlaceholders(d.items), ...mapped],
     }));
     setHistoryOpen(false);
     setStatus(`Loaded ${items.length} item(s) from history. Save to keep changes.`);
@@ -461,7 +451,7 @@ export function PaintSubmittalsPage() {
     const mapped = items.length ? items.map((i) => ({ ...emptyPaintItem(), ...i })) : [emptyPaintItem()];
     updateDraft((d) => ({
       ...d,
-      items: replace ? mapped : [...d.items.filter((i) => i.label || i.color || i.product), ...mapped],
+      items: replace ? mapped : [...dropPaintPlaceholders(d.items), ...mapped],
       brushout_prep: link,
     }));
     setStatus(`Imported ${items.length} line(s) from prep ${link.prep_id}. Save to keep changes.`);
@@ -871,7 +861,9 @@ export function PaintSubmittalsPage() {
           </p>
           <p
             className={`small paint-items-readiness${
-              itemsReadiness.missingColor > 0 || itemsReadiness.missingSheen > 0
+              itemsReadiness.missingColor > 0 ||
+              itemsReadiness.missingSheen > 0 ||
+              itemsReadiness.missingProduct > 0
                 ? " paint-items-readiness--warn"
                 : itemsReadiness.count > 0
                   ? " paint-items-readiness--ok"
@@ -888,10 +880,10 @@ export function PaintSubmittalsPage() {
           products={products}
           sheenOptions={sheens}
           autoLabel={autoLabel}
-          nextAutoLabelIndex={draft.items.filter(paintItemHasContent).length || draft.items.length}
+          nextAutoLabelIndex={dropPaintPlaceholders(draft.items).length}
           onAdd={(items, opts) =>
             updateDraft((d) => {
-              const kept = d.items.filter((i) => i.label || i.color || i.product);
+              const kept = dropPaintPlaceholders(d.items);
               const merged = [...kept, ...items];
               if (opts.turnOffAutoLabel) {
                 return { ...d, auto_label: false, items: merged };

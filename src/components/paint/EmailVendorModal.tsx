@@ -149,6 +149,8 @@ export function EmailVendorModal({
           item,
           index,
           line: brushoutColorLine(includeItemFloor ? item : { ...item, floor: "" }),
+          productLine: [item.product.trim(), item.sheen.trim()].filter(Boolean).join(" · "),
+          missingProduct: Boolean(item.color.trim()) && !item.product.trim(),
           status: brushoutOrderLineStatus(item, previouslyOrderedItems),
         }))
         .filter((row) => row.line),
@@ -198,6 +200,10 @@ export function EmailVendorModal({
 
   const hasPreviousOrder = previouslyOrderedItems.some((item) => item.color.trim());
   const selectedCount = colorRows.filter((row) => selected.has(row.index)).length;
+  const missingProductCount = useMemo(
+    () => orderItems.filter((item) => item.color.trim() && !item.product.trim()).length,
+    [orderItems],
+  );
 
   const plainBody = useMemo(
     () => {
@@ -432,7 +438,7 @@ export function EmailVendorModal({
               {colorRows.length === 0 ? (
                 <p className="muted small">No paint colors on this list yet.</p>
               ) : (
-                colorRows.map(({ index, line, status }) => (
+                colorRows.map(({ index, line, productLine, missingProduct, status }) => (
                   <label key={`brushout-color-${index}`} className="brushouts-send-row check" role="listitem">
                     <input
                       type="checkbox"
@@ -441,6 +447,11 @@ export function EmailVendorModal({
                     />
                     <span className="brushouts-send-row-main">
                       <span className="brushouts-send-color">{line}</span>
+                      <span
+                        className={`brushouts-send-meta${missingProduct ? " brushouts-send-meta--missing" : ""}`}
+                      >
+                        {missingProduct ? "Missing product" : productLine || "No product / sheen"}
+                      </span>
                     </span>
                     {hasPreviousOrder ? <span className={orderStatusClass(status)}>{ORDER_STATUS_LABEL[status]}</span> : null}
                   </label>
@@ -450,7 +461,15 @@ export function EmailVendorModal({
           </fieldset>
         )}
 
-        {isAtticStock ? (
+        {missingProductCount > 0 ? (
+          <div className="banner banner-warn">
+            {missingProductCount} selected color{missingProductCount === 1 ? "" : "s"}{" "}
+            {missingProductCount === 1 ? "has" : "have"} no product. The vendor email will show a blank Product
+            column for {missingProductCount === 1 ? "that row" : "those rows"}.
+          </div>
+        ) : null}
+
+        {vendor ? (
           <div className="stack">
             <p className="paint-col-head">Message preview</p>
             <div
@@ -464,11 +483,7 @@ export function EmailVendorModal({
             </p>
           </div>
         ) : (
-          <p className="muted small">
-            Formatted HTML is copied automatically — compose opens <strong>empty</strong>. Click in the body and press{" "}
-            <strong>Ctrl+V</strong> for tables{includeSignature ? " and signature" : ""}. Use <strong>Copy HTML</strong>{" "}
-            to copy again.
-          </p>
+          <p className="muted small">Select a vendor to preview the email table, including Product and Sheen.</p>
         )}
 
         {message && <div className="banner banner-ok">{message}</div>}

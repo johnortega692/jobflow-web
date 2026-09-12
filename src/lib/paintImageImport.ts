@@ -1,12 +1,33 @@
 /** Paint schedule image import — client helpers. */
 
+import { emptyPaintItem, type PaintItem } from "../types/tradeDocuments";
 import { authFetch } from "./apiAuth";
+import { matchCatalogPaintProduct, type PaintProduct } from "./paintCatalog";
 
 export type ExtractedPaintRow = {
   label: string;
   manufacturer: string;
   color: string;
+  product?: string;
+  sheen?: string;
 };
+
+export function paintItemsFromExtractedRows(
+  rows: ExtractedPaintRow[],
+  products: PaintProduct[] = [],
+): PaintItem[] {
+  return rows.map((row) => {
+    const matched = matchCatalogPaintProduct(products, row.product ?? "", row.manufacturer);
+    return {
+      ...emptyPaintItem(),
+      label: row.label,
+      manufacturer: matched.manufacturer || row.manufacturer,
+      color: row.color,
+      product: matched.product,
+      sheen: (row.sheen ?? "").trim(),
+    };
+  });
+}
 
 async function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> {
   const mediaType = file.type || "image/jpeg";

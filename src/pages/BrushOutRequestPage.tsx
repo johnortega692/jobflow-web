@@ -20,6 +20,7 @@ import {
   upsertPrepInList,
   type BrushoutPrepDraft,
 } from "../lib/brushoutPrepStorage";
+import { dropPaintPlaceholders } from "../lib/paintItemLabels";
 import {
   loadPaintColors,
   loadPaintProducts,
@@ -27,7 +28,7 @@ import {
   type PaintColorsDb,
   type PaintProduct,
 } from "../lib/paintCatalog";
-import type { ExtractedPaintRow } from "../lib/paintImageImport";
+import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/paintImageImport";
 import { vendorDisplayName } from "../lib/paintVendorEmail";
 import { loadPaintUserSettings } from "../lib/paintUserSettings";
 import { emptyPaintItem, type PaintItem } from "../types/tradeDocuments";
@@ -132,17 +133,9 @@ export function BrushOutRequestPage() {
   }
 
   function onImported(rows: ExtractedPaintRow[]) {
-    const mapped: PaintItem[] = rows.map((r) => ({
-      label: r.label,
-      floor: "",
-      manufacturer: r.manufacturer,
-      color: r.color,
-      product: "",
-      sheen: "",
-      previous_color: "",
-    }));
+    const mapped = paintItemsFromExtractedRows(rows, products);
     setDraft((d) => {
-      const existing = d.items.filter(paintItemHasContent);
+      const existing = dropPaintPlaceholders(d.items);
       const merged = [...existing, ...mapped];
       return { ...d, items: merged.length ? merged : [emptyPaintItem()] };
     });
@@ -445,11 +438,11 @@ export function BrushOutRequestPage() {
           products={products}
           sheenOptions={sheens}
           autoLabel={false}
-          nextAutoLabelIndex={draft.items.filter(paintItemHasContent).length}
+          nextAutoLabelIndex={dropPaintPlaceholders(draft.items).length}
           onAdd={(items) =>
             setDraft((d) => ({
               ...d,
-              items: [...d.items.filter(paintItemHasContent), ...items],
+              items: [...dropPaintPlaceholders(d.items), ...items],
             }))
           }
           onClose={() => setBulkOpen(false)}

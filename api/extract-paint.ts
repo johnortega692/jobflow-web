@@ -34,6 +34,8 @@ type ExtractedPaintRow = {
   label: string;
   manufacturer: string;
   color: string;
+  product: string;
+  sheen: string;
 };
 
 type PaintBody = { image_base64?: string; media_type?: string };
@@ -75,21 +77,25 @@ function normalizeRow(raw: Record<string, unknown>): ExtractedPaintRow | null {
     }
   }
   if (manufacturer) manufacturer = abbreviateManufacturer(manufacturer);
+  const product = String(raw.product ?? "").trim();
+  const sheen = String(raw.sheen ?? "").trim();
 
-  return { label, manufacturer, color };
+  return { label, manufacturer, color, product, sheen };
 }
 
 const PROMPT = `Look at this image of a paint schedule or paint color table. Extract every paint item you can see.
 
-For each item return ONLY:
+For each item return:
 - label: item ID (e.g. PT-1, P-15, PT-02)
 - manufacturer: paint manufacturer if visible (e.g. Benjamin Moore, Sherwin-Williams, Dunn-Edwards, Kelly Moore, PPG, Behr)
 - color: color name and/or code WITHOUT the manufacturer prefix (e.g. "Simply White 2143-70", "Dark & Stormy DET572")
+- product: paint product / system name if a product column is visible (e.g. SuperPaint Exterior, Speedhide Zero). Use "" if not shown. Do not invent a product.
+- sheen: finish if visible (e.g. Satin, Eggshell, Semi-Gloss). Use "" if not shown. Do not invent a sheen.
 
-Do NOT extract product line, sheen/finish, floor, or location. Ignore those columns even if they are in the image.
+Ignore floor and location columns.
 
 Return ONLY a JSON array of objects with those keys. No markdown. Example:
-[{"label":"PT-1","manufacturer":"Kelly Moore","color":"Whitest White KMW43"}]`;
+[{"label":"PT-1","manufacturer":"Kelly Moore","color":"Whitest White KMW43","product":"Super Hide","sheen":"Eggshell"}]`;
 
 function parseBody(raw: unknown): PaintBody {
   if (raw && typeof raw === "object" && !Buffer.isBuffer(raw)) {
