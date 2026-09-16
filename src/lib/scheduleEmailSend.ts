@@ -1,6 +1,6 @@
 import { sendVendorEmailAsOrderEmailViaGas } from "./sendOrderEmailGas";
+import { sendVendorEmailFromApp, type SendVendorEmailRequest } from "./sendVendorEmail";
 import type { GasEmailPost } from "./sendVendorEmailGasDirect";
-import type { SendVendorEmailRequest } from "./sendVendorEmail";
 
 export type ScheduleEmailUrls = {
   fieldOrderUrl: string;
@@ -19,18 +19,21 @@ export function hasScheduleEmailChannel(urls: ScheduleEmailUrls, resendOk = fals
 }
 
 /**
- * Browser "Send now" poster: Field Request Order Gmail.
- * (No Resend from the browser — that requires the authenticated /api/send-vendor-email path.)
+ * Browser "Send now": Resend (`EMAIL_FROM` domain) first, then Field Request Gmail.
  */
 export function createBrowserScheduleEmailPoster(urls: ScheduleEmailUrls): GasEmailPost {
   const fieldUrl = urls.fieldOrderUrl.trim();
 
   return async (_baseUrl, payload: SendVendorEmailRequest) => {
-    if (fieldUrl) {
-      return await sendVendorEmailAsOrderEmailViaGas(fieldUrl, payload);
+    try {
+      return await sendVendorEmailFromApp(payload);
+    } catch (resendErr) {
+      if (!fieldUrl) throw resendErr;
+      try {
+        return await sendVendorEmailAsOrderEmailViaGas(fieldUrl, payload);
+      } catch {
+        throw resendErr;
+      }
     }
-    throw new Error(
-      "Set Field Request Order URL in Settings → Mailing Settings (same URL Field Tools uses).",
-    );
   };
 }

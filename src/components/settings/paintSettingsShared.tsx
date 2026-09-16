@@ -25,6 +25,7 @@ import {
   createBrowserScheduleEmailPoster,
   resolveScheduleEmailUrls,
 } from "../../lib/scheduleEmailSend";
+import { JOBFLOW_SCHEDULE_FROM_NAME } from "../../lib/jobflowScheduleFrom";
 import type { LetterheadSettings } from "../../types/letterheadSettings";
 import {
   DEFAULT_TRACKER_EMAIL_SCHEDULE,
@@ -37,13 +38,6 @@ function scheduleSendChannel(data: PaintUserSettings) {
   const gasPost = createBrowserScheduleEmailPoster(urls);
   const gasUrl = urls.fieldOrderUrl;
   return { urls, gasPost, gasUrl };
-}
-
-function missingScheduleEmailError(urls: { fieldOrderUrl: string }): string {
-  if (!urls.fieldOrderUrl) {
-    return "Set Field Request Order URL in Settings → Mailing Settings (same URL Field Tools uses for emails).";
-  }
-  return "";
 }
 
 export function usePaintSettingsData(onDirtyChange?: (dirty: boolean) => void) {
@@ -105,7 +99,7 @@ export function WeeklyDigestSection({
   const [digestMessage, setDigestMessage] = useState<string | null>(null);
   const [digestError, setDigestError] = useState<string | null>(null);
 
-  const { urls, gasPost, gasUrl } = scheduleSendChannel(data);
+  const { gasPost, gasUrl } = scheduleSendChannel(data);
   const profile = profileFromSettings(letterhead);
   const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
@@ -115,12 +109,6 @@ export function WeeklyDigestSection({
     setDigestMessage(null);
     setDigestError(null);
 
-    const missing = missingScheduleEmailError(urls);
-    if (missing) {
-      setDigestError(missing);
-      setDigestSending(null);
-      return;
-    }
     if (!primaryEmail) {
       setDigestError("Set email on your Profile (Settings → Profile & letterhead).");
       setDigestSending(null);
@@ -137,7 +125,7 @@ export function WeeklyDigestSection({
           primaryName: profile.name.trim() || "PM",
           companyName,
           companyAddress: letterhead.company_address,
-          fromName: `${companyName} Dashboard`.trim(),
+          fromName: JOBFLOW_SCHEDULE_FROM_NAME,
           gasUrl,
           logoUrl: letterhead.logo_url,
           gasPost,
@@ -155,7 +143,7 @@ export function WeeklyDigestSection({
           primaryName: profile.name.trim() || "PM",
           companyName,
           companyAddress: letterhead.company_address,
-          fromName: `${companyName} Dashboard`.trim(),
+          fromName: JOBFLOW_SCHEDULE_FROM_NAME,
           gasUrl,
           logoUrl: letterhead.logo_url,
           gasPost,
@@ -224,20 +212,13 @@ export function BillingDueDigestSection({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { urls, gasPost, gasUrl } = scheduleSendChannel(data);
+  const { gasPost, gasUrl } = scheduleSendChannel(data);
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
 
   async function sendNow() {
     setSending(true);
     setMessage(null);
     setError(null);
-
-    const missing = missingScheduleEmailError(urls);
-    if (missing) {
-      setError(missing);
-      setSending(false);
-      return;
-    }
 
     try {
       const { projects, error: loadError } = await loadProjectsForBillingDueDigest();
@@ -246,7 +227,7 @@ export function BillingDueDigestSection({
         projects,
         companyName,
         companyAddress: letterhead.company_address,
-        fromName: `${companyName} Dashboard`.trim(),
+        fromName: JOBFLOW_SCHEDULE_FROM_NAME,
         gasUrl,
         logoUrl: letterhead.logo_url,
         gasPost,
@@ -299,7 +280,7 @@ export function FollowUpRemindersSection({
   const [status, setStatus] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
-  const { urls, gasPost, gasUrl } = scheduleSendChannel(data);
+  const { gasPost, gasUrl } = scheduleSendChannel(data);
   const profile = profileFromSettings(letterhead);
   const primaryEmail = profile.email.trim();
   const companyName = brandingCompanyName.trim() || letterhead.company_name.trim() || "JobFlow";
@@ -309,12 +290,6 @@ export function FollowUpRemindersSection({
     setStatus(null);
     setStatusError(null);
 
-    const missing = missingScheduleEmailError(urls);
-    if (missing) {
-      setStatusError(missing);
-      setSending(null);
-      return;
-    }
     if (!primaryEmail) {
       setStatusError("Set email on your Profile (Settings → Profile & letterhead).");
       setSending(null);
@@ -331,7 +306,7 @@ export function FollowUpRemindersSection({
         primaryName: profile.name.trim() || "PM",
         companyName,
         companyAddress: letterhead.company_address,
-        fromName: `${companyName} Dashboard`.trim(),
+        fromName: JOBFLOW_SCHEDULE_FROM_NAME,
         gasUrl,
         logoUrl: letterhead.logo_url,
         gasPost,

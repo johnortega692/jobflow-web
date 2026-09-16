@@ -22,7 +22,7 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
    | Name | Value |
    |------|--------|
    | `RESEND_API_KEY` | from [resend.com](https://resend.com) → API Keys |
-   | `EMAIL_FROM` | `Your Name <noreply@yourdomain.com>` — domain must be verified in Resend |
+   | `EMAIL_FROM` | `JobFlow <jobflow@ortegabuilt.com>` — domain must be verified in Resend |
 
    Optional (letterhead on PDF):
 
@@ -41,7 +41,7 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
 
    Optional: set `TRACKER_CRON_USER_ID` to a Supabase user UUID to force cron for one account only (otherwise the shared org schedule in **Settings → Paint & email → Scheduled emails** runs using **Notification primary email**).
 
-   Optional: set `GAS_SEND_EMAIL_URL` to the same Field Request Order Apps Script URL used by Field Tools (Supabase edge secret). Cron prefers this / Settings → **Field Request Order URL** with `sendOrderEmail`, then Dashboard Web App URL, then Resend.
+   Optional: set `GAS_SEND_EMAIL_URL` to the same Field Request Order Apps Script URL used by Field Tools (Supabase edge secret). **Scheduled JobFlow digests send via Resend** using `EMAIL_FROM` (verify `ortegabuilt.com` in Resend, then set `JobFlow <jobflow@ortegabuilt.com>`). Field Request Gmail is the fallback. Field Tools vendor orders still use Gmail `sendOrderEmail`.
 
    Cron schedule (UTC, configured in `vercel.json`): daily follow-ups at **15:00 UTC**; weekly digests **Fridays 15:00 UTC**; site-ready digest **Mondays 15:00 UTC** (~7:00 AM US Pacific in standard time). Enable which emails run in **Settings → Paint & email → Scheduled emails** (master switch plus **Daily follow-ups** and **Weekly digest**).
 
@@ -96,7 +96,7 @@ Add to `.env.local` for **Send email** in dev:
 
 ```
 RESEND_API_KEY=re_...
-EMAIL_FROM=John Ortega <noreply@yourdomain.com>
+EMAIL_FROM=JobFlow <jobflow@ortegabuilt.com>
 ```
 
 Only **one** terminal needed. PDF works via browser print — no `api\dev.bat`.

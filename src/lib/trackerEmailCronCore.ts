@@ -1,5 +1,6 @@
 import { normalizeLetterheadSettings } from "../types/letterheadSettings.js";
 import { createCronEmailPoster, isResendConfigured } from "./cronEmailSend.js";
+import { JOBFLOW_SCHEDULE_FROM_NAME } from "./jobflowScheduleFrom.js";
 import { loadAllProjectsAdmin } from "./loadAllProjectsAdmin.js";
 import { loadEffectiveUserSettingsAdmin, loadOrgSettingsBlobAdmin } from "./orgSettingsAdmin.js";
 import { loadPaintUserSettingsFromRaw } from "./paintUserSettingsLoad.js";
@@ -121,7 +122,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         primaryName,
         companyName,
         companyAddress: letterhead.company_address,
-        fromName: `${companyName} Dashboard`.trim(),
+        fromName: JOBFLOW_SCHEDULE_FROM_NAME,
         gasUrl: urls.fieldOrderUrl || "resend",
         logoUrl: letterhead.logo_url,
         gasPost,

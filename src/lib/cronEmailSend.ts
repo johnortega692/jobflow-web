@@ -13,7 +13,7 @@ export type CronEmailPosterOptions = {
 };
 
 /**
- * Cron email channel: Field Request Order Gmail, then Resend.
+ * Cron email channel: Resend first (custom From domain), then Field Request Gmail.
  */
 export function createCronEmailPoster(options: CronEmailPosterOptions | string): GasEmailPost {
   const fieldUrl =
@@ -21,22 +21,22 @@ export function createCronEmailPoster(options: CronEmailPosterOptions | string):
   const resendOk = isResendConfigured();
 
   return async (_baseUrl, payload: SendVendorEmailRequest) => {
-    if (fieldUrl) {
+    if (resendOk) {
       try {
-        return await sendVendorEmailAsOrderEmailDirect(fieldUrl, payload);
-      } catch (fieldErr) {
-        if (!resendOk) throw fieldErr;
         await runSendVendorEmail(payload);
-        return "sent-resend-fallback";
+        return "sent-resend";
+      } catch (resendErr) {
+        if (!fieldUrl) throw resendErr;
+        return await sendVendorEmailAsOrderEmailDirect(fieldUrl, payload);
       }
     }
 
-    if (!resendOk) {
-      throw new Error(
-        "Missing Field Request Order URL, and Resend is not configured (RESEND_API_KEY + EMAIL_FROM).",
-      );
+    if (fieldUrl) {
+      return await sendVendorEmailAsOrderEmailDirect(fieldUrl, payload);
     }
-    await runSendVendorEmail(payload);
-    return "sent-resend";
+
+    throw new Error(
+      "Resend is not configured (RESEND_API_KEY + EMAIL_FROM), and Field Request Order URL is missing.",
+    );
   };
 }
