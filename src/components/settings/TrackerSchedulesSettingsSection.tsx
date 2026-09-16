@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { patchOrgSettings } from "../../lib/budgetLibrary";
+import { emailAddressWarning } from "../../lib/emailAddressWarning";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
 import { SharedSettingsNotice } from "./SharedSettingsNotice";
 import {
@@ -62,6 +63,8 @@ export function TrackerSchedulesSettingsSection({
   if (loading) return <p className="muted">Loading schedule settings…</p>;
   if (!data || !user?.id) return null;
 
+  const notifyEmailWarning = emailAddressWarning(data.notification_primary_email);
+
   async function onSave(e: FormEvent) {
     e.preventDefault();
     await persist();
@@ -90,7 +93,10 @@ export function TrackerSchedulesSettingsSection({
         <label>
           Notification primary email (scheduled digests To)
           <input
-            type="email"
+            type="text"
+            inputMode="email"
+            autoComplete="email"
+            spellCheck={false}
             value={data.notification_primary_email}
             disabled={readOnly}
             onChange={(e) =>
@@ -104,6 +110,11 @@ export function TrackerSchedulesSettingsSection({
             Scheduled digests will not send until this email is set.
           </p>
         )}
+        {notifyEmailWarning ? (
+          <div className="banner banner-warn" role="status">
+            {notifyEmailWarning} You can still save — fix it if this address should receive mail.
+          </div>
+        ) : null}
         {!(data.google_urls.field_request_order ?? "").trim() ? (
           <p className="muted small">
             Field Request Order URL is empty (Settings → Mailing Settings). Digests and paint tracker

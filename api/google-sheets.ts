@@ -24,6 +24,17 @@ function parseBody(raw: unknown): GoogleSheetsBody {
   return {};
 }
 
+function readAuthHeader(headers: VercelRequest["headers"] | undefined): string | undefined {
+  if (!headers || typeof headers !== "object") return undefined;
+  const bag = headers as Record<string, unknown> & { get?: (key: string) => string | null };
+  if (typeof bag.get === "function") {
+    return bag.get("authorization") ?? bag.get("Authorization") ?? undefined;
+  }
+  const raw = bag.authorization ?? bag.Authorization;
+  if (Array.isArray(raw)) return raw[0];
+  return typeof raw === "string" ? raw : undefined;
+}
+
 async function verifySupabaseUser(authHeader: string | undefined): Promise<void> {
   const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
   if (!token) throw new Error("Sign in required.");
@@ -50,8 +61,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const auth = req.headers?.authorization;
-    const authStr = Array.isArray(auth) ? auth[0] : auth;
+    const authStr = readAuthHeader(req.headers);
     await verifySupabaseUser(authStr);
 
     const { url, method = "POST", query, payload } = parseBody(req.body);

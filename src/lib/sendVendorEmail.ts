@@ -1,5 +1,4 @@
-import { supabase } from "./supabase.js";
-
+import { authFetch } from "./apiAuth.js";
 import { sendVendorEmailViaGas } from "./sendVendorEmailGas.js";
 
 export type SendVendorEmailRequest = {
@@ -33,16 +32,8 @@ export async function sendVendorEmail(
 }
 
 export async function sendVendorEmailFromApp(payload: SendVendorEmailRequest): Promise<string> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
-  if (!token) throw new Error("Sign in required to send email.");
-
-  const res = await fetch("/api/send-vendor-email", {
+  const res = await authFetch("/api/send-vendor-email", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
     body: JSON.stringify(payload),
   });
 

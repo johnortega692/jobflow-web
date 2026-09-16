@@ -28,12 +28,10 @@ export function createBrowserScheduleEmailPoster(urls: ScheduleEmailUrls): GasEm
     try {
       return await sendVendorEmailFromApp(payload);
     } catch (resendErr) {
-      if (!fieldUrl) throw resendErr;
-      try {
-        return await sendVendorEmailAsOrderEmailViaGas(fieldUrl, payload);
-      } catch {
-        throw resendErr;
-      }
+      const msg = resendErr instanceof Error ? resendErr.message : "";
+      const resendMissing = /RESEND_API_KEY|EMAIL_FROM|not configured/i.test(msg);
+      if (!resendMissing || !fieldUrl) throw resendErr;
+      return await sendVendorEmailAsOrderEmailViaGas(fieldUrl, payload);
     }
   };
 }
