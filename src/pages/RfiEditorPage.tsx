@@ -1,5 +1,10 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import {
+  useUnsavedNavigation,
+  useUnsavedNavigationGuard,
+} from "../contexts/UnsavedNavigationContext";
+import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
 import { DateInput } from "../components/DateInput";
 import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import { RfiAiAssistModal } from "../components/rfi/RfiAiAssistModal";
@@ -39,7 +44,6 @@ import {
 } from "../lib/jobInfo";
 import {
   defaultRfiFormData,
-  normalizeProject,
   normalizeRfiFormData,
   type Json,
   type ProjectForm,
@@ -47,6 +51,19 @@ import {
   type RfiAttachedFile,
   type RfiFormData,
 } from "../types/database";
+
+type RfiEditorDraft = {
+  rfiNumber: string;
+  subject: string;
+  status: RfiWorkflowStatus;
+  form: RfiFormData;
+  notesOpen: boolean;
+};
+
+type ProjectOutlet = { project: ProjectForm; projectId: string };
+
+/** Survives leaving the editor (project nav / breadcrumb) until save, discard, or delete. */
+const rfiEditorDrafts = new Map<string, RfiEditorDraft>();
 
 function parseRfiData(raw: unknown): RfiFormData {
   return normalizeRfiFormData(raw);
@@ -108,13 +125,15 @@ function dueTimeline(dueDate: string): { label: string; tone: "neutral" | "soon"
 export function RfiEditorPage() {
   const { branding, profile } = useLetterhead();
   const navigate = useNavigate();
-  const { projectId, rfiId } = useParams<{ projectId: string; rfiId: string }>();
-  const [project, setProject] = useState<ProjectForm | null>(null);
-  const [rfiNumber, setRfiNumber] = useState("001");
-  const [subject, setSubject] = useState("");
-  const [status, setStatus] = useState<RfiWorkflowStatus>(RFI_STATUS_OPEN);
-  const [form, setForm] = useState<RfiFormData>(defaultRfiFormData());
-  const [loading, setLoading] = useState(true);
+  const { requestNavigation } = useUnsavedNavigation();
+  const { project, projectId } = useOutletContext<ProjectOutlet>();
+  const { rfiId } = useParams<{ rfiId: string }>();
+  const seed = rfiId ? rfiEditorDrafts.get(rfiId) : undefined;
+  const [rfiNumber, setRfiNumber] = useState(seed?.rfiNumber ?? "001");
+  const [subject, setSubject] = useState(seed?.subject ?? "");
+  const [status, setStatus] = useState<RfiWorkflowStatus>(seed?.status ?? RFI_STATUS_OPEN);
+  const [form, setForm] = useState<RfiFormData>(seed?.form ?? defaultRfiFormData());
+  const [loading, setLoading] = useState(!seed);
   const [saving, setSaving] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -122,36 +141,63 @@ export function RfiEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [aiAssistOpen, setAiAssistOpen] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(seed?.notesOpen ?? false);
+  const [loadedRfiId, setLoadedRfiId] = useState<string | null>(seed && rfiId ? rfiId : null);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
+  const dirtyState = useMemo(
+    () => ({ rfiNumber, subject, status, form }),
+    [rfiNumber, subject, status, form],
+  );
+  const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
-      if (!projectId || !rfiId) return;
-      setLoading(true);
-      const [projRes, rfiRes] = await Promise.all([
-        supabase.from("projects").select("*").eq("id", projectId).single(),
-        supabase.from("rfis").select("*").eq("id", rfiId).single(),
-      ]);
+      if (!rfiId) return;
+      if (!rfiEditorDrafts.has(rfiId)) setLoading(true);
+      const rfiRes = await supabase.from("rfis").select("*").eq("id", rfiId).single();
+      if (cancelled) return;
       setLoading(false);
-      if (projRes.error || rfiRes.error) {
-        setError(projRes.error?.message ?? rfiRes.error?.message ?? "Load failed");
+      if (rfiRes.error) {
+        setError(rfiRes.error.message);
         return;
       }
-      setProject(normalizeProject(projRes.data));
+      const proj = projectRef.current;
       const rfi = rfiRes.data as Rfi;
-      setRfiNumber(rfi.rfi_number ?? "001");
-      setSubject(rfi.subject ?? "");
-      setStatus(normalizeRfiStatus(rfi.status));
-      const proj = normalizeProject(projRes.data);
-      const withProfile = applyRfiProfileDefaults(parseRfiData(rfi.data), profile);
+      const withProfile = applyRfiProfileDefaults(parseRfiData(rfi.data), profileRef.current);
       const withJobInfo = applyJobInfoToRfi(withProfile, proj.contractor, proj.jobInfo);
-      const nextForm = { ...withJobInfo, contract: coerceTransmittalContract(proj, withJobInfo.contract) };
-      setForm(nextForm);
-      setNotesOpen(Boolean(nextForm.impact_notes.trim()));
+      const loadedForm = { ...withJobInfo, contract: coerceTransmittalContract(proj, withJobInfo.contract) };
+      const saved = {
+        rfiNumber: rfi.rfi_number ?? "001",
+        subject: rfi.subject ?? "",
+        status: normalizeRfiStatus(rfi.status),
+        form: loadedForm,
+      };
+      const draft = rfiEditorDrafts.get(rfiId);
+      const next = draft ?? { ...saved, notesOpen: Boolean(loadedForm.impact_notes.trim()) };
+      setRfiNumber(next.rfiNumber);
+      setSubject(next.subject);
+      setStatus(next.status);
+      setForm(next.form);
+      setNotesOpen(next.notesOpen);
+      setLoadedRfiId(rfiId);
+      syncBaseline(saved);
     }
     void load();
-  }, [projectId, rfiId, profile]);
+    return () => {
+      cancelled = true;
+    };
+  }, [rfiId, syncBaseline]);
+
+  useEffect(() => {
+    if (loading || !rfiId || loadedRfiId !== rfiId) return;
+    rfiEditorDrafts.set(rfiId, { rfiNumber, subject, status, form, notesOpen });
+  }, [loading, rfiId, loadedRfiId, rfiNumber, subject, status, form, notesOpen]);
 
   useEffect(() => {
     if (notesOpen) notesTextareaRef.current?.focus();
@@ -160,6 +206,20 @@ export function RfiEditorPage() {
   function setField<K extends keyof RfiFormData>(key: K, value: RfiFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
+
+  const rememberSaved = useCallback(
+    (snapshot: { rfiNumber: string; subject: string; status: RfiWorkflowStatus; form: RfiFormData }) => {
+      if (rfiId) {
+        rfiEditorDrafts.set(rfiId, {
+          ...snapshot,
+          notesOpen: Boolean(snapshot.form.impact_notes.trim()) || notesOpen,
+        });
+      }
+      syncBaseline(snapshot);
+      setSavedAt(new Date().toLocaleTimeString());
+    },
+    [notesOpen, rfiId, syncBaseline],
+  );
 
   async function persistFormData(next: RfiFormData) {
     if (!rfiId) return;
@@ -170,7 +230,7 @@ export function RfiEditorPage() {
       })
       .eq("id", rfiId);
     if (err) throw new Error(err.message);
-    setSavedAt(new Date().toLocaleTimeString());
+    rememberSaved({ rfiNumber, subject, status, form: next });
     if (projectId) {
       await logProjectActivityEvent({
         projectId,
@@ -186,9 +246,8 @@ export function RfiEditorPage() {
     await persistFormData(next);
   }
 
-  async function onSave(e: FormEvent) {
-    e.preventDefault();
-    if (!rfiId) return;
+  const saveRfi = useCallback(async (): Promise<boolean> => {
+    if (!rfiId) return false;
     setSaving(true);
     setError(null);
     const { error: err } = await supabase
@@ -203,9 +262,9 @@ export function RfiEditorPage() {
     setSaving(false);
     if (err) {
       setError(err.message);
-      return;
+      return false;
     }
-    setSavedAt(new Date().toLocaleTimeString());
+    rememberSaved({ rfiNumber, subject, status, form });
     if (projectId) {
       await logProjectActivityEvent({
         projectId,
@@ -213,7 +272,36 @@ export function RfiEditorPage() {
         summary: `RFI #${rfiNumber}${subject.trim() ? ` — ${subject.trim()}` : ""} saved`,
       });
     }
+    return true;
+  }, [form, projectId, rememberSaved, rfiId, rfiNumber, status, subject]);
+
+  async function onSave(e: FormEvent) {
+    e.preventDefault();
+    await saveRfi();
   }
+
+  const onDiscardUnsaved = useCallback(() => {
+    const baseline = readBaseline();
+    if (!baseline) return;
+    setRfiNumber(baseline.rfiNumber);
+    setSubject(baseline.subject);
+    setStatus(baseline.status);
+    setForm(baseline.form);
+    setNotesOpen(Boolean(baseline.form.impact_notes.trim()));
+    if (rfiId) {
+      rfiEditorDrafts.set(rfiId, {
+        ...baseline,
+        notesOpen: Boolean(baseline.form.impact_notes.trim()),
+      });
+    }
+  }, [readBaseline, rfiId]);
+
+  useUnsavedNavigationGuard({
+    sectionLabel: `RFI ${rfiNumber}`,
+    isDirty,
+    onSave: saveRfi,
+    onDiscard: onDiscardUnsaved,
+  });
 
   async function markStatus(next: RfiWorkflowStatus) {
     if (!rfiId || status === next) return;
@@ -237,7 +325,7 @@ export function RfiEditorPage() {
     }
     setForm(nextForm);
     setStatus(next);
-    setSavedAt(new Date().toLocaleTimeString());
+    rememberSaved({ rfiNumber, subject, status: next, form: nextForm });
     if (projectId) {
       await logProjectActivityEvent({
         projectId,
@@ -301,6 +389,7 @@ export function RfiEditorPage() {
       setError(err.message);
       return;
     }
+    rfiEditorDrafts.delete(rfiId);
     await logProjectActivityEvent({
       projectId,
       action: "rfi_deleted",
@@ -326,14 +415,22 @@ export function RfiEditorPage() {
   const ballInCourt = form.to_name.trim() || "—";
 
   if (loading) return <p className="muted">Loading RFI…</p>;
-  if (!project) return <p className="banner banner-error">{error ?? "Not found"}</p>;
 
   return (
     <div className="page stack rfi-editor-page">
       <header className="stack rfi-editor-header">
         <p className="breadcrumb rfi-editor-breadcrumb">
-          <Link to="/projects">Projects</Link> /{" "}
-          <Link to={`/projects/${projectId}/rfis`}>{project.job_number}</Link> / RFI {rfiNumber}
+          <Link to="/projects" onClick={(e) => requestNavigation("/projects", e)}>
+            Projects
+          </Link>{" "}
+          /{" "}
+          <Link
+            to={`/projects/${projectId}/rfis`}
+            onClick={(e) => requestNavigation(`/projects/${projectId}/rfis`, e)}
+          >
+            {project.job_number}
+          </Link>{" "}
+          / RFI {rfiNumber}
         </p>
         <div className="rfi-editor-title-row">
           <h1>{pageTitle}</h1>

@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { EmailAddressWarning } from "../EmailAddressWarning";
 import { patchOrgSettings, patchUserSettings } from "../../lib/budgetLibrary";
 import type { PaintVendor } from "../../lib/paintVendorEmail";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
@@ -150,6 +151,7 @@ export function PaintVendorsSettingsSection({
                         value={v.vendor_email}
                         onChange={(e) => setVendor(i, { vendor_email: e.target.value })}
                       />
+                      <EmailAddressWarning value={v.vendor_email} compact />
                     </td>
                     <td>
                       <input
@@ -157,6 +159,7 @@ export function PaintVendorsSettingsSection({
                         value={v.store_email ?? ""}
                         onChange={(e) => setVendor(i, { store_email: e.target.value })}
                       />
+                      <EmailAddressWarning value={v.store_email ?? ""} compact />
                     </td>
                     <td>
                       <button

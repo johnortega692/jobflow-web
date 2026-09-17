@@ -23,7 +23,7 @@ export function RfiAiAssistModal({
   const [aiSubject, setAiSubject] = useState("");
   const [aiQuestion, setAiQuestion] = useState("");
   const [aiSolution, setAiSolution] = useState("");
-  const [status, setStatus] = useState("Click Generate to refine your text with AI.");
+  const [status, setStatus] = useState("Click Generate to tighten your RFI wording.");
   const [statusOk, setStatusOk] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [hasResult, setHasResult] = useState(false);
@@ -52,7 +52,7 @@ export function RfiAiAssistModal({
       setAiSolution(result.solution_text ?? "");
       setHasResult(true);
       setStatusOk(true);
-      setStatus("Review the AI text, edit if needed, then click Apply to Form.");
+        setStatus("Review the tighter wording, edit if needed, then Apply to Form.");
     } catch (e) {
       setStatusOk(false);
       setStatus(e instanceof Error ? e.message : "AI assist failed");

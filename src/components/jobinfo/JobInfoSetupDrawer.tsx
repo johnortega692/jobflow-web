@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
+import { EmailAddressWarning } from "../EmailAddressWarning";
 import { useAuth } from "../../contexts/AuthContext";
 import { loadContactDirectory, lookupGeneralContractor } from "../../lib/contactDirectory";
 import { supabase } from "../../lib/supabase";
@@ -715,6 +716,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                   value={j.gc_pm_email}
                   onChange={(e) => setJobInfo({ gc_pm_email: e.target.value })}
                 />
+                <EmailAddressWarning value={j.gc_pm_email} compact />
               </label>
               <label>
                 GC superintendent
@@ -738,6 +740,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                   value={j.gc_super_email}
                   onChange={(e) => setJobInfo({ gc_super_email: e.target.value })}
                 />
+                <EmailAddressWarning value={j.gc_super_email} compact />
               </label>
               <label>
                 Estimator

@@ -12,47 +12,66 @@ export type RfiAssistResult = {
   solution_text?: string;
 };
 
+const ASSISTANT_PREFILL = "SUBJECT:";
+
 function buildPrompt(body: RfiAssistRequest, wantSolution: boolean): string {
   const proj = body.project_name?.trim() || "Unknown";
-  const existingSubj = body.subject?.trim() ?? "";
+  const existingSubj = body.subject?.trim() || "(none)";
   const existingReq = body.question?.trim() ?? "";
   const existingSol = body.solution_text?.trim() ?? "";
 
-  const subjectInstruction = existingSubj
-    ? `Current subject: "${existingSubj}" — suggest a concise refined subject line (under 80 characters).`
-    : "Suggest a concise RFI subject line (under 80 characters) that summarizes the request.";
-
-  let solutionInstruction = "";
-  let formatInstruction =
-    "Respond in this exact format:\nSUBJECT:\n[subject line]\n\nREQUEST:\n[request text]";
-
+  let solutionBlock = "";
   if (wantSolution) {
-    if (existingSol) {
-      solutionInstruction = `
-The contractor already has this proposed solution — refine it to match the rewritten request, keeping the same intent:
-"${existingSol}"`;
-    } else {
-      solutionInstruction = `
-Also write a PROPOSED SOLUTION — a brief contractor recommendation based on the request above.`;
-    }
-    formatInstruction =
-      "Respond in this exact format:\nSUBJECT:\n[subject line]\n\nREQUEST:\n[request text]\n\nSOLUTION:\n[solution text]";
+    solutionBlock = existingSol
+      ? `
+Also add:
+SOLUTION: [one sentence, tighten this contractor solution, introduce no new asks]
+"${existingSol}"`
+      : `
+Also add:
+SOLUTION: [one sentence, the most likely resolution, introduce no new asks]`;
   }
 
-  return `You are helping a painting/drywall subcontractor write RFI documents on commercial construction projects.
+  return `You rewrite a contractor's rough RFI into clean field-RFI wording.
+Keep their facts and their ask. Do not add scope.
 
 Project: ${proj}
 
-The contractor has entered this request:
----
-${existingReq}
----
+RULES
+- REQUEST = exactly two sentences, about 20–40 words total.
+  Sentence 1: what the documents show and the conflict.
+  Sentence 2: the specific ask, matching the draft's ask.
+- "Improve" means tighten and clarify, never expand. Rephrase the
+  draft's wording; a good result may be the same length. Don't copy
+  its sentences verbatim, and don't pad them.
+- Do NOT add manufacturer, product, sheen, spec section, or any ask
+  they did not make.
+- No filler: "however", "it is unclear", "so that work may proceed
+  accordingly", "please be advised".
+- SUBJECT: under 80 characters, names the conflict, replaces generic
+  titles like "New RFI".
 
-${subjectInstruction}
+EXAMPLE 1 — clean draft, comes back barely changed
+DRAFT: The finish schedule shows eggshell for the corridor walls but the paint spec says flat. Please confirm which sheen governs.
+CURRENT SUBJECT: New RFI
 
-Rewrite this as the REQUEST section of an RFI. Use professional construction industry language — clear, concise, and complete. Write 2–4 sentences. State what the drawings or finish schedule show, describe the conflict or question, and ask for a specific confirmation or direction. Do not use overly legal phrases. Do not over-simplify. Reference drawing or spec numbers if mentioned.${solutionInstruction}
+SUBJECT: Corridor Wall Sheen Conflict — Finish Schedule vs Paint Spec
+REQUEST: The finish schedule lists eggshell for the corridor walls while the paint spec calls for flat. Please confirm which sheen governs.
 
-${formatInstruction}`;
+EXAMPLE 2 — bloated draft, gets cut down
+DRAFT: We wanted to reach out because upon reviewing the documents it has come to our attention that the wallcovering schedule appears to indicate WC-3 for the lobby, however the interior elevations seem to show WC-5 in that same location, and it is currently unclear to us which one is actually correct, so we would kindly request that you please advise which wallcovering pattern is intended for the lobby so that we are able to proceed with our work accordingly.
+CURRENT SUBJECT: New RFI
+
+SUBJECT: Lobby Wallcovering Conflict — Schedule WC-3 vs Elevations WC-5
+REQUEST: The wallcovering schedule specifies WC-3 for the lobby while the interior elevations show WC-5 in the same location. Please confirm which pattern is intended.
+
+DRAFT: ${existingReq}
+CURRENT SUBJECT: ${existingSubj}
+${solutionBlock}
+
+Respond in exactly this format:
+SUBJECT: [subject line]
+REQUEST: [two sentences]${wantSolution ? "\nSOLUTION: [one sentence]" : ""}`;
 }
 
 export function parseRfiAssistResponse(
@@ -60,11 +79,14 @@ export function parseRfiAssistResponse(
   wantSolution: boolean,
 ): RfiAssistResult {
   let text = raw.trim();
-  let subject = "";
+  if (!/^SUBJECT:/im.test(text)) {
+    text = `${ASSISTANT_PREFILL}${text.startsWith(":") ? "" : " "}${text}`.trim();
+  }
 
+  let subject = "";
   if (/^SUBJECT:/im.test(text)) {
     const afterSubject = text.replace(/^SUBJECT:\s*/im, "");
-    const nextLabel = afterSubject.search(/\n(?:REQUEST|SOLUTION):/i);
+    const nextLabel = afterSubject.search(/\n\s*(?:REQUEST|SOLUTION):/i);
     if (nextLabel >= 0) {
       subject = afterSubject.slice(0, nextLabel).trim();
       text = afterSubject.slice(nextLabel + 1).trim();
@@ -112,7 +134,8 @@ export async function runRfiAssist(body: RfiAssistRequest): Promise<RfiAssistRes
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 1024,
+      max_tokens: 512,
+      temperature: 0.2,
       messages: [{ role: "user", content: buildPrompt(body, wantSolution) }],
     }),
   });

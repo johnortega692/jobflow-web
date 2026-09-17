@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { EmailAddressWarning } from "../EmailAddressWarning";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   DEFAULT_DELIVERY_SCHEDULING,
@@ -113,6 +114,7 @@ export function DeliverySettingsSection({
             value={data.warehouse_contact_email}
             onChange={(e) => patch({ warehouse_contact_email: e.target.value })}
           />
+          <EmailAddressWarning value={data.warehouse_contact_email} compact />
         </label>
         <label>
           Warehouse cell

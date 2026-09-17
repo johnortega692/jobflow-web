@@ -15,6 +15,7 @@ import { ProjectStaffSettingsSection } from "../components/settings/ProjectStaff
 import { PdfFieldRow } from "../components/settings/PdfFieldRow";
 import type { SettingsSectionActions } from "../components/settings/settingsSectionTypes";
 import { UnsavedChangesDialog } from "../components/UnsavedChangesDialog";
+import { EmailAddressWarning } from "../components/EmailAddressWarning";
 import { UserApprovalsSettingsSection } from "../components/settings/UserApprovalsSettingsSection";
 import { VendorArchitectSettingsSection } from "../components/settings/VendorArchitectSettingsSection";
 import { WorkOrderSettingsSection } from "../components/settings/WorkOrderSettingsSection";
@@ -429,6 +430,7 @@ export function SettingsPage() {
                   placeholder="you@company.com"
                   autoComplete="email"
                 />
+                <EmailAddressWarning value={profile.email} compact />
               </PdfFieldRow>
             </div>
           </section>

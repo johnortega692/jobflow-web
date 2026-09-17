@@ -17,8 +17,8 @@ export type FillTemplateResult = {
 };
 
 /**
- * Fill an Excel template in memory — values only. Patches worksheet XML inside the
- * zip so tables, AutoFilter, fonts, borders, and merges stay exactly as in the template.
+ * Fill an Excel template in memory — values only. .xlsx/.xlsm are patched in the zip;
+ * old .xls files are patched in place so borders, fonts, and merges stay.
  */
 export async function fillExcelTemplateBuffer(
   templateBytes: ArrayBuffer,
@@ -41,9 +41,13 @@ export async function fillExcelTemplateBuffer(
 }
 
 export function downloadFilledTemplate(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([bytes], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const lower = filename.toLowerCase();
+  const mime = lower.endsWith(".xlsm")
+    ? "application/vnd.ms-excel.sheet.macroEnabled.12"
+    : lower.endsWith(".xlsx")
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : "application/vnd.ms-excel";
+  const blob = new Blob([bytes], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

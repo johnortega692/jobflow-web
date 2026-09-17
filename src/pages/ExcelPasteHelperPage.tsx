@@ -117,7 +117,7 @@ export function ExcelPasteHelperPage() {
 
   async function onFillAndDownload() {
     if (!uploadedBytes || !uploadedName || !selectedConfig) {
-      setError("Choose a template type and upload the .xlsx from your job folder first.");
+      setError("Choose a template type and upload the Excel file from your job folder first.");
       return;
     }
     setFilling(true);
@@ -136,8 +136,11 @@ export function ExcelPasteHelperPage() {
         extras,
       );
       downloadFilledTemplate(result.bytes, filename);
+      const converted = /\.xls$/i.test(uploadedName) && !/\.xlsx$/i.test(uploadedName)
+        ? " Filled the old .xls in place so borders and formatting stay."
+        : "";
       setStatus(
-        `Downloaded ${filename} — ${result.filledCount} field${result.filledCount === 1 ? "" : "s"} written (merged cells included). Open in Excel.`,
+        `Downloaded ${filename} — ${result.filledCount} field${result.filledCount === 1 ? "" : "s"} written (merged cells included).${converted} Open in Excel.`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not fill template");
@@ -156,7 +159,7 @@ export function ExcelPasteHelperPage() {
         <h3>Fill template</h3>
         <ol className="excel-paste-steps muted small">
           <li>Pick the template type (matches desktop Settings → Templates).</li>
-          <li>Upload or drag-and-drop the .xlsx from your job folder.</li>
+          <li>Upload or drag-and-drop the Excel file from your job folder (.xlsx or older .xls).</li>
           <li>Click <strong>Fill &amp; Download</strong> — open the downloaded file in Excel.</li>
         </ol>
 

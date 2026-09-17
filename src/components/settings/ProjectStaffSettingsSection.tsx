@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { EmailAddressWarning } from "../EmailAddressWarning";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   defaultProjectStaffSettings,
@@ -61,11 +62,14 @@ function StaffContactTable({ title, description, contacts, readOnly, onChange, a
                     {readOnly ? (
                       c.email.trim() || "—"
                     ) : (
-                      <input
-                        type="email"
-                        value={c.email}
-                        onChange={(e) => patchContact(i, { email: e.target.value })}
-                      />
+                      <>
+                        <input
+                          type="email"
+                          value={c.email}
+                          onChange={(e) => patchContact(i, { email: e.target.value })}
+                        />
+                        <EmailAddressWarning value={c.email} compact />
+                      </>
                     )}
                   </td>
                   {!readOnly ? (

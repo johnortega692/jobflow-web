@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { EmailAddressWarning } from "../EmailAddressWarning";
 import { searchMaterialVendors } from "../../lib/contactDirectory";
 import type { MaterialVendor } from "../../types/contactDirectory";
 
@@ -94,6 +95,7 @@ export function VendorOrderModal({ title, vendors, onConfirm, onClose }: Props) 
         <label>
           Vendor email (optional)
           <input value={email} onChange={(e) => setEmail(e.target.value)} />
+          <EmailAddressWarning value={email} compact />
         </label>
         {error && <div className="banner banner-error">{error}</div>}
         <div className="row-gap wrap">

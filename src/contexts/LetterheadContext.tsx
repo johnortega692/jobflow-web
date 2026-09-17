@@ -40,13 +40,14 @@ const LetterheadContext = createContext<LetterheadContextValue | null>(null);
 
 export function LetterheadProvider({ children }: { children: ReactNode }) {
   const { user, isAdmin } = useAuth();
+  const userId = user?.id;
   const [settings, setSettingsState] = useState<LetterheadSettings>(emptyLetterheadSettings());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setSettingsState(emptyLetterheadSettings());
       setLoading(false);
       return;
@@ -54,14 +55,14 @@ export function LetterheadProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const loaded = await loadLetterheadSettings(user.id);
+      const loaded = await loadLetterheadSettings(userId);
       setSettingsState(loaded);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load settings");
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     void reload();

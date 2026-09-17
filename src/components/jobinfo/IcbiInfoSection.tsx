@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EmailAddressWarning } from "../EmailAddressWarning";
 import { useLetterhead } from "../../contexts/LetterheadContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { buildIcbiPmOptions, shouldDefaultPmFromProfile } from "../../lib/icbiPmDefaults";
@@ -140,6 +141,7 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
             placeholder="CC on Field Tools orders"
             onChange={(e) => onChange({ icbi_pm_email: e.target.value })}
           />
+          <EmailAddressWarning value={j.icbi_pm_email} compact />
         </label>
         <label>
           Foreman
@@ -153,6 +155,7 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
             placeholder="CC on paint tracker & vendor emails"
             onChange={(e) => onChange({ icbi_foreman_email: e.target.value })}
           />
+          <EmailAddressWarning value={j.icbi_foreman_email} compact />
         </label>
         <label className="grid-span-2">
           Team
@@ -194,6 +197,7 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
             value={j.icbi_super_email}
             onChange={(e) => onChange({ icbi_super_email: e.target.value })}
           />
+          <EmailAddressWarning value={j.icbi_super_email} compact />
         </label>
       </div>
     </details>
