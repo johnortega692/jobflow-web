@@ -148,9 +148,10 @@ async function drawHeader(
   return y;
 }
 
-function stampPageFooters(doc: PDFDocument, font: PDFFont, fontBold: PDFFont) {
+function stampPageFooters(doc: PDFDocument, font: PDFFont, fontBold: PDFFont, title: string) {
   const pages = doc.getPages();
   const total = pages.length;
+  const topic = title.replace(/\s+/g, " ").trim();
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i]!;
     const { width } = page.getSize();
@@ -170,7 +171,14 @@ function stampPageFooters(doc: PDFDocument, font: PDFFont, fontBold: PDFFont) {
     const label = `Page ${i + 1} of ${total}`;
     const size = 8;
     const labelW = fontBold.widthOfTextAtSize(label, size);
-    page.drawText("Safety Tailgate", {
+    const leftMax = Math.max(80, (width - labelW) / 2 - MARGIN - 12);
+    const left = truncate(
+      topic ? `Safety Tailgate · ${topic}` : "Safety Tailgate",
+      font,
+      size,
+      leftMax,
+    );
+    page.drawText(left, {
       x: MARGIN,
       y: FOOTER_Y,
       size,
@@ -361,6 +369,6 @@ export async function buildTailgatePdf(input: TailgatePdfInput): Promise<Uint8Ar
 
   await drawCrewSignInPages(doc, input.attendees, font, fontBold);
 
-  stampPageFooters(doc, font, fontBold);
+  stampPageFooters(doc, font, fontBold, input.title);
   return doc.save();
 }
