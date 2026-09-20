@@ -80,6 +80,26 @@ export function paintStatusLabel(status: PaintFieldStatus): string {
   return status;
 }
 
+/** Compact labels for Field View mobile job cards. */
+export function paintMobileStatusLabel(status: PaintFieldStatus): string {
+  switch (status) {
+    case "Not Needed":
+      return "No submittal";
+    case "Needs Revision":
+      return "Needs revision";
+    case "Submitted for Approval":
+      return "Sent for approval";
+    case "Submittal Ordered":
+      return "Ordered";
+    case "Match Existing":
+      return "Match existing";
+    case "Not Started":
+      return "Not started";
+    default:
+      return paintStatusLabel(status);
+  }
+}
+
 export type SubmittalCardStepId = "ordered" | "submitted" | "revision" | "approved";
 
 export type SubmittalCardStep = {
@@ -89,13 +109,29 @@ export type SubmittalCardStep = {
   current: boolean;
 };
 
+export type MobileSubmittalStepId = "ordered" | "submitted" | "approved";
+
+export type MobileSubmittalStep = {
+  id: MobileSubmittalStepId;
+  label: string;
+  done: boolean;
+};
+
 export type SubmittalCardState = {
   status: PaintFieldStatus;
   statusLabel: string;
   description: string;
   steps: SubmittalCardStep[];
+  mobileSteps: MobileSubmittalStep[];
   showSteps: boolean;
   tone: "approved" | "revision" | "progress" | "idle" | "skip";
+};
+
+export type PaintMobileReadiness = {
+  ready: boolean;
+  title: string;
+  detail: string;
+  openCount: number;
 };
 
 export function paintSubmittalStatusDescription(status: PaintFieldStatus): string {
@@ -139,6 +175,9 @@ export function paintSubmittalCardState(tracker: PaintTrackerState): SubmittalCa
   const submittedDone = tracker.submittedForApproval || tracker.approved;
   const revisionDone = tracker.approved || (tracker.revision && currentId !== "revision");
   const approvedDone = tracker.approved;
+  const orderedReached =
+    tracker.submittalOrdered || tracker.submittedForApproval || tracker.revision || tracker.approved;
+  const submittedReached = tracker.submittedForApproval || tracker.revision || tracker.approved;
 
   return {
     status,
@@ -146,6 +185,11 @@ export function paintSubmittalCardState(tracker: PaintTrackerState): SubmittalCa
     description,
     showSteps: !skipPath,
     tone,
+    mobileSteps: [
+      { id: "ordered", label: "Ordered", done: orderedReached },
+      { id: "submitted", label: "Sent for approval", done: submittedReached },
+      { id: "approved", label: "Approved", done: approvedDone },
+    ],
     steps: [
       {
         id: "ordered",
@@ -172,6 +216,65 @@ export function paintSubmittalCardState(tracker: PaintTrackerState): SubmittalCa
         current: currentId === "approved",
       },
     ],
+  };
+}
+
+function submittalIsClear(status: PaintFieldStatus): boolean {
+  return status === "Approved" || status === "Not Needed" || status === "Match Existing";
+}
+
+function submittalBlockingPhrase(status: PaintFieldStatus): string | null {
+  switch (status) {
+    case "Approved":
+    case "Not Needed":
+    case "Match Existing":
+      return null;
+    case "Needs Revision":
+      return "Submittal needs revision";
+    case "Submitted for Approval":
+      return "Submittal pending approval";
+    case "Submittal Ordered":
+      return "Submittal ordered";
+    default:
+      return "Submittal not ordered";
+  }
+}
+
+function startupOutstandingPhrase(items: { id: string; done: boolean }[]): string | null {
+  const missing = items.filter((item) => !item.done).map((item) => item.id);
+  if (!missing.length) return null;
+  const contract = missing.includes("contract");
+  const coi = missing.includes("coi");
+  if (contract && coi) return "Contract & COI outstanding";
+  if (contract) return "Contract outstanding";
+  if (coi) return "COI outstanding";
+  return "Startup requirements outstanding";
+}
+
+export function paintMobileReadiness(
+  submittal: Pick<SubmittalCardState, "status">,
+  mobilize: { items: { id: string; done: boolean }[]; ready: boolean },
+): PaintMobileReadiness {
+  const blocking = submittalBlockingPhrase(submittal.status);
+  const outstanding = startupOutstandingPhrase(mobilize.items);
+  const openCount = (blocking ? 1 : 0) + mobilize.items.filter((item) => !item.done).length;
+  const ready = openCount === 0 && submittalIsClear(submittal.status) && mobilize.ready;
+
+  if (ready) {
+    const detail =
+      submittal.status === "Approved"
+        ? "Submittal approved · contract & COI cleared"
+        : "Contract & COI cleared · no submittal required";
+    return { ready: true, title: "Ready to mobilize", detail, openCount: 0 };
+  }
+
+  const detail = [blocking, outstanding].filter(Boolean).join(" · ");
+  const itemLabel = openCount === 1 ? "item" : "items";
+  return {
+    ready: false,
+    title: `Not ready — ${openCount} ${itemLabel} open`,
+    detail,
+    openCount,
   };
 }
 

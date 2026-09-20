@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
 import { DateInput } from "../../components/DateInput";
+import { vcardFileName, vcardHref } from "../../lib/contactCard";
 import {
   paintJobSmsText,
   saveProjectStartDate,
   type FieldPaintRow,
 } from "../../lib/fieldTrackerProject";
 import {
+  paintMobileReadiness,
+  paintMobileStatusLabel,
   paintPillClass,
   paintStatusLabel,
   paintSubmittalCardState,
@@ -43,21 +46,52 @@ type PaintDashboardRow = FieldPaintRow & {
   mobilize: MobilizeCardState;
 };
 
-function GcSuperCell({ row, linkPhone = false }: { row: FieldPaintRow; linkPhone?: boolean }) {
+function GcSuperCell({
+  row,
+  linkPhone = false,
+  inline = false,
+}: {
+  row: FieldPaintRow;
+  linkPhone?: boolean;
+  inline?: boolean;
+}) {
   if (!row.gcSuperName && !row.gcSuperPhone) return <>—</>;
   const phoneHref = row.gcSuperPhone ? `tel:${row.gcSuperPhone.replace(/[^\d+]/g, "")}` : "";
+  const phone = row.gcSuperPhone ? (
+    linkPhone ? (
+      <a href={phoneHref} className="field-gc-super-phone field-gc-super-phone-link">
+        {row.gcSuperPhone}
+      </a>
+    ) : (
+      <span className="field-gc-super-phone">{row.gcSuperPhone}</span>
+    )
+  ) : null;
+  const contactName = row.gcSuperName.trim() || "GC Super";
+  const name = row.gcSuperName ? (
+    linkPhone ? (
+      <a
+        className="field-gc-super-vcard"
+        href={vcardHref({
+          name: contactName,
+          phone: row.gcSuperPhone,
+          org: row.gcName,
+          note: [row.jobNumber, row.jobName].filter(Boolean).join(" "),
+        })}
+        download={vcardFileName(contactName)}
+        aria-label={`Add ${contactName} to contacts`}
+        title="Add to contacts"
+      >
+        {row.gcSuperName}
+      </a>
+    ) : (
+      <span>{row.gcSuperName}</span>
+    )
+  ) : null;
   return (
-    <span className="field-gc-super-cell">
-      {row.gcSuperName ? <span>{row.gcSuperName}</span> : null}
-      {row.gcSuperPhone ? (
-        linkPhone ? (
-          <a href={phoneHref} className="field-gc-super-phone field-gc-super-phone-link">
-            {row.gcSuperPhone}
-          </a>
-        ) : (
-          <span className="field-gc-super-phone">{row.gcSuperPhone}</span>
-        )
-      ) : null}
+    <span className={`field-gc-super-cell${inline ? " field-gc-super-cell--inline" : ""}`}>
+      {name}
+      {inline && name && phone ? <span className="field-gc-super-sep"> · </span> : null}
+      {phone}
     </span>
   );
 }
@@ -111,7 +145,7 @@ function CopyActions({ row }: { row: FieldPaintRow }) {
   return (
     <div className="date-container">
       <button type="button" className="update-btn" onClick={() => void copy()}>
-        📋 Copy
+        Copy
       </button>
     </div>
   );
@@ -125,6 +159,138 @@ function CheckGlyph() {
         d="M6.4 11.3 3.2 8.1l1.1-1.1 2.1 2.1 5.3-5.3 1.1 1.1z"
       />
     </svg>
+  );
+}
+
+function WarningGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M8 1.6 14.7 13.4c.3.5-.1 1.1-.7 1.1H2c-.6 0-1-.6-.7-1.1L8 1.6Zm0 4.2c-.4 0-.7.3-.7.7v3.1c0 .4.3.7.7.7s.7-.3.7-.7V6.5c0-.4-.3-.7-.7-.7Zm0 6.3c.4 0 .7-.3.7-.7S8.4 10.7 8 10.7s-.7.3-.7.7.3.7.7.7Z"
+      />
+    </svg>
+  );
+}
+
+const STARTUP_MOBILE_LABELS: Record<string, string> = {
+  contract: "Executed contract",
+  coi: "Certificate of insurance (COI)",
+};
+
+function skipSubmittalCaption(status: PaintFieldStatus): string {
+  return status === "Match Existing" ? "Matching existing paint" : "Not required for this job";
+}
+
+function PaintMobileJobStatus({
+  submittal,
+  mobilize,
+  revisionNotes,
+}: {
+  submittal: SubmittalCardState;
+  mobilize: MobilizeCardState;
+  revisionNotes: string;
+}) {
+  const readiness = paintMobileReadiness(submittal, mobilize);
+  const [submittalOpen, setSubmittalOpen] = useState(false);
+  const [startupOpen, setStartupOpen] = useState(false);
+  const note = revisionNotes.trim();
+
+  return (
+    <div className="field-ready">
+      <div className={`field-ready-banner field-ready-banner--${readiness.ready ? "ready" : "blocked"}`}>
+        <span className="field-ready-banner-icon" aria-hidden="true">
+          {readiness.ready ? <CheckGlyph /> : <WarningGlyph />}
+        </span>
+        <div className="field-ready-banner-copy">
+          <div className="field-ready-banner-title">{readiness.title}</div>
+          {readiness.detail ? <div className="field-ready-banner-detail">{readiness.detail}</div> : null}
+        </div>
+      </div>
+
+      {submittal.showSteps ? (
+        <section className={`field-ready-section${submittalOpen ? " open" : ""}`}>
+          <button
+            type="button"
+            className="field-ready-section-toggle"
+            aria-expanded={submittalOpen}
+            onClick={() => setSubmittalOpen((open) => !open)}
+          >
+            <span className="field-ready-section-title">Submittal</span>
+            <FieldStatusPill
+              label={paintMobileStatusLabel(submittal.status)}
+              className={paintPillClass(submittal.status)}
+            />
+            <span className={`field-ready-chevron${submittalOpen ? " open" : ""}`} aria-hidden="true">
+              ▾
+            </span>
+          </button>
+          {submittalOpen ? (
+            <div className="field-ready-section-body">
+              <ul className="field-ready-steps">
+                {submittal.mobileSteps.map((step) => (
+                  <li
+                    key={step.id}
+                    className={`field-ready-step${step.done ? " field-ready-step--done" : ""}`}
+                  >
+                    <span className="field-ready-step-dot" aria-hidden="true" />
+                    <span>{step.label}</span>
+                  </li>
+                ))}
+              </ul>
+              {note ? (
+                <p className="field-ready-note">
+                  <span className="field-ready-note-label">Revision note</span>
+                  {` — ${note}`}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : (
+        <div className="field-ready-section field-ready-section--static">
+          <div className="field-ready-section-toggle" role="group">
+            <span className="field-ready-section-title">Submittal</span>
+            <span className="field-ready-section-muted">{skipSubmittalCaption(submittal.status)}</span>
+          </div>
+        </div>
+      )}
+
+      <section className={`field-ready-section${startupOpen ? " open" : ""}`}>
+        <button
+          type="button"
+          className="field-ready-section-toggle"
+          aria-expanded={startupOpen}
+          onClick={() => setStartupOpen((open) => !open)}
+        >
+          <span className="field-ready-section-title">Startup requirements</span>
+          <span className={`field-ready-count${mobilize.ready ? " field-ready-count--done" : ""}`}>
+            {mobilize.done} of {mobilize.total}
+          </span>
+          <span className={`field-ready-chevron${startupOpen ? " open" : ""}`} aria-hidden="true">
+            ▾
+          </span>
+        </button>
+        {startupOpen ? (
+          <div className="field-ready-section-body">
+            <ul className="field-ready-checks">
+              {mobilize.items.map((item) => (
+                <li
+                  key={item.id}
+                  className={`field-ready-check${item.done ? " field-ready-check--done" : ""}`}
+                  title={item.detail}
+                >
+                  <span className="field-ready-check-mark" aria-hidden="true">
+                    {item.done ? <CheckGlyph /> : null}
+                  </span>
+                  <span>{STARTUP_MOBILE_LABELS[item.id] ?? item.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -309,16 +475,21 @@ export function FieldPaintDashboardPage() {
                     <div className="field-mobile-sub">{row.gcName || "—"}</div>
                   </div>
                   <FieldStatusPill
-                    label={paintStatusLabel(row.status)}
-                    className={paintPillClass(row.status)}
+                    label={paintMobileStatusLabel(row.status)}
+                    className={`${paintPillClass(row.status)}${
+                      row.status === "Not Needed" || row.status === "Needs Revision"
+                        ? " pill-mobile-outline"
+                        : ""
+                    }`}
                   />
                 </div>
                 {open && (
                   <div className="group-detail open field-mobile-card-body">
-                    <div className="paint-group-detail-card">
-                      <SubmittalStatusCard state={paintSubmittalCardState(row.tracker)} />
-                      <MobilizeStatusCard state={row.mobilize} />
-                    </div>
+                    <PaintMobileJobStatus
+                      submittal={paintSubmittalCardState(row.tracker)}
+                      mobilize={row.mobilize}
+                      revisionNotes={row.revisionNotes}
+                    />
                     <dl className="field-mobile-dl">
                       <div>
                         <dt>Address</dt>
@@ -331,7 +502,7 @@ export function FieldPaintDashboardPage() {
                       <div>
                         <dt>GC Super</dt>
                         <dd>
-                          <GcSuperCell row={row} linkPhone={mobileView} />
+                          <GcSuperCell row={row} linkPhone={mobileView} inline />
                         </dd>
                       </div>
                       <div>
@@ -339,19 +510,9 @@ export function FieldPaintDashboardPage() {
                         <dd>{row.paintVendor || "—"}</dd>
                       </div>
                       <div>
-                        <dt>Division</dt>
-                        <dd>{row.division || "—"}</dd>
-                      </div>
-                      <div>
                         <dt>PM</dt>
                         <dd>{row.pm || "—"}</dd>
                       </div>
-                      {row.revisionNotes ? (
-                        <div className="field-revision-notes">
-                          <dt>Revision notes</dt>
-                          <dd>{row.revisionNotes}</dd>
-                        </div>
-                      ) : null}
                     </dl>
                     <div className="field-mobile-actions">
                       <CopyActions row={row} />
