@@ -195,6 +195,16 @@ export async function listProjectBrushouts(projectId: string): Promise<ApprovedB
   return (data ?? []) as ApprovedBrushoutRow[];
 }
 
+/** Project IDs that have at least one approved brush-out Field Tools can load. */
+export async function listProjectIdsWithApprovedBrushouts(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("project_approved_brushouts")
+    .select("project_id")
+    .eq("approved", true);
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((row) => String((row as { project_id: string }).project_id)));
+}
+
 export async function saveProjectBrushouts(
   projectId: string,
   jobNumber: string,

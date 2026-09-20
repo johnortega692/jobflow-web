@@ -474,6 +474,11 @@ label {
   border: 1px solid var(--border);
 }
 
+.project-submittal-pill--added {
+  background: rgba(95, 211, 141, 0.14);
+  color: #5fd38d;
+}
+
 .project-mini-pipeline {
   display: flex;
   flex-direction: column;
@@ -9526,6 +9531,18 @@ tr.budget-hours-pdf-hidden td {
   font-size: 1.35rem;
   font-weight: 700;
   line-height: 1.2;
+}
+
+.job-dashboard-metric-value--ok {
+  color: #5fd38d;
+}
+
+.job-dashboard-metric-value--muted {
+  color: var(--muted);
+}
+
+.job-dashboard-metric-value--compact {
+  font-size: 1.05rem;
 }
 
 .job-header-submittal-row {

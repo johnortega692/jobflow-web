@@ -6,6 +6,7 @@ import { ProjectStartupChecklist } from "../components/jobinfo/ProjectStartupChe
 import { ProjectDashboardHeader } from "../components/jobinfo/ProjectDashboardHeader";
 import { NeedsAttentionStrip } from "../components/jobinfo/NeedsAttentionStrip";
 import { DashboardMetricCards } from "../components/jobinfo/DashboardMetricCards";
+import { listProjectBrushouts } from "../lib/approvedBrushouts";
 import { parseProjectDataBlob } from "../lib/jobInfo";
 import { supabase } from "../lib/supabase";
 import {
@@ -31,6 +32,7 @@ export function ProjectOverviewPage() {
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [startupItems, setStartupItems] = useState(() => parseDashboardStartupItems(initial));
   const [startupFocus, setStartupFocus] = useState<{ group: StartupChecklistGroup; itemId: string } | null>(null);
+  const [brushoutsAdded, setBrushoutsAdded] = useState<boolean | null>(null);
 
   const startupRef = useRef<HTMLDivElement | null>(null);
 
@@ -50,6 +52,21 @@ export function ProjectOverviewPage() {
       setStartupItems(parseDashboardStartupItems(nextProject));
     })();
   }, [projectId, activityRefreshKey, project.jobInfo.public_works, project.jobInfo.start_date]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBrushoutsAdded(null);
+    void listProjectBrushouts(projectId)
+      .then((rows) => {
+        if (!cancelled) setBrushoutsAdded(rows.some((row) => row.approved));
+      })
+      .catch(() => {
+        if (!cancelled) setBrushoutsAdded(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, activityRefreshKey]);
 
   const paintTracker = useMemo(() => resolveDashboardPaintTracker(project), [project]);
   const submittalStage = paintSubmittalStageLabel(paintTracker);
@@ -122,8 +139,25 @@ export function ProjectOverviewPage() {
         value: paintTracker.followUp.trim() || "Not set",
         onClick: () => openMaterialTracker("paint"),
       },
+      {
+        id: "brush-outs",
+        label: "Brush-outs",
+        value: brushoutsAdded == null ? "—" : brushoutsAdded ? "Added" : "Not added",
+        compact: true,
+        tone: brushoutsAdded ? "ok" : brushoutsAdded === false ? "muted" : undefined,
+        onClick: () => navigate(`/projects/${projectId}/approved-brushouts`),
+      },
     ],
-    [jobSetupCounts, startupCounts, submittalStage, paintTracker.followUp, openMaterialTracker],
+    [
+      jobSetupCounts,
+      startupCounts,
+      submittalStage,
+      paintTracker.followUp,
+      brushoutsAdded,
+      openMaterialTracker,
+      navigate,
+      projectId,
+    ],
   );
 
   return (

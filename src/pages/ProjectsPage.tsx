@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { BrushoutsAddedPill } from "../components/projects/BrushoutsAddedPill";
 import { ProjectsAttentionCard } from "../components/projects/ProjectsAttentionCard";
 import { ProjectStatusBadge } from "../components/projects/ProjectStatusBadge";
 import { SubmittalStagePill } from "../components/projects/SubmittalStagePill";
@@ -36,6 +37,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
 import { loadDefaultStartupItems } from "../lib/projectStartupItems";
+import { listProjectIdsWithApprovedBrushouts } from "../lib/approvedBrushouts";
 import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
 import { formatDateTime } from "../lib/strings";
 import { type Project } from "../types/database";
@@ -77,6 +79,7 @@ export function ProjectsPage() {
   const { isAdmin, jobRole } = useAuth();
   const { profile } = useLetterhead();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [approvedBrushoutIds, setApprovedBrushoutIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -127,9 +130,10 @@ export function ProjectsPage() {
 
   async function loadProjects() {
     setLoading(true);
-    const [{ data, error: err }, doneRes] = await Promise.all([
+    const [{ data, error: err }, doneRes, brushoutIds] = await Promise.all([
       supabase.from("projects").select("*").order("updated_at", { ascending: false }),
       listDoneProjectIds(),
+      listProjectIdsWithApprovedBrushouts().catch(() => new Set<string>()),
       loadDefaultStartupItems(),
     ]);
     setLoading(false);
@@ -142,6 +146,7 @@ export function ProjectsPage() {
       return;
     }
     const done = new Set(doneRes.ids);
+    setApprovedBrushoutIds(brushoutIds);
     setProjects((data ?? []).filter((p) => !done.has(p.id)));
   }
 
@@ -476,6 +481,7 @@ export function ProjectsPage() {
                         <th>Job #</th>
                         <th>Name</th>
                         <th>Submittal</th>
+                        <th>Brush-outs</th>
                         <th>Attention</th>
                         <th>Updated</th>
                         <th></th>
@@ -499,6 +505,9 @@ export function ProjectsPage() {
                             </td>
                             <td>
                               <SubmittalStagePill stage={summary.submittalStage} />
+                            </td>
+                            <td>
+                              <BrushoutsAddedPill added={approvedBrushoutIds.has(p.id)} />
                             </td>
                             <td>
                               <ProjectStatusBadge summary={summary} tableMode />
