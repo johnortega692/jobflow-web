@@ -200,6 +200,39 @@ function ccJoin(emails: (string | undefined)[]): string {
   return emails.map((e) => (e ?? "").trim()).filter(Boolean).join(",");
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function receiptReminderHtml(opts: {
+  companyName: string;
+  ordererName: string;
+  jobLabel: string;
+  poNumber: string;
+  pm: string;
+}): string {
+  const lines = [
+    `<p>Hi ${escapeHtml(opts.ordererName || "there")},</p>`,
+    "<p>Please upload the store receipt for this order in Field Tools.</p>",
+    opts.poNumber ? `<p><strong>PO Number:</strong> ${escapeHtml(opts.poNumber)}</p>` : "",
+    `<p><strong>Project:</strong> ${escapeHtml(opts.jobLabel)}</p>`,
+    opts.pm ? `<p><strong>PM:</strong> ${escapeHtml(opts.pm)}</p>` : "",
+    "<p>Open <strong>Ordering → Order History</strong>, open this order, and add the receipt photo.</p>",
+  ].filter(Boolean).join("");
+  return `<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#333;line-height:1.5;">
+  <h2 style="margin:0 0 12px;color:#1a3a5c;">Upload your order receipt</h2>
+  ${lines}
+  <p style="color:#666;font-size:13px;">${escapeHtml(opts.companyName)}</p>
+</body>
+</html>`;
+}
+
 function parseEmailList(raw: string): string[] {
   return raw
     .split(/[,;]/)
@@ -426,7 +459,9 @@ Deno.serve(async (req) => {
 
     const { data: orderSettings } = await supabase
       .from("field_tools_order_settings")
-      .select("global_cc_emails, global_cc_skip_job_codes")
+      .select(
+        "global_cc_emails, global_cc_skip_job_codes, receipt_reminder_enabled, receipt_reminder_on_submit, receipt_reminder_cc_pm",
+      )
       .eq("id", 1)
       .maybeSingle();
     const skipGlobalCcJobs = parseJobCodeList(String(orderSettings?.global_cc_skip_job_codes ?? ""));
@@ -442,6 +477,10 @@ Deno.serve(async (req) => {
       job_name: string | null;
       order_type: string;
       submitted_by_profile_id: string | null;
+      submitted_by_name?: string | null;
+      submitted_by_email?: string | null;
+      receipt_reminder_sent_at?: string | null;
+      receipt_reminder_count?: number | null;
       site_contact: string;
       notes: string;
       delivery_type: string;
@@ -489,8 +528,8 @@ Deno.serve(async (req) => {
           job_name: stored.job_name ?? "",
           order_type: stored.order_type as "field_request" | "job_scope_kit" | "haul_off",
           submitted_by_profile_id: stored.submitted_by_profile_id ?? trustedProfile.id,
-          submitted_by_name: trustedProfile.name,
-          submitted_by_email: trustedProfile.email,
+          submitted_by_name: stored.submitted_by_name || trustedProfile.name,
+          submitted_by_email: stored.submitted_by_email || trustedProfile.email,
           site_contact: stored.site_contact,
           notes: stored.notes,
           delivery_type: stored.delivery_type,
@@ -934,6 +973,65 @@ Deno.serve(async (req) => {
         last_submit_error: allOk ? "" : results.filter((r) => !r.ok).map((r) => `${r.type}: ${r.message}`).join(" · "),
       })
       .eq("id", orderId);
+
+    if (anyOk) {
+      const alreadyReminded = Boolean(stored?.receipt_reminder_sent_at);
+      const skipReminder = o.order_type === "haul_off";
+      const reminderEnabled = (orderSettings as { receipt_reminder_enabled?: boolean } | null)?.receipt_reminder_enabled !== false;
+      const reminderOnSubmit = (orderSettings as { receipt_reminder_on_submit?: boolean } | null)?.receipt_reminder_on_submit !== false;
+      const reminderCcPm = (orderSettings as { receipt_reminder_cc_pm?: boolean } | null)?.receipt_reminder_cc_pm !== false;
+      const toEmail = (stored?.submitted_by_email || o?.submitted_by_email || trustedProfile.email).trim();
+      if (!alreadyReminded && !skipReminder && reminderEnabled && reminderOnSubmit && toEmail) {
+        const jobLabel = formatJobProjectLabel(jobCode, jobName);
+        const poLabel = uniquePos.join(", ") || stored?.po_number || "";
+        const ordererName = (stored?.submitted_by_name || o?.submitted_by_name || trustedProfile.name).trim();
+        const cc = reminderCcPm
+          ? ccJoin([pmEmail].filter((email) => email.trim().toLowerCase() !== toEmail.toLowerCase()))
+          : "";
+        try {
+          const reminderPdf = await buildListPdf({
+            branding,
+            title: "Receipt reminder",
+            jobCode,
+            jobName,
+            orderedBy: ordererName,
+            poNumber: poLabel || undefined,
+            siteContact: o?.site_contact || stored?.site_contact || "",
+            dateNeeded: o?.date_needed ?? stored?.date_needed ?? "",
+            notes: "",
+            sectionLabel: "Receipt",
+            items: [{ name: "Upload the store receipt in Field Tools → Ordering → Order History" }],
+            pm: pm || undefined,
+          });
+          const mailed = await sendGasEmail({
+            to: toEmail,
+            cc,
+            subject: `Receipt reminder — ${jobLabel}${poLabel ? ` — ${poLabel}` : ""}`,
+            htmlBody: receiptReminderHtml({
+              companyName,
+              ordererName,
+              jobLabel,
+              poNumber: poLabel,
+              pm,
+            }),
+            attachmentName: "receipt-reminder.pdf",
+            attachmentBase64: bytesToBase64(reminderPdf),
+            senderName,
+          });
+          if (mailed.ok) {
+            await supabase
+              .from("field_tools_orders")
+              .update({
+                receipt_reminder_sent_at: new Date().toISOString(),
+                receipt_reminder_count: (stored?.receipt_reminder_count ?? 0) + 1,
+              })
+              .eq("id", orderId);
+          }
+        } catch {
+          /* reminder is extra; order emails already went out */
+        }
+      }
+    }
 
     return jsonResponse({
       ok: allOk,
