@@ -797,6 +797,20 @@ label {
   padding-right: 1.1rem;
 }
 
+.projects-table-open-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.projects-table-open {
+  color: #fff;
+}
+
+.projects-table-open svg {
+  display: block;
+}
+
 .projects-table-row {
   cursor: pointer;
   transition: background-color 0.12s ease;
