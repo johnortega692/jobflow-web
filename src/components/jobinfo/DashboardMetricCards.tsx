@@ -1,4 +1,4 @@
-type Metric = {
+export type DashboardMetric = {
   id: string;
   label: string;
   value: string;
@@ -8,7 +8,7 @@ type Metric = {
 };
 
 type Props = {
-  metrics: Metric[];
+  metrics: DashboardMetric[];
 };
 
 export function DashboardMetricCards({ metrics }: Props) {

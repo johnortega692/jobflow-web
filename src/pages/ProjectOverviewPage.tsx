@@ -5,7 +5,7 @@ import { ProjectActivityPanel } from "../components/jobinfo/ProjectActivityPanel
 import { ProjectStartupChecklist } from "../components/jobinfo/ProjectStartupChecklist";
 import { ProjectDashboardHeader } from "../components/jobinfo/ProjectDashboardHeader";
 import { NeedsAttentionStrip } from "../components/jobinfo/NeedsAttentionStrip";
-import { DashboardMetricCards } from "../components/jobinfo/DashboardMetricCards";
+import { DashboardMetricCards, type DashboardMetric } from "../components/jobinfo/DashboardMetricCards";
 import { listProjectBrushouts } from "../lib/approvedBrushouts";
 import { parseProjectDataBlob } from "../lib/jobInfo";
 import { supabase } from "../lib/supabase";
@@ -113,8 +113,10 @@ export function ProjectOverviewPage() {
     }
   }
 
-  const metrics = useMemo(
-    () => [
+  const metrics = useMemo((): DashboardMetric[] => {
+    const brushoutTone: DashboardMetric["tone"] =
+      brushoutsAdded === true ? "ok" : brushoutsAdded === false ? "muted" : undefined;
+    return [
       {
         id: "job-setup",
         label: "Job info",
@@ -144,21 +146,22 @@ export function ProjectOverviewPage() {
         label: "Brush-outs",
         value: brushoutsAdded == null ? "—" : brushoutsAdded ? "Added" : "Not added",
         compact: true,
-        tone: brushoutsAdded ? "ok" : brushoutsAdded === false ? "muted" : undefined,
-        onClick: () => navigate(`/projects/${projectId}/approved-brushouts`),
+        tone: brushoutTone,
+        onClick: () => {
+          void navigate(`/projects/${projectId}/approved-brushouts`);
+        },
       },
-    ],
-    [
-      jobSetupCounts,
-      startupCounts,
-      submittalStage,
-      paintTracker.followUp,
-      brushoutsAdded,
-      openMaterialTracker,
-      navigate,
-      projectId,
-    ],
-  );
+    ];
+  }, [
+    jobSetupCounts,
+    startupCounts,
+    submittalStage,
+    paintTracker.followUp,
+    brushoutsAdded,
+    openMaterialTracker,
+    navigate,
+    projectId,
+  ]);
 
   return (
     <div className="stack job-dashboard">
