@@ -2,8 +2,11 @@ import { useCallback, useMemo, useState, type DragEvent, type KeyboardEvent } fr
 import { FLOOR_ORDER } from "../../lib/printCore";
 import {
   abbreviateVendorKey,
+  formatSheenSelection,
   getProductDisplay,
+  parseSheenSelection,
   searchPaintColors,
+  sheensForPaintProduct,
   shouldSkipColorLookup,
   type PaintColorMatch,
   type PaintColorsDb,
@@ -108,6 +111,10 @@ export function PaintItemRow({
 
   const missingColor = !item.color.trim();
   const missingSheen = !item.sheen.trim();
+  const productSheens = useMemo(
+    () => sheensForPaintProduct(products, item.product, sheenOptions),
+    [item.product, products, sheenOptions],
+  );
 
   return (
     <>
@@ -206,7 +213,15 @@ export function PaintItemRow({
             products={products}
             ariaLabel={`Product row ${index + 1}`}
             onChange={(productName, manufacturer) => {
-              onChange({ product: productName, manufacturer });
+              const nextOptions = sheensForPaintProduct(products, productName, sheenOptions);
+              const kept = parseSheenSelection(item.sheen, nextOptions).filter((sheen) =>
+                nextOptions.some((option) => option.toLowerCase() === sheen.toLowerCase()),
+              );
+              onChange({
+                product: productName,
+                manufacturer,
+                sheen: formatSheenSelection(kept),
+              });
             }}
           />
         </div>
@@ -214,7 +229,7 @@ export function PaintItemRow({
         <div className="paint-col paint-col-sheen" role="cell">
           <PaintSheenSelect
             value={item.sheen}
-            options={sheenOptions}
+            options={productSheens}
             emptyLabel="⚠ Sheen"
             emptyTitle="⚠ Select sheen"
             className={missingSheen ? "paint-field-select--warn" : undefined}

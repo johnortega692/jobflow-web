@@ -2,7 +2,10 @@ import { useMemo, useState } from "react";
 import {
   extractProductName,
   formatSheenLabel,
+  formatSheenSelection,
   manufacturerForProduct,
+  parseSheenSelection,
+  sheensForPaintProduct,
   type PaintProduct,
 } from "../../lib/paintCatalog";
 import { paintRowAutoLabel } from "../../lib/paintItemLabels";
@@ -35,6 +38,10 @@ export function PaintBulkAddModal({
   const [productName, setProductName] = useState("");
   const [sheen, setSheen] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const productSheens = useMemo(
+    () => sheensForPaintProduct(products, productName, sheenOptions),
+    [productName, products, sheenOptions],
+  );
 
   const preview = useMemo(() => {
     const num = parseInt(count, 10);
@@ -128,13 +135,21 @@ export function PaintBulkAddModal({
             onChange={(name, _mfr, display) => {
               setProductName(name);
               setProductDisplay(display);
+              setSheen((current) => {
+                const nextOptions = sheensForPaintProduct(products, name, sheenOptions);
+                return formatSheenSelection(
+                  parseSheenSelection(current, nextOptions).filter((sheen) =>
+                    nextOptions.some((option) => option.toLowerCase() === sheen.toLowerCase()),
+                  ),
+                );
+              });
             }}
           />
         </label>
 
         <label>
           Sheen (applied to all)
-          <PaintSheenSelect value={sheen} options={sheenOptions} onChange={setSheen} />
+          <PaintSheenSelect value={sheen} options={productSheens} onChange={setSheen} />
         </label>
 
         {preview && <p className="muted small paint-bulk-preview">{preview}</p>}

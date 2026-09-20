@@ -12,6 +12,7 @@ export const ORG_SETTINGS_KEYS = [
   "delivery_scheduling",
   "paint_products",
   "paint_sheens",
+  "paint_submittal_hidden_products",
   "vendors",
   "super_emails",
   "project_staff_pms",

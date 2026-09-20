@@ -6941,9 +6941,9 @@ tr.budget-hours-pdf-hidden td {
 }
 
 .paint-col-sheen {
-  flex: 0 0 150px;
-  width: 150px;
-  min-width: 150px;
+  flex: 0 0 168px;
+  width: 168px;
+  min-width: 168px;
 }
 
 .paint-col-rev-status {
@@ -7082,6 +7082,101 @@ tr.budget-hours-pdf-hidden td {
 .paint-col-floor .paint-field-select {
   font-size: 0.78rem;
   padding: 0 1.25rem 0 0.35rem;
+}
+
+.paint-sheen-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.paint-sheen-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+}
+
+.paint-sheen-select-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paint-sheen-select-trigger::after {
+  content: "";
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.1rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -2px);
+  opacity: 0.7;
+}
+
+.paint-sheen-select-placeholder {
+  color: inherit;
+}
+
+.paint-sheen-select-menu {
+  position: fixed;
+  z-index: 80;
+  box-sizing: border-box;
+  padding: 0.45rem 0.5rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 22%, transparent);
+  max-height: min(280px, 50vh);
+  overflow: auto;
+}
+
+.paint-sheen-select-hint,
+.paint-sheen-select-empty,
+.paint-sheen-select-summary {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.paint-sheen-select-summary {
+  margin: 0.4rem 0 0;
+}
+
+.paint-sheen-select-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.paint-sheen-select-option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.28rem 0.2rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.paint-sheen-select-option:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.paint-sheen-select-option input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
 }
 
 .paint-col input.readonly {
@@ -11939,6 +12034,33 @@ input.readonly {
 .paint-catalog-row-actions {
   white-space: nowrap;
   width: 1%;
+}
+
+.paint-catalog-hide-col {
+  width: 5.75rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.paint-catalog-hide-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.paint-catalog-hide-toggle input {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.paint-settings-table tr.paint-catalog-row--hidden td {
+  color: var(--muted);
 }
 
 .paint-signature-html {
