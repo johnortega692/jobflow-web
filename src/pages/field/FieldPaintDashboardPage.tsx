@@ -326,13 +326,7 @@ function MobilizeStatusCard({ state }: { state: MobilizeCardState }) {
   return (
     <div className={`mobilize-card mobilize-card--${tone}`}>
       <div className="mobilize-card-head">
-        <span className="mobilize-card-icon" aria-hidden="true">
-          {state.ready ? <CheckGlyph /> : null}
-        </span>
         <div className="mobilize-card-title">Startup Requirements</div>
-        <div className="mobilize-card-progress">
-          {state.done}/{state.total} Complete
-        </div>
       </div>
       <ul className="mobilize-card-list">
         {state.items.map((item) => (
