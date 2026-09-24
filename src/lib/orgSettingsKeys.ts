@@ -20,6 +20,7 @@ export const ORG_SETTINGS_KEYS = [
   "notification_primary_name",
   "default_brushout_qty",
   "tracker_email_schedule",
+  "tracker_email_cron_status",
   "work_order_materials",
   "work_order_labor_rates",
   "work_order_fonts",

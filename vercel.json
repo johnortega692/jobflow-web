@@ -19,16 +19,8 @@
   },
   "crons": [
     {
-      "path": "/api/tracker-email-cron?slot=daily",
+      "path": "/api/tracker-email-cron",
       "schedule": "0 15 * * *"
-    },
-    {
-      "path": "/api/tracker-email-cron?slot=weekly",
-      "schedule": "0 15 * * 5"
-    },
-    {
-      "path": "/api/tracker-email-cron?slot=monday",
-      "schedule": "0 15 * * 1"
     }
   ],
   "rewrites": [

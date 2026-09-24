@@ -1,15 +1,18 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { EmailAddressWarning } from "../EmailAddressWarning";
 import { patchOrgSettings } from "../../lib/budgetLibrary";
+import { loadOrgSettingsBlob } from "../../lib/orgSettings";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
 import { SharedSettingsNotice } from "./SharedSettingsNotice";
 import {
   BillingDueDigestSection,
   FollowUpRemindersSection,
   ScheduledEmailSection,
+  TrackerEmailCronStatusBanner,
   usePaintSettingsData,
   WeeklyDigestSection,
 } from "./paintSettingsShared";
+import { normalizeTrackerEmailCronStatus, type TrackerEmailCronStatus } from "../../lib/trackerEmailCronStatus";
 
 export function TrackerSchedulesSettingsSection({
   readOnly = false,
@@ -31,6 +34,13 @@ export function TrackerSchedulesSettingsSection({
   } = usePaintSettingsData(onDirtyChange);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [cronStatus, setCronStatus] = useState<TrackerEmailCronStatus | null>(null);
+
+  useEffect(() => {
+    void loadOrgSettingsBlob().then((blob) => {
+      setCronStatus(normalizeTrackerEmailCronStatus(blob.tracker_email_cron_status));
+    });
+  }, []);
 
   const persist = useCallback(async (): Promise<boolean> => {
     if (!user?.id || !data) return false;
@@ -74,6 +84,10 @@ export function TrackerSchedulesSettingsSection({
       {(error || message) && (
         <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
       )}
+      <TrackerEmailCronStatusBanner
+        status={cronStatus}
+        timezone={data.tracker_email_schedule.timezone}
+      />
 
       <section className="stack">
         <h2>Recipients</h2>
@@ -121,18 +135,21 @@ export function TrackerSchedulesSettingsSection({
         data={data}
         letterhead={letterhead}
         brandingCompanyName={letterhead.company_name}
+        onStatus={setCronStatus}
       />
 
       <FollowUpRemindersSection
         data={data}
         letterhead={letterhead}
         brandingCompanyName={letterhead.company_name}
+        onStatus={setCronStatus}
       />
 
       <BillingDueDigestSection
         data={data}
         letterhead={letterhead}
         brandingCompanyName={letterhead.company_name}
+        onStatus={setCronStatus}
       />
 
       <fieldset disabled={readOnly} className="stack settings-shared-fieldset">

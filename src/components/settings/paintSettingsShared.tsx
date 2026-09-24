@@ -27,6 +27,14 @@ import {
 } from "../../lib/scheduleEmailSend";
 import { JOBFLOW_SCHEDULE_FROM_NAME } from "../../lib/jobflowScheduleFrom";
 import type { LetterheadSettings } from "../../types/letterheadSettings";
+import { recordTrackerEmailCronStatus } from "../../lib/orgSettings";
+import {
+  buildTrackerEmailCronStatus,
+  formatTrackerEmailCronStatusTime,
+  trackerEmailCronStatusLabel,
+  trackerEmailCronStatusTone,
+  type TrackerEmailCronStatus,
+} from "../../lib/trackerEmailCronStatus";
 import {
   DEFAULT_TRACKER_EMAIL_SCHEDULE,
   TRACKER_CRON_UTC_SCHEDULE,
@@ -38,6 +46,31 @@ function scheduleSendChannel(data: PaintUserSettings) {
   const gasPost = createBrowserScheduleEmailPoster(urls);
   const gasUrl = urls.fieldOrderUrl;
   return { urls, gasPost, gasUrl };
+}
+
+export function TrackerEmailCronStatusBanner({
+  status,
+  timezone,
+}: {
+  status: TrackerEmailCronStatus | null;
+  timezone: string;
+}) {
+  if (!status) {
+    return (
+      <div className="banner banner-info">
+        Automatic send: no run recorded yet. After the next scheduled send (~15:00 UTC), Sent or Error
+        will show here with the date and time.
+      </div>
+    );
+  }
+  const source = status.source === "automatic" ? "Automatic" : "Send now";
+  return (
+    <div className={`banner ${trackerEmailCronStatusTone(status)}`}>
+      <strong>{trackerEmailCronStatusLabel(status)}</strong>
+      {` · ${source} · ${formatTrackerEmailCronStatusTime(status.at, timezone)}`}
+      <div>{status.message}</div>
+    </div>
+  );
 }
 
 export function usePaintSettingsData(onDirtyChange?: (dirty: boolean) => void) {
@@ -88,11 +121,14 @@ export function WeeklyDigestSection({
   data,
   letterhead,
   brandingCompanyName,
+  onStatus,
 }: {
   data: PaintUserSettings;
   letterhead: LetterheadSettings;
   brandingCompanyName: string;
+  onStatus?: (status: TrackerEmailCronStatus) => void;
 }) {
+  const { user } = useAuth();
   const [digestSending, setDigestSending] = useState<"combined" | "wallcovering" | "site_ready" | null>(
     null,
   );
@@ -115,6 +151,19 @@ export function WeeklyDigestSection({
       return;
     }
 
+    async function remember(result: "sent" | "skipped" | "error", message: string) {
+      const status = buildTrackerEmailCronStatus({
+        source: "send_now",
+        ok: result !== "error",
+        sent: result === "sent" ? [message] : [],
+        skipped: result === "skipped" ? [message] : [],
+        errors: result === "error" ? [{ message }] : [],
+        message,
+      });
+      onStatus?.(status);
+      if (user?.id) await recordTrackerEmailCronStatus(user.id, status);
+    }
+
     try {
       const { projects, error } = await loadProjectsForWeeklyDigest();
       if (error) throw new Error(error);
@@ -130,11 +179,11 @@ export function WeeklyDigestSection({
           logoUrl: letterhead.logo_url,
           gasPost,
         });
-        setDigestMessage(
-          result.sent
-            ? `Site-ready digest sent (${result.count} job${result.count === 1 ? "" : "s"}).`
-            : "Site-ready digest: nothing due right now.",
-        );
+        const msg = result.sent
+          ? `Site-ready digest sent (${result.count} job${result.count === 1 ? "" : "s"}).`
+          : "Site-ready digest: nothing due right now.";
+        setDigestMessage(msg);
+        await remember(result.sent ? "sent" : "skipped", msg);
       } else {
         await sendWeeklyTrackerDigest({
           kind,
@@ -148,14 +197,17 @@ export function WeeklyDigestSection({
           logoUrl: letterhead.logo_url,
           gasPost,
         });
-        setDigestMessage(
+        const msg =
           kind === "combined"
             ? "Combined weekly submittal digest sent."
-            : "Wallcovering weekly digest sent.",
-        );
+            : "Wallcovering weekly digest sent.";
+        setDigestMessage(msg);
+        await remember("sent", msg);
       }
     } catch (e) {
-      setDigestError(e instanceof Error ? e.message : "Could not send digest.");
+      const msg = e instanceof Error ? e.message : "Could not send digest.";
+      setDigestError(msg);
+      await remember("error", msg);
     } finally {
       setDigestSending(null);
     }
@@ -203,11 +255,14 @@ export function BillingDueDigestSection({
   data,
   letterhead,
   brandingCompanyName,
+  onStatus,
 }: {
   data: PaintUserSettings;
   letterhead: LetterheadSettings;
   brandingCompanyName: string;
+  onStatus?: (status: TrackerEmailCronStatus) => void;
 }) {
+  const { user } = useAuth();
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -233,20 +288,43 @@ export function BillingDueDigestSection({
         gasPost,
       });
       if (!result.sent) {
-        setMessage(
-          `Billing due: no jobs are ${BILLING_DUE_REMINDER_DAYS_BEFORE} days from their Billing Due day today.`,
-        );
+        const msg = `Billing due: no jobs are ${BILLING_DUE_REMINDER_DAYS_BEFORE} days from their Billing Due day today.`;
+        setMessage(msg);
+        const status = buildTrackerEmailCronStatus({
+          source: "send_now",
+          ok: true,
+          skipped: [msg],
+          message: msg,
+        });
+        onStatus?.(status);
+        if (user?.id) await recordTrackerEmailCronStatus(user.id, status);
       } else {
         const skipped =
           result.skippedNoPm > 0
             ? ` (${result.skippedNoPm} job${result.skippedNoPm === 1 ? "" : "s"} skipped — no ICBI PM email)`
             : "";
-        setMessage(
-          `Billing due reminder sent to ${result.pmCount} ICBI PM${result.pmCount === 1 ? "" : "s"} (${result.count} job${result.count === 1 ? "" : "s"})${skipped}.`,
-        );
+        const msg = `Billing due reminder sent to ${result.pmCount} ICBI PM${result.pmCount === 1 ? "" : "s"} (${result.count} job${result.count === 1 ? "" : "s"})${skipped}.`;
+        setMessage(msg);
+        const status = buildTrackerEmailCronStatus({
+          source: "send_now",
+          ok: true,
+          sent: [msg],
+          message: msg,
+        });
+        onStatus?.(status);
+        if (user?.id) await recordTrackerEmailCronStatus(user.id, status);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not send billing due email.");
+      const msg = e instanceof Error ? e.message : "Could not send billing due email.";
+      setError(msg);
+      const status = buildTrackerEmailCronStatus({
+        source: "send_now",
+        ok: false,
+        errors: [{ message: msg }],
+        message: msg,
+      });
+      onStatus?.(status);
+      if (user?.id) await recordTrackerEmailCronStatus(user.id, status);
     } finally {
       setSending(false);
     }
@@ -271,11 +349,14 @@ export function FollowUpRemindersSection({
   data,
   letterhead,
   brandingCompanyName,
+  onStatus,
 }: {
   data: PaintUserSettings;
   letterhead: LetterheadSettings;
   brandingCompanyName: string;
+  onStatus?: (status: TrackerEmailCronStatus) => void;
 }) {
+  const { user } = useAuth();
   const [sending, setSending] = useState<FollowUpReminderKind | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -316,9 +397,27 @@ export function FollowUpRemindersSection({
         wallcovering: "Wallcovering follow-up reminder",
         installs: "Upcoming installations reminder",
       };
-      setStatus(`${labels[kind]} sent.`);
+      const msg = `${labels[kind]} sent.`;
+      setStatus(msg);
+      const recorded = buildTrackerEmailCronStatus({
+        source: "send_now",
+        ok: true,
+        sent: [msg],
+        message: msg,
+      });
+      onStatus?.(recorded);
+      if (user?.id) await recordTrackerEmailCronStatus(user.id, recorded);
     } catch (e) {
-      setStatusError(e instanceof Error ? e.message : "Could not send reminder.");
+      const msg = e instanceof Error ? e.message : "Could not send reminder.";
+      setStatusError(msg);
+      const recorded = buildTrackerEmailCronStatus({
+        source: "send_now",
+        ok: false,
+        errors: [{ message: msg }],
+        message: msg,
+      });
+      onStatus?.(recorded);
+      if (user?.id) await recordTrackerEmailCronStatus(user.id, recorded);
     } finally {
       setSending(null);
     }

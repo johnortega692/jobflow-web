@@ -1,5 +1,7 @@
 import { mergeOrgAndPersonalSettings } from "./orgSettingsKeys.js";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
+import type { Json } from "../types/database.js";
+import type { TrackerEmailCronStatus } from "./trackerEmailCronStatus.js";
 
 export async function loadOrgSettingsBlobAdmin(): Promise<Record<string, unknown>> {
   const { data, error } = await getSupabaseAdmin()
@@ -38,4 +40,18 @@ export async function loadEffectiveUserSettingsAdmin(userId: string): Promise<Re
   const merged = mergeOrgAndPersonalSettings(org, personal);
   if (org.google_urls) merged.google_urls = org.google_urls;
   return merged;
+}
+
+export async function saveTrackerEmailCronStatusAdmin(status: TrackerEmailCronStatus): Promise<void> {
+  const current = await loadOrgSettingsBlobAdmin();
+  const settings: Record<string, unknown> = { ...current, tracker_email_cron_status: status };
+  delete settings.google_urls;
+  const { error } = await getSupabaseAdmin()
+    .from("org_settings")
+    .update({
+      settings: settings as Json,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", 1);
+  if (error) throw new Error(error.message);
 }

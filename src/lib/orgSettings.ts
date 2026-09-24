@@ -6,6 +6,7 @@ import {
 } from "./orgSettingsKeys.js";
 import { supabase } from "./supabase.js";
 import type { Json } from "../types/database.js";
+import type { TrackerEmailCronStatus } from "./trackerEmailCronStatus.js";
 
 export async function loadOrgSettingsBlob(): Promise<Record<string, unknown>> {
   const { data, error } = await supabase
@@ -72,6 +73,13 @@ export async function saveOrgSettingsPatch(
 
   const { error } = await supabase.from("org_settings").upsert(payload, { onConflict: "id" });
   return error?.message ?? null;
+}
+
+export async function recordTrackerEmailCronStatus(
+  userId: string,
+  status: TrackerEmailCronStatus,
+): Promise<string | null> {
+  return saveOrgSettingsPatch({ tracker_email_cron_status: status }, userId);
 }
 
 export async function saveOrgGoogleUrls(

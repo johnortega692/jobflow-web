@@ -94,11 +94,13 @@ function ProjectLayoutShell() {
     const label = `${project.job_number} ${project.job_name}`.trim();
     if (nextDone) {
       const ok = window.confirm(
-        `Mark ${label || "this project"} completed?\n\nIt will leave the active projects list and Manpower schedule. You can reopen it later or permanently delete it from Settings → Completed projects.`,
+        `Mark ${label || "this project"} completed?\n\nIt will leave the active projects list, Manpower schedule, and Field Tools (ordering, Field View, digest emails, and order history). Field Tools receipt photos for this job will be deleted and cannot be restored.\n\nYou can reopen the job later or permanently delete it from Settings → Completed projects.`,
       );
       if (!ok) return;
     } else {
-      const ok = window.confirm(`Reopen ${label || "this project"} and return it to the active list?`);
+      const ok = window.confirm(
+        `Reopen ${label || "this project"} and return it to the active list, Manpower, and Field Tools?`,
+      );
       if (!ok) return;
     }
     setDoneBusy(true);
@@ -267,7 +269,7 @@ function ProjectLayoutShell() {
 
         {isDone ? (
           <div className="banner banner-warn project-completed-banner" role="status">
-            This project is marked completed. It is hidden from the active projects list
+            This project is marked completed. It is hidden from the active projects list, Manpower, and Field Tools
             {!roleLoading && isAdmin ? " — admins can reopen it from the sidebar." : "."}
           </div>
         ) : null}
