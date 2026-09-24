@@ -1,8 +1,9 @@
 import type { ProjectForm } from "../types/database.js";
 import type { PaintTrackerState } from "../types/fieldTracker.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
+import { JOBFLOW_SCHEDULE_FROM_NAME } from "./jobflowScheduleFrom.js";
 import { formatGcSuperFieldDisplay, gcSuperintendentContact, projectTeamName } from "./jobInfo.js";
-import { sendVendorEmailAsOrderEmailViaGas } from "./sendOrderEmailGas.js";
+import { createBrowserScheduleEmailPoster } from "./scheduleEmailSend.js";
 
 export type PaintNotificationJobData = {
   jobNumber: string;
@@ -523,8 +524,9 @@ export async function sendPaintTrackerNotifications(options: {
   cc: string[];
   companyName: string;
   companyAddress: string;
-  fromName: string;
-  gasUrl: string;
+  fromName?: string;
+  /** Field Request Order URL — Gmail fallback if Resend is not configured. */
+  gasUrl?: string;
   logoUrl?: string;
 }): Promise<PaintTrackerNotificationKind[]> {
   const {
@@ -536,8 +538,8 @@ export async function sendPaintTrackerNotifications(options: {
     cc,
     companyName,
     companyAddress,
-    fromName,
-    gasUrl,
+    fromName = JOBFLOW_SCHEDULE_FROM_NAME,
+    gasUrl = "",
     logoUrl = "",
   } = options;
 
@@ -557,6 +559,7 @@ export async function sendPaintTrackerNotifications(options: {
   };
 
   const sent: PaintTrackerNotificationKind[] = [];
+  const post = createBrowserScheduleEmailPoster({ fieldOrderUrl: gasUrl });
 
   for (const kind of kinds) {
     let subject: string;
@@ -574,13 +577,13 @@ export async function sendPaintTrackerNotifications(options: {
 
     const htmlForSend = await embedLogoUrlInHtml(html, logoUrl);
 
-    await sendVendorEmailAsOrderEmailViaGas(gasUrl, {
+    await post("", {
       to: recipients.to,
       cc: recipients.cc,
       subject,
       html: htmlForSend,
       text: "This message contains HTML formatting. Open in an HTML-capable email client.",
-      from_name: fromName,
+      from_name: fromName.trim() || JOBFLOW_SCHEDULE_FROM_NAME,
     });
 
     sent.push(kind);

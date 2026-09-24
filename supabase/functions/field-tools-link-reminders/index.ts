@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { PDFDocument, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { sendJobFlowNotification } from "../sendJobFlowEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,42 +51,12 @@ async function buildTinyPdf(name: string, missing: string[]): Promise<Uint8Array
   return doc.save();
 }
 
-async function sendGasEmail(params: {
-  to: string;
-  subject: string;
-  htmlBody: string;
-  attachmentName: string;
-  attachmentBase64: string;
-  senderName: string;
-}): Promise<{ ok: boolean; message: string }> {
-  const base = Deno.env.get("GAS_SEND_EMAIL_URL")?.trim();
-  if (!base) return { ok: false, message: "GAS_SEND_EMAIL_URL not configured" };
-  const url = `${base}${base.includes("?") ? "&" : "?"}action=sendOrderEmail`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...params, cc: "" }),
-  });
-  const text = await res.text();
-  try {
-    const data = JSON.parse(text) as { success?: boolean; error?: string; message?: string };
-    if (!res.ok || data.success === false) {
-      return { ok: false, message: data.error ?? data.message ?? `HTTP ${res.status}` };
-    }
-    return { ok: true, message: data.message ?? "sent" };
-  } catch {
-    const looksHtml = text.trim().startsWith("<");
-    return { ok: false, message: looksHtml ? "Email service was busy" : text.slice(0, 200) };
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const senderName = Deno.env.get("EMAIL_SENDER_NAME")?.trim() || "Ironwood Commercial Builders";
     const supabase = createClient(supabaseUrl, serviceKey);
 
     let secret = "";
@@ -122,13 +93,12 @@ Deno.serve(async (req) => {
 <ul>${list}</ul>
 <p>Please open ${missing.length === 1 ? "it" : "them"} from the Field Tools hub when you can.</p>`;
       const pdf = await buildTinyPdf(person.name, missing);
-      const result = await sendGasEmail({
+      const result = await sendJobFlowNotification({
         to: email,
         subject: "Field Tools — reports not completed",
         htmlBody: html,
         attachmentName: "Field-Tools-reminder.pdf",
         attachmentBase64: bytesToBase64(pdf),
-        senderName,
       });
       if (result.ok) sent++;
       else failed++;

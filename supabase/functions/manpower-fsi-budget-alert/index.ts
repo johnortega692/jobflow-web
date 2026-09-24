@@ -1,14 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { sendJobFlowNotification } from "../sendJobFlowEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-const DIGEST_PDF_NAME = "JobFlow-notification.pdf";
-const DIGEST_PDF_BASE64 =
-  "JVBERi0xLjAKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iago8PC9UeXBlL1BhZ2UvTWVkaWFCb3hbMCAwIDYxMiA3OTJdPj4KZW5kb2JqCnhyZWYKMCA0CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxMCAwMDAwMCBuIAowMDAwMDAwMDYxIDAwMDAwIG4gCjAwMDAwMDAxMTggMDAwMDAgbiAKdHJhaWxlcgo8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxOTUKJSVFT0YK";
 
 type AlertRow = {
   project_id: string;
@@ -28,62 +25,6 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-async function postGas(
-  base: string,
-  action: "sendJobFlowEmail" | "sendOrderEmail",
-  params: {
-    to: string;
-    subject: string;
-    htmlBody: string;
-    senderName: string;
-    attachmentName?: string;
-    attachmentBase64?: string;
-  },
-): Promise<{ ok: boolean; message: string }> {
-  const url = `${base}${base.includes("?") ? "&" : "?"}action=${action}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      to: params.to,
-      cc: "",
-      subject: params.subject,
-      htmlBody: params.htmlBody,
-      senderName: params.senderName,
-      attachmentName: params.attachmentName ?? "",
-      attachmentBase64: params.attachmentBase64 ?? "",
-    }),
-  });
-  const text = await res.text();
-  try {
-    const data = JSON.parse(text) as { success?: boolean; error?: string; message?: string };
-    if (!res.ok || data.success === false) {
-      return { ok: false, message: data.error ?? data.message ?? `HTTP ${res.status}` };
-    }
-    return { ok: true, message: data.message ?? "sent" };
-  } catch {
-    const looksHtml = text.trim().startsWith("<");
-    return { ok: false, message: looksHtml ? "Email service was busy" : text.slice(0, 200) };
-  }
-}
-
-async function sendAlertEmail(params: {
-  to: string;
-  subject: string;
-  htmlBody: string;
-  senderName: string;
-}): Promise<{ ok: boolean; message: string }> {
-  const base = Deno.env.get("GAS_SEND_EMAIL_URL")?.trim();
-  if (!base) return { ok: false, message: "GAS_SEND_EMAIL_URL not configured" };
-  const jobFlow = await postGas(base, "sendJobFlowEmail", params);
-  if (jobFlow.ok) return jobFlow;
-  return await postGas(base, "sendOrderEmail", {
-    ...params,
-    attachmentName: DIGEST_PDF_NAME,
-    attachmentBase64: DIGEST_PDF_BASE64,
-  });
-}
-
 function alertHtml(jobLabel: string): string {
   const job = escapeHtml(jobLabel);
   return `<p>Manpower was scheduled on <strong>${job}</strong>.</p>
@@ -97,7 +38,6 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const senderName = Deno.env.get("EMAIL_SENDER_NAME")?.trim() || "JobFlow";
     const supabase = createClient(supabaseUrl, serviceKey);
 
     let secret = "";
@@ -148,11 +88,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const result = await sendAlertEmail({
+      const result = await sendJobFlowNotification({
         to,
         subject: `JobFlow: Manpower scheduled — Budget enter FSI still open (${jobLabel})`,
         htmlBody: alertHtml(jobLabel),
-        senderName,
       });
 
       if (result.ok) {

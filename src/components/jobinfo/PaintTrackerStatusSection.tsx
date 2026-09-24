@@ -11,6 +11,7 @@ import {
 } from "../../lib/fieldTrackerProject";
 import { PAINT_VENDOR_OPTIONS } from "../../lib/googleSheetsConfig";
 import { resolveProjectPaintNotificationRecipients } from "../../lib/jobInfo";
+import { JOBFLOW_SCHEDULE_FROM_NAME } from "../../lib/jobflowScheduleFrom";
 import { loadPaintUserSettings } from "../../lib/paintUserSettings";
 import {
   detectPaintTrackerNotificationKinds,
@@ -165,11 +166,6 @@ export function PaintTrackerStatusSection({
       return;
     }
 
-    if (!gasUrl) {
-      setStatus("Saved. Set Field Request Order URL in Settings → Mailing Settings to send notification emails.");
-      return;
-    }
-
     const notify = resolveProjectPaintNotificationRecipients(project, profile);
     if (!notify) {
       setStatus("Saved. Set PM email in Job setup → ICBI Info (or email on your Profile) to send notifications.");
@@ -186,7 +182,7 @@ export function PaintTrackerStatusSection({
         cc: notify.cc,
         companyName: branding.companyName || letterhead.company_name,
         companyAddress: letterhead.company_address,
-        fromName: `${branding.companyName || letterhead.company_name || "JobFlow"} Dashboard`.trim(),
+        fromName: JOBFLOW_SCHEDULE_FROM_NAME,
         gasUrl,
         logoUrl: letterhead.logo_url || branding.logoUrl,
       });
@@ -251,12 +247,6 @@ export function PaintTrackerStatusSection({
 
     lastSavedRef.current = next;
 
-    if (!gasUrl) {
-      setStatus("Saved. Set Field Request Order URL in Settings → Mailing Settings to send notification emails.");
-      setSendRevisionEmailChecked(false);
-      return;
-    }
-
     const notify = resolveProjectPaintNotificationRecipients(project, profile);
     if (!notify) {
       setStatus(
@@ -276,7 +266,7 @@ export function PaintTrackerStatusSection({
         cc: notify.cc,
         companyName: branding.companyName || letterhead.company_name,
         companyAddress: letterhead.company_address,
-        fromName: `${branding.companyName || letterhead.company_name || "JobFlow"} Dashboard`.trim(),
+        fromName: JOBFLOW_SCHEDULE_FROM_NAME,
         gasUrl,
         logoUrl: letterhead.logo_url || branding.logoUrl,
       });
