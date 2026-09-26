@@ -963,18 +963,20 @@ export function TransmittalPage() {
             </label>
           </div>
           <div className="sds-options-actions stack transmittal-build-actions">
-            <p className="sds-filename-preview muted small">
-              Filename: <code>{outputFilename}</code>
-            </p>
             <p
               className={`sds-readiness-line small${pendingCount ? " sds-readiness-line--warn" : enclosureCount ? " sds-readiness-line--ok" : ""}`}
             >
               {buildSummary}
             </p>
             <div className="stack transmittal-build-buttons">
-              <button type="button" className="btn btn-primary" onClick={() => void onGenerate()}>
-                Download PDF
-              </button>
+              <span className="paint-toolbar-download-wrap pdf-filename-hover">
+                <button type="button" className="btn btn-primary" onClick={() => void onGenerate()}>
+                  Download PDF
+                </button>
+                <span className="paint-toolbar-download-tip" role="tooltip">
+                  {outputFilename}
+                </span>
+              </span>
               <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
                 {saving ? "Saving…" : "Save draft"}
               </button>

@@ -418,7 +418,7 @@ export async function sendSiteReadyDigest(options: {
 
   const recipients = resolveTrackerNotificationRecipients(options.primaryEmail);
   if (!recipients) {
-    throw new Error("Set email on your Profile (Settings → Profile & letterhead).");
+    throw new Error("Set email on your Profile (Settings → My Profile).");
   }
 
   const branding: TrackerNotificationBranding = {

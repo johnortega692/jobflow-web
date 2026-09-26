@@ -18,6 +18,7 @@ export const ORG_SETTINGS_KEYS = [
   "project_staff_pms",
   "notification_primary_email",
   "notification_primary_name",
+  "tracker_schedule_user_id",
   "default_brushout_qty",
   "tracker_email_schedule",
   "tracker_email_cron_status",

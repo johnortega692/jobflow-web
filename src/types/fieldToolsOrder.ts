@@ -1,4 +1,4 @@
-export type FieldToolsOrderType = "field_request" | "job_scope_kit" | "last_min" | "haul_off";
+export type FieldToolsOrderType = "field_request" | "job_scope_kit" | "last_min" | "haul_off" | "pm_order";
 
 export type FieldToolsOrder = {
   id: string;

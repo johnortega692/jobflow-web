@@ -252,7 +252,7 @@ export function UserApprovalsSettingsSection() {
           Informational office roles shown on each user&apos;s profile. Use <strong>Admin access</strong> to
           give another person full company Settings (same as your Admin badge). You cannot change your
           own admin access or remove the last admin. Regular users only see the Settings sections you
-          check below. Profile & letterhead is always available.
+          check below. My Profile is always available.
         </p>
         {approvedLoading ? (
           <p className="muted">Loading approved users…</p>

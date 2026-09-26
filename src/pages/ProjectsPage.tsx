@@ -39,6 +39,7 @@ import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivi
 import { loadDefaultStartupItems } from "../lib/projectStartupItems";
 import { listProjectIdsWithApprovedBrushouts } from "../lib/approvedBrushouts";
 import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
+import { isRfiClosed } from "../lib/rfiStatus";
 import { formatDateTime } from "../lib/strings";
 import { type Project } from "../types/database";
 
@@ -80,6 +81,7 @@ export function ProjectsPage() {
   const { profile } = useLetterhead();
   const [projects, setProjects] = useState<Project[]>([]);
   const [approvedBrushoutIds, setApprovedBrushoutIds] = useState<Set<string>>(new Set());
+  const [openRfiCounts, setOpenRfiCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -104,7 +106,21 @@ export function ProjectsPage() {
   );
   const pmDefaultedRef = useRef(false);
 
-  const summaries = useMemo(() => computeProjectListSummaries(projects), [projects]);
+  const summaries = useMemo(() => {
+    const base = computeProjectListSummaries(projects);
+    if (!openRfiCounts.size) return base;
+    const next = new Map(base);
+    for (const [id, summary] of next) {
+      const openRfiCount = openRfiCounts.get(id) ?? 0;
+      if (!openRfiCount) continue;
+      next.set(id, {
+        ...summary,
+        openRfiCount,
+        attentionCount: summary.attentionCount + openRfiCount,
+      });
+    }
+    return next;
+  }, [projects, openRfiCounts]);
 
   const attentionSpotlight = useMemo(() => getSpotlight(projects, summaries), [projects, summaries]);
 
@@ -130,11 +146,12 @@ export function ProjectsPage() {
 
   async function loadProjects() {
     setLoading(true);
-    const [{ data, error: err }, doneRes, brushoutIds] = await Promise.all([
+    const [{ data, error: err }, doneRes, brushoutIds, , rfiRes] = await Promise.all([
       supabase.from("projects").select("*").order("updated_at", { ascending: false }),
       listDoneProjectIds(),
       listProjectIdsWithApprovedBrushouts().catch(() => new Set<string>()),
       loadDefaultStartupItems(),
+      supabase.from("rfis").select("project_id, status"),
     ]);
     setLoading(false);
     if (err) {
@@ -147,6 +164,12 @@ export function ProjectsPage() {
     }
     const done = new Set(doneRes.ids);
     setApprovedBrushoutIds(brushoutIds);
+    const rfiCounts = new Map<string, number>();
+    for (const row of rfiRes.data ?? []) {
+      if (isRfiClosed(row.status)) continue;
+      rfiCounts.set(row.project_id, (rfiCounts.get(row.project_id) ?? 0) + 1);
+    }
+    setOpenRfiCounts(rfiCounts);
     setProjects((data ?? []).filter((p) => !done.has(p.id)));
   }
 

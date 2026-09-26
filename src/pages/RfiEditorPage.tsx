@@ -1,9 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
-import {
-  useUnsavedNavigation,
-  useUnsavedNavigationGuard,
-} from "../contexts/UnsavedNavigationContext";
+import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext";
 import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
 import { DateInput } from "../components/DateInput";
 import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
@@ -40,7 +37,6 @@ import {
   coerceTransmittalContract,
   hasTransmittalContractSwitch,
   projectPrintInfoForContract,
-  transmittalPrintInfo,
 } from "../lib/jobInfo";
 import {
   defaultRfiFormData,
@@ -125,7 +121,6 @@ function dueTimeline(dueDate: string): { label: string; tone: "neutral" | "soon"
 export function RfiEditorPage() {
   const { branding, profile } = useLetterhead();
   const navigate = useNavigate();
-  const { requestNavigation } = useUnsavedNavigation();
   const { project, projectId } = useOutletContext<ProjectOutlet>();
   const { rfiId } = useParams<{ rfiId: string }>();
   const seed = rfiId ? rfiEditorDrafts.get(rfiId) : undefined;
@@ -143,6 +138,7 @@ export function RfiEditorPage() {
   const [aiAssistOpen, setAiAssistOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(seed?.notesOpen ?? false);
   const [loadedRfiId, setLoadedRfiId] = useState<string | null>(seed && rfiId ? rfiId : null);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
   const profileRef = useRef(profile);
   profileRef.current = profile;
@@ -398,19 +394,31 @@ export function RfiEditorPage() {
     navigate(`/projects/${projectId}/rfis`);
   }
 
-  const contractJob = useMemo(
-    () => (project ? transmittalPrintInfo(project, form.contract) : { job_number: "", job_name: "" }),
-    [project, form.contract],
-  );
-
   const outputFilename = project
-    ? rfiFilename(contractJob.job_name, contractJob.job_number, rfiNumber)
+    ? rfiFilename(rfiNumber, subject)
     : "";
 
   const readiness = useMemo(() => evaluateRfiReadiness(form), [form]);
 
   const titleSubject = subject.trim();
   const pageTitle = titleSubject ? `RFI ${rfiNumber} · ${titleSubject}` : `RFI ${rfiNumber}`;
+  const rfiLogPath = `/projects/${projectId}/rfis`;
+
+  function onBackToRfis(event: { preventDefault(): void }) {
+    if (!isDirty) return;
+    event.preventDefault();
+    setDiscardOpen(true);
+  }
+
+  function keepEditing() {
+    setDiscardOpen(false);
+  }
+
+  function discardAndLeave() {
+    onDiscardUnsaved();
+    setDiscardOpen(false);
+    navigate(rfiLogPath);
+  }
   const dueInfo = dueTimeline(form.due_date);
   const ballInCourt = form.to_name.trim() || "—";
 
@@ -419,21 +427,21 @@ export function RfiEditorPage() {
   return (
     <div className="page stack rfi-editor-page">
       <header className="stack rfi-editor-header">
-        <p className="breadcrumb rfi-editor-breadcrumb">
-          <Link to="/projects" onClick={(e) => requestNavigation("/projects", e)}>
-            Projects
-          </Link>{" "}
-          /{" "}
-          <Link
-            to={`/projects/${projectId}/rfis`}
-            onClick={(e) => requestNavigation(`/projects/${projectId}/rfis`, e)}
-          >
-            {project.job_number}
-          </Link>{" "}
-          / RFI {rfiNumber}
-        </p>
         <div className="rfi-editor-title-row">
-          <h1>{pageTitle}</h1>
+          <div className="rfi-editor-title-main">
+            <Link
+              className="rfi-editor-back"
+              to={rfiLogPath}
+              aria-label="Back to RFIs"
+              title="Back to RFIs"
+              onClick={onBackToRfis}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </Link>
+            <h1>{pageTitle}</h1>
+          </div>
           {hasTransmittalContractSwitch(project) && (
             <div className="rfi-editor-title-actions">
               <TradeContractTabs
@@ -444,7 +452,7 @@ export function RfiEditorPage() {
             </div>
           )}
         </div>
-        <div className="rfi-editor-timeline" aria-label="RFI timeline">
+        <div className="rfi-editor-timeline rfi-editor-timeline--indented" aria-label="RFI timeline">
           <RfiStatusBadge status={status} />
           <span className="rfi-editor-timeline-sep" aria-hidden>
             ·
@@ -814,9 +822,6 @@ export function RfiEditorPage() {
                 Response space (for GC)
               </label>
             </div>
-            <p className="sds-filename-preview muted small">
-              Filename: <code>{outputFilename}</code>
-            </p>
             <ul className="rfi-readiness-list" aria-label="PDF readiness">
               {readiness.map((item) => {
                 const tone = item.ok
@@ -838,14 +843,19 @@ export function RfiEditorPage() {
               })}
             </ul>
             <div className="stack rfi-editor-rail-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={printing || saving}
-                onClick={() => void onDownloadPdf()}
-              >
-                {printing ? "Generating…" : "Download PDF"}
-              </button>
+              <span className="paint-toolbar-download-wrap pdf-filename-hover">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={printing || saving}
+                  onClick={() => void onDownloadPdf()}
+                >
+                  {printing ? "Generating…" : "Download PDF"}
+                </button>
+                <span className="paint-toolbar-download-tip" role="tooltip">
+                  {outputFilename}
+                </span>
+              </span>
               <button
                 type="submit"
                 form="rfi-form"
@@ -867,6 +877,31 @@ export function RfiEditorPage() {
           </button>
         </aside>
       </div>
+
+      {discardOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={keepEditing}>
+          <div
+            className="modal card stack"
+            role="alertdialog"
+            aria-labelledby="rfi-discard-title"
+            aria-describedby="rfi-discard-desc"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="rfi-discard-title">Discard unsaved changes?</h3>
+            <p id="rfi-discard-desc" className="muted small">
+              Your edits to this RFI will be lost.
+            </p>
+            <div className="row-gap wrap">
+              <button type="button" className="btn btn-secondary" onClick={discardAndLeave}>
+                Discard
+              </button>
+              <button type="button" className="btn btn-primary" onClick={keepEditing}>
+                Keep editing
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {aiAssistOpen && (
         <RfiAiAssistModal

@@ -31,6 +31,8 @@ type DispatchSpec = {
   warehouse_email?: string;
   material_scope?: "paint" | "sundries";
   vendor_name?: string;
+  /** Assign PO and generate PDF without sending a vendor email. */
+  skip_email?: boolean;
 };
 
 type SubmitBody = {
@@ -42,7 +44,7 @@ type SubmitBody = {
   order?: {
     job_number: string;
     job_name?: string;
-    order_type: "field_request" | "job_scope_kit" | "haul_off";
+    order_type: "field_request" | "job_scope_kit" | "haul_off" | "pm_order";
     submitted_by_profile_id: string;
     submitted_by_name: string;
     submitted_by_email: string;
@@ -282,6 +284,7 @@ function asDispatchSpecs(value: unknown): DispatchSpec[] {
         warehouse_email: o.warehouse_email != null ? String(o.warehouse_email) : undefined,
         material_scope: o.material_scope === "paint" || o.material_scope === "sundries" ? o.material_scope : undefined,
         vendor_name: o.vendor_name != null ? String(o.vendor_name) : undefined,
+        skip_email: Boolean(o.skip_email),
       } satisfies DispatchSpec;
     })
     .filter((s): s is DispatchSpec => Boolean(s));
@@ -293,7 +296,12 @@ function specsFromDispatchRows(rows: ExistingDispatchRow[]): DispatchSpec[] {
     to_email: r.to_email,
     cc_emails: parseEmailList(r.cc_emails),
     assign_po: Boolean(r.po_number),
+    skip_email: r.email_status === "skipped",
   }));
+}
+
+function isDispatchComplete(status: string): boolean {
+  return status === "sent" || status === "skipped";
 }
 
 function matchExistingDispatch(
@@ -460,11 +468,16 @@ Deno.serve(async (req) => {
     const { data: orderSettings } = await supabase
       .from("field_tools_order_settings")
       .select(
-        "global_cc_emails, global_cc_skip_job_codes, receipt_reminder_enabled, receipt_reminder_on_submit, receipt_reminder_cc_pm",
+        "warehouse_email, warehouse_delivery_cc, global_cc_emails, global_cc_skip_job_codes, receipt_reminder_enabled, receipt_reminder_on_submit, receipt_reminder_cc_pm",
       )
       .eq("id", 1)
       .maybeSingle();
     const skipGlobalCcJobs = parseJobCodeList(String(orderSettings?.global_cc_skip_job_codes ?? ""));
+    const warehouseEmailSetting = String(
+      (orderSettings as { warehouse_email?: string } | null)?.warehouse_email ?? "",
+    ).trim();
+    const warehouseDeliveryCc =
+      (orderSettings as { warehouse_delivery_cc?: boolean } | null)?.warehouse_delivery_cc === true;
 
     const clientSubmitId = asUuid(body.client_submit_id);
     const resendOrderId = asUuid(body.resend_order_id);
@@ -526,7 +539,7 @@ Deno.serve(async (req) => {
       ? {
           job_number: stored.job_number,
           job_name: stored.job_name ?? "",
-          order_type: stored.order_type as "field_request" | "job_scope_kit" | "haul_off",
+          order_type: stored.order_type as "field_request" | "job_scope_kit" | "haul_off" | "pm_order",
           submitted_by_profile_id: stored.submitted_by_profile_id ?? trustedProfile.id,
           submitted_by_name: stored.submitted_by_name || trustedProfile.name,
           submitted_by_email: stored.submitted_by_email || trustedProfile.email,
@@ -641,7 +654,13 @@ Deno.serve(async (req) => {
       await supabase.from("field_tools_orders").update({ dispatch_specs: dispatchSpecs }).eq("id", orderId);
     }
 
-    if (existingDispatches.length && existingDispatches.every((d) => d.email_status === "sent") && !resendDispatchId) {
+    const skipEmailOnly = dispatchSpecs.every((s) => s.skip_email);
+    if (
+      existingDispatches.length &&
+      existingDispatches.every((d) => isDispatchComplete(d.email_status)) &&
+      !resendDispatchId &&
+      !skipEmailOnly
+    ) {
       const poLabel = existingDispatches.map((d) => d.po_number).filter(Boolean).join(", ") || stored?.po_number || "";
       return jsonResponse({
         ok: true,
@@ -651,7 +670,7 @@ Deno.serve(async (req) => {
           type: d.dispatch_type,
           po_number: d.po_number || undefined,
           ok: true,
-          message: "Already sent",
+          message: d.email_status === "skipped" ? "PDF only — no email sent" : "Already sent",
         })),
         message: `Order submitted${poLabel ? ` — PO# ${poLabel}` : ""}`,
       });
@@ -676,6 +695,11 @@ Deno.serve(async (req) => {
 
     const lists = payload.lists as Record<string, unknown> | undefined;
     const sections = payload.sections as Record<string, unknown> | undefined;
+    const deliverToWarehouse = payload.deliverToWarehouse === true;
+    const warehouseCcForDelivery =
+      deliverToWarehouse && warehouseDeliveryCc && warehouseEmailSetting
+        ? warehouseEmailSetting
+        : "";
 
     const paintItems = asLineItems(lists?.paint ?? o.paint);
     const sundryItems = asLineItems(lists?.sundries ?? []);
@@ -702,6 +726,7 @@ Deno.serve(async (req) => {
 
     const results: { type: string; po_number?: string; ok: boolean; message: string }[] = [];
     const assignedPos: string[] = [];
+    const pdfs: { filename: string; pdf_base64: string }[] = [];
 
     for (let specIndex = 0; specIndex < dispatchSpecs.length; specIndex++) {
       const spec = dispatchSpecs[specIndex];
@@ -710,18 +735,23 @@ Deno.serve(async (req) => {
         results.push({
           type: spec.type,
           po_number: existingDispatch.po_number || undefined,
-          ok: existingDispatch.email_status === "sent",
+          ok: isDispatchComplete(existingDispatch.email_status),
           message: existingDispatch.email_status === "sent" ? "Already sent" : existingDispatch.email_status,
         });
         if (existingDispatch.po_number) assignedPos.push(existingDispatch.po_number);
         continue;
       }
-      if (existingDispatch?.email_status === "sent" && existingDispatch.id !== resendDispatchId) {
+      if (
+        existingDispatch &&
+        isDispatchComplete(existingDispatch.email_status) &&
+        existingDispatch.id !== resendDispatchId &&
+        !spec.skip_email
+      ) {
         results.push({
           type: spec.type,
           po_number: existingDispatch.po_number || undefined,
           ok: true,
-          message: "Already sent",
+          message: existingDispatch.email_status === "skipped" ? "PDF only — no email sent" : "Already sent",
         });
         if (existingDispatch.po_number) assignedPos.push(existingDispatch.po_number);
         continue;
@@ -870,6 +900,34 @@ Deno.serve(async (req) => {
           ? (spec.warehouse_email || spec.to_email || defaultWarehouse).trim()
           : spec.to_email.trim();
 
+      if (spec.skip_email) {
+        const pdfBase64 = bytesToBase64(pdfBytes);
+        pdfs.push({ filename: attachmentName, pdf_base64: pdfBase64 });
+        const dispatchRow = {
+          order_id: orderId,
+          dispatch_type: spec.type,
+          po_number: poNumber,
+          to_email: to,
+          cc_emails: "",
+          subject,
+          email_status: "skipped",
+          gas_response: { message: "PDF only — no email sent" },
+          emailed_at: null,
+        };
+        if (existingDispatch) {
+          await supabase.from("field_tools_order_dispatches").update(dispatchRow).eq("id", existingDispatch.id);
+        } else {
+          await supabase.from("field_tools_order_dispatches").insert(dispatchRow);
+        }
+        results.push({
+          type: spec.type,
+          po_number: poNumber || undefined,
+          ok: true,
+          message: "PDF only — no email sent",
+        });
+        continue;
+      }
+
       if (!to) {
         const failedRow = {
           order_id: orderId,
@@ -897,6 +955,9 @@ Deno.serve(async (req) => {
         superEmail,
         foreman,
         spec.type === "rental" ? rentalVendor?.email2 : "",
+        spec.type === "material" || spec.type === "rental" || spec.type === "job_scope_kit"
+          ? warehouseCcForDelivery
+          : "",
       ]);
 
       let htmlBody = buildOrderEmailHtml({
@@ -976,7 +1037,7 @@ Deno.serve(async (req) => {
 
     if (anyOk) {
       const alreadyReminded = Boolean(stored?.receipt_reminder_sent_at);
-      const skipReminder = o.order_type === "haul_off";
+      const skipReminder = o.order_type === "haul_off" || o.order_type === "pm_order" || skipEmailOnly;
       const reminderEnabled = (orderSettings as { receipt_reminder_enabled?: boolean } | null)?.receipt_reminder_enabled !== false;
       const reminderOnSubmit = (orderSettings as { receipt_reminder_on_submit?: boolean } | null)?.receipt_reminder_on_submit !== false;
       const reminderCcPm = (orderSettings as { receipt_reminder_cc_pm?: boolean } | null)?.receipt_reminder_cc_pm !== false;
@@ -1038,6 +1099,7 @@ Deno.serve(async (req) => {
       order_id: orderId,
       po_number: orderPoLabel || null,
       dispatches: results,
+      pdfs: pdfs.length ? pdfs : undefined,
       message: allOk
         ? `Order submitted${orderPoLabel ? ` — PO# ${orderPoLabel}` : ""}`
         : results.map((r) => `${r.type}: ${r.message}`).join(" · "),

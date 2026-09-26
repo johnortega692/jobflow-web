@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
@@ -107,6 +107,9 @@ export function WallcoveringSubmittalsPage() {
   const [savedTrackItem, setSavedTrackItem] = useState<WallcoveringItem | null>(null);
   const [vendors, setVendors] = useState<MaterialVendor[]>([]);
   const [samplesOpen, setSamplesOpen] = useState(false);
+  const [toolbarMenu, setToolbarMenu] = useState<"new" | "help" | "tracker" | null>(null);
+  const [orderToast, setOrderToast] = useState<{ id: number; text: string } | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
   const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
@@ -156,6 +159,35 @@ export function WallcoveringSubmittalsPage() {
   }, [loading, tradeData.wallcovering_submittal, tradeData.wallcovering_submittal_history, syncBaseline]);
 
   useEffect(() => {
+    if (!toolbarMenu) return;
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const menus = toolbarRef.current?.querySelectorAll(".paint-toolbar-menu");
+      if (!menus) return;
+      for (const menu of menus) {
+        if (menu.contains(target)) return;
+      }
+      setToolbarMenu(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setToolbarMenu(null);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [toolbarMenu]);
+
+  useEffect(() => {
+    if (!orderToast) return;
+    const timer = window.setTimeout(() => setOrderToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [orderToast]);
+
+  useEffect(() => {
     if (!user?.id) return;
     void loadContactDirectory(user.id).then((d) => setVendors(d.material_vendors));
   }, [user?.id]);
@@ -174,7 +206,6 @@ export function WallcoveringSubmittalsPage() {
         (entry.scope ?? "wallcovering") === "wallcovering" &&
         entry.submittal_number !== draft.submittal_number,
     );
-  const showAddToTracker = laterSubmittalPackage || draftLocked;
   const autoLabel = draft.auto_label !== false;
   const showFloor = draft.show_floor === true || wcItemsHaveFloor(draft.items);
   const hasTrack = Boolean(draft.got_track) || draft.items.some(isTrackInfillItem);
@@ -563,7 +594,11 @@ export function WallcoveringSubmittalsPage() {
       setStatus(`Saved submittal. Wallcovering tracker update failed: ${trackerErr}`);
       return;
     }
-    setStatus(checked ? "Submittal marked ordered." : "Submittal ordered cleared.");
+    setStatus(null);
+    setOrderToast({
+      id: Date.now(),
+      text: checked ? "Submittal marked ordered." : "Submittal ordered cleared.",
+    });
   }
 
   function startOrderSamples() {
@@ -737,62 +772,225 @@ export function WallcoveringSubmittalsPage() {
 
   return (
     <div className="stack wc-submittal-page">
-      <div className="row-gap wrap">
-          <button
-            type="button"
-            className="btn btn-outline-accent"
-            title="Assign the next submittal number (Rev 0, draft). Current package stays in Submittal history."
-            onClick={onNewSubmittalPackage}
-          >
-            New submittal package
-          </button>
-          {showAddToTracker && (
+      <div className="card paint-toolbar wc-submittal-toolbar" ref={toolbarRef}>
+        <div className="paint-toolbar-row">
+          <div className="paint-toolbar-menu">
             <button
               type="button"
-              className="btn btn-secondary"
-              disabled={Boolean(trackerBusy)}
-              title="Append this package's items to Material Tracker. Existing tracker lines stay as-is."
-              onClick={() => void onAddToMaterialTracker()}
+              className="btn paint-toolbar-new"
+              aria-haspopup="menu"
+              aria-expanded={toolbarMenu === "new"}
+              onClick={() => setToolbarMenu((open) => (open === "new" ? null : "new"))}
             >
-              {trackerBusy === "add" ? "Adding…" : "Add to Material Tracker"}
+              + New
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             </button>
-          )}
-          <button type="button" className="btn btn-secondary" onClick={() => setStartRevisionOpen(true)}>
-            Start revision from…
-          </button>
-          {!draftLocked && (
-            <button
-              type="button"
-              className="btn btn-success"
-              disabled={saving}
-              title="Lock this revision in history as issued"
-              onClick={() => void onIssueSubmittal()}
-            >
-              Issue submittal
-            </button>
-          )}
-          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => void onDownloadPdf()}>
-            Download PDF
-          </button>
-        </div>
+            {toolbarMenu === "new" ? (
+              <div className="paint-toolbar-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  title="Assign the next submittal number (Rev 0, draft). Current package stays in Submittal history."
+                  onClick={() => {
+                    setToolbarMenu(null);
+                    onNewSubmittalPackage();
+                  }}
+                >
+                  New submittal package
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setToolbarMenu(null);
+                    setStartRevisionOpen(true);
+                  }}
+                >
+                  Start revision from…
+                </button>
+                {!draftLocked ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={saving}
+                    title="Lock this revision in history as issued"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void onIssueSubmittal();
+                    }}
+                  >
+                    Issue submittal
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    title="Copy this issued package into the next revision"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      onCreateRevision();
+                    }}
+                  >
+                    Create next revision
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
 
-      <p className="sds-filename-preview muted small">
-        Filename: <code>{submittalPdfFilename}</code>
-      </p>
-      <p className="muted small submittal-package-hint">
-        Use <strong>New submittal package</strong> when you need a new number (#002, #003) for a different
-        set of materials or package type (for example samples vs product data). Use{" "}
-        <strong>Create next revision</strong> to change items on the same package after it is issued or
-        approved. Older packages stay in <strong>Submittal history</strong> — open one to go back.
-        After the first package, use <strong>Add to Material Tracker</strong> to append that package's
-        items; <strong>Update Material Tracker</strong> only refreshes lines already on the tracker.
-      </p>
+          <span className="wc-toolbar-sep" aria-hidden="true" />
+
+          <div className="paint-toolbar-brush" aria-label="Samples">
+            <span className="paint-toolbar-label">Samples</span>
+            <div className="paint-toolbar-segment">
+              <button type="button" className="btn paint-toolbar-order" onClick={startOrderSamples}>
+                Order
+              </button>
+              <button
+                type="button"
+                className={`btn paint-toolbar-ordered${draft.submittal_ordered ? " is-on" : ""}`}
+                aria-pressed={Boolean(draft.submittal_ordered)}
+                onClick={() => void onSubmittalOrderedChange(!Boolean(draft.submittal_ordered))}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden>
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                Ordered
+              </button>
+            </div>
+          </div>
+
+          <span className="wc-toolbar-sep" aria-hidden="true" />
+
+          <div className="paint-toolbar-menu">
+            <button
+              type="button"
+              className="btn paint-toolbar-tracker"
+              aria-haspopup="menu"
+              aria-expanded={toolbarMenu === "tracker"}
+              disabled={Boolean(trackerBusy)}
+              onClick={() => setToolbarMenu((open) => (open === "tracker" ? null : "tracker"))}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <rect x="3" y="4" width="18" height="16" rx="1.5" />
+                <path d="M3 9h18M3 14h18M9 9v11M15 9v11" />
+              </svg>
+              {trackerBusy === "update" ? "Updating…" : trackerBusy === "add" ? "Adding…" : "Material Tracker"}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            {toolbarMenu === "tracker" ? (
+              <div className="paint-toolbar-dropdown paint-toolbar-tracker-menu" role="menu">
+                {laterSubmittalPackage ? (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={Boolean(trackerBusy)}
+                      onClick={() => {
+                        setToolbarMenu(null);
+                        void onUpdateMaterialTracker();
+                      }}
+                    >
+                      <span className="wc-tracker-item-title">Refresh matching lines</span>
+                      <span className="wc-tracker-item-desc">Updates tracker lines that match this package. Doesn't add new items.</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={Boolean(trackerBusy)}
+                      onClick={() => {
+                        setToolbarMenu(null);
+                        void onAddToMaterialTracker();
+                      }}
+                    >
+                      <span className="wc-tracker-item-title">Add new items</span>
+                      <span className="wc-tracker-item-desc">Adds lines from this package that aren't in the tracker yet.</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={Boolean(trackerBusy)}
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void onUpdateMaterialTracker();
+                    }}
+                  >
+                    <span className="wc-tracker-item-title">Create / refresh tracker</span>
+                    <span className="wc-tracker-item-desc">
+                      Builds the Material Tracker from this package. Matching lines keep lead times, dates and order qty.
+                    </span>
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="paint-toolbar-end">
+            <button type="button" className="btn btn-secondary paint-toolbar-history" onClick={openHistory}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="12" cy="12" r="8" />
+                <path d="M12 8v5l3 2" />
+              </svg>
+              History
+            </button>
+            <div className="paint-toolbar-menu">
+              <button
+                type="button"
+                className="paint-toolbar-help-btn"
+                aria-label="How revisions work"
+                aria-expanded={toolbarMenu === "help"}
+                title="How revisions work"
+                onClick={() => setToolbarMenu((open) => (open === "help" ? null : "help"))}
+              >
+                ?
+              </button>
+              {toolbarMenu === "help" ? (
+                <div className="paint-toolbar-help" role="dialog" aria-label="How revisions work">
+                  <strong>How revisions work</strong>
+                  <p>
+                    Use <strong>New submittal package</strong> when you need a new number (#002, #003) for a
+                    different set of materials or package type (for example samples vs product data). Use{" "}
+                    <strong>Create next revision</strong> to change items on the same package after it is issued
+                    or approved. Older packages stay in <strong>History</strong> — open one to go back. After the
+                    first package, use <strong>Add new items</strong> to append that package's
+                    items. <strong>Refresh matching lines</strong> only refreshes lines already on the tracker.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <span className="paint-toolbar-download-wrap">
+              <button type="button" className="btn btn-primary paint-toolbar-download" onClick={() => void onDownloadPdf()}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M12 4v10" />
+                  <path d="m7 11 5 5 5-5" />
+                  <path d="M5 19h14" />
+                </svg>
+                Download PDF
+              </button>
+              <span className="paint-toolbar-download-tip" role="tooltip">
+                {submittalPdfFilename}
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
+      {orderToast ? (
+        <div className="wc-order-toast" role="status">
+          {orderToast.text}
+        </div>
+      ) : null}
 
       {draftLocked && (
         <div className="banner banner-warn">
@@ -800,49 +998,6 @@ export function WallcoveringSubmittalsPage() {
           change items, or update issue status below.
         </div>
       )}
-
-      <section className="card wc-action-bar">
-        <div className="wc-main-buttons row-gap wrap">
-          <button type="button" className="btn btn-secondary" onClick={startOrderSamples}>
-            Order samples
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={openHistory}>
-            Submittal history…
-          </button>
-          <label className="check paint-action-check">
-            <input
-              type="checkbox"
-              checked={Boolean(draft.submittal_ordered)}
-              onChange={(e) => void onSubmittalOrderedChange(e.target.checked)}
-            />
-            Submittal Ordered
-          </label>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={Boolean(trackerBusy)}
-            title={
-              laterSubmittalPackage
-                ? "Refresh matching Material Tracker lines from this package. Does not add new items — use Add to Material Tracker for that."
-                : "Create or refresh Material Tracker from this package. Matching lines keep lead times, dates, and order qty."
-            }
-            onClick={() => void onUpdateMaterialTracker()}
-          >
-            {trackerBusy === "update" ? "Updating…" : "Update Material Tracker"}
-          </button>
-          {showAddToTracker && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={Boolean(trackerBusy)}
-              title="Append this package's items to Material Tracker. Existing tracker lines stay as-is."
-              onClick={() => void onAddToMaterialTracker()}
-            >
-              {trackerBusy === "add" ? "Adding…" : "Add to Material Tracker"}
-            </button>
-          )}
-        </div>
-      </section>
 
       <WallcoveringSubmittalMetaPanel
         draft={draft}

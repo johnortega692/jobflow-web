@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
@@ -92,6 +92,8 @@ export function PaintSubmittalsPage() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState<PaintSubmittalData | null>(null);
   const [prepOpen, setPrepOpen] = useState(false);
+  const [toolbarMenu, setToolbarMenu] = useState<"new" | "help" | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -148,6 +150,29 @@ export function PaintSubmittalsPage() {
       syncBaseline({ draft: d, history: h });
     }
   }, [loading, tradeData, syncBaseline]);
+
+  useEffect(() => {
+    if (!toolbarMenu) return;
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const menus = toolbarRef.current?.querySelectorAll(".paint-toolbar-menu");
+      if (!menus) return;
+      for (const menu of menus) {
+        if (menu.contains(target)) return;
+      }
+      setToolbarMenu(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setToolbarMenu(null);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [toolbarMenu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -616,56 +641,167 @@ export function PaintSubmittalsPage() {
 
   return (
     <div className="stack paint-submittal-page">
-      <div className="row-gap wrap paint-submittal-header-actions">
-          <div className="row-gap wrap">
-            <button
-              type="button"
-              className="btn btn-outline-accent"
-              title="Assign the next submittal number (Rev 0, draft). Does not lock or issue."
-              onClick={onNewSubmittalPackage}
-            >
-              New submittal package
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setStartRevisionOpen(true)}>
-              Start revision from…
-            </button>
-            {!draftLocked && (
+      <div className="card paint-toolbar" ref={toolbarRef}>
+        <div className="paint-toolbar-row">
+        <div className="paint-toolbar-menu">
+          <button
+            type="button"
+            className="btn paint-toolbar-new"
+            aria-haspopup="menu"
+            aria-expanded={toolbarMenu === "new"}
+            onClick={() => setToolbarMenu((open) => (open === "new" ? null : "new"))}
+          >
+            + New
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          {toolbarMenu === "new" ? (
+            <div className="paint-toolbar-dropdown" role="menu">
               <button
                 type="button"
-                className="btn btn-success"
-                disabled={saving}
-                title="Lock this revision in history as issued"
-                onClick={() => void onIssueSubmittal()}
+                role="menuitem"
+                title="Assign the next submittal number (Rev 0, draft). Does not lock or issue."
+                onClick={() => {
+                  setToolbarMenu(null);
+                  onNewSubmittalPackage();
+                }}
               >
-                Issue submittal
+                New submittal package
               </button>
-            )}
-          </div>
-          <div className="row-gap wrap">
-            <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button type="button" className="btn btn-primary" onClick={() => void onDownloadPdf()}>
-              Download PDF
-            </button>
-          </div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setToolbarMenu(null);
+                  setStartRevisionOpen(true);
+                }}
+              >
+                Start revision from…
+              </button>
+              {!draftLocked ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={saving}
+                  title="Lock this revision in history as issued"
+                  onClick={() => {
+                    setToolbarMenu(null);
+                    void onIssueSubmittal();
+                  }}
+                >
+                  Issue submittal
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  title="Copy this issued package into the next revision"
+                  onClick={() => {
+                    setToolbarMenu(null);
+                    onCreateRevision();
+                  }}
+                >
+                  Create next revision
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
 
-      <p className="sds-filename-preview muted small">
-        Filename: <code>{submittalPdfFilename}</code>
-      </p>
-      <p className="muted small submittal-package-hint">
-        Added colors or a color switch after the first package was issued: use{" "}
-        <strong>Create next revision</strong> (same submittal number). It copies the list — change the
-        color on the existing row, and <strong>Add row</strong> for new colors. Do not import the whole
-        schedule again, or labels will duplicate. <strong>Download PDF</strong> on the revision is a new
-        file for the GC: the full updated list, Revision number, and your revision note. Lines are marked{" "}
-        <strong>NEW</strong>, <strong>REVISED</strong>, <strong>Removed</strong>, or <strong>No Change</strong> against
-        the previous issued
-        package. It does not replace the first PDF they already received. <strong>Order Brushouts</strong> lets
-        you check which colors to request — on a revision, new and switched colors are selected; use All if you
-        need every color again.
-      </p>
+        <div className="paint-toolbar-brush" aria-label="Brush-outs">
+          <span className="paint-toolbar-label">Brush-outs</span>
+          <div className="paint-toolbar-segment">
+            <button type="button" className="btn paint-toolbar-order" onClick={() => setEmailOpen(true)}>
+              Order
+            </button>
+            <button
+              type="button"
+              className={`btn paint-toolbar-ordered${draft.submittal_ordered ? " is-on" : ""}`}
+              aria-pressed={Boolean(draft.submittal_ordered)}
+              onClick={() => void onSubmittalOrderedChange(!Boolean(draft.submittal_ordered))}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden>
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+              Ordered
+            </button>
+          </div>
+          <Link className="btn btn-secondary" to={`/projects/${projectId}/approved-brushouts`}>
+            Approved
+          </Link>
+          <button type="button" className="btn btn-secondary" onClick={() => setPrepOpen(true)}>
+            Import request
+          </button>
+        </div>
+
+        <div className="paint-toolbar-end">
+          <button type="button" className="btn btn-secondary paint-toolbar-history" onClick={() => setHistoryOpen(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="12" cy="12" r="8" />
+              <path d="M12 8v5l3 2" />
+            </svg>
+            History
+          </button>
+          <div className="paint-toolbar-menu">
+            <button
+              type="button"
+              className="paint-toolbar-help-btn"
+              aria-label="How revisions work"
+              aria-expanded={toolbarMenu === "help"}
+              title="How revisions work"
+              onClick={() => setToolbarMenu((open) => (open === "help" ? null : "help"))}
+            >
+              ?
+            </button>
+            {toolbarMenu === "help" ? (
+              <div className="paint-toolbar-help" role="dialog" aria-label="How revisions work">
+                <strong>How revisions work</strong>
+                <p>
+                  Added colors or a color switch after the first package was issued: use{" "}
+                  <strong>Create next revision</strong> (same submittal number). It copies the list — change the
+                  color on the existing row, and <strong>Add row</strong> for new colors. Do not import the whole
+                  schedule again, or labels will duplicate. <strong>Download PDF</strong> on the revision is a new
+                  file for the GC: the full updated list, Revision number, and your revision note. Lines are marked{" "}
+                  <strong>NEW</strong>, <strong>REVISED</strong>, <strong>Removed</strong>, or <strong>No Change</strong>{" "}
+                  against the previous issued package. It does not replace the first PDF they already received.{" "}
+                  <strong>Order</strong> lets you check which colors to request — on a revision, new and switched
+                  colors are selected; use All if you need every color again.
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+          <span className="paint-toolbar-download-wrap">
+            <button
+              type="button"
+              className="btn btn-primary paint-toolbar-download"
+              onClick={() => void onDownloadPdf()}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M12 4v10" />
+                <path d="m7 11 5 5 5-5" />
+                <path d="M5 19h14" />
+              </svg>
+              Download PDF
+            </button>
+            <span className="paint-toolbar-download-tip" role="tooltip">
+              {submittalPdfFilename}
+            </span>
+          </span>
+        </div>
+        </div>
+        {draft.brushout_prep?.prep_id ? (
+          <p className="paint-toolbar-filename">
+            <span className="muted small">
+              Linked prep: {draft.brushout_prep.prep_id}
+              {draft.brushout_prep.site_location ? ` · ${draft.brushout_prep.site_location}` : ""}
+            </span>
+          </p>
+        ) : null}
+      </div>
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
@@ -676,36 +812,6 @@ export function PaintSubmittalsPage() {
           change items, or update issue status below.
         </div>
       )}
-
-      <section className="card paint-action-row">
-        <button type="button" className="btn btn-secondary" onClick={() => setEmailOpen(true)}>
-          Order Brushouts
-        </button>
-        <label className="check paint-action-check">
-          <input
-            type="checkbox"
-            checked={Boolean(draft.submittal_ordered)}
-            onChange={(e) => void onSubmittalOrderedChange(e.target.checked)}
-          />
-          Ordered
-        </label>
-        <span className="paint-action-sep" aria-hidden="true" />
-        <button type="button" className="btn btn-secondary" onClick={() => setPrepOpen(true)}>
-          Import Request
-        </button>
-        <Link className="btn btn-secondary" to={`/projects/${projectId}/approved-brushouts`}>
-          Approved brush-outs
-        </Link>
-        <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
-          History
-        </button>
-        {draft.brushout_prep?.prep_id && (
-          <span className="muted small paint-action-linked">
-            Linked prep: {draft.brushout_prep.prep_id}
-            {draft.brushout_prep.site_location ? ` · ${draft.brushout_prep.site_location}` : ""}
-          </span>
-        )}
-      </section>
 
       <PaintSubmittalMetaPanel
         draft={draft}

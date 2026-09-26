@@ -252,6 +252,6 @@ export function buildRfiPrintHtml(
 }
 
 export function printRfi(input: RfiPrintInput): void {
-  const filename = rfiFilename(input.project.job_name, input.project.job_number, input.rfi_number);
+  const filename = rfiFilename(input.rfi_number, input.subject);
   printHtml(buildRfiPrintHtml(input, filename), pdfTitleFromFilename(filename), input.branding.logoUrl);
 }

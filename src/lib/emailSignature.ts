@@ -22,6 +22,14 @@ export type EmailSignatureSettings = {
 
 export const SIGNATURE_LINE_COUNT = 15;
 
+/** Stored in a signature line. Rendered as a horizontal rule, not as text. */
+export const SIGNATURE_DIVIDER_HTML =
+  '<hr style="border:0;border-top:1px solid #cccccc;margin:6px 0;width:100%;" />';
+
+export function isSignatureDividerLine(line: string): boolean {
+  return /^<hr\b/i.test(line.trim());
+}
+
 export const DEFAULT_EMAIL_SIGNATURE: EmailSignatureSettings = {
   lines: Array(SIGNATURE_LINE_COUNT).fill(""),
   line_styles: Array.from({ length: SIGNATURE_LINE_COUNT }, () => ({})),
@@ -83,6 +91,7 @@ function lineToHtmlParagraph(
 ): string {
   const text = (line || "").trim();
   if (!text) return outlookLineBreak();
+  if (isSignatureDividerLine(text)) return `${text}${outlookLineBreak()}`;
   const css = lineStyleCss(style, defaults);
   if (text.startsWith("<") && text.includes(">")) {
     return `<p style="${css}">${text}</p>${outlookLineBreak()}`;

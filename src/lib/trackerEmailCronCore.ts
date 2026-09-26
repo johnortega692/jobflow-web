@@ -14,7 +14,11 @@ import type { TrackerEmailCronSlot } from "./trackerEmailSchedule.js";
 import { zonedCalendarDate, zonedWeekdayAndHour, weekdayLabel } from "./trackerEmailSchedule.js";
 import { sendWeeklyTrackerDigest } from "./trackerWeeklyDigest.js";
 import { sendSiteReadyDigest, siteReadyDigestHasContent } from "./startupSiteReadyDigest.js";
-import { listTrackerCronTargets, ORG_TRACKER_CRON_TARGET } from "./userSettingsAdmin.js";
+import {
+  listTrackerCronTargets,
+  loadRawUserSettingsAdmin,
+  ORG_TRACKER_CRON_TARGET,
+} from "./userSettingsAdmin.js";
 
 export type CronRunResult = {
   slot: TrackerEmailCronSlot;
@@ -44,21 +48,32 @@ async function loadCronSettings(targetId: string): Promise<Record<string, unknow
   return loadEffectiveUserSettingsAdmin(targetId);
 }
 
-function resolvePrimaryRecipient(
-  raw: Record<string, unknown>,
-  paint: ReturnType<typeof loadPaintUserSettingsFromRaw>,
-  isOrgRun: boolean,
-): { email: string; name: string } {
-  if (isOrgRun) {
-    const email = paint.notification_primary_email.trim();
-    const name = paint.notification_primary_name.trim();
-    if (email) return { email, name: name || "PM" };
-  }
+function profileRecipient(raw: Record<string, unknown>): { email: string; name: string } {
   const profile = profileFromSettings(normalizeLetterheadSettings(raw));
   return {
     email: profile.email.trim(),
     name: profile.name.trim() || "PM",
   };
+}
+
+async function resolvePrimaryRecipient(
+  raw: Record<string, unknown>,
+  paint: ReturnType<typeof loadPaintUserSettingsFromRaw>,
+  isOrgRun: boolean,
+): Promise<{ email: string; name: string }> {
+  if (isOrgRun) {
+    const userId = typeof raw.tracker_schedule_user_id === "string" ? raw.tracker_schedule_user_id.trim() : "";
+    if (userId) {
+      const personal = await loadRawUserSettingsAdmin(userId);
+      const fromProfile = profileRecipient(personal);
+      if (fromProfile.email) return fromProfile;
+    }
+    const email = paint.notification_primary_email.trim();
+    const name = paint.notification_primary_name.trim();
+    if (email) return { email, name: name || "PM" };
+    return { email: "", name: "PM" };
+  }
+  return profileRecipient(raw);
 }
 
 export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<CronRunResult> {
@@ -93,7 +108,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
           (process.env.GAS_SEND_EMAIL_URL ?? "").trim(),
       };
       const resendOk = isResendConfigured();
-      const { email: primaryEmail, name: primaryName } = resolvePrimaryRecipient(raw, paint, isOrgRun);
+      const { email: primaryEmail, name: primaryName } = await resolvePrimaryRecipient(raw, paint, isOrgRun);
       if (!urls.fieldOrderUrl && !resendOk) {
         result.skipped.push(`${label}: missing Field Request Order URL (and Resend)`);
         continue;
@@ -108,7 +123,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         !schedule.daily.installs;
       if (!primaryEmail && !dailyBillingOnly) {
         result.skipped.push(
-          `${label}: missing ${isOrgRun ? "notification primary email in Settings → Schedules" : "profile email"}`,
+          `${label}: missing profile email`,
         );
         continue;
       }

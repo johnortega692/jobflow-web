@@ -1,5 +1,10 @@
 import type { ProjectForm } from "../types/database.js";
+import { normalizeRfiFormData } from "../types/database.js";
+import { parseFlexibleDate } from "./dateInputUtils.js";
 import { collectProjectIcbiStaffCc, projectHasWallcovering } from "./jobInfo.js";
+import { isRfiClosed } from "./rfiStatus.js";
+import { supabase } from "./supabase.js";
+import { getSupabaseAdmin, isSupabaseAdminConfigured } from "./supabaseAdmin.js";
 import {
   buildFieldPaintRow,
   buildFieldWcRows,
@@ -39,6 +44,16 @@ export type WallcoveringDigestAlerts = {
   upcomingInstalls: DigestJobItem[];
 };
 
+export type OverdueRfiDigestItem = {
+  job: string;
+  name: string;
+  rfiNumber: string;
+  subject: string;
+  dueDate: string;
+  daysOverdue: number;
+  ballInCourt?: string;
+};
+
 export type PaintDigestAlerts = {
   needsOrdering: DigestJobItem[];
   awaitingApproval: DigestJobItem[];
@@ -74,6 +89,54 @@ function daysUntil(value: string): number | null {
   const today = startOfDay(new Date());
   const target = startOfDay(parsed);
   return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function rfiDaysUntil(value: string): number | null {
+  const parsed = parseFlexibleDate(value);
+  if (!parsed) return null;
+  const today = startOfDay(new Date());
+  const target = startOfDay(parsed);
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function rfiNumberLabel(raw: string): string {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? String(n).padStart(3, "0") : raw.trim() || "—";
+}
+
+export async function loadOverdueRfisForDigest(projects: ProjectForm[]): Promise<OverdueRfiDigestItem[]> {
+  const ids = projects.map((project) => project.id).filter(Boolean);
+  if (!ids.length) return [];
+
+  const client = isSupabaseAdminConfigured() ? getSupabaseAdmin() : supabase;
+  const { data, error } = await client
+    .from("rfis")
+    .select("project_id, rfi_number, subject, status, data")
+    .in("project_id", ids);
+  if (error || !data) return [];
+
+  const byId = new Map(projects.map((project) => [project.id, project]));
+  const items: OverdueRfiDigestItem[] = [];
+  for (const row of data) {
+    if (isRfiClosed(row.status)) continue;
+    const form = normalizeRfiFormData(row.data);
+    const until = rfiDaysUntil(form.due_date);
+    if (until === null || until >= 0) continue;
+    const project = byId.get(row.project_id);
+    const ball = form.to_name.trim();
+    items.push({
+      job: project?.job_number.trim() || "—",
+      name: project?.job_name.trim() || "—",
+      rfiNumber: rfiNumberLabel(row.rfi_number ?? ""),
+      subject: row.subject.trim() || "Untitled RFI",
+      dueDate: formatDisplayDate(form.due_date),
+      daysOverdue: -until,
+      ballInCourt: ball || undefined,
+    });
+  }
+
+  items.sort((a, b) => b.daysOverdue - a.daysOverdue || a.job.localeCompare(b.job) || a.rfiNumber.localeCompare(b.rfiNumber));
+  return items;
 }
 
 function formatDisplayDate(value: string): string {
@@ -310,10 +373,29 @@ function alertSection(
                 </tr>`;
 }
 
+function overdueRfiBlock(item: OverdueRfiDigestItem): string {
+  const days = `${item.daysOverdue} day${item.daysOverdue === 1 ? "" : "s"} overdue`;
+  return `<table width="100%" cellpadding="10" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 4px; margin-bottom: 10px;">
+                            <tr>
+                              <td style="border-left: 3px solid #d32f2f;">
+                                <p style="margin: 0 0 5px 0; font-size: 15px;">
+                                  <strong style="color: #1a73e8;">RFI ${escHtml(item.rfiNumber)}</strong> — ${escHtml(item.subject)}
+                                </p>
+                                <p style="margin: 0 0 3px 0; font-size: 13px; color: #333;">
+                                  <strong>${escHtml(item.job)}</strong> — ${escHtml(item.name)}
+                                </p>
+                                <p style="margin: 0; font-size: 13px; color: #d32f2f; font-weight: bold;">Due ${escHtml(item.dueDate)} (${escHtml(days)})</p>
+                                ${item.ballInCourt ? `<p style="margin: 3px 0 0 0; font-size: 12px; color: #666;">Ball in court: ${escHtml(item.ballInCourt)}</p>` : ""}
+                              </td>
+                            </tr>
+                          </table>`;
+}
+
 export function buildCombinedWeeklyDigestHtml(
   wallcoveringAlerts: WallcoveringDigestAlerts,
   paintAlerts: PaintDigestAlerts,
   branding: TrackerNotificationBranding,
+  overdueRfis: OverdueRfiDigestItem[] = [],
 ): string {
   const primaryName = escHtml(branding.primaryName.trim() || "PM");
   const companyName = branding.companyName.trim() || "JobFlow";
@@ -338,7 +420,8 @@ export function buildCombinedWeeklyDigestHtml(
     wallcoveringAlerts.needsRevision.length +
     paintAlerts.needsOrdering.length +
     paintAlerts.overdueApproval.length +
-    paintAlerts.needsRevision.length;
+    paintAlerts.needsRevision.length +
+    overdueRfis.length;
 
   let html = `<html>
       <head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head>
@@ -364,10 +447,23 @@ export function buildCombinedWeeklyDigestHtml(
                           <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Paint items needing revision: <strong style="color: #f57c00;">${paintAlerts.needsRevision.length}</strong></p>
                           <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Upcoming installations: <strong>${wallcoveringAlerts.upcomingInstalls.length}</strong></p>
                           <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Upcoming paint starts: <strong>${paintAlerts.upcomingStarts.length}</strong></p>
+                          <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Overdue RFIs: <strong style="color: #d32f2f;">${overdueRfis.length}</strong></p>
                       </td></tr>
                     </table>
                   </td>
                 </tr>`;
+
+  if (overdueRfis.length) {
+    html += `<tr><td style="padding: 20px 20px 10px 20px;"><h2 style="margin: 0; font-size: 22px; color: #3a4d5c; border-bottom: 2px solid #3a4d5c; padding-bottom: 8px;">RFIs</h2></td></tr>`;
+    html += alertSection(
+      "🔴 Overdue RFIs",
+      overdueRfis.length,
+      "#ffebee",
+      "#d32f2f",
+      "#d32f2f",
+      overdueRfis.map((item) => overdueRfiBlock(item)).join(""),
+    );
+  }
 
   html += `<tr><td style="padding: 20px 20px 10px 20px;"><h2 style="margin: 0; font-size: 22px; color: #3a4d5c; border-bottom: 2px solid #3a4d5c; padding-bottom: 8px;">Wallcovering submittals</h2></td></tr>`;
 
@@ -471,7 +567,8 @@ export function buildCombinedWeeklyDigestHtml(
     wcAttention === 0 &&
     totalIssues === 0 &&
     wallcoveringAlerts.upcomingInstalls.length === 0 &&
-    paintAlerts.upcomingStarts.length === 0
+    paintAlerts.upcomingStarts.length === 0 &&
+    overdueRfis.length === 0
   ) {
     html += `<tr><td style="padding: 40px 20px; text-align: center;">
                     <h2 style="margin: 0 0 10px 0; font-size: 24px; color: #4caf50;">✅ All Clear!</h2>
@@ -510,7 +607,7 @@ export async function sendWeeklyTrackerDigest(options: {
     collectProjectIcbiStaffCc(options.projects),
   );
   if (!recipients) {
-    throw new Error("Set email on your Profile (Settings → Profile & letterhead).");
+    throw new Error("Set email on your Profile (Settings → My Profile).");
   }
 
   const branding: TrackerNotificationBranding = {
@@ -521,6 +618,8 @@ export async function sendWeeklyTrackerDigest(options: {
 
   const wcAlerts = collectWallcoveringDigestAlerts(options.projects);
   const paintAlerts = collectPaintDigestAlerts(options.projects);
+  const overdueRfis =
+    options.kind === "combined" ? await loadOverdueRfisForDigest(options.projects) : [];
 
   const subject =
     options.kind === "combined"
@@ -529,7 +628,7 @@ export async function sendWeeklyTrackerDigest(options: {
 
   const html =
     options.kind === "combined"
-      ? buildCombinedWeeklyDigestHtml(wcAlerts, paintAlerts, branding)
+      ? buildCombinedWeeklyDigestHtml(wcAlerts, paintAlerts, branding, overdueRfis)
       : buildWallcoveringSnapshotHtml({ projects: options.projects, branding });
 
   const htmlForSend = await embedLogoUrlInHtml(html, options.logoUrl ?? "");

@@ -8,6 +8,7 @@ import { NeedsAttentionStrip } from "../components/jobinfo/NeedsAttentionStrip";
 import { DashboardMetricCards, type DashboardMetric } from "../components/jobinfo/DashboardMetricCards";
 import { listProjectBrushouts } from "../lib/approvedBrushouts";
 import { parseProjectDataBlob } from "../lib/jobInfo";
+import { isRfiClosed } from "../lib/rfiStatus";
 import { supabase } from "../lib/supabase";
 import {
   buildAttentionItems,
@@ -33,6 +34,7 @@ export function ProjectOverviewPage() {
   const [startupItems, setStartupItems] = useState(() => parseDashboardStartupItems(initial));
   const [startupFocus, setStartupFocus] = useState<{ group: StartupChecklistGroup; itemId: string } | null>(null);
   const [brushoutsAdded, setBrushoutsAdded] = useState<boolean | null>(null);
+  const [openRfis, setOpenRfis] = useState<{ id: string; rfi_number: string | null; subject: string | null }[]>([]);
 
   const startupRef = useRef<HTMLDivElement | null>(null);
 
@@ -68,12 +70,38 @@ export function ProjectOverviewPage() {
     };
   }, [projectId, activityRefreshKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from("rfis")
+      .select("id, rfi_number, subject, status")
+      .eq("project_id", projectId)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const open = (data ?? []).filter((row) => !isRfiClosed(row.status));
+        open.sort((a, b) => (a.rfi_number ?? "").localeCompare(b.rfi_number ?? "", undefined, { numeric: true }));
+        setOpenRfis(open);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, activityRefreshKey]);
+
   const paintTracker = useMemo(() => resolveDashboardPaintTracker(project), [project]);
   const submittalStage = paintSubmittalStageLabel(paintTracker);
-  const attentionItems = useMemo(
-    () => buildAttentionItems(project, startupItems),
-    [project, startupItems],
-  );
+  const attentionItems = useMemo(() => {
+    const rfiItems: AttentionItem[] = openRfis.map((rfi) => {
+      const number = String(parseInt(rfi.rfi_number ?? "", 10) || rfi.rfi_number || "").padStart(3, "0");
+      const subject = rfi.subject?.trim();
+      return {
+        id: `rfi-${rfi.id}`,
+        label: subject ? `RFI ${number} · ${subject}` : `RFI ${number}`,
+        kind: "rfi",
+        rfiId: rfi.id,
+      };
+    });
+    return [...rfiItems, ...buildAttentionItems(project, startupItems)];
+  }, [openRfis, project, startupItems]);
   const jobSetupCounts = jobSetupStepCounts(project);
   const startupCounts = startupTaskCounts(startupItems);
 
@@ -103,6 +131,10 @@ export function ProjectOverviewPage() {
   const clearStartupFocus = useCallback(() => setStartupFocus(null), []);
 
   function onAttentionItem(item: AttentionItem) {
+    if (item.kind === "rfi" && item.rfiId) {
+      void navigate(`/projects/${projectId}/rfis/${item.rfiId}`);
+      return;
+    }
     if (item.kind === "setup" || item.openJobSetup) {
       openJobSetup("info");
       return;

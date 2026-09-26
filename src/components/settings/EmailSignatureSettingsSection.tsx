@@ -3,13 +3,88 @@ import { useLetterhead } from "../../contexts/LetterheadContext";
 import { patchUserSettings } from "../../lib/budgetLibrary";
 import {
   buildEmailSignatureHtml,
-  SIGNATURE_FONT_SIZE_OPTIONS,
+  isSignatureDividerLine,
+  SIGNATURE_DIVIDER_HTML,
   SIGNATURE_LINE_COUNT,
+  type EmailSignatureSettings,
+  type SignatureLineStyle,
 } from "../../lib/emailSignature";
 import { uploadEmailSignatureLogo } from "../../lib/letterheadSettings";
-import type { SignatureLineStyle } from "../../lib/emailSignature";
+import { profileFromSettings } from "../../lib/userProfile";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
 import { usePaintSettingsData } from "./paintSettingsShared";
+
+const FONT_OPTIONS = [
+  { label: "Calibri", value: "Calibri, Arial, sans-serif" },
+  { label: "Arial", value: "Arial, Helvetica, sans-serif" },
+  { label: "Times New Roman", value: "Times New Roman, Times, serif" },
+];
+
+const PROFILE_PLACEHOLDERS = ["Full name", "Job title", "Phone"];
+const BASE_SIZES = [8, 9, 10, 11, 12, 13, 14];
+
+type SigItem = { kind: "line"; index: number } | { kind: "logo" };
+
+function logoFileLabel(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  try {
+    const path = /^https?:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
+    const name = decodeURIComponent(path.split("/").filter(Boolean).pop() || "");
+    return name.split("?")[0] || "logo";
+  } catch {
+    return "logo";
+  }
+}
+
+function intrinsicEnd(sig: EmailSignatureSettings): number {
+  let last = 2;
+  sig.lines.forEach((line, i) => {
+    if (line.trim()) last = i;
+  });
+  return Math.min(SIGNATURE_LINE_COUNT - 1, last);
+}
+
+function buildItems(sig: EmailSignatureSettings, through: number): SigItem[] {
+  const last = Math.min(SIGNATURE_LINE_COUNT - 1, Math.max(intrinsicEnd(sig), through, 2));
+  const items: SigItem[] = [];
+  let placed = false;
+  for (let i = 0; i <= last; i++) {
+    if (sig.logo_position === i) {
+      items.push({ kind: "logo" });
+      placed = true;
+    }
+    items.push({ kind: "line", index: i });
+  }
+  if (!placed) items.push({ kind: "logo" });
+  return items;
+}
+
+function commitItems(items: SigItem[], sig: EmailSignatureSettings, openText: Set<number>) {
+  const lines = Array(SIGNATURE_LINE_COUNT).fill("");
+  const line_styles: SignatureLineStyle[] = Array.from({ length: SIGNATURE_LINE_COUNT }, () => ({}));
+  const nextOpen = new Set<number>();
+  let logo_position = SIGNATURE_LINE_COUNT;
+  let n = 0;
+  for (const item of items) {
+    if (item.kind === "logo") {
+      logo_position = n;
+      continue;
+    }
+    if (n >= SIGNATURE_LINE_COUNT) continue;
+    lines[n] = sig.lines[item.index] ?? "";
+    line_styles[n] = { ...(sig.line_styles[item.index] ?? {}) };
+    if (openText.has(item.index)) nextOpen.add(n);
+    n += 1;
+  }
+  return {
+    lines,
+    line_styles,
+    logo_position,
+    openText: nextOpen,
+    through: Math.max(2, n - 1),
+  };
+}
 
 export function EmailSignatureSettingsSection({
   onDirtyChange,
@@ -31,7 +106,14 @@ export function EmailSignatureSettingsSection({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [signatureLogoUploading, setSignatureLogoUploading] = useState(false);
+  const [logoUrlOpen, setLogoUrlOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [copyNote, setCopyNote] = useState<string | null>(null);
+  const [shownThrough, setShownThrough] = useState(2);
+  const [openText, setOpenText] = useState<Set<number>>(() => new Set());
   const signatureLogoFileRef = useRef<HTMLInputElement>(null);
+  const logoUrlRef = useRef<HTMLInputElement>(null);
+  const seeded = useRef(false);
 
   const persist = useCallback(async (): Promise<boolean> => {
     if (!user?.id || !data) return false;
@@ -46,7 +128,7 @@ export function EmailSignatureSettingsSection({
       return false;
     }
     markSaved();
-    setMessage("Email signature saved.");
+    setMessage(null);
     return true;
   }, [data, markSaved, setError, user?.id]);
 
@@ -55,14 +137,39 @@ export function EmailSignatureSettingsSection({
     onBindActions({ save: persist, discard, getIsDirty });
   }, [ready, onBindActions, persist, discard, getIsDirty]);
 
+  useEffect(() => {
+    if (!data || seeded.current) return;
+    seeded.current = true;
+    setShownThrough(intrinsicEnd(data.signature));
+  }, [data]);
+
+  useEffect(() => {
+    if (!logoUrlOpen) return;
+    logoUrlRef.current?.focus();
+  }, [logoUrlOpen]);
+
+  useEffect(() => {
+    if (!previewOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewOpen]);
+
   if (loading) return <p className="muted">Loading email signature…</p>;
   if (!data || !user?.id) return null;
 
-  const signaturePreview = buildEmailSignatureHtml(data.signature, letterhead.logo_url);
+  const signature = data.signature;
+  const profile = profileFromSettings(letterhead);
+  const signaturePreview = buildEmailSignatureHtml(signature, letterhead.logo_url);
+  const logoSrc = signature.signature_logo_url || letterhead.logo_url;
+  const fontLabel = FONT_OPTIONS.find((font) => font.value === signature.font_family)?.label ?? "Calibri";
+  const items = buildItems(signature, shownThrough);
+  const lineItems = items.filter((item) => item.kind === "line");
 
-  async function onSave(e: FormEvent) {
-    e.preventDefault();
-    await persist();
+  function updateSignature(patch: Partial<EmailSignatureSettings>) {
+    setData((d) => (d ? { ...d, signature: { ...d.signature, ...patch } } : d));
   }
 
   function setSignatureLine(i: number, value: string) {
@@ -83,6 +190,72 @@ export function EmailSignatureSettingsSection({
     });
   }
 
+  function applyCommit(nextItems: SigItem[]) {
+    const committed = commitItems(nextItems, signature, openText);
+    updateSignature({
+      lines: committed.lines,
+      line_styles: committed.line_styles,
+      logo_position: committed.logo_position,
+    });
+    setOpenText(committed.openText);
+    setShownThrough(committed.through);
+  }
+
+  function moveItem(from: number, dir: -1 | 1) {
+    const to = from + dir;
+    if (to < 0 || to >= items.length) return;
+    const next = [...items];
+    const [row] = next.splice(from, 1);
+    next.splice(to, 0, row);
+    applyCommit(next);
+  }
+
+  function removeLine(index: number) {
+    if (lineItems.length <= 3) return;
+    applyCommit(items.filter((item) => !(item.kind === "line" && item.index === index)));
+  }
+
+  function currentEnd(): number {
+    return Math.min(SIGNATURE_LINE_COUNT - 1, Math.max(intrinsicEnd(signature), shownThrough, 2));
+  }
+
+  function addTextLine() {
+    const next = currentEnd() + 1;
+    if (next >= SIGNATURE_LINE_COUNT) {
+      setError("Signature is full (15 lines). Remove a line first.");
+      return;
+    }
+    setError(null);
+    setShownThrough(next);
+    setOpenText((prev) => new Set(prev).add(next));
+  }
+
+  function addBlankLine() {
+    const next = currentEnd() + 1;
+    if (next >= SIGNATURE_LINE_COUNT) {
+      setError("Signature is full (15 lines). Remove a line first.");
+      return;
+    }
+    setError(null);
+    setShownThrough(next);
+    setOpenText((prev) => {
+      const copy = new Set(prev);
+      copy.delete(next);
+      return copy;
+    });
+  }
+
+  function addDivider() {
+    const next = currentEnd() + 1;
+    if (next >= SIGNATURE_LINE_COUNT) {
+      setError("Signature is full (15 lines). Remove a line first.");
+      return;
+    }
+    setError(null);
+    setSignatureLine(next, SIGNATURE_DIVIDER_HTML);
+    setShownThrough(next);
+  }
+
   async function onSignatureLogoFile(file: File | null) {
     if (!file || !user?.id) return;
     setSignatureLogoUploading(true);
@@ -90,10 +263,8 @@ export function EmailSignatureSettingsSection({
     setError(null);
     try {
       const url = await uploadEmailSignatureLogo(user.id, file);
-      setData((d) =>
-        d ? { ...d, signature: { ...d.signature, signature_logo_url: url } } : d,
-      );
-      setMessage("Email signature logo uploaded. Click Save to keep it.");
+      updateSignature({ signature_logo_url: url });
+      setMessage("Email logo uploaded. Save to keep it.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Logo upload failed");
     } finally {
@@ -102,281 +273,371 @@ export function EmailSignatureSettingsSection({
     }
   }
 
+  async function copyHtml() {
+    try {
+      await navigator.clipboard.writeText(signaturePreview);
+      setCopyNote("HTML copied.");
+      window.setTimeout(() => setCopyNote(null), 2000);
+    } catch {
+      setError("Could not copy the signature HTML.");
+    }
+  }
+
+  async function onSave(e: FormEvent) {
+    e.preventDefault();
+    await persist();
+  }
+
   return (
-    <form className="stack paint-email-settings paint-email-signature-personal" onSubmit={(e) => void onSave(e)}>
-      {(error || message) && (
-        <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
-      )}
-
-      <section className="stack">
-        <h2>HTML email signature</h2>
-        <p className="muted small">
-          Your personal signature — appended to vendor brush-out and paint emails you send. Upload a logo sized
-          for email (recommended width matches <strong>Logo max width</strong> below). When empty, the company
-          letterhead logo is used. Lines 1–3 default to Profile full name, job title, and phone when blank.
-        </p>
-
-        <section className="stack">
-          <p className="paint-col-head">Email signature logo</p>
-          {(data.signature.signature_logo_url || letterhead.logo_url) && (
-            <div className="logo-preview">
-              <img
-                src={data.signature.signature_logo_url || letterhead.logo_url}
-                alt="Email signature logo preview"
-              />
-            </div>
-          )}
-          <p className="muted small">
-            {data.signature.signature_logo_url
-              ? "Using your uploaded email logo."
-              : letterhead.logo_url
-                ? "No email logo uploaded — preview shows letterhead logo as fallback."
-                : "Upload a PNG sized for email (e.g. 220px wide) for reliable Gmail paste."}
-          </p>
-          <div className="row-gap wrap">
-            <input
-              ref={signatureLogoFileRef}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={(e) => void onSignatureLogoFile(e.target.files?.[0] ?? null)}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={signatureLogoUploading}
-              onClick={() => signatureLogoFileRef.current?.click()}
-            >
-              {signatureLogoUploading ? "Uploading…" : "Upload email logo"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={!data.signature.signature_logo_url}
-              onClick={() =>
-                setData((d) =>
-                  d ? { ...d, signature: { ...d.signature, signature_logo_url: "" } } : d,
-                )
-              }
-            >
-              Remove email logo
-            </button>
-          </div>
-          <label>
-            Or email logo URL
-            <input
-              value={data.signature.signature_logo_url}
-              onChange={(e) =>
-                setData((d) =>
-                  d
-                    ? { ...d, signature: { ...d.signature, signature_logo_url: e.target.value } }
-                    : d,
-                )
-              }
-              placeholder="https://… or leave blank for letterhead logo"
-            />
-          </label>
-        </section>
-
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={data.signature.use_custom_html}
-            onChange={(e) =>
-              setData((d) =>
-                d
-                  ? {
-                      ...d,
-                      signature: { ...d.signature, use_custom_html: e.target.checked },
-                    }
-                  : d,
-              )
-            }
-          />
-          Use custom HTML signature (matches desktop app)
-        </label>
-
-        <div className="grid-2">
-          <label>
-            Logo max width (px)
-            <input
-              type="number"
-              min={80}
-              max={600}
-              value={data.signature.logo_max_width_px}
-              onChange={(e) =>
-                setData((d) =>
-                  d
-                    ? {
-                        ...d,
-                        signature: {
-                          ...d.signature,
-                          logo_max_width_px: Math.max(80, Math.min(600, Number(e.target.value) || 220)),
-                        },
-                      }
-                    : d,
-                )
-              }
-            />
-          </label>
-          <label>
-            Logo after line #
-            <input
-              type="number"
-              min={0}
-              max={SIGNATURE_LINE_COUNT}
-              value={data.signature.logo_position}
-              disabled={data.signature.use_custom_html}
-              onChange={(e) =>
-                setData((d) =>
-                  d
-                    ? {
-                        ...d,
-                        signature: {
-                          ...d.signature,
-                          logo_position: Math.max(
-                            0,
-                            Math.min(SIGNATURE_LINE_COUNT, Number(e.target.value) || 0),
-                          ),
-                        },
-                      }
-                    : d,
-                )
-              }
-            />
-          </label>
-          <label>
-            Default font
-            <select
-              value={data.signature.font_family}
-              disabled={data.signature.use_custom_html}
-              onChange={(e) =>
-                setData((d) =>
-                  d ? { ...d, signature: { ...d.signature, font_family: e.target.value } } : d,
-                )
-              }
-            >
-              <option value="Calibri, Arial, sans-serif">Calibri</option>
-              <option value="Arial, Helvetica, sans-serif">Arial</option>
-              <option value="Times New Roman, Times, serif">Times New Roman</option>
-            </select>
-          </label>
-          <label>
-            Default size (pt)
-            <input
-              type="number"
-              min={8}
-              max={14}
-              value={data.signature.font_size_pt}
-              disabled={data.signature.use_custom_html}
-              onChange={(e) =>
-                setData((d) =>
-                  d
-                    ? {
-                        ...d,
-                        signature: {
-                          ...d.signature,
-                          font_size_pt: Math.max(8, Math.min(14, Number(e.target.value) || 11)),
-                        },
-                      }
-                    : d,
-                )
-              }
-            />
-          </label>
-        </div>
-
-        {data.signature.use_custom_html ? (
-          <label>
-            Custom HTML
-            <textarea
-              className="paint-signature-html"
-              rows={12}
-              value={data.signature.html_body}
-              onChange={(e) =>
-                setData((d) =>
-                  d
-                    ? { ...d, signature: { ...d.signature, html_body: e.target.value } }
-                    : d,
-                )
-              }
-            />
-          </label>
-        ) : (
-          <div className="stack paint-signature-lines">
-            <p className="muted small">
-              Line 1 = full name, line 2 = job title, line 3 = phone (from Profile when empty). Bold /
-              Italic / Size overrides per line (size 0 = default {data.signature.font_size_pt} pt).
-            </p>
-            <div className="paint-settings-table-wrap">
-              <table className="paint-settings-table paint-signature-style-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Line text</th>
-                    <th>Bold</th>
-                    <th>Italic</th>
-                    <th>Size</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.signature.lines.map((line, i) => {
-                    const style = data.signature.line_styles[i] ?? {};
-                    return (
-                      <tr key={`sig-line-${i}`}>
-                        <td>{i + 1}</td>
-                        <td>
-                          <input value={line} onChange={(e) => setSignatureLine(i, e.target.value)} />
-                        </td>
-                        <td className="paint-sig-style-cell">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(style.bold)}
-                            onChange={(e) => setLineStyle(i, { bold: e.target.checked })}
-                          />
-                        </td>
-                        <td className="paint-sig-style-cell">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(style.italic)}
-                            onChange={(e) => setLineStyle(i, { italic: e.target.checked })}
-                          />
-                        </td>
-                        <td>
-                          <select
-                            value={style.font_size_pt ?? 0}
-                            onChange={(e) =>
-                              setLineStyle(i, { font_size_pt: Number(e.target.value) })
-                            }
-                          >
-                            {SIGNATURE_FONT_SIZE_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+    <>
+      <form className="stack plh-form" onSubmit={(e) => void onSave(e)}>
+        {(error || message) && (
+          <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
         )}
 
-        <div className="paint-email-preview-box">
-          <p className="paint-col-head">Signature preview</p>
-          <div
-            className="paint-email-html-preview"
-            dangerouslySetInnerHTML={{ __html: signaturePreview }}
-          />
+        <div className="sig-intro-row">
+          <p className="muted">Appended to vendor brush-out and paint emails you send.</p>
+          <div className="sig-actions">
+            <button type="button" className="btn btn-secondary btn-small" onClick={() => setPreviewOpen(true)}>
+              Preview
+            </button>
+            <button type="button" className="btn btn-ghost btn-small" onClick={() => void copyHtml()}>
+              {copyNote ?? "Copy HTML"}
+            </button>
+          </div>
         </div>
-      </section>
 
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        {saving ? "Saving…" : "Save email signature"}
+        <section className="plh-card">
+          <div className="plh-card-head">
+            <div>
+              <h2>Style &amp; logo</h2>
+              <p>Build it line by line, or paste the HTML from the desktop app.</p>
+            </div>
+            <div className="sig-mode" role="group" aria-label="Signature style">
+              <button
+                type="button"
+                className={signature.use_custom_html ? "" : "is-on"}
+                aria-pressed={!signature.use_custom_html}
+                onClick={() => updateSignature({ use_custom_html: false })}
+              >
+                Line builder
+              </button>
+              <button
+                type="button"
+                className={signature.use_custom_html ? "is-on" : ""}
+                aria-pressed={signature.use_custom_html}
+                onClick={() => updateSignature({ use_custom_html: true })}
+              >
+                Custom HTML
+              </button>
+            </div>
+          </div>
+
+          <div className="sig-style-panel">
+            <div className="sig-style-logo">
+              <div className="sig-style-logo-top">
+                <div className="plh-logo-preview">
+                  {logoSrc ? (
+                    <img src={logoSrc} alt="Email signature logo" />
+                  ) : (
+                    <span className="plh-logo-placeholder">[Email logo]</span>
+                  )}
+                </div>
+                <div className="plh-logo-meta">
+                  <p className="sig-logo-kicker">Email logo</p>
+                  <p className="plh-logo-file">
+                    {signature.signature_logo_url ? (
+                      <>
+                        {logoFileLabel(signature.signature_logo_url)}
+                        <span> · uploaded</span>
+                      </>
+                    ) : letterhead.logo_url ? (
+                      "Using your letterhead logo"
+                    ) : (
+                      "No logo yet"
+                    )}
+                  </p>
+                  <div className="plh-logo-actions">
+                    <input
+                      ref={signatureLogoFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(e) => void onSignatureLogoFile(e.target.files?.[0] ?? null)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline-accent btn-small"
+                      disabled={signatureLogoUploading}
+                      onClick={() => signatureLogoFileRef.current?.click()}
+                    >
+                      {signatureLogoUploading ? "Uploading…" : signature.signature_logo_url ? "Replace" : "Upload"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-small plh-btn-remove"
+                      disabled={!signature.signature_logo_url}
+                      onClick={() => updateSignature({ signature_logo_url: "" })}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  {logoUrlOpen ? (
+                    <input
+                      ref={logoUrlRef}
+                      className="plh-logo-url"
+                      value={signature.signature_logo_url}
+                      aria-label="Email logo image URL"
+                      placeholder="https://… or /logo.png"
+                      onChange={(e) => updateSignature({ signature_logo_url: e.target.value })}
+                    />
+                  ) : (
+                    <button type="button" className="plh-url-link" onClick={() => setLogoUrlOpen(true)}>
+                      Use an image URL instead
+                    </button>
+                  )}
+                  <p className="plh-hint">Falls back to your letterhead logo when removed.</p>
+                </div>
+              </div>
+            </div>
+            <div className="sig-style-type">
+              <label>
+                Font
+                <select
+                  value={signature.font_family}
+                  disabled={signature.use_custom_html}
+                  onChange={(e) => updateSignature({ font_family: e.target.value })}
+                >
+                  {FONT_OPTIONS.map((font) => (
+                    <option key={font.value} value={font.value}>
+                      {font.label}
+                    </option>
+                  ))}
+                  {!FONT_OPTIONS.some((font) => font.value === signature.font_family) ? (
+                    <option value={signature.font_family}>{signature.font_family}</option>
+                  ) : null}
+                </select>
+              </label>
+              <label>
+                Base size
+                <select
+                  value={signature.font_size_pt}
+                  disabled={signature.use_custom_html}
+                  onChange={(e) => updateSignature({ font_size_pt: Number(e.target.value) })}
+                >
+                  {BASE_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size} pt
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="sig-logo-width">
+                Logo width
+                <span className="sig-width">
+                  <input
+                    type="number"
+                    min={40}
+                    max={600}
+                    value={signature.logo_max_width_px}
+                    onChange={(e) =>
+                      updateSignature({
+                        logo_max_width_px: Math.max(40, Math.min(600, Number(e.target.value) || 220)),
+                      })
+                    }
+                  />
+                  <span>px</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {signature.use_custom_html ? (
+            <label>
+              Custom HTML
+              <textarea
+                className="paint-signature-html"
+                rows={12}
+                value={signature.html_body}
+                onChange={(e) => updateSignature({ html_body: e.target.value })}
+              />
+            </label>
+          ) : null}
+        </section>
+
+        {signature.use_custom_html ? null : (
+          <section className="plh-card">
+            <div className="plh-card-head">
+              <div>
+                <h2>Lines</h2>
+                <p>Move the logo and dividers like any other line. Profile lines fill in when left blank.</p>
+              </div>
+            </div>
+            <div className="sig-lines">
+              {items.map((item, itemIndex) => {
+                if (item.kind === "logo") {
+                  return (
+                    <div className="sig-row" key="sig-logo">
+                      <MoveButtons
+                        first={itemIndex === 0}
+                        last={itemIndex === items.length - 1}
+                        onUp={() => moveItem(itemIndex, -1)}
+                        onDown={() => moveItem(itemIndex, 1)}
+                      />
+                      <p className="sig-block-label">Email logo</p>
+                    </div>
+                  );
+                }
+
+                const line = signature.lines[item.index] ?? "";
+                const style = signature.line_styles[item.index] ?? {};
+                const divider = isSignatureDividerLine(line);
+                const blank = !line.trim() && item.index >= 3 && !openText.has(item.index);
+                return (
+                  <div className="sig-row" key={`sig-line-${item.index}`}>
+                    <MoveButtons
+                      first={itemIndex === 0}
+                      last={itemIndex === items.length - 1}
+                      onUp={() => moveItem(itemIndex, -1)}
+                      onDown={() => moveItem(itemIndex, 1)}
+                    />
+                    {divider ? (
+                      <p className="sig-block-label">Divider line</p>
+                    ) : blank ? (
+                      <p className="sig-block-label">Blank line</p>
+                    ) : (
+                      <div className="sig-line-control">
+                        {item.index < 3 ? <span className="sig-profile">Profile</span> : null}
+                        <input
+                          value={line}
+                          placeholder={PROFILE_PLACEHOLDERS[item.index] ?? "Line text"}
+                          aria-label={PROFILE_PLACEHOLDERS[item.index] ?? `Signature line ${item.index + 1}`}
+                          onChange={(e) => setSignatureLine(item.index, e.target.value)}
+                        />
+                      </div>
+                    )}
+                    {divider || blank ? null : (
+                      <div className="sig-bi">
+                        <button
+                          type="button"
+                          className={style.bold ? "is-on" : ""}
+                          aria-pressed={Boolean(style.bold)}
+                          aria-label="Bold"
+                          onClick={() => setLineStyle(item.index, { bold: !style.bold })}
+                        >
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          className={style.italic ? "is-on" : ""}
+                          aria-pressed={Boolean(style.italic)}
+                          aria-label="Italic"
+                          onClick={() => setLineStyle(item.index, { italic: !style.italic })}
+                        >
+                          I
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="sig-remove"
+                      aria-label="Remove line"
+                      disabled={lineItems.length <= 3}
+                      onClick={() => removeLine(item.index)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="sig-add">
+              <button type="button" className="btn btn-ghost btn-small" onClick={addTextLine}>
+                + Text line
+              </button>
+              <button type="button" className="btn btn-ghost btn-small" onClick={addDivider}>
+                + Divider
+              </button>
+              <button type="button" className="btn btn-ghost btn-small" onClick={addBlankLine}>
+                + Blank line
+              </button>
+            </div>
+            <p className="plh-hint">
+              Profile lines use {profile.name.trim() || "your name"}, {profile.title.trim() || "job title"}, and{" "}
+              {profile.phone.trim() || "phone"} when left blank.
+            </p>
+          </section>
+        )}
+
+        <div className="plh-save-bar">
+          <span className="muted">{getIsDirty() ? "Unsaved changes" : "All changes saved"}</span>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? "Saving…" : "Save email signature"}
+          </button>
+        </div>
+      </form>
+
+      {previewOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setPreviewOpen(false)}>
+          <div
+            className="modal card stack sig-preview-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sig-preview-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="plh-card-head">
+              <div>
+                <h2 id="sig-preview-title">Preview</h2>
+                <p>
+                  Shown at real size in {fontLabel} {signature.font_size_pt} pt, as vendors will see it.
+                </p>
+              </div>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => setPreviewOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="sig-mail">
+              <p className="sig-mail-meta">
+                <span>To</span> vendor@example.com
+              </p>
+              <p className="sig-mail-meta">
+                <span>Subject</span> Brush-out request · Project
+              </p>
+              <p className="sig-mail-body">Email body</p>
+              <div className="paint-email-html-preview sig-preview-html" dangerouslySetInnerHTML={{ __html: signaturePreview }} />
+            </div>
+            <div className="sig-actions">
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => void copyHtml()}>
+                {copyNote ?? "Copy HTML"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function MoveButtons({
+  first,
+  last,
+  onUp,
+  onDown,
+}: {
+  first: boolean;
+  last: boolean;
+  onUp: () => void;
+  onDown: () => void;
+}) {
+  return (
+    <div className="sig-move">
+      <button type="button" aria-label="Move up" disabled={first} onClick={onUp}>
+        ↑
       </button>
-    </form>
+      <button type="button" aria-label="Move down" disabled={last} onClick={onDown}>
+        ↓
+      </button>
+    </div>
   );
 }

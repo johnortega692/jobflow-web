@@ -25,8 +25,9 @@ export type SubmittalPipelineStep = {
 export type AttentionItem = {
   id: string;
   label: string;
-  kind: "setup" | "startup-item";
+  kind: "setup" | "startup-item" | "rfi";
   itemId?: string;
+  rfiId?: string;
   group?: StartupChecklistGroup;
   openJobSetup?: boolean;
   sortDays?: number;

@@ -451,9 +451,6 @@ export function SdsPacketPage() {
             </label>
           </div>
           <div className="sds-options-actions stack">
-            <p className="sds-filename-preview muted small">
-              Filename: <code>{outputFilename}</code>
-            </p>
             <p
               className={`sds-readiness-line small${readiness.gaps.length ? " sds-readiness-line--warn" : readiness.sectionCount ? " sds-readiness-line--ok" : ""}`}
             >
@@ -463,14 +460,19 @@ export function SdsPacketPage() {
               <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
                 {saving ? "Saving…" : "Save"}
               </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={building || !draft.sections.length}
-                onClick={() => void onBuild()}
-              >
-                {building ? "Building…" : "Packet PDF"}
-              </button>
+              <span className="paint-toolbar-download-wrap pdf-filename-hover">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={building || !draft.sections.length}
+                  onClick={() => void onBuild()}
+                >
+                  {building ? "Building…" : "Packet PDF"}
+                </button>
+                <span className="paint-toolbar-download-tip" role="tooltip">
+                  {outputFilename}
+                </span>
+              </span>
             </div>
           </div>
         </div>

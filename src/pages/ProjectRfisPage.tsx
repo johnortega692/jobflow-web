@@ -2,16 +2,66 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { ContractListFilter, type ContractListFilterValue } from "../components/jobinfo/ContractListFilter";
 import { RfiStatusBadge } from "../components/rfi/RfiStatusBadge";
+import { useLetterhead } from "../contexts/LetterheadContext";
+import { formatDateDisplay, parseFlexibleDate } from "../lib/dateInputUtils";
 import {
   hasTransmittalContractSwitch,
+  projectPrintInfoForContract,
   TRANSMITTAL_CONTRACT_LABELS,
 } from "../lib/jobInfo";
 import { logProjectActivityEvent } from "../lib/projectActivity";
+import { downloadRfiPdf } from "../lib/rfiPdf";
 import { supabase } from "../lib/supabase";
-import { RFI_STATUS_CLOSED, RFI_STATUS_OPEN, normalizeRfiStatus, rfiStatusCounts } from "../lib/rfiStatus";
-import { formatDateTime } from "../lib/strings";
+import { RFI_STATUS_CLOSED, RFI_STATUS_OPEN, isRfiClosed, normalizeRfiStatus, rfiStatusCounts } from "../lib/rfiStatus";
 import type { ProjectForm, Rfi } from "../types/database";
-import { rfiContractFromData } from "../types/database";
+import { normalizeRfiFormData, rfiContractFromData } from "../types/database";
+
+type StatusFilter = "open" | "closed" | "all";
+
+function displayRfiNumber(raw: string | null | undefined): string {
+  const n = parseInt(raw ?? "", 10);
+  return Number.isFinite(n) ? String(n).padStart(3, "0") : raw?.trim() || "—";
+}
+
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function calendarDaysBetween(from: Date, to: Date): number {
+  const ms = startOfLocalDay(to).getTime() - startOfLocalDay(from).getTime();
+  return Math.round(ms / 86_400_000);
+}
+
+function dueParts(dueDate: string): { date: string; hint: string; tone: "neutral" | "soon" | "overdue" } | null {
+  const due = parseFlexibleDate(dueDate);
+  if (!due) return null;
+  const days = calendarDaysBetween(new Date(), due);
+  if (days < 0) {
+    const overdue = Math.abs(days);
+    return {
+      date: formatDateDisplay(due),
+      hint: `${overdue} day${overdue === 1 ? "" : "s"} overdue`,
+      tone: "overdue",
+    };
+  }
+  if (days === 0) return { date: formatDateDisplay(due), hint: "due today", tone: "soon" };
+  return {
+    date: formatDateDisplay(due),
+    hint: `in ${days} day${days === 1 ? "" : "s"}`,
+    tone: days <= 3 ? "soon" : "neutral",
+  };
+}
+
+function formatUpdated(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const days = calendarDaysBetween(date, new Date());
+  if (days === 0) return `Today, ${time}`;
+  if (days === 1) return `Yesterday, ${time}`;
+  return `${formatDateDisplay(date)}, ${time}`;
+}
 
 type Ctx = { project: ProjectForm; projectId: string };
 
@@ -25,6 +75,7 @@ function nextRfiNumber(numbers: string[]): string {
 
 export function ProjectRfisPage() {
   const { project, projectId } = useOutletContext<Ctx>();
+  const { branding } = useLetterhead();
   const navigate = useNavigate();
   const [rfis, setRfis] = useState<Rfi[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +83,9 @@ export function ProjectRfisPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [contractFilter, setContractFilter] = useState<ContractListFilterValue>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [pdfBusyId, setPdfBusyId] = useState<string | null>(null);
 
   const showContractColumn = hasTransmittalContractSwitch(project);
 
@@ -40,11 +94,38 @@ export function ProjectRfisPage() {
     return rfis.filter((rfi) => rfiContractFromData(rfi.data) === contractFilter);
   }, [contractFilter, rfis]);
 
-  const statusSummary = rfiStatusCounts(rfis);
+  const statusSummary = rfiStatusCounts(filteredRfis);
+  const visibleRfis = useMemo(() => {
+    if (statusFilter === "all") return filteredRfis;
+    return filteredRfis.filter((rfi) =>
+      statusFilter === "closed" ? isRfiClosed(rfi.status) : !isRfiClosed(rfi.status),
+    );
+  }, [filteredRfis, statusFilter]);
 
   useEffect(() => {
     setContractFilter("all");
+    setStatusFilter("open");
+    setMenuId(null);
   }, [projectId]);
+
+  useEffect(() => {
+    if (!menuId) return;
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-rfi-menu]")) return;
+      setMenuId(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuId(null);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuId]);
 
   async function load() {
     setLoading(true);
@@ -126,18 +207,76 @@ export function ProjectRfisPage() {
     setRfis((prev) => prev.map((r) => (r.id === rfi.id ? { ...r, status } : r)));
   }
 
+  async function onDownloadPdf(rfi: Rfi) {
+    const form = normalizeRfiFormData(rfi.data);
+    const subject = rfi.subject?.trim() ?? "";
+    if (!subject) {
+      setError("Enter a subject before downloading the PDF.");
+      return;
+    }
+    if (!form.question.trim()) {
+      const ok = window.confirm("Question is empty — generate PDF anyway?");
+      if (!ok) return;
+    }
+    setPdfBusyId(rfi.id);
+    setError(null);
+    try {
+      const printProject = projectPrintInfoForContract(project, form.contract);
+      await downloadRfiPdf({
+        project: {
+          job_number: printProject.job_number,
+          job_name: printProject.job_name,
+          job_address: printProject.job_address,
+          job_address2: printProject.job_address_line2,
+          contractor: project.contractor ?? "",
+          architect: project.architect ?? "",
+          owner: project.owner ?? "",
+        },
+        rfi_number: rfi.rfi_number ?? "",
+        subject,
+        form,
+        branding,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "PDF download failed");
+    } finally {
+      setPdfBusyId(null);
+    }
+  }
+
   return (
-    <section className="card stack project-rfis-page">
-      <div className="row-between" style={{ marginBottom: "1rem" }}>
-        <div>
-          {rfis.length > 0 && (
-            <p className="muted small rfi-list-status-summary">
-              {statusSummary.total} RFI(s) · {statusSummary.open} Open · {statusSummary.closed} Closed
-            </p>
-          )}
-        </div>
+    <section className="stack project-rfis-page">
+      <div className="rfi-list-header">
+        <h1>RFIs</h1>
         <button type="button" className="btn btn-primary" onClick={() => void createRfi()}>
-          New RFI
+          + New RFI
+        </button>
+      </div>
+
+      <div className="rfi-status-switch" role="group" aria-label="Filter RFIs">
+        <button
+          type="button"
+          className={statusFilter === "open" ? "is-on" : undefined}
+          aria-pressed={statusFilter === "open"}
+          onClick={() => setStatusFilter("open")}
+        >
+          Open {statusSummary.open}
+        </button>
+        <button
+          type="button"
+          className={statusFilter === "closed" ? "is-on" : undefined}
+          aria-pressed={statusFilter === "closed"}
+          onClick={() => setStatusFilter("closed")}
+        >
+          Closed {statusSummary.closed}
+        </button>
+        <button
+          type="button"
+          className={statusFilter === "all" ? "is-on" : undefined}
+          aria-pressed={statusFilter === "all"}
+          onClick={() => setStatusFilter("all")}
+        >
+          All {statusSummary.total}
         </button>
       </div>
 
@@ -148,76 +287,135 @@ export function ProjectRfisPage() {
         <p className="muted">Loading RFIs…</p>
       ) : rfis.length === 0 ? (
         <p className="muted">No RFIs yet.</p>
-      ) : filteredRfis.length === 0 ? (
+      ) : visibleRfis.length === 0 ? (
         <p className="muted">
-          No RFIs for{" "}
-          {contractFilter === "all" ? "this job" : TRANSMITTAL_CONTRACT_LABELS[contractFilter]}.
+          {statusFilter === "open"
+            ? "No open RFIs."
+            : statusFilter === "closed"
+              ? "No closed RFIs."
+              : `No RFIs for ${contractFilter === "all" ? "this job" : TRANSMITTAL_CONTRACT_LABELS[contractFilter]}.`}
         </p>
       ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                {showContractColumn && <th>Contract</th>}
-                <th>Subject</th>
-                <th>Status</th>
-                <th>Updated</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRfis.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.rfi_number}</td>
-                  {showContractColumn && (
-                    <td className="muted small">
-                      {TRANSMITTAL_CONTRACT_LABELS[rfiContractFromData(r.data)]}
-                    </td>
-                  )}
-                  <td>{r.subject}</td>
-                  <td>
-                    <RfiStatusBadge status={r.status} />
-                  </td>
-                  <td className="muted">{formatDateTime(r.updated_at)}</td>
-                  <td>
-                    <div className="row-gap wrap">
-                      <Link className="btn btn-small" to={`/projects/${projectId}/rfis/${r.id}`}>
-                        Edit
-                      </Link>
-                      {normalizeRfiStatus(r.status) === RFI_STATUS_OPEN ? (
-                        <button
-                          type="button"
-                          className="btn btn-small btn-success-soft"
-                          disabled={statusBusyId === r.id}
-                          onClick={() => void setRfiStatus(r, RFI_STATUS_CLOSED)}
-                        >
-                          Mark closed
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-small btn-secondary"
-                          disabled={statusBusyId === r.id}
-                          onClick={() => void setRfiStatus(r, RFI_STATUS_OPEN)}
-                        >
-                          Mark open
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn btn-small btn-danger-soft"
-                        disabled={deletingId === r.id}
-                        onClick={() => void onDelete(r)}
-                      >
-                        {deletingId === r.id ? "Deleting…" : "Delete"}
-                      </button>
-                    </div>
-                  </td>
+        <div className="card rfi-list-card">
+            <table className="data-table rfi-list-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  {showContractColumn && <th>Contract</th>}
+                  <th>Subject</th>
+                  <th>Ball in court</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {visibleRfis.map((r) => {
+                  const form = normalizeRfiFormData(r.data);
+                  const due = dueParts(form.due_date);
+                  const ball = form.to_name.trim();
+                  const open = normalizeRfiStatus(r.status) === RFI_STATUS_OPEN;
+                  return (
+                    <tr key={r.id}>
+                      <td className="rfi-list-num">{displayRfiNumber(r.rfi_number)}</td>
+                      {showContractColumn && (
+                        <td className="muted small">
+                          {TRANSMITTAL_CONTRACT_LABELS[rfiContractFromData(r.data)]}
+                        </td>
+                      )}
+                      <td>
+                        <Link className="rfi-subject-link" to={`/projects/${projectId}/rfis/${r.id}`}>
+                          {r.subject?.trim() || "Untitled RFI"}
+                        </Link>
+                      </td>
+                      <td className={ball ? undefined : "rfi-placeholder"}>{ball || "[ball in court]"}</td>
+                      <td>
+                        {due ? (
+                          <span className="rfi-due">
+                            <span>{due.date}</span>
+                            <span className={`rfi-due-hint is-${due.tone}`}>{due.hint}</span>
+                          </span>
+                        ) : (
+                          <span className="rfi-placeholder">[due date]</span>
+                        )}
+                      </td>
+                      <td>
+                        <RfiStatusBadge status={r.status} />
+                      </td>
+                      <td className="muted">{formatUpdated(r.updated_at)}</td>
+                      <td>
+                        <div className="rfi-row-actions">
+                          {open ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary rfi-close-btn"
+                              disabled={statusBusyId === r.id}
+                              onClick={() => void setRfiStatus(r, RFI_STATUS_CLOSED)}
+                            >
+                              Close
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-secondary rfi-close-btn"
+                              disabled={statusBusyId === r.id}
+                              onClick={() => void setRfiStatus(r, RFI_STATUS_OPEN)}
+                            >
+                              Reopen
+                            </button>
+                          )}
+                          <div className="rfi-row-menu" data-rfi-menu>
+                            <button
+                              type="button"
+                              className="rfi-row-more"
+                              aria-label="More actions"
+                              aria-expanded={menuId === r.id}
+                              onClick={() => setMenuId((current) => (current === r.id ? null : r.id))}
+                            >
+                              ···
+                            </button>
+                            {menuId === r.id ? (
+                              <div className="rfi-row-menu-pop" role="menu">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={pdfBusyId === r.id}
+                                  onClick={() => {
+                                    setMenuId(null);
+                                    void onDownloadPdf(r);
+                                  }}
+                                >
+                                  Download PDF
+                                </button>
+                                <Link
+                                  role="menuitem"
+                                  to={`/projects/${projectId}/rfis/${r.id}`}
+                                  onClick={() => setMenuId(null)}
+                                >
+                                  Edit
+                                </Link>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={deletingId === r.id}
+                                  onClick={() => {
+                                    setMenuId(null);
+                                    void onDelete(r);
+                                  }}
+                                >
+                                  {deletingId === r.id ? "Deleting…" : "Delete"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
         </div>
       )}
     </section>

@@ -1,5 +1,4 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { EmailAddressWarning } from "../EmailAddressWarning";
 import { patchOrgSettings } from "../../lib/budgetLibrary";
 import { loadOrgSettingsBlob, recordTrackerEmailCronStatus } from "../../lib/orgSettings";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
@@ -40,6 +39,7 @@ import {
   type TrackerEmailSchedule,
 } from "../../lib/trackerEmailSchedule";
 import type { PaintUserSettings } from "../../lib/paintUserSettings";
+import { profileFromSettings } from "../../lib/userProfile";
 
 const TIMEZONES = [
   "America/Los_Angeles",
@@ -203,8 +203,7 @@ export function TrackerSchedulesSettingsSection({
 
     const errOrg = await patchOrgSettings(user.id, {
       tracker_email_schedule: data.tracker_email_schedule,
-      notification_primary_email: data.notification_primary_email.trim(),
-      notification_primary_name: data.notification_primary_name.trim(),
+      tracker_schedule_user_id: user.id,
     });
     setSaving(false);
     if (errOrg) {
@@ -225,6 +224,9 @@ export function TrackerSchedulesSettingsSection({
   if (!data || !user?.id) return null;
 
   const schedule = data.tracker_email_schedule;
+  const profile = profileFromSettings(letterhead);
+  const profileName = profile.name.trim();
+  const profileEmail = profile.email.trim();
   const tzShort = timezoneShort(schedule.timezone);
   const hourLabel = formatSendHourLabel(schedule.send_hour);
   const dirty = getIsDirty();
@@ -264,9 +266,15 @@ export function TrackerSchedulesSettingsSection({
     setSendNote(null);
     try {
       if (!data) throw new Error("Schedule settings are still loading.");
-      const ctx = testSendContext(data, letterhead.company_name, letterhead.company_address, letterhead.logo_url);
+      const ctx = testSendContext(
+        data,
+        letterhead.company_name,
+        letterhead.company_address,
+        letterhead.logo_url,
+        { email: profileEmail, name: profileName },
+      );
       if (!ctx.primaryEmail) {
-        throw new Error("Set a primary recipient email above before sending a test copy.");
+        throw new Error("Set Email on your Profile before sending a test copy.");
       }
       const text = await work(ctx);
       setSendNote({ ok: true, text });
@@ -341,7 +349,7 @@ export function TrackerSchedulesSettingsSection({
           />
           <div className="sched-card-copy">
             <strong>Automatic tracker emails</strong>
-            <p>Company-wide. When off, nothing sends on schedule. Send now still works for testing.</p>
+            <p>Company-wide. When off, nothing sends on schedule. Digests and Send now go to your Profile.</p>
           </div>
         </div>
         <div className="sched-grid">
@@ -376,29 +384,17 @@ export function TrackerSchedulesSettingsSection({
               ))}
             </select>
           </label>
-          <label>
-            Primary recipient name
-            <input
-              value={data.notification_primary_name}
-              disabled={readOnly}
-              onChange={(e) => setData((d) => (d ? { ...d, notification_primary_name: e.target.value } : d))}
-              placeholder="John Ortega"
-            />
-          </label>
-          <label>
-            Primary recipient email (digest To + test sends)
-            <input
-              type="text"
-              inputMode="email"
-              autoComplete="email"
-              spellCheck={false}
-              value={data.notification_primary_email}
-              disabled={readOnly}
-              onChange={(e) => setData((d) => (d ? { ...d, notification_primary_email: e.target.value } : d))}
-              placeholder="you@company.com"
-            />
-            <EmailAddressWarning value={data.notification_primary_email} compact />
-          </label>
+          <p className="sched-recipient">
+            {profileEmail ? (
+              <>
+                Sent to your Profile: <strong>{profileName || "PM"}</strong>
+                {" · "}
+                {profileEmail}
+              </>
+            ) : (
+              <>Set Full name and Email on Profile. Scheduled emails use that address.</>
+            )}
+          </p>
         </div>
       </section>
 
@@ -578,13 +574,14 @@ function testSendContext(
   companyName: string,
   companyAddress: string,
   logoUrl: string,
+  recipient: { email: string; name: string },
 ) {
   const urls = resolveScheduleEmailUrls(data.google_urls);
   return {
     gasPost: createBrowserScheduleEmailPoster(urls),
     gasUrl: urls.fieldOrderUrl,
-    primaryEmail: data.notification_primary_email.trim(),
-    primaryName: data.notification_primary_name.trim() || "PM",
+    primaryEmail: recipient.email.trim(),
+    primaryName: recipient.name.trim() || "PM",
     companyName: companyName.trim() || "JobFlow",
     companyAddress,
     logoUrl,

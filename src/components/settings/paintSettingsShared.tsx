@@ -150,7 +150,7 @@ export function WeeklyDigestSection({
     setDigestError(null);
 
     if (!primaryEmail) {
-      setDigestError("Set email on your Profile (Settings → Profile & letterhead).");
+      setDigestError("Set email on your Profile (Settings → My Profile).");
       setDigestSending(null);
       return;
     }
@@ -377,7 +377,7 @@ export function FollowUpRemindersSection({
     setStatusError(null);
 
     if (!primaryEmail) {
-      setStatusError("Set email on your Profile (Settings → Profile & letterhead).");
+      setStatusError("Set email on your Profile (Settings → My Profile).");
       setSending(null);
       return;
     }

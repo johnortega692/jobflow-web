@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useOutletContext } from "react-router-dom";
 import { FrpAddTrimModal } from "../components/frp/FrpAddTrimModal";
 import { FrpItemRow } from "../components/frp/FrpItemRow";
@@ -89,6 +89,8 @@ export function FrpSubmittalsPage() {
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [vendors, setVendors] = useState<MaterialVendor[]>([]);
   const [samplesOpen, setSamplesOpen] = useState(false);
+  const [toolbarMenu, setToolbarMenu] = useState<"new" | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   const dirtyState = useMemo(() => ({ draft, history }), [draft, history]);
   const { isDirty, syncBaseline, readBaseline } = useTradeDraftDirty(dirtyState, !loading);
@@ -134,6 +136,29 @@ export function FrpSubmittalsPage() {
       syncBaseline({ draft: d, history: h });
     }
   }, [loading, tradeData.frp_submittal, tradeData.frp_submittal_history, syncBaseline]);
+
+  useEffect(() => {
+    if (!toolbarMenu) return;
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const menus = toolbarRef.current?.querySelectorAll(".paint-toolbar-menu");
+      if (!menus) return;
+      for (const menu of menus) {
+        if (menu.contains(target)) return;
+      }
+      setToolbarMenu(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setToolbarMenu(null);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [toolbarMenu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -383,45 +408,101 @@ export function FrpSubmittalsPage() {
 
   return (
     <div className="stack frp-submittal-page">
-      <div className="stack frp-submittal-page-header">
-        {hasDistinctFrpContract(project) && (
-          <p className="muted small">Contract: {frpJobLabel(project)}.</p>
-        )}
-        <div className="row-gap wrap frp-submittal-header-actions">
-          <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
-            History
-          </button>
-          <button
-            type="button"
-            className="btn btn-outline-accent"
-            title="Assign the next submittal number (Rev 0, draft). Does not lock or issue."
-            onClick={onNewSubmittalPackage}
-          >
-            New submittal package
-          </button>
-          {!draftLocked && (
+      {hasDistinctFrpContract(project) && (
+        <p className="muted small">Contract: {frpJobLabel(project)}.</p>
+      )}
+      <div className="card paint-toolbar" ref={toolbarRef}>
+        <div className="paint-toolbar-row">
+          <div className="paint-toolbar-menu">
             <button
               type="button"
-              className="btn btn-success"
-              disabled={saving}
-              title="Lock this revision in history as issued"
-              onClick={() => void onIssueSubmittal()}
+              className="btn paint-toolbar-new"
+              aria-haspopup="menu"
+              aria-expanded={toolbarMenu === "new"}
+              onClick={() => setToolbarMenu((open) => (open === "new" ? null : "new"))}
             >
-              Issue submittal
+              + New
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             </button>
-          )}
-          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => void onSubmittalPdf()}>
-            Download PDF
-          </button>
+            {toolbarMenu === "new" ? (
+              <div className="paint-toolbar-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  title="Assign the next submittal number (Rev 0, draft). Does not lock or issue."
+                  onClick={() => {
+                    setToolbarMenu(null);
+                    onNewSubmittalPackage();
+                  }}
+                >
+                  New submittal package
+                </button>
+                {!draftLocked ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={saving}
+                    title="Lock this revision in history as issued"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      void onIssueSubmittal();
+                    }}
+                  >
+                    Issue submittal
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    title="Copy this issued package into the next revision"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      onCreateRevision();
+                    }}
+                  >
+                    Create next revision
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="paint-toolbar-brush" aria-label="Samples">
+            <span className="paint-toolbar-label">Samples</span>
+            <button type="button" className="btn btn-secondary" onClick={startOrderSamples}>
+              Order samples
+            </button>
+          </div>
+
+          <div className="paint-toolbar-end">
+            <button type="button" className="btn btn-secondary paint-toolbar-history" onClick={() => setHistoryOpen(true)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="12" cy="12" r="8" />
+                <path d="M12 8v5l3 2" />
+              </svg>
+              History
+            </button>
+            <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <span className="paint-toolbar-download-wrap">
+              <button type="button" className="btn btn-primary paint-toolbar-download" onClick={() => void onSubmittalPdf()}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M12 4v10" />
+                  <path d="m7 11 5 5 5-5" />
+                  <path d="M5 19h14" />
+                </svg>
+                Download PDF
+              </button>
+              <span className="paint-toolbar-download-tip" role="tooltip">
+                {submittalPdfFilename}
+              </span>
+            </span>
+          </div>
         </div>
       </div>
-
-      <p className="sds-filename-preview muted small">
-        Filename: <code>{submittalPdfFilename}</code>
-      </p>
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
@@ -432,12 +513,6 @@ export function FrpSubmittalsPage() {
           change items, or update issue status below.
         </div>
       )}
-
-      <section className="card paint-action-row">
-        <button type="button" className="btn btn-secondary" onClick={startOrderSamples}>
-          Order samples
-        </button>
-      </section>
 
       <FrpSubmittalMetaPanel
         draft={draft}

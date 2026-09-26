@@ -485,7 +485,7 @@ export async function sendFollowUpReminder(options: {
     collectProjectIcbiStaffCc(options.projects),
   );
   if (!recipients) {
-    throw new Error("Set email on your Profile (Settings → Profile & letterhead).");
+    throw new Error("Set email on your Profile (Settings → My Profile).");
   }
 
   const branding: TrackerNotificationBranding = {

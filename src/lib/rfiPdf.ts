@@ -406,6 +406,6 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
 }
 
 export async function downloadRfiPdf(input: RfiPrintInput): Promise<void> {
-  const filename = rfiFilename(input.project.job_name, input.project.job_number, input.rfi_number);
+  const filename = rfiFilename(input.rfi_number, input.subject);
   downloadPdfBytes(await buildRfiPdfBytes(input), filename);
 }

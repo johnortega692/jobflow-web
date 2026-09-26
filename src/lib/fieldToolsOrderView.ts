@@ -94,6 +94,7 @@ export function orderTypeLabel(t: string): string {
   if (t === "job_scope_kit") return "Job Scope Kit";
   if (t === "last_min") return "Last-Min";
   if (t === "haul_off") return "Haul Out";
+  if (t === "pm_order") return "PM Order";
   return "Field Request";
 }
 

@@ -48,10 +48,36 @@ export function wallcoveringSubmittalFilename(
   return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "")}`;
 }
 
-export function rfiFilename(jobName: string, jobNumber: string, rfiNumber: string): string {
-  const projectPart = projectFilenamePart(jobName, jobNumber);
-  const rfiPart = sanitizeFilenamePart(rfiNumber.trim() || "RFI");
-  return `${projectPart}_RFI_${rfiPart}.pdf`;
+const RFI_SUBJECT_MAX = 50;
+
+/** Hyphenated subject, at most 50 characters, cut on the last whole word. */
+function rfiSubjectSlug(subject: string): string {
+  const words = subject
+    .replace(/[\u2010-\u2015]/g, " ")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((word) => word.trim())
+    .filter(Boolean);
+
+  let description = "";
+  for (const word of words) {
+    const next = description ? `${description}-${word}` : word;
+    if (next.length > RFI_SUBJECT_MAX) {
+      if (!description) return word.slice(0, RFI_SUBJECT_MAX);
+      break;
+    }
+    description = next;
+  }
+  return description;
+}
+
+/** `RFI-003_Exterior-Existing-Plaster-Condition-Finish-Surface.pdf` */
+export function rfiFilename(rfiNumber: string, subject?: string): string {
+  const digits = rfiNumber.replace(/\D/g, "");
+  const parsed = digits ? Number.parseInt(digits, 10) : Number.NaN;
+  const numberPart = Number.isFinite(parsed) ? String(parsed).padStart(3, "0") : "000";
+  const description = rfiSubjectSlug(subject ?? "");
+  return description ? `RFI-${numberPart}_${description}.pdf` : `RFI-${numberPart}.pdf`;
 }
 
 export function wallcoveringOrderFormFilename(

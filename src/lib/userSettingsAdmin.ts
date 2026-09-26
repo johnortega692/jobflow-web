@@ -2,7 +2,7 @@ import { loadOrgSettingsBlobAdmin } from "./orgSettingsAdmin.js";
 import { normalizeTrackerEmailSchedule } from "./trackerEmailSchedule.js";
 import { getSupabaseAdmin } from "./supabaseAdmin.js";
 
-/** Sentinel target id — cron runs once using org_settings (shared schedule + notify email). */
+/** Sentinel target id — cron runs once using the shared schedule and the saved user's profile. */
 export const ORG_TRACKER_CRON_TARGET = "__org_tracker__";
 
 export async function loadRawUserSettingsAdmin(userId: string): Promise<Record<string, unknown>> {

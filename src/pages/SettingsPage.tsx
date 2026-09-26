@@ -12,7 +12,7 @@ import { StartupChecklistSettingsSection } from "../components/settings/StartupC
 import { EmailSignatureSettingsSection } from "../components/settings/EmailSignatureSettingsSection";
 import { TrackerSchedulesSettingsSection } from "../components/settings/TrackerSchedulesSettingsSection";
 import { ProjectStaffSettingsSection } from "../components/settings/ProjectStaffSettingsSection";
-import { PdfFieldRow } from "../components/settings/PdfFieldRow";
+import { PdfFieldRow, PdfVisibilityPill } from "../components/settings/PdfFieldRow";
 import type { SettingsSectionActions } from "../components/settings/settingsSectionTypes";
 import { UnsavedChangesDialog } from "../components/UnsavedChangesDialog";
 import { EmailAddressWarning } from "../components/EmailAddressWarning";
@@ -36,28 +36,48 @@ import {
 } from "../config/settingsTabs";
 import type { LetterheadPdfVisibility } from "../types/letterheadSettings";
 
+type ProfilePane = "details" | "signature";
+
 type PendingLeave =
   | { kind: "tab"; tab: SettingsTabId }
-  | { kind: "route"; to: string };
+  | { kind: "route"; to: string }
+  | { kind: "profile-pane"; pane: ProfilePane };
 
 function tabLabel(tabId: SettingsTabId): string {
   return settingsTabLabel(tabId);
+}
+
+function logoFileLabel(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  try {
+    const path = /^https?:\/\//i.test(trimmed) ? new URL(trimmed).pathname : trimmed;
+    const name = decodeURIComponent(path.split("/").filter(Boolean).pop() || "");
+    return name.split("?")[0] || "logo";
+  } catch {
+    return "logo";
+  }
 }
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAdmin, roleLoading, jobRole, settingsTabAccess } = useAuth();
-  const { profile, settings, branding, loading, saving, error, setSettings, setProfile, save, reload } =
+  const { profile, settings, loading, saving, error, setSettings, setProfile, save, reload } =
     useLetterhead();
   const fileRef = useRef<HTMLInputElement>(null);
+  const logoUrlRef = useRef<HTMLInputElement>(null);
   const sectionActionsRef = useRef<Partial<Record<SettingsTabId, SettingsSectionActions>>>({});
   const [activeTab, setActiveTab] = useState<SettingsTabId>("profile");
+  const [profilePane, setProfilePane] = useState<ProfilePane>("details");
+  const [signatureDirty, setSignatureDirty] = useState(false);
+  const signatureActionsRef = useRef<SettingsSectionActions | null>(null);
   const [dirtyTabs, setDirtyTabs] = useState<Partial<Record<SettingsTabId, true>>>({});
   const [pendingLeave, setPendingLeave] = useState<PendingLeave | null>(null);
   const [dialogSaving, setDialogSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [logoUrlOpen, setLogoUrlOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
 
   const setTabDirty = useCallback((tab: SettingsTabId, dirty: boolean) => {
@@ -95,10 +115,7 @@ export function SettingsPage() {
     (dirty: boolean) => setTabDirty("paint-vendors", dirty),
     [setTabDirty],
   );
-  const onEmailSignatureDirty = useCallback(
-    (dirty: boolean) => setTabDirty("email-signature", dirty),
-    [setTabDirty],
-  );
+  const onEmailSignatureDirty = useCallback((dirty: boolean) => setSignatureDirty(dirty), []);
   const onTrackerSchedulesDirty = useCallback(
     (dirty: boolean) => setTabDirty("tracker-schedules", dirty),
     [setTabDirty],
@@ -121,6 +138,11 @@ export function SettingsPage() {
   }, []);
 
   useEffect(() => {
+    if (!logoUrlOpen) return;
+    logoUrlRef.current?.focus();
+  }, [logoUrlOpen]);
+
+  useEffect(() => {
     if (!profileReady) return;
     sectionActionsRef.current.profile = {
       save: async () => {
@@ -128,7 +150,7 @@ export function SettingsPage() {
         const err = await save();
         if (err) return false;
         markProfileSaved();
-        setMessage("Settings saved. Your profile and company info will pre-fill forms and PDFs.");
+        setMessage(null);
         return true;
       },
       discard: () => reload(),
@@ -165,33 +187,66 @@ export function SettingsPage() {
     const tab = (location.state as { tab?: string } | null)?.tab;
     if (!tab) return;
     const resolvedTab = tab === "paint-email" ? "paint-vendors" : tab;
+    if (resolvedTab === "email-signature") {
+      setActiveTab("profile");
+      setProfilePane("signature");
+      return;
+    }
     const meta = SETTINGS_TABS.find((t) => t.id === resolvedTab);
     if (!meta) return;
     if (!isSettingsTabVisible(meta, isAdmin, settingsTabAccess)) return;
     setActiveTab(resolvedTab as SettingsTabId);
   }, [roleLoading, isAdmin, location.state, settingsTabAccess]);
 
+  function activeSectionActions(): SettingsSectionActions | undefined {
+    if (activeTab === "profile" && profilePane === "signature") {
+      return signatureActionsRef.current ?? undefined;
+    }
+    return sectionActionsRef.current[activeTab];
+  }
+
   function isActiveTabDirty(): boolean {
+    if (activeTab === "profile" && profilePane === "signature") {
+      return signatureActionsRef.current?.getIsDirty() ?? signatureDirty;
+    }
     return sectionActionsRef.current[activeTab]?.getIsDirty() ?? Boolean(dirtyTabs[activeTab]);
   }
 
+  function leaveTargetLabel(): string {
+    if (activeTab === "profile") {
+      return profilePane === "signature" ? "Email signature" : "Profile & letterhead";
+    }
+    return tabLabel(activeTab);
+  }
+
   useEffect(() => {
-    const hasDirty = Object.keys(dirtyTabs).length > 0;
+    const hasDirty = Object.keys(dirtyTabs).length > 0 || signatureDirty;
     if (!hasDirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirtyTabs]);
+  }, [dirtyTabs, signatureDirty]);
 
   function completeLeave(next: PendingLeave) {
     if (next.kind === "tab") {
       setActiveTab(next.tab);
+    } else if (next.kind === "profile-pane") {
+      setProfilePane(next.pane);
     } else {
       navigate(next.to);
     }
     setPendingLeave(null);
+  }
+
+  function requestProfilePane(pane: ProfilePane) {
+    if (pane === profilePane) return;
+    if (isActiveTabDirty()) {
+      setPendingLeave({ kind: "profile-pane", pane });
+      return;
+    }
+    setProfilePane(pane);
   }
 
   function requestTabChange(tab: SettingsTabId) {
@@ -219,7 +274,7 @@ export function SettingsPage() {
     const err = await save();
     if (!err) {
       markProfileSaved();
-      setMessage("Settings saved. Your profile and company info will pre-fill forms and PDFs.");
+      setMessage(null);
     }
   }
 
@@ -234,7 +289,7 @@ export function SettingsPage() {
     try {
       const url = await uploadLetterheadLogo(user.id, file, { orgShared: isAdmin });
       setSettings({ logo_url: url });
-      setMessage("Logo uploaded. Click Save settings to keep it.");
+      setMessage("Logo uploaded. Save to keep it.");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Logo upload failed");
     } finally {
@@ -244,7 +299,7 @@ export function SettingsPage() {
   }
 
   async function onDialogSave() {
-    const actions = sectionActionsRef.current[activeTab];
+    const actions = activeSectionActions();
     if (!actions) {
       setPendingLeave(null);
       return;
@@ -259,7 +314,7 @@ export function SettingsPage() {
   function onDialogDiscard() {
     const leave = pendingLeave;
     if (!leave) return;
-    const actions = sectionActionsRef.current[activeTab];
+    const actions = activeSectionActions();
     void Promise.resolve(actions?.discard()).then(() => completeLeave(leave));
   }
 
@@ -319,20 +374,23 @@ export function SettingsPage() {
                   <p className="settings-nav-group-label" title={meta.hint}>
                     {meta.label}
                   </p>
-                  {group.tabs.map((tab) => (
+                  {group.tabs.map((tab) => {
+                    const itemDirty = tab.id === "profile" ? Boolean(dirtyTabs.profile) || signatureDirty : Boolean(dirtyTabs[tab.id]);
+                    return (
                     <button
                       key={tab.id}
                       type="button"
-                      className={`settings-nav-item${activeTab === tab.id ? " settings-nav-item--active" : ""}${dirtyTabs[tab.id] ? " settings-nav-item--dirty" : ""}`}
+                      className={`settings-nav-item${activeTab === tab.id ? " settings-nav-item--active" : ""}${itemDirty ? " settings-nav-item--dirty" : ""}`}
                       aria-current={activeTab === tab.id ? "page" : undefined}
                       onClick={() => requestTabChange(tab.id)}
                     >
                       <span className="settings-nav-item-label">{tab.label}</span>
-                      {dirtyTabs[tab.id] ? (
+                      {itemDirty ? (
                         <span className="settings-nav-item-dot" aria-label="Unsaved changes" title="Unsaved changes" />
                       ) : null}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })}
@@ -353,23 +411,58 @@ export function SettingsPage() {
               ) : null}
             </div>
           ) : null}
+          {activeTab === "profile" ? (
+            <div className="settings-subtabs" role="tablist" aria-label="My Profile">
+              <button
+                type="button"
+                role="tab"
+                id="profile-tab-details"
+                className={`settings-subtab${profilePane === "details" ? " is-on" : ""}`}
+                aria-selected={profilePane === "details"}
+                aria-controls="profile-panel-details"
+                onClick={() => requestProfilePane("details")}
+              >
+                Profile &amp; letterhead
+                {dirtyTabs.profile ? <span className="settings-nav-item-dot" aria-label="Unsaved changes" /> : null}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="profile-tab-signature"
+                className={`settings-subtab${profilePane === "signature" ? " is-on" : ""}`}
+                aria-selected={profilePane === "signature"}
+                aria-controls="profile-panel-signature"
+                onClick={() => requestProfilePane("signature")}
+              >
+                Email signature
+                {signatureDirty ? <span className="settings-nav-item-dot" aria-label="Unsaved changes" /> : null}
+              </button>
+            </div>
+          ) : null}
 
       <div
-        className={`card stack settings-form settings-tab-panel${activeTab === "profile" ? "" : " settings-tab-panel--hidden"}`}
-        aria-hidden={activeTab !== "profile"}
+        id="profile-panel-details"
+        role="tabpanel"
+        aria-labelledby="profile-tab-details"
+        className={`stack settings-form settings-tab-panel settings-tab-panel--flush${activeTab === "profile" && profilePane === "details" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "profile" || profilePane !== "details"}
       >
         {(error || message) && activeTab === "profile" && (
           <div className={`banner ${error ? "banner-error" : "banner-ok"}`}>{error ?? message}</div>
         )}
 
-        <form className="stack" onSubmit={(e) => void onSubmit(e)}>
-          <section className="stack">
-            <h2>Your profile</h2>
-            <p className="muted small">
-              Used to pre-fill <strong>From</strong> on RFIs, <strong>Prepared by</strong> on
-              submittal packages, transmittal <strong>By:</strong> line, and PDF signature blocks.
-              Toggle each field to show or hide it on printed PDFs.
-            </p>
+        <form className="stack plh-form" onSubmit={(e) => void onSubmit(e)}>
+          <section className="plh-card">
+            <div className="plh-card-head">
+              <div>
+                <h2>Your profile</h2>
+                <p>From on RFIs · Prepared by on submittals · Transmittal By line</p>
+              </div>
+              <p className="plh-role">
+                Role: <strong>{jobRoleLabel(jobRole)}</strong>
+                <span> · set by admin</span>
+              </p>
+            </div>
             <div className="grid-2">
               <PdfFieldRow
                 label="Full name"
@@ -395,19 +488,6 @@ export function SettingsPage() {
                   autoComplete="organization-title"
                 />
               </PdfFieldRow>
-              <div className="field">
-                <label htmlFor="profile-job-role">Role</label>
-                <input
-                  id="profile-job-role"
-                  value={jobRoleLabel(jobRole)}
-                  readOnly
-                  disabled
-                  aria-describedby="profile-job-role-help"
-                />
-                <p id="profile-job-role-help" className="muted small">
-                  Informational only. Contact an admin to change your office role.
-                </p>
-              </div>
               <PdfFieldRow
                 label="Phone"
                 showInPdf={settings.pdf_show.signer_phone}
@@ -416,52 +496,65 @@ export function SettingsPage() {
                 <input
                   value={profile.phone}
                   onChange={(e) => setProfile({ phone: e.target.value })}
-                  placeholder="(555) 555-5555"
+                  placeholder="(408) 960-3207"
                   autoComplete="tel"
                 />
               </PdfFieldRow>
-              <PdfFieldRow
-                label="Email"
-                showInPdf={settings.pdf_show.signer_email}
-                onShowInPdfChange={(show) => setPdfShow("signer_email", show)}
-              >
-                <input
-                  type="email"
-                  value={profile.email}
-                  onChange={(e) => setProfile({ email: e.target.value })}
-                  placeholder="you@company.com"
-                  autoComplete="email"
-                />
+              <div>
+                <PdfFieldRow
+                  label="Email"
+                  showInPdf={settings.pdf_show.signer_email}
+                  onShowInPdfChange={(show) => setPdfShow("signer_email", show)}
+                >
+                  <input
+                    type="email"
+                    value={profile.email}
+                    onChange={(e) => setProfile({ email: e.target.value })}
+                    placeholder="you@company.com"
+                    autoComplete="email"
+                  />
+                </PdfFieldRow>
                 <EmailAddressWarning value={profile.email} compact />
-              </PdfFieldRow>
+              </div>
             </div>
           </section>
 
-          {isAdmin ? (
-          <>
-          <section className="stack">
-            <h2>Company &amp; letterhead</h2>
-            <p className="muted small">Shown on printed PDF headers, footers, and cover pages.</p>
+          <section className="plh-card">
+            <div className="plh-card-head">
+              <div>
+                <h2>Company &amp; letterhead</h2>
+                <p>
+                  PDF headers, footers and cover pages
+                  {!isAdmin ? " · contact an admin to change" : ""}
+                </p>
+              </div>
+            </div>
             <PdfFieldRow
               label="Company name"
               showInPdf={settings.pdf_show.company_name}
               onShowInPdfChange={(show) => setPdfShow("company_name", show)}
+              disabled={!isAdmin}
             >
               <input
                 value={settings.company_name}
                 onChange={(e) => setSettings({ company_name: e.target.value })}
                 placeholder="Ironwood Commercial Builders"
+                readOnly={!isAdmin}
+                disabled={!isAdmin}
               />
             </PdfFieldRow>
             <PdfFieldRow
               label="Company address"
               showInPdf={settings.pdf_show.company_address}
               onShowInPdfChange={(show) => setPdfShow("company_address", show)}
+              disabled={!isAdmin}
             >
               <input
                 value={settings.company_address}
                 onChange={(e) => setSettings({ company_address: e.target.value })}
-                placeholder="3953 Industrial Way, Suite E Concord, CA 94520"
+                placeholder="3953 Industrial Way, Suite E, Concord, CA 94520"
+                readOnly={!isAdmin}
+                disabled={!isAdmin}
               />
             </PdfFieldRow>
             <div className="grid-2">
@@ -469,129 +562,120 @@ export function SettingsPage() {
                 label="Office phone"
                 showInPdf={settings.pdf_show.company_phone}
                 onShowInPdfChange={(show) => setPdfShow("company_phone", show)}
+                hint={'"Office:" is added on the PDF'}
+                disabled={!isAdmin}
               >
                 <input
                   value={settings.company_phone}
                   onChange={(e) => setSettings({ company_phone: e.target.value })}
                   placeholder="925-609-8356"
+                  readOnly={!isAdmin}
+                  disabled={!isAdmin}
                 />
               </PdfFieldRow>
               <PdfFieldRow
                 label="License #"
                 showInPdf={settings.pdf_show.company_license}
                 onShowInPdfChange={(show) => setPdfShow("company_license", show)}
+                hint={'"License #" is added on the PDF'}
+                disabled={!isAdmin}
               >
                 <input
                   value={settings.company_license}
                   onChange={(e) => setSettings({ company_license: e.target.value })}
-                  placeholder="89536"
+                  placeholder="895364"
+                  readOnly={!isAdmin}
+                  disabled={!isAdmin}
                 />
               </PdfFieldRow>
             </div>
-            <p className="muted small settings-contact-preview">
-              Letterhead line: {branding.companyContactLine || "—"}
-            </p>
           </section>
 
-          <section className="stack">
-            <div className="settings-section-head">
-              <h2>Logo</h2>
-              <label className="settings-pdf-toggle" title={`${settings.pdf_show.logo ? "Hide" : "Show"} logo in PDF output`}>
-                <input
-                  type="checkbox"
-                  checked={settings.pdf_show.logo}
-                  onChange={(e) => setPdfShow("logo", e.target.checked)}
-                />
-                <span className="settings-pdf-toggle-track" aria-hidden="true">
-                  <span className="settings-pdf-toggle-thumb" />
-                </span>
-                <span className="settings-pdf-toggle-text">
-                  {settings.pdf_show.logo ? "Show in PDF" : "Hidden in PDF"}
-                </span>
-              </label>
-            </div>
-            <p className="muted small">
-              Upload an image or paste a URL. Shown at the top of printed PDFs when enabled.
-            </p>
-            {settings.logo_url && (
-              <div className="logo-preview">
-                <img src={settings.logo_url} alt="Company logo preview" />
+          <section className="plh-card">
+            <div className="plh-card-head">
+              <div>
+                <h2>Logo</h2>
+                <p>Top of printed PDFs</p>
               </div>
-            )}
-            <div className="row-gap">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={(e) => void onLogoFile(e.target.files?.[0] ?? null)}
+              <PdfVisibilityPill
+                label="logo"
+                showInPdf={settings.pdf_show.logo}
+                onChange={(show) => setPdfShow("logo", show)}
+                disabled={!isAdmin}
               />
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={uploading}
-                onClick={() => fileRef.current?.click()}
-              >
-                {uploading ? "Uploading…" : "Upload logo"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={!settings.logo_url}
-                onClick={() => setSettings({ logo_url: "" })}
-              >
-                Remove logo
-              </button>
             </div>
-            <label>
-              Or logo URL
-              <input
-                value={settings.logo_url}
-                onChange={(e) => setSettings({ logo_url: e.target.value })}
-                placeholder="/logo.png or https://…"
-              />
-            </label>
-          </section>
-          </>
-          ) : (
-          <section className="stack">
-            <h2>Company letterhead</h2>
-            <p className="muted small">
-              Shared Ironwood letterhead used on all PDFs. Contact an admin to update company info or
-              the logo.
-            </p>
-            {settings.logo_url ? (
-              <div className="logo-preview">
-                <img src={settings.logo_url} alt="Company logo" />
+            <div className="plh-logo-row">
+              <div className="plh-logo-preview">
+                {settings.logo_url ? (
+                  <img src={settings.logo_url} alt="Company logo preview" />
+                ) : (
+                  <span className="plh-logo-placeholder">[Your logo]</span>
+                )}
               </div>
-            ) : null}
-            <div className="grid-2">
-              <label>
-                Company name
-                <input value={settings.company_name} readOnly disabled />
-              </label>
-              <label>
-                Office phone
-                <input value={settings.company_phone} readOnly disabled />
-              </label>
-              <label className="grid-span-2">
-                Company address
-                <input value={settings.company_address} readOnly disabled />
-              </label>
-              <label>
-                License #
-                <input value={settings.company_license} readOnly disabled />
-              </label>
+              <div className="plh-logo-meta">
+                <p className="plh-logo-file">
+                  {settings.logo_url ? (
+                    <>
+                      {logoFileLabel(settings.logo_url)}
+                      <span> · uploaded</span>
+                    </>
+                  ) : (
+                    "No logo yet"
+                  )}
+                </p>
+                {isAdmin ? (
+                  <div className="plh-logo-actions">
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(e) => void onLogoFile(e.target.files?.[0] ?? null)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline-accent btn-small"
+                      disabled={uploading}
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      {uploading ? "Uploading…" : settings.logo_url ? "Replace logo" : "Upload logo"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-small plh-btn-remove"
+                      disabled={!settings.logo_url}
+                      onClick={() => setSettings({ logo_url: "" })}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
+                {isAdmin ? (
+                  logoUrlOpen ? (
+                    <input
+                      ref={logoUrlRef}
+                      value={settings.logo_url}
+                      onChange={(e) => setSettings({ logo_url: e.target.value })}
+                      placeholder="https://… or /logo.png"
+                      aria-label="Logo image URL"
+                      className="plh-logo-url"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="plh-url-link"
+                      onClick={() => setLogoUrlOpen(true)}
+                    >
+                      Use an image URL instead
+                    </button>
+                  )
+                ) : null}
+              </div>
             </div>
-            {branding.companyContactLine ? (
-              <p className="muted small settings-contact-preview">
-                Letterhead line: {branding.companyContactLine}
-              </p>
-            ) : null}
           </section>
-          )}
 
-          <div className="row-gap">
+          <div className="plh-save-bar">
+            <span className="muted">{getProfileDirty() ? "Unsaved changes" : "All changes saved"}</span>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? "Saving…" : "Save settings"}
             </button>
@@ -722,12 +806,17 @@ export function SettingsPage() {
       </div>
 
       <div
-        className={`card stack settings-form settings-tab-panel${activeTab === "email-signature" ? "" : " settings-tab-panel--hidden"}`}
-        aria-hidden={activeTab !== "email-signature"}
+        id="profile-panel-signature"
+        role="tabpanel"
+        aria-labelledby="profile-tab-signature"
+        className={`stack settings-form settings-tab-panel settings-tab-panel--flush${activeTab === "profile" && profilePane === "signature" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "profile" || profilePane !== "signature"}
       >
         <EmailSignatureSettingsSection
           onDirtyChange={onEmailSignatureDirty}
-          onBindActions={(actions) => bindSectionActions("email-signature", actions)}
+          onBindActions={(actions) => {
+            signatureActionsRef.current = actions;
+          }}
         />
       </div>
 
@@ -757,7 +846,7 @@ export function SettingsPage() {
 
       {pendingLeave && (
         <UnsavedChangesDialog
-          targetLabel={tabLabel(activeTab)}
+          targetLabel={leaveTargetLabel()}
           stayHint="stay on this tab"
           saving={dialogSaving}
           onSave={() => void onDialogSave()}

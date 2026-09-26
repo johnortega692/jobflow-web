@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import type { PaintItem, TradeSubmittalType } from "../../types/tradeDocuments";
 import type { EmailSignatureSettings } from "../../lib/emailSignature";
 import { resolveEmailSignatureLogoUrl } from "../../lib/emailSignature";
@@ -54,7 +55,7 @@ type Props = {
   superEmail?: string;
   /** Label next to the super CC checkbox (e.g. "GC super" or "ICBI super"). */
   superRoleLabel?: string;
-  /** Job setup Super (ICBI) — always CC'd when present. */
+  /** Job setup Super (ICBI). Checked by default; the user can turn it off. */
   staffSuperName?: string;
   staffSuperEmail?: string;
   staffSuperRoleLabel?: string;
@@ -111,6 +112,8 @@ export function EmailVendorModal({
     return buildVendorEmailSubject(jobNumber, jobName, submittalType);
   });
   const [includeSuperCc, setIncludeSuperCc] = useState(Boolean(superEmail.trim()));
+  const [includeStaffSuperCc, setIncludeStaffSuperCc] = useState(Boolean(staffSuperEmail.trim()));
+  const [includeForemanCc, setIncludeForemanCc] = useState(Boolean(foremanEmail.trim()));
   const [includeSignature, setIncludeSignature] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [openingGmail, setOpeningGmail] = useState(false);
@@ -127,6 +130,14 @@ export function EmailVendorModal({
     setIncludeSuperCc(Boolean(superEmail.trim()));
   }, [superEmail]);
 
+  useEffect(() => {
+    setIncludeStaffSuperCc(Boolean(staffSuperEmail.trim()));
+  }, [staffSuperEmail]);
+
+  useEffect(() => {
+    setIncludeForemanCc(Boolean(foremanEmail.trim()));
+  }, [foremanEmail]);
+
   const vendor = vendorIdx === "" ? undefined : vendors[vendorIdx];
   const activeSignature = includeSignature ? signature : undefined;
   const ccList = useMemo(() => {
@@ -135,12 +146,11 @@ export function EmailVendorModal({
       const addr = email.trim();
       if (addr && !list.includes(addr)) list.push(addr);
     };
-    pushUnique(foremanEmail);
-    pushUnique(staffSuperEmail);
-    const superAddr = superEmail.trim();
-    if (includeSuperCc) pushUnique(superAddr);
+    if (includeForemanCc) pushUnique(foremanEmail);
+    if (includeStaffSuperCc) pushUnique(staffSuperEmail);
+    if (includeSuperCc) pushUnique(superEmail);
     return list;
-  }, [foremanEmail, staffSuperEmail, includeSuperCc, superEmail]);
+  }, [foremanEmail, staffSuperEmail, superEmail, includeForemanCc, includeStaffSuperCc, includeSuperCc]);
 
   const colorRows = useMemo(
     () =>
@@ -341,6 +351,206 @@ export function EmailVendorModal({
     }
   }
 
+  if (!isAtticStock && !isPrep) {
+    const ccPeople = [
+      foremanEmail.trim()
+        ? {
+            key: "foreman",
+            name: foremanName.trim() || foremanEmail.trim(),
+            role: "Foreman",
+            on: includeForemanCc,
+            toggle: () => setIncludeForemanCc((v) => !v),
+          }
+        : null,
+      staffSuperEmail.trim()
+        ? {
+            key: "staff-super",
+            name: staffSuperName.trim() || staffSuperEmail.trim(),
+            role: staffSuperRoleLabel,
+            on: includeStaffSuperCc,
+            toggle: () => setIncludeStaffSuperCc((v) => !v),
+          }
+        : null,
+      superEmail.trim()
+        ? {
+            key: "super",
+            name: superName.trim() || superEmail.trim(),
+            role: superRoleLabel,
+            on: includeSuperCc,
+            toggle: () => setIncludeSuperCc((v) => !v),
+          }
+        : null,
+    ].filter((person): person is NonNullable<typeof person> => Boolean(person));
+
+    return (
+      <div className="modal-backdrop" role="presentation" onClick={onClose}>
+        <div
+          className="modal card ob-dialog"
+          role="dialog"
+          aria-labelledby="email-vendor-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="ob-head">
+            <div>
+              <h2 id="email-vendor-title">Order brushouts</h2>
+              <p>{[jobName.trim() || "Project", "Interior paint"].join(" · ")}</p>
+            </div>
+            <button type="button" className="ob-close" aria-label="Close" onClick={onClose}>
+              ×
+            </button>
+          </div>
+
+          <div className="ob-field">
+            <span>To</span>
+            <select
+              value={vendorIdx}
+              disabled={!vendors.length}
+              aria-label="Vendor"
+              onChange={(e) => {
+                const next = e.target.value;
+                setVendorIdx(next === "" ? "" : Number(next));
+              }}
+            >
+              <option value="">Select vendor…</option>
+              {vendors.map((v, i) => (
+                <option key={`${v.vendor_email}-${i}`} value={i}>
+                  {v.name} ({v.brand}) — {v.vendor_email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {ccPeople.length > 0 ? (
+            <div className="ob-field ob-field--cc">
+              <span>Cc</span>
+              <div className="ob-cc">
+                {ccPeople.map((person) => (
+                  <button
+                    key={person.key}
+                    type="button"
+                    className={`ob-cc-chip${person.on ? " is-on" : ""}`}
+                    aria-pressed={person.on}
+                    onClick={person.toggle}
+                  >
+                    <strong>{person.name}</strong>
+                    <span>· {person.role}</span>
+                  </button>
+                ))}
+                <span className="ob-cc-note">from job setup</span>
+              </div>
+            </div>
+          ) : null}
+
+          <section className="ob-colors">
+            <div className="ob-colors-head">
+              <p>
+                <strong>Colors</strong>
+                <span>
+                  {selectedCount} of {colorRows.length} selected
+                </span>
+              </p>
+              <div className="ob-colors-actions">
+                {hasPreviousOrder ? (
+                  <button type="button" onClick={() => selectPreset("changes")}>
+                    New &amp; switched
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => selectPreset("all")}>
+                  Select all
+                </button>
+                <button type="button" onClick={() => selectPreset("none")}>
+                  None
+                </button>
+              </div>
+            </div>
+            <div className="ob-color-list" role="list">
+              {colorRows.length === 0 ? (
+                <p className="muted small">No paint colors on this list yet.</p>
+              ) : (
+                colorRows.map(({ index, item, productLine, missingProduct, status }) => (
+                  <label key={`brushout-color-${index}`} className="ob-color" role="listitem">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(index)}
+                      onChange={() => toggleColor(index)}
+                    />
+                    <span className="ob-letter">{item.label.trim() || "•"}</span>
+                    <span className="ob-color-copy">
+                      <span className="ob-color-name">{item.color.trim() || "Color"}</span>
+                      <span className={`ob-color-meta${missingProduct ? " is-missing" : ""}`}>
+                        {missingProduct ? "Missing product" : productLine || "No product / sheen"}
+                      </span>
+                    </span>
+                    {hasPreviousOrder ? <span className={orderStatusClass(status)}>{ORDER_STATUS_LABEL[status]}</span> : null}
+                  </label>
+                ))
+              )}
+            </div>
+          </section>
+
+          {missingProductCount > 0 ? (
+            <div className="banner banner-warn">
+              {missingProductCount} selected color{missingProductCount === 1 ? "" : "s"}{" "}
+              {missingProductCount === 1 ? "has" : "have"} no product. The vendor email will show a blank Product
+              column for {missingProductCount === 1 ? "that row" : "those rows"}.
+            </div>
+          ) : null}
+
+          <div className="ob-sign-row">
+            <button
+              type="button"
+              role="switch"
+              className={`sched-toggle${includeSignature ? " is-on" : ""}`}
+              aria-checked={includeSignature}
+              aria-label="Include my email signature"
+              onClick={() => setIncludeSignature((on) => !on)}
+            >
+              <span className="sched-toggle-knob" />
+            </button>
+            <span>Include my email signature</span>
+            <Link to="/settings" state={{ tab: "email-signature" }} className="ob-edit-link" onClick={onClose}>
+              Edit signature
+            </Link>
+          </div>
+
+          <div className="ob-hint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <rect x="8" y="8" width="12" height="12" rx="2" />
+              <path d="M4 16V6a2 2 0 0 1 2-2h10" />
+            </svg>
+            <p>
+              The order table is copied for you. When your mail app opens, click in the body and press <kbd>Ctrl+V</kbd>.
+            </p>
+          </div>
+
+          {message ? <div className="banner banner-ok">{message}</div> : null}
+
+          <div className="ob-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={!vendor || (selectedCount === 0)}
+              onClick={() => void copyHtml()}
+            >
+              Copy HTML
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!vendor || openingGmail || selectedCount === 0}
+              onClick={() => void openCompose()}
+            >
+              {openingGmail ? "Opening…" : composeEmailButtonLabel(composeEmailMethod)}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
@@ -384,7 +594,11 @@ export function EmailVendorModal({
             <legend className="paint-col-head">CC recipients (Job setup)</legend>
             {foremanEmail.trim() ? (
               <label className="check">
-                <input type="checkbox" checked disabled readOnly />
+                <input
+                  type="checkbox"
+                  checked={includeForemanCc}
+                  onChange={(e) => setIncludeForemanCc(e.target.checked)}
+                />
                 {foremanName.trim()
                   ? `${foremanName.trim()} (${foremanEmail.trim()})`
                   : foremanEmail.trim()}{" "}
@@ -393,7 +607,11 @@ export function EmailVendorModal({
             ) : null}
             {staffSuperEmail.trim() ? (
               <label className="check">
-                <input type="checkbox" checked disabled readOnly />
+                <input
+                  type="checkbox"
+                  checked={includeStaffSuperCc}
+                  onChange={(e) => setIncludeStaffSuperCc(e.target.checked)}
+                />
                 {staffSuperName.trim()
                   ? `${staffSuperName.trim()} (${staffSuperEmail.trim()})`
                   : staffSuperEmail.trim()}{" "}
@@ -469,21 +687,26 @@ export function EmailVendorModal({
           </div>
         ) : null}
 
-        {vendor ? (
+        {vendor && isAtticStock ? (
           <div className="stack">
             <p className="paint-col-head">Message preview</p>
             <div
               className="paint-email-html-preview paint-email-html-preview--full"
               dangerouslySetInnerHTML={{ __html: htmlBody }}
             />
-            <p className="muted small">
-              Formatted HTML is copied automatically — compose opens <strong>empty</strong>. Click in the body and press{" "}
-              <strong>Ctrl+V</strong> for tables{includeSignature ? " and signature" : ""}. Use <strong>Copy HTML</strong>{" "}
-              to copy again.
-            </p>
           </div>
-        ) : (
+        ) : null}
+
+        {vendor ? (
+          <p className="muted small">
+            Formatted HTML is copied automatically — compose opens <strong>empty</strong>. Click in the body and press{" "}
+            <strong>Ctrl+V</strong> for tables{includeSignature ? " and signature" : ""}. Use <strong>Copy HTML</strong>{" "}
+            to copy again.
+          </p>
+        ) : isAtticStock ? (
           <p className="muted small">Select a vendor to preview the email table, including Product and Sheen.</p>
+        ) : (
+          <p className="muted small">Select a vendor to build the email.</p>
         )}
 
         {message && <div className="banner banner-ok">{message}</div>}

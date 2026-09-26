@@ -10,6 +10,8 @@ import { daysUntilIso, effectiveDueDateIso } from "./projectStartupItems";
 export type ProjectListSummary = {
   submittalStage: string;
   attentionCount: number;
+  /** Open RFIs included in `attentionCount`. */
+  openRfiCount: number;
   nextDueDate: string | null;
   nextDueDays: number | null;
 };
@@ -37,6 +39,7 @@ export function computeProjectListSummary(project: Project): ProjectListSummary 
   return {
     submittalStage: paintSubmittalStageLabel(tracker),
     attentionCount,
+    openRfiCount: 0,
     nextDueDate,
     nextDueDays,
   };

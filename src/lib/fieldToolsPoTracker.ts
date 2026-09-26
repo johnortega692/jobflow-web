@@ -105,6 +105,7 @@ function orderTypeLabel(type: string): string {
   if (type === "job_scope_kit") return "Job Scope Kit";
   if (type === "last_min") return "Last-Min";
   if (type === "haul_off") return "Haul Out";
+  if (type === "pm_order") return "PM Order";
   if (type === "material_order") return "Material order";
   return "Field Request";
 }

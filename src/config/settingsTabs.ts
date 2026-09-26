@@ -1,8 +1,7 @@
 /** Settings sidebar sections. adminOnly tabs stay admin-only; others can be granted per user. */
 
 export const SETTINGS_TABS = [
-  { id: "profile", label: "Profile & letterhead", menuGroup: "user" as const },
-  { id: "email-signature", label: "Email signature", menuGroup: "user" as const },
+  { id: "profile", label: "My Profile", menuGroup: "user" as const },
   { id: "delivery", label: "Delivery" },
   { id: "users", label: "User approvals", adminOnly: true as const },
   { id: "completed-projects", label: "Completed projects", adminOnly: true as const },
