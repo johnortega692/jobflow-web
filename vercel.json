@@ -20,7 +20,7 @@
   "crons": [
     {
       "path": "/api/tracker-email-cron",
-      "schedule": "0 15 * * *"
+      "schedule": "0 14 * * *"
     }
   ],
   "rewrites": [

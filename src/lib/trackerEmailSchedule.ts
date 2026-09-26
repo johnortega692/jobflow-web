@@ -13,8 +13,8 @@ export const WEEKDAY_LABELS = [
 
 export const DEFAULT_DIGEST_WEEKDAY = 5;
 export const DEFAULT_SITE_READY_WEEKDAY = 1;
-/** Local hour (0–23) in `timezone`. Default 8:00 AM Pacific. */
-export const DEFAULT_SEND_HOUR = 8;
+/** Local hour (0–23) in `timezone`. Default 7:00 AM Pacific. */
+export const DEFAULT_SEND_HOUR = 7;
 
 export type TrackerEmailSchedule = {
   /** Master switch for Vercel cron sends for this account. */
