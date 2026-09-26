@@ -26,7 +26,8 @@ export type StartupChecklistGroup =
   | "submittals_samples"
   | "safety"
   | "procurement_field"
-  | "billing";
+  | "billing"
+  | "autodesk";
 
 export type StartupChecklistSource = "manual" | "jobTracker" | "brushouts" | "materialTracker" | "sds";
 
@@ -62,6 +63,7 @@ const GROUP_ORDER: StartupChecklistGroup[] = [
   "safety",
   "procurement_field",
   "billing",
+  "autodesk",
 ];
 
 
@@ -363,6 +365,12 @@ export function itemsForGroup(state: StartupItemsState, group: StartupChecklistG
 export function groupProgress(state: StartupItemsState, group: StartupChecklistGroup): { done: number; total: number } {
   const rows = itemsForGroup(state, group);
   return { done: rows.filter((item) => item.complete).length, total: rows.length };
+}
+
+/** True when the group has at least one enabled item and every one is complete. */
+export function startupGroupAllComplete(state: StartupItemsState, group: StartupChecklistGroup): boolean {
+  const { done, total } = groupProgress(state, group);
+  return total > 0 && done === total;
 }
 
 export function prelimReferenceIso(jobInfo: JobInfoData): string | null {

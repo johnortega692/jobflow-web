@@ -6,6 +6,7 @@ import { anyManpowerBudgetPushed } from "./budgetManpowerPush";
 import { projectHasWallcovering } from "./jobInfo";
 import type { JobInfoData } from "../types/jobInfo";
 import { normalizeBudgetMaker } from "../types/budgetMaker";
+import { startupGroupAllComplete, type StartupChecklistGroup, type StartupItemsState } from "./projectStartupItems.js";
 
 export type StartupChecklistState = Record<ProjectStartupStepId, boolean>;
 
@@ -21,6 +22,43 @@ export function parseStartupChecklist(raw: unknown): StartupChecklistState {
     if (typeof o[step.id] === "boolean") base[step.id] = o[step.id] as boolean;
   }
   return base;
+}
+
+/**
+ * Project Startup Autodesk / Billing groups drive System Setup Autodesk and Budget.
+ * Completing every enabled item in the group marks the matching step done.
+ */
+export function withSystemSetupFromStartupGroups(
+  checklist: StartupChecklistState,
+  items: StartupItemsState,
+): StartupChecklistState {
+  const autodeskDone = startupGroupAllComplete(items, "autodesk");
+  const billingDone = startupGroupAllComplete(items, "billing");
+  const autodesk_plans = autodeskDone || checklist.autodesk_plans;
+  const budget_done = billingDone || checklist.budget_done;
+  if (autodesk_plans === checklist.autodesk_plans && budget_done === checklist.budget_done) {
+    return checklist;
+  }
+  return { ...checklist, autodesk_plans, budget_done };
+}
+
+/** Keep System Setup Autodesk / Budget in sync when those Project Startup groups change. */
+export function systemSetupAfterStartupGroupToggle(
+  checklist: StartupChecklistState,
+  items: StartupItemsState,
+  group: StartupChecklistGroup,
+): StartupChecklistState {
+  if (group === "autodesk") {
+    const autodesk_plans = startupGroupAllComplete(items, "autodesk");
+    if (autodesk_plans === checklist.autodesk_plans) return checklist;
+    return { ...checklist, autodesk_plans };
+  }
+  if (group === "billing") {
+    const budget_done = startupGroupAllComplete(items, "billing");
+    if (budget_done === checklist.budget_done) return checklist;
+    return { ...checklist, budget_done };
+  }
+  return checklist;
 }
 
 /**

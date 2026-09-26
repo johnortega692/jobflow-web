@@ -13,8 +13,10 @@ import {
   parseStartupChecklist,
   startupChecklistForJobInfo,
   startupChecklistProgress,
+  systemSetupAfterStartupGroupToggle,
   visibleStartupSteps,
   withFieldHoursFromBudgetPush,
+  withSystemSetupFromStartupGroups,
   type StartupChecklistState,
 } from "../../lib/projectStartupChecklist";
 import {
@@ -75,7 +77,11 @@ export function ProjectStartupChecklist({
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
   const hasWallcovering = projectHasWallcovering(project.jobInfo);
-  const progress = startupChecklistProgress(checklist, jobInfoComplete, project.jobInfo);
+  const displayChecklist = useMemo(
+    () => withSystemSetupFromStartupGroups(checklist, startupItems),
+    [checklist, startupItems],
+  );
+  const progress = startupChecklistProgress(displayChecklist, jobInfoComplete, project.jobInfo);
 
   const steps = useMemo<StepperStep[]>(() => {
     const rows: StepperStep[] = [
@@ -93,7 +99,7 @@ export function ProjectStartupChecklist({
         key: step.id,
         shortLabel: step.shortLabel,
         fullLabel: step.label,
-        done: checklist[step.id],
+        done: displayChecklist[step.id],
         stepNumber: i + 2,
         manualId: step.id,
         modulePath: "modulePath" in step ? step.modulePath : undefined,
@@ -102,7 +108,7 @@ export function ProjectStartupChecklist({
       });
     });
     return rows;
-  }, [checklist, jobInfoComplete, project.jobInfo]);
+  }, [displayChecklist, jobInfoComplete, project.jobInfo]);
 
   useEffect(() => {
     if (hasWallcovering) return;
@@ -129,14 +135,19 @@ export function ProjectStartupChecklist({
         if (err) throw new Error(err.message);
         const blob = parseProjectDataBlob(data?.data);
         const parsed = parseStartupChecklist(blob.startup_checklist);
-        setChecklist(
-          withFieldHoursFromBudgetPush(startupChecklistForJobInfo(parsed, project.jobInfo), blob),
-        );
-        setStartupItems(
-          withSubmitBrushoutsFromMaterialTracker(parseStartupItems(blob.startup_items, blob.startup_optional), {
+        const items = withSubmitBrushoutsFromMaterialTracker(
+          parseStartupItems(blob.startup_items, blob.startup_optional),
+          {
             ...project,
             data: blob as import("../../types/database").Json,
-          }),
+          },
+        );
+        setStartupItems(items);
+        setChecklist(
+          withSystemSetupFromStartupGroups(
+            withFieldHoursFromBudgetPush(startupChecklistForJobInfo(parsed, project.jobInfo), blob),
+            items,
+          ),
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load startup checklist");
@@ -164,36 +175,36 @@ export function ProjectStartupChecklist({
     return true;
   }
 
-  async function persistStartupItems(next: StartupItemsState, summary: string) {
-    const err = await commitProjectUpdate({
-      projectId,
-      mergeData: { startup_items: next },
-      activity: {
-        action: "startup_checklist_updated",
-        summary,
-      },
-    });
-    if (err) {
-      setError(err);
-      return false;
-    }
-    setError(null);
-    onActivity?.();
-    return true;
-  }
-
   async function onToggleManualItem(itemId: string, complete: boolean) {
     const actor = await resolveActivityUser();
     const item = startupItems.items.find((row) => row.id === itemId);
     if (!item || item.source !== "manual") return;
 
     const next = toggleStartupItemComplete(startupItems, itemId, complete, actor.userName);
+    const nextChecklist = systemSetupAfterStartupGroupToggle(checklist, next, item.group);
     setStartupItems(next);
+    if (nextChecklist !== checklist) setChecklist(nextChecklist);
     setSavingId(itemId);
-    await persistStartupItems(
-      next,
-      complete ? `Startup checklist · ${item.label} completed` : `Startup checklist · ${item.label} unchecked`,
-    );
+    const err = await commitProjectUpdate({
+      projectId,
+      mergeData:
+        nextChecklist !== checklist
+          ? { startup_items: next, startup_checklist: nextChecklist }
+          : { startup_items: next },
+      activity: {
+        action: "startup_checklist_updated",
+        summary: complete
+          ? `Startup checklist · ${item.label} completed`
+          : `Startup checklist · ${item.label} unchecked`,
+      },
+    });
+    if (err) {
+      setError(err);
+      setSavingId(null);
+      return;
+    }
+    setError(null);
+    onActivity?.();
     setSavingId(null);
   }
 

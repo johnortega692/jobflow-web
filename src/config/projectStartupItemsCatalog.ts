@@ -16,13 +16,14 @@ export type StartupCatalogSeed = {
 
 export const STARTUP_CHECKLIST_GROUP_META: Record<
   StartupChecklistGroup,
-  { label: string; icon: "file-certificate" | "color-swatch" | "shield-check" | "truck-delivery" | "receipt" }
+  { label: string; icon: "file-certificate" | "color-swatch" | "shield-check" | "truck-delivery" | "receipt" | "cube" }
 > = {
   contract_compliance: { label: "Contract", icon: "file-certificate" },
   submittals_samples: { label: "Submittals", icon: "color-swatch" },
   safety: { label: "Safety", icon: "shield-check" },
   procurement_field: { label: "Procurement", icon: "truck-delivery" },
   billing: { label: "Billing", icon: "receipt" },
+  autodesk: { label: "Autodesk", icon: "cube" },
 };
 
 export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
@@ -219,6 +220,34 @@ export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
     label: "Confirm billing cutoff and lien waiver format",
     source: "manual",
     defaultEnabled: false,
+  },
+  {
+    id: "autodesk_ost",
+    group: "autodesk",
+    label: "OST",
+    source: "manual",
+    defaultEnabled: true,
+  },
+  {
+    id: "autodesk_scope",
+    group: "autodesk",
+    label: "Scope",
+    source: "manual",
+    defaultEnabled: true,
+  },
+  {
+    id: "autodesk_hours_cost_codes",
+    group: "autodesk",
+    label: "Hours/Cost Codes",
+    source: "manual",
+    defaultEnabled: true,
+  },
+  {
+    id: "autodesk_material_qty",
+    group: "autodesk",
+    label: "Material Qty",
+    source: "manual",
+    defaultEnabled: true,
   },
 ];
 

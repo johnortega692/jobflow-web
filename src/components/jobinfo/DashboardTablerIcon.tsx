@@ -9,6 +9,7 @@ type IconName =
   | "color-swatch"
   | "truck-delivery"
   | "receipt"
+  | "cube"
   | "chevron-right"
   | "chevron-down";
 
@@ -27,6 +28,7 @@ const PATHS: Record<IconName, string> = {
   "truck-delivery":
     "M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M15 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M5 17h-2v-4m0 -5h11v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5",
   receipt: "M17 17h2v2a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-2h2m12 -5v8m-4 -8v8m-4 -8v8m-4 -8v8",
+  cube: "M21 16.042v-8.084a2 2 0 0 0 -1 -1.732l-7 -4.042a2 2 0 0 0 -2 0l-7 4.042a2 2 0 0 0 -1 1.732v8.084a2 2 0 0 0 1 1.732l7 4.042a2 2 0 0 0 2 0l7 -4.042a2 2 0 0 0 1 -1.732",
   "chevron-right": "M9 6l6 6l-6 6",
   "chevron-down": "M6 9l6 6l6 -6",
 };
