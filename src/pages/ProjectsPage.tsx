@@ -166,8 +166,9 @@ export function ProjectsPage() {
     setApprovedBrushoutIds(brushoutIds);
     const rfiCounts = new Map<string, number>();
     for (const row of rfiRes.data ?? []) {
-      if (isRfiClosed(row.status)) continue;
-      rfiCounts.set(row.project_id, (rfiCounts.get(row.project_id) ?? 0) + 1);
+      const projectId = row.project_id;
+      if (!projectId || isRfiClosed(row.status)) continue;
+      rfiCounts.set(projectId, (rfiCounts.get(projectId) ?? 0) + 1);
     }
     setOpenRfiCounts(rfiCounts);
     setProjects((data ?? []).filter((p) => !done.has(p.id)));

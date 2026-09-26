@@ -119,16 +119,18 @@ export async function loadOverdueRfisForDigest(projects: ProjectForm[]): Promise
   const items: OverdueRfiDigestItem[] = [];
   for (const row of data) {
     if (isRfiClosed(row.status)) continue;
+    const projectId = row.project_id;
+    if (!projectId) continue;
     const form = normalizeRfiFormData(row.data);
     const until = rfiDaysUntil(form.due_date);
     if (until === null || until >= 0) continue;
-    const project = byId.get(row.project_id);
+    const project = byId.get(projectId);
     const ball = form.to_name.trim();
     items.push({
       job: project?.job_number.trim() || "—",
       name: project?.job_name.trim() || "—",
       rfiNumber: rfiNumberLabel(row.rfi_number ?? ""),
-      subject: row.subject.trim() || "Untitled RFI",
+      subject: (row.subject ?? "").trim() || "Untitled RFI",
       dueDate: formatDisplayDate(form.due_date),
       daysOverdue: -until,
       ballInCourt: ball || undefined,
