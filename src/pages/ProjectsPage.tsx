@@ -453,6 +453,7 @@ export function ProjectsPage() {
                       ["all", "All"],
                       ["not_started", "Not started"],
                       ["not_needed", "Not Needed"],
+                      ["match_existing", "Match Existing"],
                       ["ordered", "Ordered"],
                       ["submitted", "Submitted"],
                       ["revision", "Revision"],

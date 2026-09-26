@@ -828,8 +828,8 @@
 .field-dashboard .pill-shops { background: #ede7f6; color: #4527a0; }
 .field-dashboard .pill-material-ordered { background: #e8eaf6; color: #283593; }
 .field-dashboard .pill-delivered { background: #e8f5e9; color: #1b5e20; }
-.field-dashboard .pill-match { background: #e8f5e9; color: #1b5e20; }
-.field-dashboard .pill-no-paint { background: #ffebee; color: #b71c1c; }
+.field-dashboard .pill-match { background: #e0f2f1; color: #00695c; }
+.field-dashboard .pill-no-paint { background: #eceff1; color: #546e7a; }
 .field-dashboard .pill-revision { background: #fff8e1; color: #f57f17; }
 .field-dashboard .pill-site-ready { background: #e8f5e9; color: #1b5e20; }
 .field-dashboard .pill-site-not-ready { background: #ffebee; color: #b71c1c; }
@@ -2920,7 +2920,6 @@
   box-shadow: inset 0 0 0 1px currentColor;
 }
 
-.field-dashboard .field-mobile-card-header .pill-no-paint,
 .field-dashboard .field-mobile-card-header .pill-revision {
   background: transparent;
   color: #c62828;
@@ -3031,11 +3030,19 @@
   color: #e6c57a;
 }
 
-.field-dashboard.field-dashboard--dark .pill-mobile-outline.pill-no-paint,
-.field-dashboard.field-dashboard--dark .field-mobile-card-header .pill-no-paint {
-  background: transparent;
-  color: #ef9a9a;
-  box-shadow: inset 0 0 0 1px #e57373;
+.field-dashboard.field-dashboard--dark .pill-not-started {
+  background: rgba(255, 107, 107, 0.16);
+  color: #f0a3a3;
+}
+
+.field-dashboard.field-dashboard--dark .pill-no-paint {
+  background: rgba(90, 101, 124, 0.45);
+  color: #c5ccd9;
+}
+
+.field-dashboard.field-dashboard--dark .pill-match {
+  background: rgba(38, 166, 154, 0.18);
+  color: #7ee0d4;
 }
 
 .field-dashboard.field-dashboard--dark .pill-mobile-outline.pill-revision,

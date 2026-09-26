@@ -340,17 +340,19 @@ export function SettingsPage() {
         </aside>
 
         <div className="settings-main">
-          <div className="settings-main-header">
-            <h2 className="settings-main-title">{activeTabMeta?.label ?? "Settings"}</h2>
-            {activeTabMeta ? (
-              <span
-                className={`settings-menu-badge settings-menu-badge--${settingsMenuGroup(activeTabMeta)}`}
-                title={SETTINGS_MENU_GROUP_META[settingsMenuGroup(activeTabMeta)].hint}
-              >
-                {SETTINGS_MENU_GROUP_META[settingsMenuGroup(activeTabMeta)].label}
-              </span>
-            ) : null}
-          </div>
+          {activeTab !== "tracker-schedules" ? (
+            <div className="settings-main-header">
+              <h2 className="settings-main-title">{activeTabMeta?.label ?? "Settings"}</h2>
+              {activeTabMeta ? (
+                <span
+                  className={`settings-menu-badge settings-menu-badge--${settingsMenuGroup(activeTabMeta)}`}
+                  title={SETTINGS_MENU_GROUP_META[settingsMenuGroup(activeTabMeta)].hint}
+                >
+                  {SETTINGS_MENU_GROUP_META[settingsMenuGroup(activeTabMeta)].label}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
 
       <div
         className={`card stack settings-form settings-tab-panel${activeTab === "profile" ? "" : " settings-tab-panel--hidden"}`}
@@ -730,7 +732,7 @@ export function SettingsPage() {
       </div>
 
       <div
-        className={`card stack settings-form settings-tab-panel${activeTab === "tracker-schedules" ? "" : " settings-tab-panel--hidden"}`}
+        className={`stack settings-form settings-tab-panel settings-tab-panel--flush${activeTab === "tracker-schedules" ? "" : " settings-tab-panel--hidden"}`}
         aria-hidden={activeTab !== "tracker-schedules"}
       >
         <TrackerSchedulesSettingsSection

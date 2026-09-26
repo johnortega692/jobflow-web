@@ -38,8 +38,10 @@ import {
 import {
   DEFAULT_TRACKER_EMAIL_SCHEDULE,
   WEEKDAY_LABELS,
+  formatSendHourLabel,
   trackerCronUtcHint,
   weekdayLabel,
+  zonedCalendarDate,
   type TrackerEmailSchedule,
 } from "../../lib/trackerEmailSchedule";
 
@@ -288,6 +290,7 @@ export function BillingDueDigestSection({
         gasUrl,
         logoUrl: letterhead.logo_url,
         gasPost,
+        today: zonedCalendarDate(new Date(), data.tracker_email_schedule.timezone),
       });
       if (!result.sent) {
         const msg = `Billing due: no jobs are ${BILLING_DUE_REMINDER_DAYS_BEFORE} days from their Billing Due day today.`;
@@ -393,6 +396,8 @@ export function FollowUpRemindersSection({
         gasUrl,
         logoUrl: letterhead.logo_url,
         gasPost,
+        timezone: data.tracker_email_schedule.timezone,
+        today: zonedCalendarDate(new Date(), data.tracker_email_schedule.timezone),
       });
       const labels: Record<FollowUpReminderKind, string> = {
         paint: "Paint follow-up reminder",
@@ -501,10 +506,28 @@ export function ScheduledEmailSection({
           placeholder={DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone}
         />
       </label>
+      <label>
+        Send automatic emails at
+        <select
+          className="paint-field-select"
+          value={schedule.send_hour}
+          disabled={!schedule.enabled}
+          onChange={(e) => patchSchedule({ send_hour: Number(e.target.value) })}
+        >
+          {Array.from({ length: 24 }, (_, hour) => (
+            <option key={hour} value={hour}>
+              {formatSendHourLabel(hour)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="muted small" style={{ margin: 0 }}>
+        Uses the timezone above. Daily follow-ups, weekly digests, and site-ready all send at this hour.
+      </p>
 
       <div className="stack">
         <h3 className="paint-col-head">Daily follow-ups</h3>
-        <p className="muted small">{trackerCronUtcHint("daily")}</p>
+        <p className="muted small">{trackerCronUtcHint("daily", undefined, schedule.send_hour, schedule.timezone)}</p>
         <label className="check">
           <input
             type="checkbox"
@@ -560,7 +583,7 @@ export function ScheduledEmailSection({
       <div className="stack">
         <h3 className="paint-col-head">Weekly digest</h3>
         <p className="muted small">
-          Automatic send is ~8:00 AM Pacific. Pick a send day to test without waiting for Friday or Monday.
+          Pick a send day and time to test without waiting for Friday or Monday.
         </p>
         <label className="check">
           <input
@@ -615,7 +638,12 @@ export function ScheduledEmailSection({
           </select>
         </label>
         <p className="muted small" style={{ margin: 0 }}>
-          {trackerCronUtcHint("digest", schedule.weekly.digest_weekday)}
+          {trackerCronUtcHint(
+            "digest",
+            schedule.weekly.digest_weekday,
+            schedule.send_hour,
+            schedule.timezone,
+          )}
         </p>
         <label>
           Send site-ready digest on
@@ -633,8 +661,13 @@ export function ScheduledEmailSection({
           </select>
         </label>
         <p className="muted small" style={{ margin: 0 }}>
-          {trackerCronUtcHint("site_ready", schedule.weekly.site_ready_weekday)}. Defaults are Friday
-          digest and Monday site-ready.
+          {trackerCronUtcHint(
+            "site_ready",
+            schedule.weekly.site_ready_weekday,
+            schedule.send_hour,
+            schedule.timezone,
+          )}
+          . Defaults are Friday digest and Monday site-ready.
           {schedule.weekly.digest_weekday === schedule.weekly.site_ready_weekday
             ? ` Both will send on ${weekdayLabel(schedule.weekly.digest_weekday)}.`
             : ""}

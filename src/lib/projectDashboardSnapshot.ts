@@ -37,6 +37,7 @@ export function resolveDashboardPaintTracker(project: ProjectForm): PaintTracker
 }
 
 export function paintSubmittalStageLabel(tracker: PaintTrackerState): string {
+  if (tracker.noPaint && tracker.matchExisting) return "Match Existing";
   if (tracker.noPaint) return "Not Needed";
   if (tracker.approved) return "Approved";
   if (tracker.revision) return "Revision";

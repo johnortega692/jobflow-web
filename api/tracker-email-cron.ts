@@ -61,6 +61,9 @@ async function parseSlots(req: VercelRequest): Promise<TrackerEmailCronSlot[]> {
     cronScheduleHeader: readHeader(req, "x-vercel-cron-schedule"),
     digestWeekday: schedule.weekly.digest_weekday,
     siteReadyWeekday: schedule.weekly.site_ready_weekday,
+    wallcoveringDigestWeekday: schedule.weekly.wallcovering_digest_weekday,
+    timezone: schedule.timezone,
+    sendHour: schedule.send_hour,
   });
 }
 
@@ -110,6 +113,9 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     const { runTrackerEmailCron } = await import("../src/lib/trackerEmailCronCore.js");
     const { runPinLockoutNotify } = await import("../src/lib/pinLockoutNotifyCore.js");
     const slots = await parseSlots(req);
+    if (!slots.length) {
+      return res.status(200).json({ ok: true, skipped: "outside_send_hour" });
+    }
     const results: CronRunResult[] = [];
     for (const slot of slots) {
       results.push(await runTrackerEmailCron(slot));

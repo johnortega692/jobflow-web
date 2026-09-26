@@ -176,6 +176,44 @@ function assertCustomItemsPreserved(before: StartupChecklistItem[], after: Start
   }
 }
 
+function normalizeStartupLabel(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Fold leftover custom rows that match Autodesk catalog labels into that group. */
+function absorbAutodeskCustomItems(
+  merged: StartupChecklistItem[],
+  leftovers: StartupChecklistItem[],
+): { items: StartupChecklistItem[]; absorbedIds: Set<string> } {
+  const autodeskByLabel = new Map(
+    STARTUP_CHECKLIST_CATALOG.filter((seed) => seed.group === "autodesk").map((seed) => [
+      normalizeStartupLabel(seed.label),
+      seed.id,
+    ]),
+  );
+  const byId = new Map(merged.map((item) => [item.id, item]));
+  const absorbedIds = new Set<string>();
+
+  for (const custom of leftovers) {
+    if (isCatalogItemId(custom.id)) continue;
+    const catalogId = autodeskByLabel.get(normalizeStartupLabel(custom.label));
+    if (!catalogId) continue;
+    const catalogItem = byId.get(catalogId);
+    if (!catalogItem) continue;
+    byId.set(catalogId, {
+      ...catalogItem,
+      enabled: custom.enabled || catalogItem.enabled,
+      complete: custom.complete || catalogItem.complete,
+      completedBy: custom.complete ? custom.completedBy : catalogItem.completedBy,
+      completedAt: custom.complete ? custom.completedAt : catalogItem.completedAt,
+      dueDate: custom.dueDate ?? catalogItem.dueDate,
+    });
+    absorbedIds.add(custom.id);
+  }
+
+  return { items: [...byId.values()], absorbedIds };
+}
+
 function mergeCatalogItems(stored: StartupChecklistItem[]): StartupChecklistItem[] {
   const byId = new Map(stored.map((item) => [item.id, item]));
   migrateLegacyCatalogIds(byId);
@@ -185,9 +223,10 @@ function mergeCatalogItems(stored: StartupChecklistItem[]): StartupChecklistItem
   for (const seed of STARTUP_CHECKLIST_CATALOG) {
     const existing = byId.get(seed.id);
     const parsed = parseItem(existing, seedItem(seed, existing));
-    // Catalog owns label / source / blocking so auto→manual flips apply to saved jobs.
+    // Catalog owns group / label / source / blocking so saved jobs pick up new categories.
     merged.push({
       ...parsed,
+      group: seed.group,
       label: seed.label,
       source: seed.source,
       blocking: Boolean(seed.blocking),
@@ -195,13 +234,19 @@ function mergeCatalogItems(stored: StartupChecklistItem[]): StartupChecklistItem
     byId.delete(seed.id);
   }
 
+  const leftovers: StartupChecklistItem[] = [];
   for (const item of byId.values()) {
     if (catalogIds.has(item.id)) continue;
-    merged.push(passthroughCustomItem(item));
+    leftovers.push(passthroughCustomItem(item));
   }
 
-  assertCustomItemsPreserved(stored, merged);
-  return merged;
+  const absorbed = absorbAutodeskCustomItems(merged, leftovers);
+  const next = [...absorbed.items, ...leftovers.filter((item) => !absorbed.absorbedIds.has(item.id))];
+  assertCustomItemsPreserved(
+    stored.filter((item) => !absorbed.absorbedIds.has(item.id)),
+    next,
+  );
+  return next;
 }
 
 function migrateFromOptional(legacy: StartupOptionalState): StartupItemsState {

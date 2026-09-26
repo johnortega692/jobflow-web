@@ -5,6 +5,7 @@ import {
   buildFieldWcRows,
   loadAllProjectsForField,
 } from "./fieldTrackerProject.js";
+import { wcFieldStatus, wcStatusLabel } from "./fieldTrackerStatus.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import {
   resolveTrackerNotificationRecipients,
@@ -14,6 +15,7 @@ import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js"
 import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 import { loadVisibleProjectsForTrackerEmails } from "./projectFieldAppVisibility.js";
+import { zonedCalendarDate } from "./trackerEmailSchedule.js";
 
 export type FollowUpReminderKind = "paint" | "wallcovering" | "installs";
 
@@ -33,6 +35,7 @@ export type WcFollowUpItem = {
   jobName: string;
   wallcoveringName: string;
   wcLabel: string;
+  status: string;
   address: string;
   gcName: string;
   gcSuper: string;
@@ -77,7 +80,8 @@ function escHtml(value: string): string {
 function parseDate(value: string): Date | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const parsed = new Date(trimmed);
+  const iso = /^\d{4}-\d{2}-\d{2}/.test(trimmed) ? `${trimmed.slice(0, 10)}T12:00:00` : trimmed;
+  const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
@@ -85,22 +89,22 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function daysUntil(value: string): number | null {
+function daysUntil(value: string, today: Date): number | null {
   const parsed = parseDate(value);
   if (!parsed) return null;
-  const today = startOfDay(new Date());
+  const todayStart = startOfDay(today);
   const target = startOfDay(parsed);
-  return Math.round((target.getTime() - today.getTime()) / 86400000);
+  return Math.round((target.getTime() - todayStart.getTime()) / 86400000);
 }
 
 function formatDisplayDate(value: string): string {
   const parsed = parseDate(value);
   if (!parsed) return value.trim();
-  return parsed.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function formatTodayLong(): string {
-  return new Date().toLocaleDateString("en-US", {
+function formatTodayLong(today: Date): string {
+  return today.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "2-digit",
@@ -108,22 +112,31 @@ function formatTodayLong(): string {
   });
 }
 
-function classifyFollowUp(dateValue: string): "overdue" | "today" | null {
-  const until = daysUntil(dateValue);
+function classifyFollowUp(dateValue: string, today: Date): "overdue" | "today" | null {
+  const until = daysUntil(dateValue, today);
   if (until === null) return null;
   if (until < 0) return "overdue";
   if (until === 0) return "today";
   return null;
 }
 
+function isInternalWcTracking(name: string): boolean {
+  return name.trim() === "APS Track and Infill";
+}
+
+function resolveToday(today?: Date, timezone?: string): Date {
+  return today ?? zonedCalendarDate(new Date(), timezone);
+}
+
 function pushPaintFollowUp(
   buckets: PaintFollowUpBuckets,
   row: ReturnType<typeof buildFieldPaintRow>,
   dateValue: string,
+  today: Date,
 ): void {
-  const kind = classifyFollowUp(dateValue);
+  const kind = classifyFollowUp(dateValue, today);
   if (!kind) return;
-  const until = daysUntil(dateValue)!;
+  const until = daysUntil(dateValue, today)!;
   const item: PaintFollowUpItem = {
     jobNumber: row.jobNumber,
     jobName: row.jobName,
@@ -138,12 +151,15 @@ function pushPaintFollowUp(
   else buckets.dueToday.push(item);
 }
 
-export function collectPaintFollowUpReminders(projects: ProjectForm[]): PaintFollowUpBuckets {
+export function collectPaintFollowUpReminders(
+  projects: ProjectForm[],
+  today = new Date(),
+): PaintFollowUpBuckets {
   const buckets: PaintFollowUpBuckets = { overdue: [], dueToday: [] };
   for (const project of projects) {
     const row = buildFieldPaintRow(project);
     if (!row.jobNumber || row.tracker.noPaint || row.tracker.approved) continue;
-    pushPaintFollowUp(buckets, row, row.tracker.followUp);
+    pushPaintFollowUp(buckets, row, row.tracker.followUp, today);
   }
   return buckets;
 }
@@ -155,16 +171,18 @@ function pushWcFollowUp(
   dateValue: string,
   followUpLabel: string,
   esd: boolean,
+  today: Date,
 ): void {
-  const kind = classifyFollowUp(dateValue);
+  const kind = classifyFollowUp(dateValue, today);
   if (!kind) return;
-  const until = daysUntil(dateValue)!;
+  const until = daysUntil(dateValue, today)!;
   const j = project.jobInfo;
   const item: WcFollowUpItem = {
     jobNumber: row.jobNumber,
     jobName: row.jobName,
     wallcoveringName: row.wallcoveringName,
     wcLabel: row.label,
+    status: wcStatusLabel(wcFieldStatus(row.line)),
     address: jobFullAddressOneLine(project, j),
     gcName: project.contractor.trim(),
     gcSuper: formatGcSuperFieldDisplay(gcSuperintendentContact(j)),
@@ -180,6 +198,7 @@ function pushWcFollowUp(
 
 export function collectWallcoveringFollowUpReminders(
   projects: ProjectForm[],
+  today = new Date(),
 ): WallcoveringFollowUpBuckets {
   const buckets: WallcoveringFollowUpBuckets = {
     overdue: [],
@@ -190,20 +209,24 @@ export function collectWallcoveringFollowUpReminders(
   for (const project of projects) {
     if (!projectHasWallcovering(project.jobInfo)) continue;
     for (const row of buildFieldWcRows(project)) {
-      pushWcFollowUp(buckets, project, row, row.line.followUp, "Follow-Up", false);
-      pushWcFollowUp(buckets, project, row, row.line.esdFollowUp, "ESD Follow-Up", true);
+      if (isInternalWcTracking(row.wallcoveringName) || row.line.delivered) continue;
+      pushWcFollowUp(buckets, project, row, row.line.followUp, "Follow-up", false, today);
+      pushWcFollowUp(buckets, project, row, row.line.esdFollowUp, "ESD follow-up", true, today);
     }
   }
   return buckets;
 }
 
-export function collectUpcomingInstallReminders(projects: ProjectForm[]): InstallReminderItem[] {
+export function collectUpcomingInstallReminders(
+  projects: ProjectForm[],
+  today = new Date(),
+): InstallReminderItem[] {
   const items: InstallReminderItem[] = [];
   for (const project of projects) {
     if (!projectHasWallcovering(project.jobInfo)) continue;
     for (const row of buildFieldWcRows(project)) {
-      if (row.line.delivered) continue;
-      const until = daysUntil(row.line.installDate);
+      if (row.line.delivered || isInternalWcTracking(row.wallcoveringName)) continue;
+      const until = daysUntil(row.line.installDate, today);
       if (until === null || until < 0 || until > INSTALL_LOOKAHEAD_DAYS) continue;
       items.push({
         jobNumber: row.jobNumber,
@@ -291,11 +314,12 @@ function wcFollowUpSection(title: string, items: WcFollowUpItem[], showDaysOverd
 export function buildPaintFollowUpEmailHtml(
   buckets: PaintFollowUpBuckets,
   branding: TrackerNotificationBranding,
+  today = new Date(),
 ): string {
   const primaryName = escHtml(branding.primaryName.trim() || "PM");
   const companyName = branding.companyName.trim() || "JobFlow";
   const companyAddress = branding.companyAddress.trim();
-  const today = escHtml(formatTodayLong());
+  const todayLabel = escHtml(formatTodayLong(today));
 
   let html = `<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head>
       <body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
@@ -305,7 +329,7 @@ export function buildPaintFollowUpEmailHtml(
                 <tr><td style="background-color: #3a4d5c; padding: 25px 20px; text-align: center;">
                     <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">Paint Follow-Up Reminders</h1>
                     <p style="margin: 6px 0 0 0; color: #cbd5e1; font-size: 14px;">Projects Managed by ${primaryName}</p>
-                    <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 14px;">${today}</p>
+                    <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 14px;">${todayLabel}</p>
                   </td></tr>
                 <tr><td style="padding: 0; background-color: #d4e6f1;">
                     <table width="100%" cellpadding="15" cellspacing="0" border="0" style="border-bottom: 3px solid #3a4d5c;">
@@ -326,11 +350,12 @@ export function buildPaintFollowUpEmailHtml(
 export function buildWallcoveringFollowUpEmailHtml(
   buckets: WallcoveringFollowUpBuckets,
   branding: TrackerNotificationBranding,
+  today = new Date(),
 ): string {
   const primaryName = escHtml(branding.primaryName.trim() || "PM");
   const companyName = branding.companyName.trim() || "JobFlow";
   const companyAddress = branding.companyAddress.trim();
-  const today = escHtml(formatTodayLong());
+  const todayLabel = escHtml(formatTodayLong(today));
   const totalOverdue = buckets.overdue.length + buckets.esdOverdue.length;
   const totalDueToday = buckets.dueToday.length + buckets.esdDueToday.length;
 
@@ -342,7 +367,7 @@ export function buildWallcoveringFollowUpEmailHtml(
                 <tr><td style="background-color: #3a4d5c; padding: 25px 20px; text-align: center;">
                     <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">Wallcovering Follow-Up Reminders</h1>
                     <p style="margin: 6px 0 0 0; color: #cbd5e1; font-size: 14px;">Projects Managed by ${primaryName}</p>
-                    <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 14px;">${today}</p>
+                    <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 14px;">${todayLabel}</p>
                   </td></tr>
                 <tr><td style="padding: 0; background-color: #d4e6f1;">
                     <table width="100%" cellpadding="15" cellspacing="0" border="0" style="border-bottom: 3px solid #3a4d5c;">
@@ -365,11 +390,12 @@ export function buildWallcoveringFollowUpEmailHtml(
 export function buildUpcomingInstallsReminderEmailHtml(
   items: InstallReminderItem[],
   branding: TrackerNotificationBranding,
+  today = new Date(),
 ): string {
   const primaryName = escHtml(branding.primaryName.trim() || "PM");
   const companyName = branding.companyName.trim() || "JobFlow";
   const companyAddress = branding.companyAddress.trim();
-  const today = escHtml(formatTodayLong());
+  const todayLabel = escHtml(formatTodayLong(today));
 
   let html = `<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head>
       <body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
@@ -379,7 +405,7 @@ export function buildUpcomingInstallsReminderEmailHtml(
                 <tr><td style="background-color: #3a4d5c; padding: 25px 20px; text-align: center;">
                     <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">📅 Upcoming Installations</h1>
                     <p style="margin: 6px 0 0 0; color: #cbd5e1; font-size: 14px;">Projects Managed by ${primaryName}</p>
-                    <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 14px;">${today}</p>
+                    <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 14px;">${todayLabel}</p>
                   </td></tr>
                 <tr><td style="padding: 10px 20px;">
                     <table width="100%" cellpadding="12" cellspacing="0" border="0" style="background-color: #e8eaf6; border-left: 5px solid #3f51b5; border-radius: 4px;">
@@ -414,13 +440,16 @@ export function buildUpcomingInstallsReminderEmailHtml(
 export function followUpReminderHasContent(
   kind: FollowUpReminderKind,
   projects: ProjectForm[],
+  today?: Date,
+  timezone?: string,
 ): boolean {
+  const day = resolveToday(today, timezone);
   if (kind === "paint") {
-    const b = collectPaintFollowUpReminders(projects);
+    const b = collectPaintFollowUpReminders(projects, day);
     return b.overdue.length > 0 || b.dueToday.length > 0;
   }
   if (kind === "wallcovering") {
-    const b = collectWallcoveringFollowUpReminders(projects);
+    const b = collectWallcoveringFollowUpReminders(projects, day);
     return (
       b.overdue.length > 0 ||
       b.dueToday.length > 0 ||
@@ -428,7 +457,7 @@ export function followUpReminderHasContent(
       b.esdDueToday.length > 0
     );
   }
-  return collectUpcomingInstallReminders(projects).length > 0;
+  return collectUpcomingInstallReminders(projects, day).length > 0;
 }
 
 export async function sendFollowUpReminder(options: {
@@ -443,8 +472,11 @@ export async function sendFollowUpReminder(options: {
   logoUrl?: string;
   /** Server cron: direct GAS POST instead of browser proxy. */
   gasPost?: GasEmailPost;
+  today?: Date;
+  timezone?: string;
 }): Promise<void> {
-  if (!followUpReminderHasContent(options.kind, options.projects)) {
+  const today = resolveToday(options.today, options.timezone);
+  if (!followUpReminderHasContent(options.kind, options.projects, today)) {
     throw new Error("Nothing due — no reminder email sent.");
   }
 
@@ -466,17 +498,17 @@ export async function sendFollowUpReminder(options: {
   let html: string;
 
   if (options.kind === "paint") {
-    const buckets = collectPaintFollowUpReminders(options.projects);
-    subject = `Paint Follow-Up Reminders — ${formatTodayLong()}`;
-    html = buildPaintFollowUpEmailHtml(buckets, branding);
+    const buckets = collectPaintFollowUpReminders(options.projects, today);
+    subject = `Paint Follow-Up Reminders — ${formatTodayLong(today)}`;
+    html = buildPaintFollowUpEmailHtml(buckets, branding, today);
   } else if (options.kind === "wallcovering") {
-    const buckets = collectWallcoveringFollowUpReminders(options.projects);
-    subject = `Wallcovering Follow-Up Reminders — ${formatTodayLong()}`;
-    html = buildWallcoveringFollowUpEmailHtml(buckets, branding);
+    const buckets = collectWallcoveringFollowUpReminders(options.projects, today);
+    subject = `Wallcovering Follow-Up Reminders — ${formatTodayLong(today)}`;
+    html = buildWallcoveringFollowUpEmailHtml(buckets, branding, today);
   } else {
-    const items = collectUpcomingInstallReminders(options.projects);
-    subject = `Upcoming Installations — ${formatTodayLong()}`;
-    html = buildUpcomingInstallsReminderEmailHtml(items, branding);
+    const items = collectUpcomingInstallReminders(options.projects, today);
+    subject = `Upcoming Installations — ${formatTodayLong(today)}`;
+    html = buildUpcomingInstallsReminderEmailHtml(items, branding, today);
   }
 
   const htmlForSend = await embedLogoUrlInHtml(html, options.logoUrl ?? "");

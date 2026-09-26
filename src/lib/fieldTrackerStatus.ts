@@ -20,6 +20,7 @@ export type WcFieldStatus =
   | "Delivered";
 
 export function paintFieldStatus(tracker: PaintTrackerState): PaintFieldStatus {
+  if (tracker.noPaint && tracker.matchExisting) return "Match Existing";
   if (tracker.noPaint) return "Not Needed";
   if (tracker.revision && !tracker.approved) return "Needs Revision";
   if (tracker.approved) return "Approved";

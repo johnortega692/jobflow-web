@@ -5,7 +5,7 @@ import {
   buildFieldWcRows,
   loadAllProjectsForField,
 } from "./fieldTrackerProject.js";
-import { paintNeedsSubmittalOrdering } from "./fieldTrackerStatus.js";
+import { paintNeedsSubmittalOrdering, wcFieldStatus, wcStatusLabel } from "./fieldTrackerStatus.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import {
   resolveTrackerNotificationRecipients,
@@ -16,12 +16,12 @@ import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 import type { WcTrackerLineState } from "../types/fieldTracker.js";
 import { loadVisibleProjectsForTrackerEmails } from "./projectFieldAppVisibility.js";
+import { buildWallcoveringSnapshotHtml } from "./wallcoveringSnapshotDigest.js";
 
 export type DigestJobItem = {
   job: string;
   name: string;
   address?: string;
-  super?: string;
   material?: string;
   label?: string;
   status?: string;
@@ -31,10 +31,11 @@ export type DigestJobItem = {
 };
 
 export type WallcoveringDigestAlerts = {
-  needsOrdering: DigestJobItem[];
-  awaitingApproval: DigestJobItem[];
-  overdueApproval: DigestJobItem[];
-  approvedNotOrdered: DigestJobItem[];
+  notStarted: DigestJobItem[];
+  submittalOrdered: DigestJobItem[];
+  sentForApproval: DigestJobItem[];
+  needsRevision: DigestJobItem[];
+  approved: DigestJobItem[];
   upcomingInstalls: DigestJobItem[];
 };
 
@@ -46,7 +47,7 @@ export type PaintDigestAlerts = {
   upcomingStarts: DigestJobItem[];
 };
 
-const UPCOMING_DAYS = 7;
+const UPCOMING_DAYS = 30;
 
 function escHtml(value: string): string {
   return value
@@ -90,10 +91,14 @@ function formatTodayLong(): string {
   });
 }
 
+function isInternalWcTracking(name: string): boolean {
+  return name.trim() === "APS Track and Infill";
+}
+
 function wcApprovedStatus(line: WcTrackerLineState): string {
   if (line.shops && !line.materialOrder) return "Pending shops";
   if (line.fieldMeasurement && !line.materialOrder) return "Pending field measurement";
-  return "Approved — material not ordered";
+  return "Approved";
 }
 
 export function collectPaintDigestAlerts(projects: ProjectForm[]): PaintDigestAlerts {
@@ -113,7 +118,6 @@ export function collectPaintDigestAlerts(projects: ProjectForm[]): PaintDigestAl
       job: row.jobNumber,
       name: row.jobName,
       address: row.jobAddress,
-      super: row.gcSuper,
       revisionNotes: t.revisionNotes.trim() || undefined,
     };
 
@@ -145,44 +149,48 @@ export function collectPaintDigestAlerts(projects: ProjectForm[]): PaintDigestAl
 
 export function collectWallcoveringDigestAlerts(projects: ProjectForm[]): WallcoveringDigestAlerts {
   const alerts: WallcoveringDigestAlerts = {
-    needsOrdering: [],
-    awaitingApproval: [],
-    overdueApproval: [],
-    approvedNotOrdered: [],
+    notStarted: [],
+    submittalOrdered: [],
+    sentForApproval: [],
+    needsRevision: [],
+    approved: [],
     upcomingInstalls: [],
   };
 
   for (const project of projects) {
     if (!projectHasWallcovering(project.jobInfo)) continue;
-    const rows = buildFieldWcRows(project);
-    if (!rows.length) continue;
+    const rows = buildFieldWcRows(project).filter((row) => !isInternalWcTracking(row.wallcoveringName));
+    if (!rows.length) {
+      alerts.notStarted.push({
+        job: project.job_number.trim(),
+        name: project.job_name.trim(),
+        status: wcStatusLabel("Not Started"),
+      });
+      continue;
+    }
 
     for (const row of rows) {
       const line = row.line;
+      const until = daysUntil(line.installDate);
+      const status = wcFieldStatus(line);
       const item: DigestJobItem = {
         job: row.jobNumber,
         name: row.jobName,
         material: row.wallcoveringName,
         label: row.label,
+        status: status === "Approved" ? wcApprovedStatus(line) : wcStatusLabel(status),
         revisionNotes: line.revisionNotes.trim() || undefined,
+        startDate: line.installDate.trim() ? formatDisplayDate(line.installDate) : undefined,
+        daysUntil: until ?? undefined,
       };
 
-      if (line.revision && !line.approved) {
-        alerts.overdueApproval.push({ ...item, status: "Needs revision" });
-      } else if (line.sentForApproval && !line.approved) {
-        alerts.overdueApproval.push({ ...item, status: "Awaiting approval" });
-      } else if (line.ordered && !line.approved) {
-        alerts.awaitingApproval.push({ ...item, status: "Samples ordered" });
-      } else if (!line.ordered) {
-        alerts.needsOrdering.push(item);
-      }
+      if (status === "Needs Revision") alerts.needsRevision.push(item);
+      else if (status === "Not Started") alerts.notStarted.push(item);
+      else if (status === "Submittal Ordered") alerts.submittalOrdered.push(item);
+      else if (status === "Submitted for Approval") alerts.sentForApproval.push(item);
+      else if (status === "Approved") alerts.approved.push(item);
 
-      if (line.approved && !line.materialOrder && !line.delivered) {
-        alerts.approvedNotOrdered.push({ ...item, status: wcApprovedStatus(line) });
-      }
-
-      const until = daysUntil(line.installDate);
-      if (until !== null && until >= 0 && until <= UPCOMING_DAYS) {
+      if (status !== "Delivered" && until !== null && until >= 0 && until <= UPCOMING_DAYS) {
         alerts.upcomingInstalls.push({
           ...item,
           status: `Install in ${until} day${until === 1 ? "" : "s"}`,
@@ -207,19 +215,50 @@ function digestFooter(companyName: string, companyAddress: string): string {
                 </tr>`;
 }
 
-function wcItemBlock(item: DigestJobItem, borderColor: string, extra?: string): string {
-  return `<table width="100%" cellpadding="10" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 4px; margin-bottom: 10px;">
-                            <tr>
-                              <td style="border-left: 3px solid ${borderColor};">
-                                <p style="margin: 0 0 5px 0; font-size: 15px;">
-                                  <strong style="color: #1a73e8;">${escHtml(item.job)}</strong> - ${escHtml(item.name)}
-                                </p>
-                                <p style="margin: 0 0 3px 0; font-size: 13px; color: #666;">Material: ${escHtml(item.material ?? "")} (${escHtml(item.label ?? "")})</p>
-                                ${item.status ? `<p style="margin: 0; font-size: 12px; color: #666; font-style: italic;">${escHtml(item.status)}</p>` : ""}
-                                ${extra ?? ""}
-                              </td>
-                            </tr>
+function sortWcRows(items: DigestJobItem[]): DigestJobItem[] {
+  return [...items].sort((a, b) => {
+    const job = a.job.localeCompare(b.job, undefined, { numeric: true });
+    if (job) return job;
+    const label = (a.label ?? "").localeCompare(b.label ?? "", undefined, { numeric: true });
+    if (label) return label;
+    return (a.material ?? "").localeCompare(b.material ?? "");
+  });
+}
+
+function wcCell(value: string, extra = ""): string {
+  return `<td style="padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #333; vertical-align: top;${extra}">${escHtml(value)}</td>`;
+}
+
+function wcStatusTable(items: DigestJobItem[]): string {
+  const rows = sortWcRows(items);
+  if (!rows.length) return "";
+  const header = `<tr>
+                              <th align="left" style="padding: 8px 10px; background-color: #3a4d5c; color: #ffffff; font-size: 12px; font-weight: bold;">Job</th>
+                              <th align="left" style="padding: 8px 10px; background-color: #3a4d5c; color: #ffffff; font-size: 12px; font-weight: bold;">Name</th>
+                              <th align="left" style="padding: 8px 10px; background-color: #3a4d5c; color: #ffffff; font-size: 12px; font-weight: bold;">Item</th>
+                              <th align="left" style="padding: 8px 10px; background-color: #3a4d5c; color: #ffffff; font-size: 12px; font-weight: bold;">Material</th>
+                              <th align="left" style="padding: 8px 10px; background-color: #3a4d5c; color: #ffffff; font-size: 12px; font-weight: bold;">Status</th>
+                            </tr>`;
+  const body = rows
+    .map((item, index) => {
+      const bg = index % 2 === 0 ? "#ffffff" : "#f8fafc";
+      return `<tr style="background-color: ${bg};">
+                              ${wcCell(item.job, " font-weight: bold; color: #1a73e8; white-space: nowrap;")}
+                              ${wcCell(item.name)}
+                              ${wcCell(item.label?.trim() || "—", " white-space: nowrap;")}
+                              ${wcCell(item.material?.trim() || "—")}
+                              ${wcCell(item.status?.trim() || "—")}
+                            </tr>`;
+    })
+    .join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden;">
+                            ${header}
+                            ${body}
                           </table>`;
+}
+
+function wcAlertSection(title: string, items: DigestJobItem[], bg: string, border: string, titleColor: string): string {
+  return alertSection(title, items.length, bg, border, titleColor, wcStatusTable(items));
 }
 
 function paintItemBlock(item: DigestJobItem, borderColor: string, extra?: string): string {
@@ -237,7 +276,6 @@ function paintItemBlock(item: DigestJobItem, borderColor: string, extra?: string
                                   <strong style="color: #1a73e8;">${escHtml(item.job)}</strong> - ${escHtml(item.name)}
                                 </p>
                                 ${item.address ? `<p style="margin: 0 0 3px 0; font-size: 13px; color: #666;">Address: ${escHtml(item.address)}</p>` : ""}
-                                ${item.super ? `<p style="margin: 0 0 3px 0; font-size: 13px; color: #666;">Super: ${escHtml(item.super)}</p>` : ""}
                                 ${item.status ? `<p style="margin: 0; font-size: 12px; color: #999; font-style: italic;">${escHtml(item.status)}</p>` : ""}
                                 ${extra ?? ""}
                                 ${notes}
@@ -282,10 +320,22 @@ export function buildCombinedWeeklyDigestHtml(
   const companyAddress = branding.companyAddress.trim();
   const today = escHtml(formatTodayLong());
 
+  const wcAttention =
+    wallcoveringAlerts.notStarted.length +
+    wallcoveringAlerts.submittalOrdered.length +
+    wallcoveringAlerts.sentForApproval.length +
+    wallcoveringAlerts.needsRevision.length +
+    wallcoveringAlerts.approved.length;
+
+  const paintAttention =
+    paintAlerts.needsOrdering.length +
+    paintAlerts.awaitingApproval.length +
+    paintAlerts.overdueApproval.length +
+    paintAlerts.needsRevision.length;
+
   const totalIssues =
-    wallcoveringAlerts.needsOrdering.length +
-    wallcoveringAlerts.overdueApproval.length +
-    wallcoveringAlerts.approvedNotOrdered.length +
+    wallcoveringAlerts.notStarted.length +
+    wallcoveringAlerts.needsRevision.length +
     paintAlerts.needsOrdering.length +
     paintAlerts.overdueApproval.length +
     paintAlerts.needsRevision.length;
@@ -309,56 +359,59 @@ export function buildCombinedWeeklyDigestHtml(
                       <tr><td>
                           <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: bold; color: #3a4d5c;">📊 Quick Summary:</p>
                           <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Total items needing attention: <strong style="color: #d32f2f;">${totalIssues}</strong></p>
-                          <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Wallcovering items: <strong>${wallcoveringAlerts.needsOrdering.length + wallcoveringAlerts.awaitingApproval.length + wallcoveringAlerts.overdueApproval.length}</strong></p>
-                          <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Paint items: <strong>${paintAlerts.needsOrdering.length + paintAlerts.awaitingApproval.length + paintAlerts.overdueApproval.length + paintAlerts.needsRevision.length}</strong></p>
+                          <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Wallcovering submittals: <strong>${wcAttention}</strong></p>
+                          <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Paint items: <strong>${paintAttention}</strong></p>
                           <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Paint items needing revision: <strong style="color: #f57c00;">${paintAlerts.needsRevision.length}</strong></p>
                           <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Upcoming installations: <strong>${wallcoveringAlerts.upcomingInstalls.length}</strong></p>
                           <p style="margin: 5px 0; font-size: 14px; color: #3a4d5c;">• Upcoming paint starts: <strong>${paintAlerts.upcomingStarts.length}</strong></p>
                       </td></tr>
                     </table>
                   </td>
-                </tr>
-                <tr><td style="padding: 20px 20px 10px 20px;"><h2 style="margin: 0; font-size: 22px; color: #3a4d5c; border-bottom: 2px solid #3a4d5c; padding-bottom: 8px;">Wallcovering Tracker</h2></td></tr>`;
+                </tr>`;
 
-  html += alertSection(
-    "⚠️ Submittal Approved - Material Not Yet Ordered",
-    wallcoveringAlerts.approvedNotOrdered.length,
+  html += `<tr><td style="padding: 20px 20px 10px 20px;"><h2 style="margin: 0; font-size: 22px; color: #3a4d5c; border-bottom: 2px solid #3a4d5c; padding-bottom: 8px;">Wallcovering submittals</h2></td></tr>`;
+
+  html += wcAlertSection(
+    "⚠️ Needs Revision",
+    wallcoveringAlerts.needsRevision,
+    "#fff8e1",
+    "#f57c00",
+    "#f57c00",
+  );
+  html += wcAlertSection(
+    "🔴 Not Started",
+    wallcoveringAlerts.notStarted,
     "#ffebee",
     "#d32f2f",
     "#d32f2f",
-    wallcoveringAlerts.approvedNotOrdered.map((i) => wcItemBlock(i, "#d32f2f")).join(""),
   );
-  html += alertSection(
-    "🔴 Needs Sample Ordering",
-    wallcoveringAlerts.needsOrdering.length,
-    "#ffebee",
-    "#d32f2f",
-    "#d32f2f",
-    wallcoveringAlerts.needsOrdering.map((i) => wcItemBlock(i, "#d32f2f")).join(""),
-  );
-  html += alertSection(
-    "ℹ️ Recently Ordered",
-    wallcoveringAlerts.awaitingApproval.length,
+  html += wcAlertSection(
+    "ℹ️ Submittal Ordered",
+    wallcoveringAlerts.submittalOrdered,
     "#e8f5e9",
     "#4caf50",
     "#4caf50",
-    wallcoveringAlerts.awaitingApproval.map((i) => wcItemBlock(i, "#4caf50")).join(""),
   );
-  html += alertSection(
-    "🟡 Awaiting Approval",
-    wallcoveringAlerts.overdueApproval.length,
+  html += wcAlertSection(
+    "🟡 Sent for Approval",
+    wallcoveringAlerts.sentForApproval,
     "#fff3e0",
     "#ff9800",
     "#ff9800",
-    wallcoveringAlerts.overdueApproval.map((i) => wcItemBlock(i, "#ff9800")).join(""),
   );
-  html += alertSection(
-    "📅 Upcoming Installations (Next 7 Days)",
-    wallcoveringAlerts.upcomingInstalls.length,
+  html += wcAlertSection(
+    "✅ Approved",
+    wallcoveringAlerts.approved,
+    "#e8f5e9",
+    "#4caf50",
+    "#2e7d32",
+  );
+  html += wcAlertSection(
+    "📅 Upcoming Installations (Next 30 Days)",
+    wallcoveringAlerts.upcomingInstalls,
     "#f3e5f5",
     "#9c27b0",
     "#9c27b0",
-    wallcoveringAlerts.upcomingInstalls.map((i) => wcItemBlock(i, "#9c27b0")).join(""),
   );
 
   html += `<tr><td style="padding: 20px 20px 10px 20px;"><h2 style="margin: 0; font-size: 22px; color: #3a4d5c; border-bottom: 2px solid #3a4d5c; padding-bottom: 8px;">Paint Tracker</h2></td></tr>`;
@@ -415,6 +468,7 @@ export function buildCombinedWeeklyDigestHtml(
   );
 
   if (
+    wcAttention === 0 &&
     totalIssues === 0 &&
     wallcoveringAlerts.upcomingInstalls.length === 0 &&
     paintAlerts.upcomingStarts.length === 0
@@ -431,93 +485,10 @@ export function buildCombinedWeeklyDigestHtml(
 }
 
 export function buildWallcoveringWeeklyDigestHtml(
-  alerts: WallcoveringDigestAlerts,
   branding: TrackerNotificationBranding,
+  projects: ProjectForm[],
 ): string {
-  const primaryName = escHtml(branding.primaryName.trim() || "PM");
-  const companyName = branding.companyName.trim() || "JobFlow";
-  const companyAddress = branding.companyAddress.trim();
-  const today = escHtml(formatTodayLong());
-  const totalItems =
-    alerts.needsOrdering.length +
-    alerts.awaitingApproval.length +
-    alerts.overdueApproval.length +
-    alerts.approvedNotOrdered.length;
-  const needsAttention = alerts.needsOrdering.length + alerts.approvedNotOrdered.length;
-
-  let html = `<html>
-      <head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head>
-      <body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f4f4;">
-          <tr><td align="center" style="padding: 20px 0;">
-              <table width="650" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
-                <tr>
-                  <td style="background-color: #3a4d5c; padding: 25px 20px; text-align: center;">
-                    <h1 style="margin: 0; color: #ffffff; font-size: 26px; font-weight: bold;">Weekly Wallcovering Status</h1>
-                    <p style="margin: 6px 0 0 0; color: #cbd5e1; font-size: 14px;">Projects Managed by ${primaryName}</p>
-                    <p style="margin: 8px 0 0 0; color: #ffffff; font-size: 14px;">${today}</p>
-                  </td>
-                </tr>
-                <tr><td style="padding: 0; background-color: #d4e6f1;">
-                    <table width="100%" cellpadding="15" cellspacing="0" border="0" style="border-bottom: 3px solid #3a4d5c;">
-                      <tr>
-                        <td width="50%" style="text-align: center;"><p style="margin:0;font-size:24px;font-weight:bold;color:#3a4d5c;">${totalItems}</p><p style="margin:3px 0 0;font-size:11px;color:#3a4d5c;text-transform:uppercase;font-weight:600;">Tracked items</p></td>
-                        <td width="50%" style="text-align: center;"><p style="margin:0;font-size:24px;font-weight:bold;color:#d32f2f;">${needsAttention}</p><p style="margin:3px 0 0;font-size:11px;color:#3a4d5c;text-transform:uppercase;font-weight:600;">Needs attention</p></td>
-                      </tr>
-                    </table>
-                  </td></tr>`;
-
-  html += alertSection(
-    "⚠️ Approved — Material Not Yet Ordered",
-    alerts.approvedNotOrdered.length,
-    "#fff3e0",
-    "#ff6f00",
-    "#ff6f00",
-    alerts.approvedNotOrdered.map((i) => wcItemBlock(i, "#ff6f00")).join(""),
-  );
-  html += alertSection(
-    "🔴 Needs Sample Ordering",
-    alerts.needsOrdering.length,
-    "#ffebee",
-    "#d32f2f",
-    "#d32f2f",
-    alerts.needsOrdering.map((i) => wcItemBlock(i, "#d32f2f")).join(""),
-  );
-  html += alertSection(
-    "ℹ️ Recently Ordered",
-    alerts.awaitingApproval.length,
-    "#e8f5e9",
-    "#4caf50",
-    "#4caf50",
-    alerts.awaitingApproval.map((i) => wcItemBlock(i, "#4caf50")).join(""),
-  );
-  html += alertSection(
-    "🟡 Awaiting Approval",
-    alerts.overdueApproval.length,
-    "#fff3e0",
-    "#ff9800",
-    "#ff9800",
-    alerts.overdueApproval.map((i) => wcItemBlock(i, "#ff9800")).join(""),
-  );
-  html += alertSection(
-    "📅 Upcoming Installations (Next 7 Days)",
-    alerts.upcomingInstalls.length,
-    "#f3e5f5",
-    "#9c27b0",
-    "#9c27b0",
-    alerts.upcomingInstalls.map((i) => wcItemBlock(i, "#9c27b0")).join(""),
-  );
-
-  if (totalItems === 0 && alerts.upcomingInstalls.length === 0) {
-    html += `<tr><td style="padding: 40px 20px; text-align: center;">
-                    <h2 style="margin: 0 0 10px 0; font-size: 24px; color: #4caf50;">✅ All Clear!</h2>
-                    <p style="margin: 0; font-size: 15px; color: #666;">No wallcovering items need attention.</p>
-                  </td></tr>`;
-  }
-
-  html += digestFooter(companyName, companyAddress);
-  html += `</table></td></tr></table></body></html>`;
-  return html;
+  return buildWallcoveringSnapshotHtml({ projects, branding });
 }
 
 export type WeeklyDigestKind = "combined" | "wallcovering";
@@ -554,12 +525,12 @@ export async function sendWeeklyTrackerDigest(options: {
   const subject =
     options.kind === "combined"
       ? `Weekly Submittal Status — ${formatTodayLong()}`
-      : `Weekly Wallcovering Status — ${formatTodayLong()}`;
+      : `Wallcovering snapshot — ${formatTodayLong()}`;
 
   const html =
     options.kind === "combined"
       ? buildCombinedWeeklyDigestHtml(wcAlerts, paintAlerts, branding)
-      : buildWallcoveringWeeklyDigestHtml(wcAlerts, branding);
+      : buildWallcoveringSnapshotHtml({ projects: options.projects, branding });
 
   const htmlForSend = await embedLogoUrlInHtml(html, options.logoUrl ?? "");
 

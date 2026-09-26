@@ -471,9 +471,7 @@ export function FieldPaintDashboardPage() {
                   <FieldStatusPill
                     label={paintMobileStatusLabel(row.status)}
                     className={`${paintPillClass(row.status)}${
-                      row.status === "Not Needed" || row.status === "Needs Revision"
-                        ? " pill-mobile-outline"
-                        : ""
+                      row.status === "Needs Revision" ? " pill-mobile-outline" : ""
                     }`}
                   />
                 </div>

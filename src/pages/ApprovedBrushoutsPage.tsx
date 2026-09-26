@@ -11,6 +11,7 @@ import {
 } from "../lib/approvedBrushouts";
 import { commitProjectUpdate } from "../lib/projectActivity";
 import { parseProjectDataBlob } from "../lib/jobInfo";
+import { markPaintTrackerApproved } from "../lib/fieldTrackerProject";
 import { parseStartupChecklist, type StartupChecklistState } from "../lib/projectStartupChecklist";
 import { supabase } from "../lib/supabase";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
@@ -196,11 +197,16 @@ export function ApprovedBrushoutsPage() {
         },
       });
       if (err) throw new Error(err);
+      const trackerErr = await markPaintTrackerApproved(
+        projectId,
+        "Paint tracker marked Approved from approved brush-outs",
+      );
+      if (trackerErr) throw new Error(trackerErr);
       setChecklistMarked(true);
       setStatus((prev) =>
         prev
-          ? `${prev} System setup · Brush outs marked complete.`
-          : "System setup · Brush outs marked complete.",
+          ? `${prev} System setup · Brush outs marked complete. Paint tracker Approved.`
+          : "System setup · Brush outs marked complete. Paint tracker Approved.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update startup checklist");
@@ -242,8 +248,8 @@ export function ApprovedBrushoutsPage() {
             <>
               <p className="muted small" style={{ margin: 0 }}>
                 Mark complete when this wave is ready for field. You can approve more colors later (e.g. a revised
-                PT-03) without unchecking the step. Project startup “Submit brushouts” is driven by Material Tracker
-                → Submitted for Approval.
+                PT-03) without unchecking the step. This also marks Material Tracker → Paint → Approved. Project
+                startup “Submit brushouts” is driven by Material Tracker → Submitted for Approval.
               </p>
               <div>
                 <button

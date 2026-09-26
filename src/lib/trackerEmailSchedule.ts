@@ -13,12 +13,16 @@ export const WEEKDAY_LABELS = [
 
 export const DEFAULT_DIGEST_WEEKDAY = 5;
 export const DEFAULT_SITE_READY_WEEKDAY = 1;
+/** Local hour (0–23) in `timezone`. Default 8:00 AM Pacific. */
+export const DEFAULT_SEND_HOUR = 8;
 
 export type TrackerEmailSchedule = {
   /** Master switch for Vercel cron sends for this account. */
   enabled: boolean;
   /** Used for follow-up "due today" date bucketing when cron runs. */
   timezone: string;
+  /** Local hour (0–23) in `timezone` to send automatic emails. */
+  send_hour: number;
   daily: {
     enabled: boolean;
     paint_followup: boolean;
@@ -34,9 +38,11 @@ export type TrackerEmailSchedule = {
     wallcovering_digest: boolean;
     /** Site-ready gates + Needs attention — Monday cron slot. */
     startup_site_ready: boolean;
-    /** UTC weekday (0–6) to send combined / wallcovering digests. */
+    /** Weekday (0–6, local timezone) to send combined digest. */
     digest_weekday: number;
-    /** UTC weekday (0–6) to send site-ready + Needs attention. */
+    /** Weekday (0–6, local timezone) to send wallcovering-only digest. */
+    wallcovering_digest_weekday: number;
+    /** Weekday (0–6, local timezone) to send site-ready + Needs attention. */
     site_ready_weekday: number;
   };
 };
@@ -44,6 +50,7 @@ export type TrackerEmailSchedule = {
 export const DEFAULT_TRACKER_EMAIL_SCHEDULE: TrackerEmailSchedule = {
   enabled: false,
   timezone: "America/Los_Angeles",
+  send_hour: DEFAULT_SEND_HOUR,
   daily: {
     enabled: false,
     paint_followup: true,
@@ -57,6 +64,7 @@ export const DEFAULT_TRACKER_EMAIL_SCHEDULE: TrackerEmailSchedule = {
     wallcovering_digest: false,
     startup_site_ready: true,
     digest_weekday: DEFAULT_DIGEST_WEEKDAY,
+    wallcovering_digest_weekday: DEFAULT_DIGEST_WEEKDAY,
     site_ready_weekday: DEFAULT_SITE_READY_WEEKDAY,
   },
 };
@@ -71,6 +79,71 @@ export function weekdayLabel(weekday: number): string {
   return WEEKDAY_LABELS[normalizeWeekday(weekday, DEFAULT_DIGEST_WEEKDAY)] ?? "Friday";
 }
 
+export function normalizeHour(raw: unknown, fallback = DEFAULT_SEND_HOUR): number {
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
+  if (!Number.isInteger(n) || n < 0 || n > 23) return fallback;
+  return n;
+}
+
+export function formatSendHourLabel(hour: number): string {
+  const h = normalizeHour(hour);
+  if (h === 0) return "12:00 AM";
+  if (h === 12) return "12:00 PM";
+  if (h < 12) return `${h}:00 AM`;
+  return `${h - 12}:00 PM`;
+}
+
+const WEEKDAY_SHORT: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+/** Weekday (Sun=0) and hour (0–23) in the schedule timezone. */
+export function zonedWeekdayAndHour(now: Date, timeZone: string): { weekday: number; hour: number } {
+  const tz = timeZone.trim() || DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "numeric",
+      hourCycle: "h23",
+    }).formatToParts(now);
+    const wd = parts.find((part) => part.type === "weekday")?.value ?? "Sun";
+    const hourRaw = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+    return {
+      weekday: WEEKDAY_SHORT[wd] ?? 0,
+      hour: hourRaw === 24 ? 0 : hourRaw,
+    };
+  } catch {
+    return { weekday: now.getUTCDay(), hour: now.getUTCHours() };
+  }
+}
+
+/** Calendar date (noon local) for `now` in the schedule timezone — used for “due today”. */
+export function zonedCalendarDate(now: Date, timeZone?: string): Date {
+  const tz = timeZone?.trim() || DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const year = Number(parts.find((part) => part.type === "year")?.value);
+    const month = Number(parts.find((part) => part.type === "month")?.value);
+    const day = Number(parts.find((part) => part.type === "day")?.value);
+    if (!year || !month || !day) return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+    return new Date(year, month - 1, day, 12, 0, 0);
+  } catch {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  }
+}
+
 export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedule {
   const base = {
     ...DEFAULT_TRACKER_EMAIL_SCHEDULE,
@@ -82,6 +155,7 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
 
   if (typeof o.enabled === "boolean") base.enabled = o.enabled;
   if (typeof o.timezone === "string" && o.timezone.trim()) base.timezone = o.timezone.trim();
+  base.send_hour = normalizeHour(o.send_hour, DEFAULT_SEND_HOUR);
 
   let legacyWeeklyBillingDue: boolean | undefined;
 
@@ -108,6 +182,10 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
     }
     if (typeof w.billing_due === "boolean") legacyWeeklyBillingDue = w.billing_due;
     base.weekly.digest_weekday = normalizeWeekday(w.digest_weekday, DEFAULT_DIGEST_WEEKDAY);
+    base.weekly.wallcovering_digest_weekday = normalizeWeekday(
+      w.wallcovering_digest_weekday,
+      base.weekly.digest_weekday,
+    );
     base.weekly.site_ready_weekday = normalizeWeekday(w.site_ready_weekday, DEFAULT_SITE_READY_WEEKDAY);
   }
 
@@ -127,13 +205,16 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
 export function trackerCronUtcHint(
   kind: "daily" | "digest" | "site_ready",
   weekday?: number,
+  sendHour = DEFAULT_SEND_HOUR,
+  timezone = DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone,
 ): string {
-  if (kind === "daily") return "Sends every morning at ~8:00 AM Pacific (15:00 UTC).";
+  const when = `${formatSendHourLabel(sendHour)} ${timezone.replace(/_/g, " ")}`;
+  if (kind === "daily") return `Sends every day at ${when}.`;
   const fallback = kind === "site_ready" ? DEFAULT_SITE_READY_WEEKDAY : DEFAULT_DIGEST_WEEKDAY;
-  return `Sends ${weekdayLabel(normalizeWeekday(weekday, fallback))} mornings at ~8:00 AM Pacific (15:00 UTC).`;
+  return `Sends ${weekdayLabel(normalizeWeekday(weekday, fallback))} at ${when}.`;
 }
 
-/** Vercel cron runs at fixed UTC times; shown in settings for clarity. */
+/** Default copy when settings have not loaded a custom send hour yet. */
 export const TRACKER_CRON_UTC_SCHEDULE = {
   daily: trackerCronUtcHint("daily"),
   weekly: trackerCronUtcHint("digest", DEFAULT_DIGEST_WEEKDAY),
@@ -146,17 +227,27 @@ function isCronSlot(value: string | undefined): value is TrackerEmailCronSlot {
   return Boolean(value && (CRON_SLOTS as string[]).includes(value));
 }
 
-/** Which digest/follow-up slots should run for this UTC calendar day. */
+/** Which digest/follow-up slots should run for this local calendar day. Empty when not send hour. */
 export function trackerCronSlotsDueOnUtcDate(
   now: Date,
-  weekdays?: { digestWeekday?: number; siteReadyWeekday?: number },
+  weekdays?: {
+    digestWeekday?: number;
+    wallcoveringDigestWeekday?: number;
+    siteReadyWeekday?: number;
+    timezone?: string;
+    sendHour?: number;
+  },
 ): TrackerEmailCronSlot[] {
+  const timezone = weekdays?.timezone?.trim() || DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone;
+  const sendHour = normalizeHour(weekdays?.sendHour, DEFAULT_SEND_HOUR);
+  const { weekday, hour } = zonedWeekdayAndHour(now, timezone);
+  if (hour !== sendHour) return [];
   const slots: TrackerEmailCronSlot[] = ["daily"];
-  const dow = now.getUTCDay();
   const digest = normalizeWeekday(weekdays?.digestWeekday, DEFAULT_DIGEST_WEEKDAY);
+  const wcDigest = normalizeWeekday(weekdays?.wallcoveringDigestWeekday, digest);
   const siteReady = normalizeWeekday(weekdays?.siteReadyWeekday, DEFAULT_SITE_READY_WEEKDAY);
-  if (dow === siteReady) slots.push("monday");
-  if (dow === digest) slots.push("weekly");
+  if (weekday === siteReady) slots.push("monday");
+  if (weekday === digest || weekday === wcDigest) slots.push("weekly");
   return slots;
 }
 
@@ -189,7 +280,10 @@ export function resolveTrackerCronSlots(input: {
   cronScheduleHeader?: string;
   now?: Date;
   digestWeekday?: number;
+  wallcoveringDigestWeekday?: number;
   siteReadyWeekday?: number;
+  timezone?: string;
+  sendHour?: number;
 }): TrackerEmailCronSlot[] {
   const query = input.querySlot?.trim();
   if (isCronSlot(query)) return [query];
@@ -201,6 +295,9 @@ export function resolveTrackerCronSlots(input: {
 
   return trackerCronSlotsDueOnUtcDate(input.now ?? new Date(), {
     digestWeekday: input.digestWeekday,
+    wallcoveringDigestWeekday: input.wallcoveringDigestWeekday,
     siteReadyWeekday: input.siteReadyWeekday,
+    timezone: input.timezone,
+    sendHour: input.sendHour,
   });
 }

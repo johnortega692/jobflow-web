@@ -474,6 +474,24 @@ label {
   border: 1px solid var(--border);
 }
 
+.project-submittal-pill--not-started {
+  background: rgba(255, 107, 107, 0.12);
+  color: #f0a3a3;
+  border: 1px solid rgba(255, 107, 107, 0.32);
+}
+
+.project-submittal-pill--not-needed {
+  background: rgba(90, 101, 124, 0.4);
+  color: #c5ccd9;
+  border: 1px solid var(--border-strong);
+}
+
+.project-submittal-pill--match {
+  background: rgba(38, 166, 154, 0.16);
+  color: #7ee0d4;
+  border: 1px solid rgba(38, 166, 154, 0.38);
+}
+
 .project-submittal-pill--added {
   background: rgba(95, 211, 141, 0.14);
   color: #5fd38d;
@@ -543,6 +561,16 @@ label {
 
 .project-mini-pipeline-stage--muted {
   color: var(--muted);
+}
+
+.project-mini-pipeline-stage--not-needed {
+  color: #c5ccd9;
+  font-weight: 600;
+}
+
+.project-mini-pipeline-stage--match {
+  color: #7ee0d4;
+  font-weight: 600;
 }
 
 .projects-list-sort {
@@ -3054,6 +3082,13 @@ th {
 
 .settings-tab-panel--hidden {
   display: none;
+}
+
+.settings-tab-panel--flush {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
 }
 
 .settings-user-access-list {
@@ -13458,4 +13493,251 @@ input.readonly {
 .billing-hours-total-col {
   min-width: 72px;
   background: var(--bg-elevated);
+}
+
+/* Schedules settings (unified rows) */
+.sched-page {
+  gap: 1rem;
+}
+
+.sched-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sched-title-row h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.sched-admin-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.18rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.sched-run-banner {
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.sched-run-banner.is-ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
+  background: color-mix(in srgb, var(--ok) 12%, var(--surface));
+}
+
+.sched-run-banner p {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.45rem;
+}
+
+.sched-run-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent);
+}
+
+.sched-run-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.sched-run-chips span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ok) 18%, var(--bg-elevated));
+  color: color-mix(in srgb, var(--ok) 40%, var(--text));
+}
+
+.sched-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 1rem 1.05rem 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.sched-card-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 0.75rem 0.9rem;
+  padding-bottom: 0.85rem;
+}
+
+.sched-card-copy strong {
+  display: block;
+  font-size: 0.98rem;
+}
+
+.sched-card-copy p {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.sched-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  padding-top: 0.2rem;
+}
+
+.sched-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem 1rem;
+  padding: 0.2rem 0 1rem;
+}
+
+.sched-grid label {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.sched-toggle {
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface2);
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.sched-toggle.is-on {
+  background: #3b82f6;
+}
+
+.sched-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sched-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.sched-toggle.is-on .sched-toggle-knob {
+  transform: translateX(18px);
+}
+
+.sched-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.sched-card > .sched-row:last-child {
+  padding-bottom: 1rem;
+}
+
+.sched-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.sched-row-main strong {
+  display: block;
+  font-size: 0.92rem;
+}
+
+.sched-row-main p {
+  margin: 0.12rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sched-row-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.sched-day-select {
+  width: auto;
+  min-width: 7.5rem;
+  margin-top: 0;
+}
+
+.sched-send-btn {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  border-radius: 10px;
+  padding: 0.45rem 0.85rem;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  border: 1px solid var(--border-strong);
+}
+
+.sched-save-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.05rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.sched-save-bar .btn {
+  width: auto;
+}
+
+.sched-save-bar .btn-primary {
+  padding: 0.55rem 1.15rem;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+@media (max-width: 820px) {
+  .sched-grid,
+  .sched-card-head,
+  .sched-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sched-hint,
+  .sched-row-meta,
+  .sched-day-select,
+  .sched-send-btn {
+    justify-self: start;
+  }
 }

@@ -639,6 +639,19 @@ export async function reloadProject(projectId: string): Promise<ProjectForm | nu
   return normalizeProject(data as ProjectForm);
 }
 
+/** Mark Material Tracker paint Approved. No-op if it is already on. */
+export async function markPaintTrackerApproved(
+  projectId: string,
+  summary = "Paint tracker marked Approved",
+): Promise<string | null> {
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const tracker = resolvePaintTracker(trade);
+  if (tracker.approved) return null;
+  return savePaintTrackerState(projectId, { ...tracker, approved: true }, summary);
+}
+
 export async function savePaintTrackerState(
   projectId: string,
   tracker: PaintTrackerState,

@@ -57,6 +57,7 @@ export type ProjectsListStageFilter =
   | "all"
   | "not_started"
   | "not_needed"
+  | "match_existing"
   | "ordered"
   | "submitted"
   | "revision"
@@ -81,6 +82,7 @@ const FILTER_VALUES: ProjectsListStageFilter[] = [
   "all",
   "not_started",
   "not_needed",
+  "match_existing",
   "ordered",
   "submitted",
   "revision",
@@ -162,6 +164,7 @@ function stageMatchesFilter(stage: string, filter: ProjectsListStageFilter): boo
   const map: Record<Exclude<ProjectsListStageFilter, "all">, string> = {
     not_started: "Not started",
     not_needed: "Not Needed",
+    match_existing: "Match Existing",
     ordered: "Ordered",
     submitted: "Submitted",
     revision: "Revision",

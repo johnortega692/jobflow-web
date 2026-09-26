@@ -11,6 +11,7 @@ import {
 } from "./billingDueDigest.js";
 import { sendFollowUpReminder, followUpReminderHasContent } from "./trackerFollowUpReminders.js";
 import type { TrackerEmailCronSlot } from "./trackerEmailSchedule.js";
+import { zonedCalendarDate, zonedWeekdayAndHour, weekdayLabel } from "./trackerEmailSchedule.js";
 import { sendWeeklyTrackerDigest } from "./trackerWeeklyDigest.js";
 import { sendSiteReadyDigest, siteReadyDigestHasContent } from "./startupSiteReadyDigest.js";
 import { listTrackerCronTargets, ORG_TRACKER_CRON_TARGET } from "./userSettingsAdmin.js";
@@ -116,6 +117,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
       const letterhead = normalizeLetterheadSettings(raw);
       const companyName = letterhead.company_name.trim() || "JobFlow";
       const gasPost = createCronEmailPoster(urls);
+      const today = zonedCalendarDate(new Date(), schedule.timezone);
       const sendBase = {
         projects,
         primaryEmail,
@@ -126,13 +128,15 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         gasUrl: urls.fieldOrderUrl || "resend",
         logoUrl: letterhead.logo_url,
         gasPost,
+        timezone: schedule.timezone,
+        today,
       };
 
       if (slot === "daily" && schedule.daily.enabled) {
         if (schedule.daily.paint_followup) {
           if (!primaryEmail) {
             result.skipped.push(`${label}: paint follow-up skipped (no primary email)`);
-          } else if (followUpReminderHasContent("paint", projects)) {
+          } else if (followUpReminderHasContent("paint", projects, today)) {
             await sendFollowUpReminder({ kind: "paint", ...sendBase });
             result.sent.push(`${label}: paint follow-up`);
           } else {
@@ -142,7 +146,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         if (schedule.daily.wallcovering_followup) {
           if (!primaryEmail) {
             result.skipped.push(`${label}: wallcovering follow-up skipped (no primary email)`);
-          } else if (followUpReminderHasContent("wallcovering", projects)) {
+          } else if (followUpReminderHasContent("wallcovering", projects, today)) {
             await sendFollowUpReminder({ kind: "wallcovering", ...sendBase });
             result.sent.push(`${label}: wallcovering follow-up`);
           } else {
@@ -152,7 +156,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         if (schedule.daily.installs) {
           if (!primaryEmail) {
             result.skipped.push(`${label}: installs skipped (no primary email)`);
-          } else if (followUpReminderHasContent("installs", projects)) {
+          } else if (followUpReminderHasContent("installs", projects, today)) {
             await sendFollowUpReminder({ kind: "installs", ...sendBase });
             result.sent.push(`${label}: installs reminder`);
           } else {
@@ -160,7 +164,7 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
           }
         }
         if (schedule.daily.billing_due) {
-          if (billingDueDigestHasContent(projects)) {
+          if (billingDueDigestHasContent(projects, today)) {
             const billing = await sendBillingDueDigest({ ...sendBase });
             result.sent.push(
               `${label}: billing due 4-day reminder (${billing.pmCount} PM${billing.pmCount === 1 ? "" : "s"})`,
@@ -176,8 +180,11 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
       }
 
       if (slot === "weekly" && schedule.weekly.enabled) {
+        const { weekday } = zonedWeekdayAndHour(new Date(), schedule.timezone);
         if (schedule.weekly.combined_digest) {
-          if (!primaryEmail) {
+          if (weekday !== schedule.weekly.digest_weekday) {
+            result.skipped.push(`${label}: combined digest skipped (not ${weekdayLabel(schedule.weekly.digest_weekday)})`);
+          } else if (!primaryEmail) {
             result.skipped.push(`${label}: combined digest skipped (no primary email)`);
           } else {
             await sendWeeklyTrackerDigest({ kind: "combined", ...sendBase });
@@ -185,7 +192,11 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
           }
         }
         if (schedule.weekly.wallcovering_digest) {
-          if (!primaryEmail) {
+          if (weekday !== schedule.weekly.wallcovering_digest_weekday) {
+            result.skipped.push(
+              `${label}: wallcovering digest skipped (not ${weekdayLabel(schedule.weekly.wallcovering_digest_weekday)})`,
+            );
+          } else if (!primaryEmail) {
             result.skipped.push(`${label}: wallcovering digest skipped (no primary email)`);
           } else {
             await sendWeeklyTrackerDigest({ kind: "wallcovering", ...sendBase });
