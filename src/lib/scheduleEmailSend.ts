@@ -1,6 +1,6 @@
-import { sendVendorEmailAsOrderEmailViaGas } from "./sendOrderEmailGas";
-import { sendVendorEmailFromApp, type SendVendorEmailRequest } from "./sendVendorEmail";
-import type { GasEmailPost } from "./sendVendorEmailGasDirect";
+import { sendVendorEmailAsOrderEmailViaGas } from "./sendOrderEmailGas.js";
+import { sendVendorEmailFromApp, type SendVendorEmailRequest } from "./sendVendorEmail.js";
+import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 
 export type ScheduleEmailUrls = {
   fieldOrderUrl: string;

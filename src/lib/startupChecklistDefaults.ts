@@ -1,8 +1,8 @@
 /** Org-level default enabled flags for the Startup checklist on new jobs. */
 
-import { STARTUP_CHECKLIST_CATALOG, type StartupCatalogSeed } from "../config/projectStartupItemsCatalog";
-import { patchOrgSettings, removeUserSettingsKeys } from "./budgetLibrary";
-import { loadOrgSettingsBlob } from "./orgSettings";
+import { STARTUP_CHECKLIST_CATALOG, type StartupCatalogSeed } from "../config/projectStartupItemsCatalog.js";
+import { patchOrgSettings, removeUserSettingsKeys } from "./budgetLibrary.js";
+import { loadOrgSettingsBlob } from "./orgSettings.js";
 
 export const STARTUP_CHECKLIST_DEFAULT_ENABLED_KEY = "startup_checklist_default_enabled";
 

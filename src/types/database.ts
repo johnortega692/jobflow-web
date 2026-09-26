@@ -1,4 +1,4 @@
-import type { Database, Json } from "./database.generated";
+import type { Database, Json } from "./database.generated.js";
 export type { Database, Json };
 import type { JobInfoData } from "./jobInfo.js";
 import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo.js";

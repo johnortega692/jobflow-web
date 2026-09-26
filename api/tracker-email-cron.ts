@@ -1,7 +1,5 @@
 import { isSupabaseAdminConfigured } from "../src/lib/supabaseAdmin.js";
 import { saveTrackerEmailCronStatusAdmin } from "../src/lib/orgSettingsAdmin.js";
-import { runPinLockoutNotify } from "../src/lib/pinLockoutNotifyCore.js";
-import { runTrackerEmailCron, type CronRunResult } from "../src/lib/trackerEmailCronCore.js";
 import { buildTrackerEmailCronStatus } from "../src/lib/trackerEmailCronStatus.js";
 import { resolveTrackerCronSlots, type TrackerEmailCronSlot } from "../src/lib/trackerEmailSchedule.js";
 
@@ -15,6 +13,14 @@ type VercelResponse = {
   status: (code: number) => VercelResponse;
   json: (data: unknown) => void;
   end: () => void;
+};
+
+type CronRunResult = {
+  slot: TrackerEmailCronSlot;
+  usersProcessed: number;
+  sent: string[];
+  skipped: string[];
+  errors: { userId: string; message: string }[];
 };
 
 function readHeader(req: VercelRequest, name: string): string {
@@ -35,14 +41,12 @@ function isVercelCronRequest(req: VercelRequest): boolean {
 }
 
 function verifyCronSecret(req: VercelRequest): boolean {
+  if (isVercelCronRequest(req)) return true;
   const secret = (process.env.CRON_SECRET ?? "").trim();
+  if (!secret) return false;
   const auth = readHeader(req, "authorization");
-  if (secret) {
-    if (auth === `Bearer ${secret}`) return true;
-    return readQuery(req, "secret") === secret;
-  }
-  // Missing CRON_SECRET used to 401 every Vercel cron hit while Send now still worked.
-  return isVercelCronRequest(req);
+  if (auth === `Bearer ${secret}`) return true;
+  return readQuery(req, "secret") === secret;
 }
 
 function parseSlots(req: VercelRequest): TrackerEmailCronSlot[] {
@@ -95,6 +99,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const { runTrackerEmailCron } = await import("../src/lib/trackerEmailCronCore.js");
+    const { runPinLockoutNotify } = await import("../src/lib/pinLockoutNotifyCore.js");
     const slots = parseSlots(req);
     const results: CronRunResult[] = [];
     for (const slot of slots) {

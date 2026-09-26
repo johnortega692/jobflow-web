@@ -1,5 +1,5 @@
-import { supabase } from "./supabase";
-import type { ProjectForm } from "../types/database";
+import { supabase } from "./supabase.js";
+import type { ProjectForm } from "../types/database.js";
 
 export async function getProjectFieldAppVisibility(projectId: string): Promise<boolean> {
   const { data, error } = await supabase.rpc("get_project_field_app_visibility", {

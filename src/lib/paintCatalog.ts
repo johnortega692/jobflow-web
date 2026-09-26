@@ -1,7 +1,7 @@
 /** Paint product / sheen / color catalogs. Products and sheens come from Field Tools. */
 
-import { loadRawUserSettings, patchOrgSettings } from "./budgetLibrary";
-import { supabase } from "./supabase";
+import { loadRawUserSettings, patchOrgSettings } from "./budgetLibrary.js";
+import { supabase } from "./supabase.js";
 
 export type PaintProduct = { product: string; manufacturer: string; sheens?: string[] };
 
