@@ -43,7 +43,7 @@ No Railway, no local API — PDF uses your browser **Print → Save as PDF**.
 
    Optional: set `GAS_SEND_EMAIL_URL` to the same Field Request Order Apps Script URL used by Field Tools (Supabase edge secret). **Scheduled JobFlow digests send via Resend** using `EMAIL_FROM` (verify `ortegabuilt.com` in Resend, then set `JobFlow <jobflow@ortegabuilt.com>`). Field Request Gmail is the fallback. Field Tools vendor orders still use Gmail `sendOrderEmail`.
 
-   Cron schedule (UTC, configured in `vercel.json`): one job at **15:00 UTC** every day (~7–8 AM Pacific). That run sends daily follow-ups, plus the Friday weekly digest and Monday site-ready digest on those weekdays. Enable which emails run in **Settings → Schedules** (master switch plus **Daily follow-ups** and **Weekly digest**).
+   Cron schedule (UTC, configured in `vercel.json`): one job at **15:00 UTC** every day (~8 AM Pacific). That run sends daily follow-ups, plus the weekly digest and site-ready digest on the weekdays chosen in **Settings → Schedules** (defaults Friday and Monday).
 
 5. Click **Deploy**
 6. Copy your live URL, e.g. `https://jobflow-web.vercel.app`

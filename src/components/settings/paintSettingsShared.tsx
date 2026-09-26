@@ -37,7 +37,9 @@ import {
 } from "../../lib/trackerEmailCronStatus";
 import {
   DEFAULT_TRACKER_EMAIL_SCHEDULE,
-  TRACKER_CRON_UTC_SCHEDULE,
+  WEEKDAY_LABELS,
+  trackerCronUtcHint,
+  weekdayLabel,
   type TrackerEmailSchedule,
 } from "../../lib/trackerEmailSchedule";
 
@@ -502,7 +504,7 @@ export function ScheduledEmailSection({
 
       <div className="stack">
         <h3 className="paint-col-head">Daily follow-ups</h3>
-        <p className="muted small">{TRACKER_CRON_UTC_SCHEDULE.daily}</p>
+        <p className="muted small">{trackerCronUtcHint("daily")}</p>
         <label className="check">
           <input
             type="checkbox"
@@ -556,8 +558,10 @@ export function ScheduledEmailSection({
       </div>
 
       <div className="stack">
-        <h3 className="paint-col-head">Weekly digest (Fridays)</h3>
-        <p className="muted small">{TRACKER_CRON_UTC_SCHEDULE.weekly}</p>
+        <h3 className="paint-col-head">Weekly digest</h3>
+        <p className="muted small">
+          Automatic send is ~8:00 AM Pacific. Pick a send day to test without waiting for Friday or Monday.
+        </p>
         <label className="check">
           <input
             type="checkbox"
@@ -592,11 +596,48 @@ export function ScheduledEmailSection({
               disabled={!schedule.weekly.enabled}
               onChange={(e) => patchWeekly({ startup_site_ready: e.target.checked })}
             />
-            Monday site-ready + Needs attention (contract / COI / billing)
+            Site-ready + Needs attention (contract / COI / billing)
           </label>
         </div>
+        <label>
+          Send paint / wallcovering digest on
+          <select
+            className="paint-field-select"
+            value={schedule.weekly.digest_weekday}
+            disabled={!schedule.weekly.enabled}
+            onChange={(e) => patchWeekly({ digest_weekday: Number(e.target.value) })}
+          >
+            {WEEKDAY_LABELS.map((label, value) => (
+              <option key={label} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <p className="muted small" style={{ margin: 0 }}>
-          Site-ready emails send Mondays ({TRACKER_CRON_UTC_SCHEDULE.monday}). Paint/WC digests stay on Fridays.
+          {trackerCronUtcHint("digest", schedule.weekly.digest_weekday)}
+        </p>
+        <label>
+          Send site-ready digest on
+          <select
+            className="paint-field-select"
+            value={schedule.weekly.site_ready_weekday}
+            disabled={!schedule.weekly.enabled}
+            onChange={(e) => patchWeekly({ site_ready_weekday: Number(e.target.value) })}
+          >
+            {WEEKDAY_LABELS.map((label, value) => (
+              <option key={label} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="muted small" style={{ margin: 0 }}>
+          {trackerCronUtcHint("site_ready", schedule.weekly.site_ready_weekday)}. Defaults are Friday
+          digest and Monday site-ready.
+          {schedule.weekly.digest_weekday === schedule.weekly.site_ready_weekday
+            ? ` Both will send on ${weekdayLabel(schedule.weekly.digest_weekday)}.`
+            : ""}
         </p>
       </div>
     </section>

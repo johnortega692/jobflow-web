@@ -1,7 +1,11 @@
 import { isSupabaseAdminConfigured } from "../src/lib/supabaseAdmin.js";
-import { saveTrackerEmailCronStatusAdmin } from "../src/lib/orgSettingsAdmin.js";
+import { loadOrgSettingsBlobAdmin, saveTrackerEmailCronStatusAdmin } from "../src/lib/orgSettingsAdmin.js";
 import { buildTrackerEmailCronStatus } from "../src/lib/trackerEmailCronStatus.js";
-import { resolveTrackerCronSlots, type TrackerEmailCronSlot } from "../src/lib/trackerEmailSchedule.js";
+import {
+  normalizeTrackerEmailSchedule,
+  resolveTrackerCronSlots,
+  type TrackerEmailCronSlot,
+} from "../src/lib/trackerEmailSchedule.js";
 
 type VercelRequest = {
   method?: string;
@@ -49,10 +53,14 @@ function verifyCronSecret(req: VercelRequest): boolean {
   return readQuery(req, "secret") === secret;
 }
 
-function parseSlots(req: VercelRequest): TrackerEmailCronSlot[] {
+async function parseSlots(req: VercelRequest): Promise<TrackerEmailCronSlot[]> {
+  const org = await loadOrgSettingsBlobAdmin();
+  const schedule = normalizeTrackerEmailSchedule(org.tracker_email_schedule);
   return resolveTrackerCronSlots({
     querySlot: readQuery(req, "slot"),
     cronScheduleHeader: readHeader(req, "x-vercel-cron-schedule"),
+    digestWeekday: schedule.weekly.digest_weekday,
+    siteReadyWeekday: schedule.weekly.site_ready_weekday,
   });
 }
 
@@ -101,7 +109,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { runTrackerEmailCron } = await import("../src/lib/trackerEmailCronCore.js");
     const { runPinLockoutNotify } = await import("../src/lib/pinLockoutNotifyCore.js");
-    const slots = parseSlots(req);
+    const slots = await parseSlots(req);
     const results: CronRunResult[] = [];
     for (const slot of slots) {
       results.push(await runTrackerEmailCron(slot));
