@@ -6,6 +6,7 @@ import { DeliverySettingsSection } from "../components/settings/DeliverySettings
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
 import { PaintVendorsSettingsSection } from "../components/settings/PaintVendorsSettingsSection";
+import { AhaLibrarySettingsSection } from "../components/settings/AhaLibrarySettingsSection";
 import { SpecSectionsSettingsSection } from "../components/settings/SpecSectionsSettingsSection";
 import { TransmittalCategoriesSettingsSection } from "../components/settings/TransmittalCategoriesSettingsSection";
 import { StartupChecklistSettingsSection } from "../components/settings/StartupChecklistSettingsSection";
@@ -101,6 +102,10 @@ export function SettingsPage() {
   );
   const onSpecSectionsDirty = useCallback(
     (dirty: boolean) => setTabDirty("spec-sections", dirty),
+    [setTabDirty],
+  );
+  const onAhaLibraryDirty = useCallback(
+    (dirty: boolean) => setTabDirty("aha-library", dirty),
     [setTabDirty],
   );
   const onTransmittalCategoriesDirty = useCallback(
@@ -769,6 +774,17 @@ export function SettingsPage() {
           readOnly={sharedSettingsReadOnly}
           onDirtyChange={sharedSettingsReadOnly ? undefined : onSpecSectionsDirty}
           onBindActions={(actions) => bindSectionActions("spec-sections", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "aha-library" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "aha-library"}
+      >
+        <AhaLibrarySettingsSection
+          readOnly={sharedSettingsReadOnly}
+          onDirtyChange={sharedSettingsReadOnly ? undefined : onAhaLibraryDirty}
+          onBindActions={(actions) => bindSectionActions("aha-library", actions)}
         />
       </div>
 

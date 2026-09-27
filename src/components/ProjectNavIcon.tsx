@@ -100,6 +100,15 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <path d="M3 13l9 5 9-5" />
         </svg>
       );
+    case "aha":
+      return (
+        <svg {...common}>
+          <path d="M3 15h18" />
+          <path d="M6 15v-1c0-3.3 2.7-6 6-6s6 2.7 6 6v1" />
+          <path d="M9.5 5h5" />
+          <path d="M12 8V5" />
+        </svg>
+      );
     default:
       return null;
   }

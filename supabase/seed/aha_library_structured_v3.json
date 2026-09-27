@@ -1,0 +1,47 @@
+{
+  "paints_and_coatings": {
+    "match_name": "Paints & coatings",
+    "considerations": ["falls_elevation", "respiratory", "rolling_scaffolds", "fixed_scaffolds", "aerial_lifts"],
+    "equipment_rows": [
+      { "equipment": "Scissor lift", "training": "Scissor lift certification required for all operators; documentation provided", "inspection": "Inspect on delivery and before each shift; red-tag defects until repaired" },
+      { "equipment": "Boom lift", "training": "Boom lift certification required for all operators; documentation provided", "inspection": "Inspect on delivery and before each shift; red-tag defects until repaired" },
+      { "equipment": "Rolling scaffold", "training": "Scaffold certification required for all users; documentation provided", "inspection": "Inspect on delivery and before each shift by a competent person; red-tag defects" },
+      { "equipment": "Ladder", "training": "Ladder safety training; documentation provided", "inspection": "Inspect for defects and damage before use; red-tag defects" },
+      { "equipment": "Power tools", "training": "Authorized to use", "inspection": "Inspect daily for broken or loose parts; red-tag and replace defects" },
+      { "equipment": "Hand tools", "training": "Authorized to use", "inspection": "Inspect daily for broken or loose parts; red-tag and replace defects" },
+      { "equipment": "Airless sprayer / paint sprayer", "training": "Trained by supervisor before use; authorized to use", "inspection": "Inspect daily for damaged parts and cords; tag, remove, and replace defects" },
+      { "equipment": "Respirator", "training": "Medical clearance, fit test, and training on use and maintenance", "inspection": "Inspect before each use; replace filters on mfr. schedule; clean daily; store sealed" },
+      { "equipment": "Personal fall protection system", "training": "Trained in donning and use before starting work", "inspection": "Inspect before each use; SRL-LE (ANSI Z359.14) for leading edge; red-tag defects" }
+    ],
+    "competent_persons": [
+      { "activity": "Supervise safety on the job site", "qualification": "competent", "na": false, "note": "" },
+      { "activity": "First aid / CPR", "qualification": "trained", "na": false, "note": "" },
+      { "activity": "Fall protection supervision / inspection of fall protection equipment", "qualification": "competent", "na": false, "note": "Inspected by user before each use" },
+      { "activity": "Fall protection plan development / anchors", "qualification": "qualified", "na": false, "note": "If needed" },
+      { "activity": "Ladder inspections", "qualification": "competent", "na": false, "note": "Inspected by user before each use" },
+      { "activity": "Supervise scaffold erection / dismantlement", "qualification": "competent", "na": false, "note": "If needed" },
+      { "activity": "Rolling / mobile scaffold inspection", "qualification": "competent", "na": false, "note": "Used by certified operator" },
+      { "activity": "Scaffold inspection", "qualification": "competent", "na": false, "note": "Inspected by user before each use" },
+      { "activity": "Scissor lift / boom lift use", "qualification": "competent", "na": false, "note": "Used by certified operator" },
+      { "activity": "Powder-actuated tool use", "qualification": "qualified_licensed", "na": true, "note": "" },
+      { "activity": "Evaluate silica exposures and implement exposure control plan", "qualification": "competent", "na": true, "note": "" }
+    ]
+  },
+  "considerations_by_slug": {
+    "surface-prep": ["health_hazards"],
+    "brush-roll": ["falls_elevation", "rolling_scaffolds"],
+    "airless-spray": ["respiratory"],
+    "wallcovering-install": ["falls_elevation", "rolling_scaffolds"],
+    "scissor-lift": ["falls_elevation", "aerial_lifts"],
+    "occupied-spaces": ["public_exposure"],
+    "wallcovering-removal": ["health_hazards"],
+    "lead-paint": ["asbestos_lead", "respiratory", "hazmat_waste", "health_hazards"],
+    "exterior-painting": ["falls_elevation", "public_exposure", "aerial_lifts"],
+    "hp-coatings": ["respiratory", "health_hazards"],
+    "floor-coatings": ["respiratory", "health_hazards"],
+    "steel-deck": ["falls_elevation", "aerial_lifts", "respiratory", "health_hazards"],
+    "active-facility": ["energized_loto", "work_permits"],
+    "boom-lift": ["falls_elevation", "aerial_lifts"],
+    "heat-illness": ["health_hazards"]
+  }
+}

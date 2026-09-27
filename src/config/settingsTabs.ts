@@ -11,6 +11,7 @@ export const SETTINGS_TABS = [
   { id: "budget", label: "Budget", adminOnly: true as const },
   { id: "paint-catalog", label: "Paint products & sheens" },
   { id: "spec-sections", label: "Spec sections" },
+  { id: "aha-library", label: "AHA library" },
   { id: "transmittal-categories", label: "Transmittal categories" },
   { id: "startup-checklist", label: "Startup checklist" },
   { id: "paint-vendors", label: "Paint vendors" },

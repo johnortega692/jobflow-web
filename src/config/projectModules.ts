@@ -8,7 +8,8 @@ export type ProjectModuleId =
   | "budget"
   | "billing"
   | "work-orders"
-  | "material-tracker";
+  | "material-tracker"
+  | "aha";
 
 export type ProjectModule = {
   id: ProjectModuleId;
@@ -60,6 +61,11 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
       { id: "billing", label: "Labor Projection", path: "billing", ready: true },
       { id: "work-orders", label: "Work Orders", path: "work-orders", ready: true },
     ],
+  },
+  {
+    id: "safety",
+    label: "Safety",
+    modules: [{ id: "aha", label: "AHA", path: "aha", ready: true }],
   },
 ];
 

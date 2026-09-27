@@ -30,6 +30,7 @@ export const ORG_SETTINGS_KEYS = [
   "spec_sections",
   "transmittal_content_auto_on",
   "startup_checklist_default_enabled",
+  "aha_standard_ppe",
 ] as const;
 
 /** Per-user settings (each account keeps their own row). */
