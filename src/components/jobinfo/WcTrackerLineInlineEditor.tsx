@@ -1,7 +1,19 @@
+import { useId } from "react";
 import { DateInput } from "../DateInput";
+import { formatDateDisplay } from "../../lib/dateInputUtils";
 import { applyWcDateOrdered, applyWcLineStage, type WcFieldStatus } from "../../lib/fieldTrackerStatus";
 import { FlagSwitch, StageStepper } from "./StageStepper";
 import type { WcTrackerLineState } from "../../types/fieldTracker";
+
+/** Append "MM/DD/YYYY Delivered" on its own line. Skip if that stamp is already present. */
+function appendDeliveredNote(notes: string, today = new Date()): string {
+  const stamp = `${formatDateDisplay(today)} Delivered`;
+  const trimmed = notes.trim();
+  if (!trimmed) return stamp;
+  const already = trimmed.split(/\r?\n/).some((line) => line.trim() === stamp);
+  if (already) return notes;
+  return `${trimmed}\n${stamp}`;
+}
 
 /** Required lifecycle stages. Field measure and Shops are independent options. */
 const STEPPER_STAGES: { status: WcFieldStatus; label: string; flag: keyof WcTrackerLineState }[] = [
@@ -32,6 +44,8 @@ export function WcTrackerLineInlineEditor({
   onCancel,
   onDelete,
 }: Props) {
+  const deliveryNotesId = useId();
+
   function patch(p: Partial<WcTrackerLineState>) {
     onChange({ ...line, ...p });
   }
@@ -148,14 +162,25 @@ export function WcTrackerLineInlineEditor({
             Image URL
             <input value={line.imageUrl} onChange={(e) => patch({ imageUrl: e.target.value })} />
           </label>
-          <label className="wc-col-4">
-            Delivery notes
+          <div className="wc-col-4">
+            <div className="wc-delivery-notes-head">
+              <label htmlFor={deliveryNotesId}>Delivery notes</label>
+              <button
+                type="button"
+                className="wc-delivery-notes-stamp"
+                title="Add today's date and Delivered"
+                onClick={() => patch({ notesDelivered: appendDeliveredNote(line.notesDelivered) })}
+              >
+                Delivered
+              </button>
+            </div>
             <textarea
+              id={deliveryNotesId}
               rows={2}
               value={line.notesDelivered}
               onChange={(e) => patch({ notesDelivered: e.target.value })}
             />
-          </label>
+          </div>
           {line.revision && (
             <label className="wc-col-4">
               Revision notes

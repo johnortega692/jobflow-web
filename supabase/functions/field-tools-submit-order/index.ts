@@ -194,6 +194,7 @@ function asLineItems(arr: unknown): LineItem[] {
       quantity: o.quantity != null ? String(o.quantity) : undefined,
       detail: o.detail != null ? String(o.detail) : undefined,
       raw: o.raw != null ? String(o.raw) : undefined,
+      vendor: o.vendor != null ? String(o.vendor) : undefined,
     };
   });
 }

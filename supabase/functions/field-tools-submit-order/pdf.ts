@@ -2,12 +2,15 @@ import { PDFDocument, StandardFonts, rgb, type PDFPage } from "https://esm.sh/pd
 import { embedLogoImage, type OrderBranding } from "./branding.ts";
 import { resolveDisplayCompanyName } from "../displayCompanyName.ts";
 import { formatDateNeeded, formatOrderDateTime } from "./dates.ts";
+import { sheenColorWithoutVendor } from "./paint-detail.ts";
+import { wrapToWidth } from "./pdf-text.ts";
 
 export type LineItem = {
   name: string;
   quantity?: string;
   detail?: string;
   raw?: string;
+  vendor?: string;
 };
 
 export type MaterialPdfInput = {
@@ -334,7 +337,7 @@ function drawTableColumnHeader(layout: PageLayout, cols: TableCol[], tableW: num
     borderWidth: 0.5,
   });
 
-  let colX = MARGIN + 6;
+  let colX = MARGIN + 4;
   const headerBaseline = baselineBelowTop(headerTop, 9, 5);
   for (const col of cols) {
     layout.page.drawText(col.label, {
@@ -349,6 +352,34 @@ function drawTableColumnHeader(layout: PageLayout, cols: TableCol[], tableW: num
   layout.y = headerBottom - 6;
 }
 
+const CELL_SIZE = 9;
+const CELL_LEADING = 11;
+const CELL_PAD_TOP = 4;
+const CELL_PAD_BOTTOM = 3;
+
+function tableRowValues(item: LineItem, cols: TableCol[]): string[] {
+  const qty = item.quantity?.trim() || "—";
+  const name = item.name || item.raw || "—";
+  const detail = item.detail?.trim() || "";
+  if (cols.length === 1) return [name];
+  if (cols.length === 2) return [qty, name];
+  return [qty, name, detail];
+}
+
+/** Full cell text, wrapped to the column. Product and sheen/color are never ellipsized. */
+function tableRowCells(item: LineItem, cols: TableCol[], font: PdfFont): string[][] {
+  const values = tableRowValues(item, cols);
+  return cols.map((col, i) => {
+    const maxW = Math.max(8, col.width - 8);
+    return wrapToWidth(values[i] ?? "", maxW, (value) => font.widthOfTextAtSize(value, CELL_SIZE));
+  });
+}
+
+function tableRowHeight(lineCount: number): number {
+  const lines = Math.max(1, lineCount);
+  return CELL_PAD_TOP + fontAscent(CELL_SIZE) + (lines - 1) * CELL_LEADING + CELL_PAD_BOTTOM;
+}
+
 function drawTableRow(
   layout: PageLayout,
   item: LineItem,
@@ -356,29 +387,28 @@ function drawTableRow(
   cols: TableCol[],
   tableW: number,
 ): void {
-  const qty = item.quantity?.trim() || "—";
-  const name = item.name || item.raw || "—";
-  const detail = item.detail?.trim() || "";
-  const rowH = 16;
+  const cells = tableRowCells(item, cols, layout.font);
+  const lineCount = Math.max(1, ...cells.map((lines) => lines.length));
+  const rowH = tableRowHeight(lineCount);
   const rowTop = layout.y;
   const rowBottom = rowTop - rowH;
   if (index % 2 === 1) {
     layout.page.drawRectangle({ x: MARGIN, y: rowBottom, width: tableW, height: rowH, color: ROW_ALT });
   }
 
-  let x = MARGIN + 6;
-  const rowBaseline = baselineBelowTop(rowTop, 9, 4);
-  const values = cols.length === 1
-    ? [name]
-    : cols.length === 2
-    ? [qty, name]
-    : [qty, name, detail];
-
+  let x = MARGIN;
+  const firstBaseline = baselineBelowTop(rowTop, CELL_SIZE, CELL_PAD_TOP);
   cols.forEach((col, i) => {
-    const val = values[i] ?? "";
-    const maxW = col.width - 8;
-    const clipped = truncate(val, layout.font, 9, maxW);
-    layout.page.drawText(clipped, { x, y: rowBaseline, size: 9, font: layout.font, color: rgb(0.1, 0.1, 0.1) });
+    const lines = cells[i] ?? [];
+    lines.forEach((line, lineIndex) => {
+      layout.page.drawText(line, {
+        x: x + 4,
+        y: firstBaseline - lineIndex * CELL_LEADING,
+        size: CELL_SIZE,
+        font: layout.font,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+    });
     x += col.width;
   });
 
@@ -410,7 +440,11 @@ function drawSectionTable(layout: PageLayout, title: string, items: LineItem[], 
     drawTableColumnHeader(layout, cols, tableW);
 
     while (i < items.length) {
-      if (layout.y - TABLE_ROW_H < FOOTER_TOP) {
+      const cells = tableRowCells(items[i]!, cols, layout.font);
+      const rowH = tableRowHeight(Math.max(1, ...cells.map((lines) => lines.length))) + 2;
+      const room = layout.y - FOOTER_TOP;
+      const nearTop = layout.y > PAGE_H - MARGIN - 90;
+      if (rowH > room && !nearTop) {
         startNewPage(layout, title, { itemStart: i + 1, itemTotal: items.length });
         break;
       }
@@ -420,15 +454,6 @@ function drawSectionTable(layout: PageLayout, title: string, items: LineItem[], 
   }
 
   layout.y -= 10;
-}
-
-function truncate(text: string, font: PdfFont, size: number, maxWidth: number): string {
-  const value = text.replace(/\s+/g, " ").trim();
-  if (!value) return "";
-  if (font.widthOfTextAtSize(value, size) <= maxWidth) return value;
-  let s = value;
-  while (s.length > 1 && font.widthOfTextAtSize(`${s}…`, size) > maxWidth) s = s.slice(0, -1);
-  return `${s}…`;
 }
 
 function drawFooter(
@@ -562,17 +587,24 @@ export async function buildMaterialPdf(input: MaterialPdfInput): Promise<Uint8Ar
   }
 
   const contentW = PAGE_W - MARGIN * 2;
-  drawSectionTable(layout, "Paint", input.paint, [
-    { key: "qty", label: "Qty", width: 52 },
-    { key: "name", label: "Product", width: contentW * 0.42 },
-    { key: "detail", label: "Sheen / Color", width: contentW * 0.38 },
+  const qtyW = 56;
+  const paintTextW = contentW - qtyW;
+  const productW = Math.round(paintTextW * 0.48);
+  const paint = input.paint.map((item) => ({
+    ...item,
+    detail: sheenColorWithoutVendor(item.detail, item.vendor || input.vendor),
+  }));
+  drawSectionTable(layout, "Paint", paint, [
+    { key: "qty", label: "Qty", width: qtyW },
+    { key: "name", label: "Product", width: productW },
+    { key: "detail", label: "Sheen / Color", width: paintTextW - productW },
   ]);
   drawSectionTable(layout, "Sundries", input.sundries, [
-    { key: "qty", label: "Qty", width: 52 },
-    { key: "name", label: "Item", width: contentW - 58 },
+    { key: "qty", label: "Qty", width: qtyW },
+    { key: "name", label: "Item", width: contentW - qtyW },
   ]);
   drawSectionTable(layout, "Additional", input.additional, [
-    { key: "name", label: "Item", width: contentW - 12 },
+    { key: "name", label: "Item", width: contentW },
   ]);
 
   stampAllPageFooters(doc, font, fontBold, input.branding, totalItems, layout.generatedAt);
@@ -618,10 +650,13 @@ export async function buildListPdf(input: ListPdfInput): Promise<Uint8Array> {
 
   layout.y -= 6;
   const contentW = PAGE_W - MARGIN * 2;
+  const qtyW = 56;
+  const listTextW = contentW - qtyW;
+  const itemW = Math.round(listTextW * 0.58);
   drawSectionTable(layout, input.sectionLabel, input.items, [
-    { key: "qty", label: "Qty", width: 52 },
-    { key: "name", label: "Item", width: contentW * 0.55 },
-    { key: "detail", label: "Detail", width: contentW * 0.35 },
+    { key: "qty", label: "Qty", width: qtyW },
+    { key: "name", label: "Item", width: itemW },
+    { key: "detail", label: "Detail", width: listTextW - itemW },
   ]);
 
   if (input.photoBase64?.trim()) {

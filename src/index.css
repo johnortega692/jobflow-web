@@ -12539,6 +12539,37 @@ a.job-tracker-tab {
   padding: 0.75rem;
 }
 
+.wc-delivery-notes-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.wc-delivery-notes-head label {
+  width: auto;
+}
+
+.wc-delivery-notes-stamp {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  margin: 0;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.45;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.wc-delivery-notes-stamp:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .wc-tracker-delete-btn:hover:not(:disabled) {
   color: var(--danger);
   border-color: var(--danger);
