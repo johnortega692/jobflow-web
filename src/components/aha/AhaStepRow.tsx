@@ -58,6 +58,10 @@ export function AhaStepRow({
 }: Props) {
   const name = step.name.trim() || "Untitled step";
   const rac = racFor(step.prob, step.sev);
+  const hazards = step.hazards.map((line) => line.trim()).filter(Boolean);
+  const controls = step.controls.map((line) => line.trim()).filter(Boolean);
+  const probLabel = AHA_PROBABILITIES.find((option) => option.value === step.prob)?.label ?? step.prob;
+  const sevLabel = AHA_SEVERITIES.find((option) => option.value === step.sev)?.label ?? step.sev;
 
   return (
     <div
@@ -71,7 +75,7 @@ export function AhaStepRow({
         onDrop();
       }}
     >
-      <div className="aha-step">
+      <div className="aha-step-summary">
         <button
           type="button"
           className="paint-row-handle"
@@ -90,76 +94,121 @@ export function AhaStepRow({
         <span className="aha-step-num" aria-hidden="true">
           {index + 1}
         </span>
-        <button type="button" className="aha-step-main" onClick={onToggle} aria-expanded={open}>
-          <span className="aha-step-title-row">
-            <span
-              className={`wc-tracker-row-chevron aha-step-chevron${open ? " wc-tracker-row-chevron--open" : ""}`}
-              aria-hidden="true"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M9 6l6 6-6 6" />
-              </svg>
-            </span>
-            <span className="aha-step-name">{name}</span>
+        <button type="button" className="aha-step-summary-main" onClick={onToggle} aria-expanded={open}>
+          <span className="aha-step-name">{name}</span>
+          <span className="aha-step-counts">
+            {hazards.length} {hazards.length === 1 ? "hazard" : "hazards"} · {controls.length}{" "}
+            {controls.length === 1 ? "control" : "controls"}
           </span>
-          {step.hazards.length > 0 && (
-            <ul className="aha-bullet-list">
-              {step.hazards.map((hazard, hazardIndex) => (
-                <li key={`${hazard}-${hazardIndex}`}>
-                  <span className="aha-bullet aha-bullet--hazard" aria-hidden="true">
-                    !
-                  </span>
-                  <span>{hazard}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <span className="aha-step-rac-text">
+            {probLabel} / {sevLabel}
+          </span>
+          <RacBadge level={rac} size={30} />
+          <span
+            className={`wc-tracker-row-chevron aha-step-chevron${open ? " wc-tracker-row-chevron--open" : ""}`}
+            aria-hidden="true"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </span>
         </button>
-        <button type="button" className="aha-step-controls" onClick={onToggle} aria-expanded={open}>
-          {step.controls.length > 0 && (
-            <ul className="aha-bullet-list">
-              {step.controls.map((control, controlIndex) => (
-                <li key={`${control}-${controlIndex}`}>
-                  <span className="aha-bullet aha-bullet--control" aria-hidden="true">
-                    ✓
-                  </span>
-                  <span>{control}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {(step.osha_refs.trim() || (showEm385 && step.em385_refs.trim())) && (
-            <div className="aha-ref-chips">
-              {step.osha_refs.trim() && (
-                <RefChip
-                  label={formatOshaRef(step.osha_refs)}
-                  value={step.osha_refs}
-                  emptyLabel="add ref"
-                  emptyTitle="OSHA reference"
-                />
-              )}
-              {showEm385 && step.em385_refs.trim() && (
-                <RefChip
-                  label={`EM 385-1-1 § ${step.em385_refs.trim()}`}
-                  value={step.em385_refs}
-                  emptyLabel="add ref"
-                  emptyTitle="EM 385-1-1 reference"
-                />
-              )}
-            </div>
-          )}
-        </button>
-        <div className="aha-step-risk">
-          <div className="aha-prob-row">
+      </div>
+      {open && (
+        <div className="aha-step-detail">
+          <div className="stack">
+            <h4>Hazards</h4>
+            {hazards.length > 0 && (
+              <ul className="aha-bullet-list">
+                {hazards.map((hazard, hazardIndex) => (
+                  <li key={`${hazard}-${hazardIndex}`}>
+                    <span className="aha-bullet aha-bullet--hazard" aria-hidden="true">
+                      !
+                    </span>
+                    <span>{hazard}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <label className="aha-step-name-field">
+              Step name
+              <input value={step.name} onChange={(event) => onPatch({ name: event.target.value })} />
+            </label>
+            <label>
+              Hazards
+              <textarea
+                rows={3}
+                value={step.hazards.join("\n")}
+                placeholder="One hazard per line"
+                onChange={(event) => onPatch({ hazards: event.target.value.split("\n") })}
+              />
+            </label>
+          </div>
+          <div className="stack">
+            <h4>Controls</h4>
+            {controls.length > 0 && (
+              <ul className="aha-bullet-list">
+                {controls.map((control, controlIndex) => (
+                  <li key={`${control}-${controlIndex}`}>
+                    <span className="aha-bullet aha-bullet--control" aria-hidden="true">
+                      ✓
+                    </span>
+                    <span>{control}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <label>
+              Controls
+              <textarea
+                rows={3}
+                value={step.controls.join("\n")}
+                placeholder="One control per line"
+                onChange={(event) => onPatch({ controls: event.target.value.split("\n") })}
+              />
+            </label>
+            {(step.osha_refs.trim() || (showEm385 && step.em385_refs.trim())) && (
+              <div className="aha-ref-chips">
+                {step.osha_refs.trim() && (
+                  <RefChip
+                    label={formatOshaRef(step.osha_refs)}
+                    value={step.osha_refs}
+                    emptyLabel="add ref"
+                    emptyTitle="OSHA reference"
+                  />
+                )}
+                {showEm385 && step.em385_refs.trim() && (
+                  <RefChip
+                    label={`EM 385-1-1 § ${step.em385_refs.trim()}`}
+                    value={step.em385_refs}
+                    emptyLabel="add ref"
+                    emptyTitle="EM 385-1-1 reference"
+                  />
+                )}
+              </div>
+            )}
+            <label>
+              OSHA refs
+              <input value={step.osha_refs} onChange={(event) => onPatch({ osha_refs: event.target.value })} />
+            </label>
+            {showEm385 && (
+              <label>
+                EM 385-1-1 refs
+                <input value={step.em385_refs} onChange={(event) => onPatch({ em385_refs: event.target.value })} />
+              </label>
+            )}
+          </div>
+          <div className="stack aha-step-risk">
+            <h4>Risk assessment</h4>
             <label className="aha-field">
               Probability
               <select
@@ -175,73 +224,23 @@ export function AhaStepRow({
                 ))}
               </select>
             </label>
-            <RacBadge level={rac} size={36} />
-          </div>
-          <label className="aha-field">
-            Severity
-            <select
-              className="aha-select"
-              value={step.sev}
-              aria-label={`Severity for step ${index + 1}`}
-              onChange={(event) => onPatch({ sev: event.target.value as AhaStep["sev"] })}
-            >
-              {AHA_SEVERITIES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" className="aha-remove-step" onClick={onRemove}>
-            Remove step
-          </button>
-        </div>
-      </div>
-      {open && (
-        <div className="aha-step-editor">
-          <div className="aha-step-editor-grid">
-            <label className="aha-step-name-field">
-              Step name
-              <input value={step.name} onChange={(event) => onPatch({ name: event.target.value })} />
+            <label className="aha-field">
+              Severity
+              <select
+                className="aha-select"
+                value={step.sev}
+                aria-label={`Severity for step ${index + 1}`}
+                onChange={(event) => onPatch({ sev: event.target.value as AhaStep["sev"] })}
+              >
+                {AHA_SEVERITIES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label>
-              Hazards
-              <textarea
-                rows={4}
-                value={step.hazards.join("\n")}
-                placeholder="One hazard per line"
-                onChange={(event) => onPatch({ hazards: event.target.value.split("\n") })}
-              />
-            </label>
-            <label>
-              Controls
-              <textarea
-                rows={4}
-                value={step.controls.join("\n")}
-                placeholder="One control per line"
-                onChange={(event) => onPatch({ controls: event.target.value.split("\n") })}
-              />
-            </label>
-            <label>
-              OSHA refs
-              <input
-                value={step.osha_refs}
-                onChange={(event) => onPatch({ osha_refs: event.target.value })}
-              />
-            </label>
-            {showEm385 && (
-              <label>
-                EM 385-1-1 refs
-                <input
-                  value={step.em385_refs}
-                  onChange={(event) => onPatch({ em385_refs: event.target.value })}
-                />
-              </label>
-            )}
-          </div>
-          <div className="aha-step-editor-footer">
-            <button type="button" className="btn btn-primary btn-sm" onClick={onToggle}>
-              Done
+            <button type="button" className="aha-remove-step" onClick={onRemove}>
+              Remove step
             </button>
           </div>
         </div>

@@ -109,6 +109,29 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <path d="M12 8V5" />
         </svg>
       );
+    case "toolbox-talks":
+      return (
+        <svg {...common}>
+          <path d="M8 4h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+          <path d="M9 9h6M9 12h6M9 15h4" />
+        </svg>
+      );
+    case "safety-inspections":
+      return (
+        <svg {...common}>
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+          <path d="M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z" />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
+      );
+    case "field-reports":
+      return (
+        <svg {...common}>
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5" />
+          <path d="M8 13h8M8 17h5" />
+        </svg>
+      );
     default:
       return null;
   }

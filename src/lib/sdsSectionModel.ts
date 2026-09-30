@@ -361,8 +361,10 @@ export function sectionIncludedDocuments(
 export function tocSectionTitle(section: SdsSection): string {
   const mfr = section.manufacturer.trim();
   const product = section.product.trim();
-  if (mfr && product) return `${mfr} ${product}`;
-  return product || mfr || "Product Section";
+  const finish = section.finish_type.trim();
+  const name = [mfr, product].filter(Boolean).join(" ");
+  if (!name) return finish || "Product Section";
+  return finish ? `${name} ${finish}` : name;
 }
 
 const TOC_ATTACHMENT_LABELS: Record<SdsAttachmentKind, string> = {

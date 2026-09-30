@@ -21,6 +21,9 @@ import { BillingPage } from "./pages/BillingPage";
 import { ProjectWorkOrdersPage } from "./pages/ProjectWorkOrdersPage";
 import { MaterialTrackerPage } from "./pages/MaterialTrackerPage";
 import { AhaPage } from "./pages/AhaPage";
+import { ToolboxTalksPage } from "./pages/ToolboxTalksPage";
+import { SafetyInspectionsPage } from "./pages/SafetyInspectionsPage";
+import { FieldReportsPage } from "./pages/FieldReportsPage";
 import { WorkOrderEditorPage } from "./pages/WorkOrderEditorPage";
 import { FrpSubmittalsPage } from "./pages/FrpSubmittalsPage";
 import { ApprovedBrushoutsPage } from "./pages/ApprovedBrushoutsPage";
@@ -85,6 +88,9 @@ export default function App() {
               <Route path="work-orders/:workOrderId" element={<WorkOrderEditorPage />} />
               <Route path="material-tracker" element={<MaterialTrackerPage />} />
               <Route path="aha" element={<AhaPage />} />
+              <Route path="toolbox-talks" element={<ToolboxTalksPage />} />
+              <Route path="safety-inspections" element={<SafetyInspectionsPage />} />
+              <Route path="field-reports" element={<FieldReportsPage />} />
               {/* Legacy paths → Submittals hub */}
               <Route path="paint" element={<Navigate to="../submittals/paint" replace />} />
               <Route path="wallcovering" element={<Navigate to="../submittals/wallcovering" replace />} />

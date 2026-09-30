@@ -18,6 +18,9 @@ async function sendViaResend(params: {
   cc?: string;
   subject: string;
   htmlBody: string;
+  text?: string;
+  attachmentName?: string;
+  attachmentBase64?: string;
 }): Promise<{ ok: boolean; message: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
   const from = Deno.env.get("EMAIL_FROM")?.trim();
@@ -35,7 +38,11 @@ async function sendViaResend(params: {
     subject: params.subject,
     html: params.htmlBody,
   };
+  if (params.text?.trim()) payload.text = params.text;
   if (cc.length) payload.cc = cc;
+  if (params.attachmentName && params.attachmentBase64) {
+    payload.attachments = [{ filename: params.attachmentName, content: params.attachmentBase64 }];
+  }
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -105,8 +112,11 @@ export async function sendJobFlowNotification(params: {
   cc?: string;
   subject: string;
   htmlBody: string;
+  text?: string;
   attachmentName?: string;
   attachmentBase64?: string;
+  /** Stay on the JobFlow mailbox. Do not fall through to the order Gmail account. */
+  jobFlowOnly?: boolean;
 }): Promise<{ ok: boolean; message: string }> {
   const resend = await sendViaResend(params);
   if (resend.ok) return resend;
@@ -118,6 +128,7 @@ export async function sendJobFlowNotification(params: {
   const gasParams = { ...params, senderName };
   const jobFlow = await postGas(base, "sendJobFlowEmail", gasParams);
   if (jobFlow.ok) return jobFlow;
+  if (params.jobFlowOnly) return { ok: false, message: jobFlow.message || resend.message };
 
   return await postGas(base, "sendOrderEmail", {
     ...gasParams,

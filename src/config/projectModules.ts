@@ -9,7 +9,10 @@ export type ProjectModuleId =
   | "billing"
   | "work-orders"
   | "material-tracker"
-  | "aha";
+  | "aha"
+  | "toolbox-talks"
+  | "safety-inspections"
+  | "field-reports";
 
 export type ProjectModule = {
   id: ProjectModuleId;
@@ -65,7 +68,12 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
   {
     id: "safety",
     label: "Safety",
-    modules: [{ id: "aha", label: "AHA", path: "aha", ready: true }],
+    modules: [
+      { id: "aha", label: "AHA", path: "aha", ready: true },
+      { id: "toolbox-talks", label: "Toolbox talks", path: "toolbox-talks", ready: true },
+      { id: "safety-inspections", label: "Safety inspections", path: "safety-inspections", ready: true },
+      { id: "field-reports", label: "Field reports", path: "field-reports", ready: true },
+    ],
   },
 ];
 

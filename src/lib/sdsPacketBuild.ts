@@ -486,6 +486,74 @@ async function addCoverPage(
   drawPageFooter(page, ctx, branding, packet.preparer);
 }
 
+type ProductSummaryColumn = {
+  header: string;
+  weight: number;
+  cell: (section: SdsSection, rowNum: number) => string;
+};
+
+function summaryCell(value: string): string {
+  const trimmed = value.trim();
+  return trimmed === "—" ? "" : trimmed;
+}
+
+function productSummaryColumns(sections: SdsSection[]): ProductSummaryColumn[] {
+  const showSpec = sections.some((section) => section.spec_section.trim());
+  const candidates: (ProductSummaryColumn & { optional: boolean })[] = [
+    { header: "#", weight: 0.04, optional: false, cell: (_section: SdsSection, rowNum) => String(rowNum) },
+    { header: "Category", weight: 0.09, optional: true, cell: (section) => summaryCell(section.category) },
+    {
+      header: "System / Material",
+      weight: showSpec ? 0.11 : 0.12,
+      optional: true,
+      cell: (section) => summaryCell(section.system_material),
+    },
+  ];
+  if (showSpec) {
+    candidates.push({
+      header: "Spec",
+      weight: 0.1,
+      optional: false,
+      cell: (section) => summaryCell(section.spec_section),
+    });
+  }
+  candidates.push(
+    {
+      header: "Product",
+      weight: showSpec ? 0.16 : 0.17,
+      optional: true,
+      cell: (section) => summaryCell(section.product),
+    },
+    {
+      header: "Mfg",
+      weight: 0.1,
+      optional: true,
+      cell: (section) => summaryCell(section.manufacturer),
+    },
+    {
+      header: "Finish",
+      weight: 0.08,
+      optional: true,
+      cell: (section) => summaryCell(section.finish_type),
+    },
+    {
+      header: "Color / Pattern / Finish",
+      weight: showSpec ? 0.1 : 0.11,
+      optional: true,
+      cell: (section) => summaryCell(section.color),
+    },
+    {
+      header: "Notes",
+      weight: showSpec ? 0.22 : 0.29,
+      optional: true,
+      cell: (section) => summaryCell(notesFromAttachments(section)),
+    },
+  );
+  return candidates
+    .filter((col) => !col.optional || sections.some((section) => col.cell(section, 1).trim()))
+    .map(({ header, weight, cell }) => ({ header, weight, cell }));
+}
+
 function addMaterialSummaryPage(
   project: ProjectInfo,
   packet: SdsPacketData,
@@ -506,34 +574,11 @@ function addMaterialSummaryPage(
   const tableLeft = tableMargin;
   const tableWidth = w - tableMargin * 2;
 
-  const showSpec = packet.sections.some((s) => s.spec_section.trim());
-  const cols = showSpec
-    ? [
-        "#",
-        "Category",
-        "System / Material",
-        "Spec",
-        "Product",
-        "Mfg",
-        "Finish",
-        "Color / Pattern / Finish",
-        "Notes",
-      ]
-    : [
-        "#",
-        "Category",
-        "System / Material",
-        "Product",
-        "Mfg",
-        "Finish",
-        "Color / Pattern / Finish",
-        "Notes",
-      ];
+  const ordered = sortSdsSectionsBySpec(packet.sections);
+  const cols = productSummaryColumns(ordered);
   const widths = columnWidthsFromWeights(
     tableWidth,
-    showSpec
-      ? [0.04, 0.09, 0.11, 0.1, 0.16, 0.1, 0.08, 0.1, 0.22]
-      : [0.04, 0.09, 0.12, 0.17, 0.1, 0.08, 0.11, 0.29],
+    cols.map((col) => col.weight),
   );
   const tableRight = tableLeft + tableWidth;
   const headerSize = 7;
@@ -543,18 +588,17 @@ function addMaterialSummaryPage(
   let x = tableLeft;
   for (let i = 0; i < cols.length; i++) {
     page.drawRectangle({ x, y: y - 2, width: widths[i]!, height: 14, color: rgb(0.2, 0.2, 0.2) });
-    const header = truncateTextToWidth(cols[i]!, widths[i]! - cellPad, bold, headerSize);
+    const header = truncateTextToWidth(cols[i]!.header, widths[i]! - cellPad, bold, headerSize);
     page.drawText(header, { x: x + 2, y, size: headerSize, font: bold, color: rgb(1, 1, 1) });
     x += widths[i]!;
   }
   y -= 16;
 
-  const ordered = sortSdsSectionsBySpec(packet.sections);
   let rowNum = 0;
   let lastBand: string | null = null;
 
   for (const section of ordered) {
-    const band = showSpec
+    const band = cols.some((col) => col.header === "Spec")
       ? section.spec_section.trim() || "(No spec section)"
       : section.category;
     if (band !== lastBand) {
@@ -580,29 +624,7 @@ function addMaterialSummaryPage(
     }
 
     rowNum += 1;
-    const specCell = section.spec_section.trim() || "—";
-    const row = showSpec
-      ? [
-          String(rowNum),
-          section.category,
-          section.system_material.trim() || "—",
-          specCell,
-          section.product.trim() || "—",
-          section.manufacturer.trim() || "—",
-          section.finish_type.trim() || "—",
-          section.color.trim() || "—",
-          notesFromAttachments(section),
-        ]
-      : [
-          String(rowNum),
-          section.category,
-          section.system_material.trim() || "—",
-          section.product.trim() || "—",
-          section.manufacturer.trim() || "—",
-          section.finish_type.trim() || "—",
-          section.color.trim() || "—",
-          notesFromAttachments(section),
-        ];
+    const row = cols.map((col) => col.cell(section, rowNum) || "—");
     const rowBottom = y - 12;
     const rowTop = rowBottom + 14;
     rowRects.push([tableLeft, rowBottom, tableRight, rowTop]);

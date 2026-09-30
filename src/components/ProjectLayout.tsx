@@ -260,7 +260,8 @@ function ProjectLayoutShell() {
             activeModule.id !== "rfis" &&
             activeModule.id !== "excel-paste" &&
             activeModule.id !== "submittals" &&
-            activeModule.id !== "orders" && (
+            activeModule.id !== "orders" &&
+            activeModule.id !== "aha" && (
             <div className="page-header project-page-header">
               <h1>{activeModule.label}</h1>
             </div>

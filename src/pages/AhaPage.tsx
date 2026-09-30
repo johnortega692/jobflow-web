@@ -5,8 +5,8 @@ import { AhaConsiderationsCard } from "../components/aha/AhaConsiderationsCard";
 import { AhaEmergencyCard } from "../components/aha/AhaEmergencyCard";
 import { AhaEquipmentTable } from "../components/aha/AhaEquipmentTable";
 import { AhaProductsCard } from "../components/aha/AhaProductsCard";
+import { AhaLibraryModal, type AhaLibraryPick } from "../components/aha/AhaLibraryModal";
 import { AhaReviewLog } from "../components/aha/AhaReviewLog";
-import { AhaStepLibraryModal } from "../components/aha/AhaStepLibraryModal";
 import { AhaStepRow } from "../components/aha/AhaStepRow";
 import { RacBadge } from "../components/aha/RacBadge";
 import { SegmentedControl } from "../components/SegmentedControl";
@@ -28,8 +28,13 @@ import {
   mergeConsiderations,
   mergeEquipmentRows,
 } from "../lib/aha/equipmentRows";
-import { RECOMMENDED_BUNDLES } from "../lib/aha/bundles";
-import { emptyEmergency, loadProjectEmergency, saveProjectEmergency, type AhaEmergencyInfo } from "../lib/aha/emergency";
+import {
+  emptyEmergency,
+  emergencyComplete,
+  loadProjectEmergency,
+  saveProjectEmergency,
+  type AhaEmergencyInfo,
+} from "../lib/aha/emergency";
 import { formatAddress } from "../lib/aha/format";
 import { mergePulledProducts, productsFromJob } from "../lib/aha/jobProducts";
 import { DEFAULT_STANDARD_PPE, parseStandardPpe } from "../lib/aha/ppe";
@@ -40,22 +45,20 @@ import {
   ahaPdfFilename,
   ahaReadiness,
   ahaScopeLabel,
-  ahaStatusLabel,
   RAC_KEY,
   blankAhaStep,
   cleanAhaStep,
   copyLibrarySteps,
-  suggestedAhaName,
 } from "../lib/aha/display";
-import { overallRac } from "../lib/aha/rac";
-import type { AhaLibraryItem, AhaLibraryStep, AhaScope, AhaStandard, AhaStatus, ProjectAha } from "../lib/aha/types";
+import { RAC_COLORS, ahaNumber, overallRac } from "../lib/aha/rac";
+import type { AhaLibraryItem, AhaStandard, AhaStatus, ProjectAha } from "../lib/aha/types";
 import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
 import type { ProjectForm } from "../types/database";
 import "../components/aha/aha-editor.css";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
-type ScopeFilter = "all" | AhaScope;
+type AhaSection = "hazards" | "steps" | "equipment" | "people" | "products" | "notes" | "emergency";
 
 const STATUS_OPTIONS: { value: AhaStatus; label: string }[] = [
   { value: "draft", label: "Draft" },
@@ -66,14 +69,6 @@ const STATUS_OPTIONS: { value: AhaStatus; label: string }[] = [
 const STANDARD_OPTIONS: { value: AhaStandard; label: string }[] = [
   { value: "calosha", label: "Cal/OSHA" },
   { value: "em385", label: "EM 385-1-1" },
-];
-
-const SCOPE_FILTERS: { id: ScopeFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "paint", label: "Paint" },
-  { id: "wallcovering", label: "Wallcovering" },
-  { id: "access", label: "Access" },
-  { id: "general", label: "General" },
 ];
 
 function cloneAha(aha: ProjectAha): ProjectAha {
@@ -87,12 +82,13 @@ export function AhaPage() {
   const [ahas, setAhas] = useState<ProjectAha[]>([]);
   const [draft, setDraft] = useState<ProjectAha | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
-  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
+  const [libraryModal, setLibraryModal] = useState<null | "create" | "add">(null);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switcherRef = useRef<HTMLDivElement>(null);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [section, setSection] = useState<AhaSection>("steps");
   const [editingName, setEditingName] = useState(false);
   const [nameBeforeEdit, setNameBeforeEdit] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
@@ -102,11 +98,6 @@ export function AhaPage() {
   const [emergency, setEmergency] = useState<AhaEmergencyInfo>(emptyEmergency);
   const [standardPpe, setStandardPpe] = useState<string[]>(DEFAULT_STANDARD_PPE);
   const [pullingProducts, setPullingProducts] = useState(false);
-  const [checkedLibraryIds, setCheckedLibraryIds] = useState<string[]>([]);
-  const [createName, setCreateName] = useState("");
-  const [createCsi, setCreateCsi] = useState("");
-  const [nameTouched, setNameTouched] = useState(false);
-  const [csiTouched, setCsiTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const statusSavingRef = useRef(false);
   const printingRef = useRef(false);
@@ -120,7 +111,7 @@ export function AhaPage() {
       if (!next) {
         setDraft(null);
         setSelectedId(null);
-        setExpandedStepId(null);
+        setExpandedIds([]);
         setEditingName(false);
         return;
       }
@@ -128,7 +119,7 @@ export function AhaPage() {
       syncBaseline(copy);
       setDraft(copy);
       setSelectedId(copy.id);
-      setExpandedStepId(null);
+      setExpandedIds([]);
       setEditingName(false);
     },
     [syncBaseline],
@@ -140,12 +131,7 @@ export function AhaPage() {
     setError(null);
     setDraft(null);
     setSelectedId(null);
-    setExpandedStepId(null);
-    setCheckedLibraryIds([]);
-    setNameTouched(false);
-    setCsiTouched(false);
-    setCreateName("");
-    setCreateCsi("");
+    setExpandedIds([]);
     void (async () => {
       try {
         const [templates, rows, emergencyInfo, org] = await Promise.all([
@@ -163,9 +149,6 @@ export function AhaPage() {
           const copy = cloneAha(rows[0]);
           setDraft(copy);
           setSelectedId(copy.id);
-          setLibraryOpen(false);
-        } else {
-          setLibraryOpen(true);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load AHAs.");
@@ -177,14 +160,6 @@ export function AhaPage() {
       cancelled = true;
     };
   }, [projectId]);
-
-  useEffect(() => {
-    const selected = checkedLibraryIds
-      .map((id) => library.find((item) => item.id === id))
-      .filter((item): item is AhaLibraryItem => Boolean(item));
-    if (!nameTouched) setCreateName(suggestedAhaName(selected.map((item) => item.scope)));
-    if (!csiTouched) setCreateCsi(selected[0]?.csi ?? "");
-  }, [checkedLibraryIds, library, nameTouched, csiTouched]);
 
   const persist = useCallback(
     async (skipConfirm: boolean): Promise<boolean> => {
@@ -220,7 +195,7 @@ export function AhaPage() {
         syncBaseline(saved);
         setDraft(saved);
         setAhas((rows) => rows.map((row) => (row.id === saved.id ? saved : row)));
-        setExpandedStepId(null);
+        setExpandedIds([]);
         return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not save this AHA.");
@@ -235,7 +210,7 @@ export function AhaPage() {
   const onDiscardUnsaved = useCallback(() => {
     const baseline = readBaseline();
     if (baseline) setDraft(baseline);
-    setExpandedStepId(null);
+    setExpandedIds([]);
     setEditingName(false);
   }, [readBaseline]);
 
@@ -245,6 +220,22 @@ export function AhaPage() {
     onSave: () => persist(true),
     onDiscard: onDiscardUnsaved,
   });
+
+  useEffect(() => {
+    if (!switcherOpen) return;
+    function onPointer(event: MouseEvent) {
+      if (!switcherRef.current?.contains(event.target as Node)) setSwitcherOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setSwitcherOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [switcherOpen]);
 
   function confirmDiscard(): boolean {
     if (!isDirty) return true;
@@ -284,30 +275,15 @@ export function AhaPage() {
     }
   }
 
-  function toggleLibraryTemplate(id: string) {
-    setCheckedLibraryIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-    );
-  }
-
-  async function createFromLibrary() {
-    if (!checkedLibraryIds.length || creating) return;
+  async function createFromLibrary(input: { libraryIds: string[]; name: string; csi: string }) {
+    if (!input.libraryIds.length || creating) return;
     if (!confirmDiscard()) return;
     setCreating(true);
     setError(null);
     try {
-      const created = await createProjectAhaFromLibrary(projectId, {
-        libraryIds: checkedLibraryIds,
-        name: nameTouched ? createName : suggestedName,
-        csi: csiTouched ? createCsi : suggestedCsi,
-      });
+      const created = await createProjectAhaFromLibrary(projectId, input);
       setAhas((rows) => [...rows, created]);
-      setCheckedLibraryIds([]);
-      setNameTouched(false);
-      setCsiTouched(false);
-      setCreateName("");
-      setCreateCsi("");
-      setLibraryOpen(false);
+      setLibraryModal(null);
       commitSelection(created);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create this AHA.");
@@ -328,7 +304,6 @@ export function AhaPage() {
       const remaining = ahas.filter((aha) => aha.id !== draft.id);
       setAhas(remaining);
       const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)] ?? null;
-      if (!next) setLibraryOpen(true);
       commitSelection(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete this AHA.");
@@ -338,14 +313,28 @@ export function AhaPage() {
   }
 
   function toggleStep(id: string) {
-    setDraft((current) => {
-      if (!current || !expandedStepId) return current;
-      return {
-        ...current,
-        steps: current.steps.map((step) => (step.id === expandedStepId ? cleanAhaStep(step) : step)),
-      };
-    });
-    setExpandedStepId((current) => (current === id ? null : id));
+    const closing = expandedIds.includes(id);
+    if (closing) {
+      setDraft((current) =>
+        current
+          ? { ...current, steps: current.steps.map((step) => (step.id === id ? cleanAhaStep(step) : step)) }
+          : current,
+      );
+      setExpandedIds((current) => current.filter((item) => item !== id));
+      return;
+    }
+    setExpandedIds((current) => (current.includes(id) ? current : [...current, id]));
+  }
+
+  function toggleExpandAll() {
+    if (!draft) return;
+    const allOpen = draft.steps.length > 0 && draft.steps.every((step) => expandedIds.includes(step.id));
+    if (allOpen) {
+      setDraft({ ...draft, steps: draft.steps.map((step) => cleanAhaStep(step)) });
+      setExpandedIds([]);
+      return;
+    }
+    setExpandedIds(draft.steps.map((step) => step.id));
   }
 
   function patchStep(id: string, patch: Partial<ProjectAha["steps"][number]>) {
@@ -366,7 +355,7 @@ export function AhaPage() {
     setDraft((current) =>
       current ? { ...current, steps: current.steps.filter((item) => item.id !== id) } : current,
     );
-    setExpandedStepId((current) => (current === id ? null : current));
+    setExpandedIds((current) => current.filter((item) => item !== id));
   }
 
   function reorderSteps(from: number, to: number) {
@@ -390,47 +379,43 @@ export function AhaPage() {
     const step = blankAhaStep();
     setDraft((current) => {
       if (!current) return current;
-      const steps = expandedStepId
-        ? current.steps.map((item) => (item.id === expandedStepId ? cleanAhaStep(item) : item))
-        : current.steps;
+      const steps = current.steps.map((item) => (expandedIds.includes(item.id) ? cleanAhaStep(item) : item));
       return { ...current, steps: [...steps, step] };
     });
-    setExpandedStepId(step.id);
+    setExpandedIds([step.id]);
     requestAnimationFrame(() => {
       document.querySelector(`[data-step-id="${step.id}"]`)?.scrollIntoView({ block: "nearest" });
     });
   }
 
-  function addLibraryStep(source: AhaLibraryStep) {
-    const step = copyLibrarySteps([source])[0];
-    if (!step) return;
-    setDraft((current) => (current ? { ...current, steps: [...current.steps, step] } : current));
-    setPickerOpen(false);
-    requestAnimationFrame(() => {
-      document.querySelector(`[data-step-id="${step.id}"]`)?.scrollIntoView({ block: "nearest" });
-    });
-  }
-
-  function addLibraryTemplate(template: AhaLibraryItem) {
-    const steps = copyLibrarySteps(template.steps);
+  function addFromLibrary(picks: AhaLibraryPick[]) {
+    const incoming = picks.filter((pick) => pick.steps.length > 0);
+    const steps = copyLibrarySteps(incoming.flatMap((pick) => pick.steps));
+    if (!steps.length) return;
+    const last = steps[steps.length - 1];
     setDraft((current) => {
       if (!current) return current;
+      let equipment = current.equipment_rows;
+      let people = current.competent_persons;
+      const ids = [...current.library_ids];
+      for (const pick of incoming) {
+        equipment = mergeEquipmentRows(equipment, cloneEquipmentRows(pick.template.equipment_rows));
+        people = mergeCompetentPersons(people, cloneCompetentPersons(pick.template.competent_persons));
+        if (!ids.includes(pick.template.id)) ids.push(pick.template.id);
+      }
       return {
         ...current,
-        library_ids: current.library_ids.includes(template.id)
-          ? current.library_ids
-          : [...current.library_ids, template.id],
-        considerations: mergeConsiderations([current.considerations, template.considerations]),
-        equipment_rows: mergeEquipmentRows(current.equipment_rows, cloneEquipmentRows(template.equipment_rows)),
-        competent_persons: mergeCompetentPersons(
-          current.competent_persons,
-          cloneCompetentPersons(template.competent_persons),
-        ),
+        library_ids: ids,
+        considerations: mergeConsiderations([
+          current.considerations,
+          ...incoming.map((pick) => pick.template.considerations),
+        ]),
+        equipment_rows: equipment,
+        competent_persons: people,
         steps: [...current.steps, ...steps],
       };
     });
-    setPickerOpen(false);
-    const last = steps[steps.length - 1];
+    setLibraryModal(null);
     if (!last) return;
     requestAnimationFrame(() => {
       document.querySelector(`[data-step-id="${last.id}"]`)?.scrollIntoView({ block: "nearest" });
@@ -438,13 +423,6 @@ export function AhaPage() {
   }
 
   const activeLibrary = library.filter((item) => !item.archived);
-  const visibleLibrary = activeLibrary.filter((item) => scopeFilter === "all" || item.scope === scopeFilter);
-  const selectedTemplates = checkedLibraryIds
-    .map((id) => library.find((item) => item.id === id))
-    .filter((item): item is AhaLibraryItem => Boolean(item));
-  const suggestedName = suggestedAhaName(selectedTemplates.map((item) => item.scope));
-  const suggestedCsi = selectedTemplates[0]?.csi ?? "";
-  const selectedStepCount = selectedTemplates.reduce((sum, item) => sum + item.steps.length, 0);
   const preparedBy = profile.name.trim();
   const preparedByPdf = [
     preparedBy,
@@ -452,10 +430,10 @@ export function AhaPage() {
   ]
     .filter(Boolean)
     .join(", ");
-  const jobMeta = `${project.job_name.trim() || "—"} · Job ${project.job_number.trim() || "—"} · GC ${
-    project.contractor.trim() || "—"
-  }`;
   const readiness = draft ? ahaReadiness(draft, emergency) : null;
+  const readyOk = readiness?.items.filter((item) => item.ok).length ?? 0;
+  const readyTotal = readiness?.items.length ?? 0;
+  const emergencyReady = emergencyComplete(emergency);
   const filename = draft ? ahaPdfFilename(project.job_number, draft.name, draft.options.standard) : "";
   const projectAddress = formatAddress({
     street: project.job_address,
@@ -498,173 +476,73 @@ export function AhaPage() {
   }
 
   return (
-    <div className="stack aha-page">
-      <div>
-        <h2>Activity Hazard Analyses</h2>
-        <p className="muted small aha-page-meta">{jobMeta}</p>
-      </div>
+    <div className="aha-page">
       {error && <div className="banner banner-error">{error}</div>}
 
-      <div className="aha-layout">
-        <aside className="card stack aha-list-col" aria-label="AHAs on this job">
-          <div className="row-between aha-list-head">
-            <h3>
-              This job · {ahas.length} {ahas.length === 1 ? "AHA" : "AHAs"}
-            </h3>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setLibraryOpen((open) => !open)}
-            >
-              {libraryOpen ? "Close library" : "+ From library"}
-            </button>
-          </div>
-
-          {loading ? (
-            <p className="muted">Loading AHAs…</p>
-          ) : ahas.length === 0 ? (
-            <p className="muted">No AHAs yet. Add one from the library.</p>
-          ) : (
-            <div className="aha-list" role="list">
-              {ahas.map((aha) => {
-                const row = draft && draft.id === aha.id ? draft : aha;
-                const selected = row.id === selectedId;
-                const steps = row.steps.length;
-                return (
-                  <button
-                    key={aha.id}
-                    type="button"
-                    role="listitem"
-                    className={`aha-list-row${selected ? " aha-list-row--selected" : ""}`}
-                    aria-current={selected ? "true" : undefined}
-                    onClick={() => selectAha(aha.id)}
-                  >
-                    <span className="aha-list-row-copy">
-                      <span className="aha-list-row-name">{row.name.trim() || "Untitled AHA"}</span>
-                      <span className="muted small">
-                        {ahaScopeLabel(row.scope)} · {row.csi || "—"} · {steps} {steps === 1 ? "step" : "steps"} ·{" "}
-                        {ahaStatusLabel(row.status)}
-                      </span>
-                    </span>
-                    <RacBadge level={overallRac(row.steps)} size={30} />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {libraryOpen && (
-            <div className="stack aha-library">
-              <div className="filter-chips" role="group" aria-label="Recommended AHA bundles">
-                {RECOMMENDED_BUNDLES.map((bundle) => (
-                  <button
-                    key={bundle.name}
-                    type="button"
-                    className="filter-chip"
-                    onClick={() => {
-                      const ids = bundle.slugs.flatMap((slug) => {
-                        const match = activeLibrary.find((item) => item.slug === slug);
-                        return match ? [match.id] : [];
-                      });
-                      setCheckedLibraryIds(ids);
-                      setCreateName(bundle.name);
-                      setNameTouched(true);
-                    }}
-                  >
-                    {bundle.name}
-                  </button>
-                ))}
-              </div>
-              <div className="filter-chips" role="group" aria-label="Filter library by scope">
-                {SCOPE_FILTERS.map((filter) => (
-                  <button
-                    key={filter.id}
-                    type="button"
-                    className={`filter-chip${scopeFilter === filter.id ? " filter-chip--active" : ""}`}
-                    aria-pressed={scopeFilter === filter.id}
-                    onClick={() => setScopeFilter(filter.id)}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-              {visibleLibrary.length === 0 ? (
-                <p className="muted">No templates in this scope.</p>
-              ) : (
-                <div className="stack aha-library-list">
-                  {visibleLibrary.map((item) => {
-                    const steps = item.steps.length;
-                    const checked = checkedLibraryIds.includes(item.id);
+      <div className="aha-header">
+        <div className="aha-job-bar">
+          {ahas.length > 0 && (
+            <div className="aha-switcher" ref={switcherRef}>
+              <button
+                type="button"
+                className="aha-switcher-btn"
+                aria-haspopup="listbox"
+                aria-expanded={switcherOpen}
+                onClick={() => setSwitcherOpen((open) => !open)}
+              >
+                <span>
+                  {draft
+                    ? `${ahaNumber(project.job_number, draft.seq)} · ${draft.name.trim() || "Untitled AHA"}`
+                    : "Select an AHA"}
+                </span>
+                {draft && <RacBadge level={overallRac(draft.steps)} size={30} />}
+              </button>
+              {switcherOpen && (
+                <div className="aha-switcher-menu" role="listbox" aria-label="AHAs on this job">
+                  {ahas.map((aha) => {
+                    const row = draft && draft.id === aha.id ? draft : aha;
+                    const selected = row.id === selectedId;
                     return (
-                      <label key={item.id} className={`aha-library-row${checked ? " aha-library-row--checked" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleLibraryTemplate(item.id)}
-                        />
-                        <span>
-                          <span className="aha-library-name">{item.name}</span>
-                          <span className="aha-library-sub muted">
-                            {ahaScopeLabel(item.scope)} · {item.csi || "—"} · {steps} {steps === 1 ? "step" : "steps"}
+                      <button
+                        key={aha.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`aha-switcher-option${selected ? " aha-switcher-option--selected" : ""}`}
+                        onClick={() => {
+                          setSwitcherOpen(false);
+                          selectAha(aha.id);
+                        }}
+                      >
+                        <span className="aha-switcher-copy">
+                          <span>
+                            {ahaNumber(project.job_number, row.seq)} · {row.name.trim() || "Untitled AHA"}
                           </span>
+                          <span className="aha-mono">{row.csi || "—"}</span>
                         </span>
-                      </label>
+                        <RacBadge level={overallRac(row.steps)} size={30} />
+                      </button>
                     );
                   })}
                 </div>
               )}
-              <div className="stack aha-library-footer">
-                <label className="stack aha-library-field">
-                  <span className="muted small">AHA name</span>
-                  <input
-                    value={nameTouched ? createName : suggestedName}
-                    placeholder="e.g. Painting"
-                    aria-label="AHA name"
-                    onChange={(event) => {
-                      setNameTouched(true);
-                      setCreateName(event.target.value);
-                    }}
-                  />
-                </label>
-                <label className="stack aha-library-field">
-                  <span className="muted small">CSI</span>
-                  <input
-                    value={csiTouched ? createCsi : suggestedCsi}
-                    aria-label="CSI"
-                    onChange={(event) => {
-                      setCsiTouched(true);
-                      setCreateCsi(event.target.value);
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={selectedTemplates.length === 0 || creating}
-                  onClick={() => void createFromLibrary()}
-                >
-                  {creating
-                    ? "Creating…"
-                    : selectedTemplates.length === 0
-                      ? "Create AHA"
-                      : `Create AHA (${selectedTemplates.length} ${
-                          selectedTemplates.length === 1 ? "template" : "templates"
-                        } · ${selectedStepCount} ${selectedStepCount === 1 ? "step" : "steps"})`}
-                </button>
-              </div>
-              <p className="muted small">Library AHAs are Ironwood templates. Edits on a job stay on that job.</p>
             </div>
           )}
-        </aside>
-
-        <div className="aha-main stack">
-          {!draft ? (
-            <section className="card">
-              <p className="muted">No AHAs yet. Add one from the library.</p>
-            </section>
-          ) : (
-            <>
-              <section className="card aha-sheet-head">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={loading}
+            onClick={() => {
+              setError(null);
+              setLibraryModal("create");
+            }}
+          >
+            + From library
+          </button>
+        </div>
+        {draft && (
+          <>
+              <section className="aha-sheet-head">
                 <div className="aha-sheet-title">
                   <p className="aha-mono">
                     {draft.csi || "—"} · {ahaScopeLabel(draft.scope)}
@@ -698,15 +576,127 @@ export function AhaPage() {
                     </button>
                   )}
                 </div>
-                <div className="aha-sheet-rac">
-                  <div>
-                    <p className="aha-kicker">Overall RAC</p>
-                    <p className="muted small">highest step code</p>
-                  </div>
-                  <RacBadge level={overallRac(draft.steps)} size={48} />
+                <div className="aha-sheet-rac" title="Overall RAC, highest step code">
+                  <RacBadge level={overallRac(draft.steps)} size={36} />
+                  <span className="muted small">highest step</span>
+                </div>
+                <SegmentedControl
+                  aria-label="AHA status"
+                  options={STATUS_OPTIONS}
+                  value={draft.status}
+                  onChange={(status) => void onStatus(status)}
+                />
+                <div className="aha-title-actions">
+                  <span className={`aha-ready-pill${readyOk === readyTotal && readyTotal > 0 ? " aha-ready-pill--done" : ""}`}>
+                    {readyOk} of {readyTotal} ready
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={printing || saving || deleting}
+                    onClick={() => void onDownload()}
+                  >
+                    {printing ? "Generating…" : "Download PDF"}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-primary btn-sm${isDirty ? " aha-save--dirty" : ""}`}
+                    disabled={saving || deleting}
+                    onClick={() => void persist(false)}
+                  >
+                    {saving ? "Saving…" : "Save"}
+                    {isDirty && <span className="aha-dirty-dot" aria-hidden="true" />}
+                    {isDirty && <span className="sr-only">Unsaved changes</span>}
+                  </button>
+                  <details className="aha-more">
+                    <summary className="btn btn-secondary btn-sm" aria-label="More actions">
+                      ···
+                    </summary>
+                    <div className="aha-more-menu">
+                      <button
+                        type="button"
+                        className="aha-more-delete"
+                        disabled={deleting || saving}
+                        onClick={() => void onDelete()}
+                      >
+                        {deleting ? "Deleting…" : "Delete AHA"}
+                      </button>
+                    </div>
+                  </details>
                 </div>
               </section>
+              {statusSaving && <p className="muted small">Saving status…</p>}
+              <div className="aha-tabs" role="tablist" aria-label="AHA sections">
+                {(
+                  [
+                    ["hazards", "Hazards & PPE", String(draft.considerations.length) + " Yes"],
+                    ["steps", "Steps", String(draft.steps.length)],
+                    [
+                      "equipment",
+                      "Equipment",
+                      String(
+                        draft.equipment_rows.filter((row) => row.equipment.trim() || row.training.trim() || row.inspection.trim())
+                          .length,
+                      ),
+                    ],
+                    [
+                      "people",
+                      "Competent persons",
+                      String(
+                        draft.competent_persons.filter((row) => row.activity.trim() || row.note.trim() || row.employee.trim())
+                          .length,
+                      ),
+                    ],
+                    [
+                      "products",
+                      "Products / SDS",
+                      String(draft.products.filter((row) => row.product.trim() || row.manufacturer.trim()).length),
+                    ],
+                    ["notes", "Notes", ""],
+                    ["emergency", "Site & emergency", ""],
+                  ] as const
+                ).map(([id, label, badge]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={section === id}
+                    className={`aha-tab${section === id ? " aha-tab--active" : ""}`}
+                    onClick={() => setSection(id)}
+                  >
+                    {label}
+                    {badge ? <span className="aha-tab-badge">{badge}</span> : null}
+                    {id === "emergency" && !emergencyReady && <span className="aha-tab-warn" aria-hidden="true" />}
+                    {id === "emergency" && <span className="aha-job-badge">Job</span>}
+                  </button>
+                ))}
+              </div>
+          </>
+        )}
+      </div>
 
+      <div className="aha-layout">
+        <div className="aha-main stack">
+          {loading ? (
+            <section className="card">
+              <p className="muted">Loading AHAs…</p>
+            </section>
+          ) : !draft ? (
+            <section className="card aha-empty">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setError(null);
+                  setLibraryModal("create");
+                }}
+              >
+                Create your first AHA
+              </button>
+            </section>
+          ) : (
+            <>
+              {section === "hazards" && (
               <AhaConsiderationsCard
                 selected={draft.considerations}
                 standardPpe={standardPpe}
@@ -715,14 +705,35 @@ export function AhaPage() {
                 onChange={(considerations) => setDraft({ ...draft, considerations })}
                 onExtraPpe={(extra_ppe) => setDraft({ ...draft, extra_ppe })}
               />
+              )}
 
+              {section === "steps" && (
               <section className="card aha-steps-card">
-                <div className="aha-colhead" aria-hidden="true">
-                  <span />
-                  <span>#</span>
-                  <span>Step · Hazards</span>
-                  <span>Controls</span>
-                  <span className="aha-colhead-risk">Risk assessment</span>
+                <div className="aha-steps-toolbar">
+                  <div>
+                    <h3>Steps</h3>
+                    <p className="muted small">
+                      {draft.steps.length} {draft.steps.length === 1 ? "step" : "steps"} · click a row to edit
+                    </p>
+                  </div>
+                  <div className="aha-rac-legend">
+                    {RAC_KEY.map((item) => (
+                      <span key={item.level} className="aha-legend-item">
+                        <span
+                          className="aha-legend-pip"
+                          style={{ background: RAC_COLORS[item.level].background, color: RAC_COLORS[item.level].color }}
+                        >
+                          {item.level}
+                        </span>
+                        {item.level === "E" ? "Extreme" : item.label}
+                      </span>
+                    ))}
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={toggleExpandAll}>
+                      {draft.steps.length > 0 && draft.steps.every((step) => expandedIds.includes(step.id))
+                        ? "Collapse all"
+                        : "Expand all"}
+                    </button>
+                  </div>
                 </div>
                 <div className="aha-steps-scroll">
                   {draft.steps.map((step, index) => (
@@ -730,7 +741,7 @@ export function AhaPage() {
                       key={step.id}
                       step={step}
                       index={index}
-                      open={expandedStepId === step.id}
+                      open={expandedIds.includes(step.id)}
                       showEm385={draft.options.standard === "em385"}
                       dragging={dragFrom === index}
                       dragOver={dragOver === index}
@@ -754,7 +765,14 @@ export function AhaPage() {
                   ))}
                 </div>
                 <div className="aha-step-actions">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPickerOpen(true)}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setError(null);
+                      setLibraryModal("add");
+                    }}
+                  >
                     + Add step from library
                   </button>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={addCustomStep}>
@@ -762,19 +780,25 @@ export function AhaPage() {
                   </button>
                 </div>
               </section>
+              )}
 
+              {section === "equipment" && (
               <AhaEquipmentTable
                 rows={draft.equipment_rows}
                 disabled={saving}
                 onChange={(equipment_rows) => setDraft({ ...draft, equipment_rows })}
               />
+              )}
 
+              {section === "people" && (
               <AhaCompetentPersonsTable
                 rows={draft.competent_persons}
                 disabled={saving}
                 onChange={(competent_persons) => setDraft({ ...draft, competent_persons })}
               />
+              )}
 
+              {section === "notes" && (
               <section className="card stack">
                 <label className="aha-field">
                   Notes (field notes, review comments)
@@ -787,7 +811,9 @@ export function AhaPage() {
                   />
                 </label>
               </section>
+              )}
 
+              {section === "products" && (
               <AhaProductsCard
                 rows={draft.products}
                 disabled={saving}
@@ -816,44 +842,73 @@ export function AhaPage() {
                   })();
                 }}
               />
+              )}
+
+              {section === "emergency" && (
+              <AhaEmergencyCard
+                info={emergency}
+                projectAddress={projectAddress}
+                disabled={saving}
+                onChange={setEmergency}
+                onCommit={(info) => {
+                  setEmergency(info);
+                  void (async () => {
+                    try {
+                      await saveProjectEmergency(projectId, info);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Could not save emergency info.");
+                    }
+                  })();
+                }}
+              />
+              )}
             </>
           )}
         </div>
 
         <aside className="stack aha-rail" aria-label="AHA actions">
-          <AhaEmergencyCard
-            info={emergency}
-            projectAddress={projectAddress}
-            disabled={saving}
-            onChange={setEmergency}
-            onCommit={(info) => {
-              setEmergency(info);
-              void (async () => {
-                try {
-                  await saveProjectEmergency(projectId, info);
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : "Could not save emergency info.");
-                }
-              })();
-            }}
-          />
           <section className="card stack rfi-editor-rail-card">
-            <h3>Status</h3>
-            {draft ? (
-              <SegmentedControl
-                aria-label="AHA status"
-                options={STATUS_OPTIONS}
-                value={draft.status}
-                onChange={(status) => void onStatus(status)}
-              />
+            <div className="row-between">
+              <h3>Ready to submit</h3>
+              <span className="muted small">
+                {readyOk} / {readyTotal}
+              </span>
+            </div>
+            {readiness ? (
+              <ul className="rfi-readiness-list" aria-label="PDF readiness">
+                {readiness.items.map((item) => (
+                  <li key={item.id} className={`aha-readiness-item${item.ok ? " aha-readiness-item--ok" : ""}`}>
+                    <span className="aha-readiness-dot" aria-hidden="true" />
+                    <span>{item.label}</span>
+                    {!item.ok && (
+                      <button
+                        type="button"
+                        className="aha-fix"
+                        onClick={() => {
+                          if (item.id === "steps" || item.id === "em385") setSection("steps");
+                          else if (item.id === "competent-names") setSection("people");
+                          else if (item.id === "emergency") setSection("emergency");
+                          else document.getElementById("aha-signoff")?.setAttribute("open", "");
+                          if (item.id === "foreman" || item.id === "competent") {
+                            document.getElementById("aha-foreman")?.focus();
+                          }
+                        }}
+                      >
+                        Fix
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <p className="muted small">Add an AHA to set its status.</p>
+              <p className="muted small">Add an AHA to check readiness.</p>
             )}
-            {statusSaving && <p className="muted small">Saving status…</p>}
           </section>
 
-          <section className="card stack rfi-editor-rail-card">
-            <h3>Sign-off</h3>
+          <details id="aha-signoff" className="card stack rfi-editor-rail-card aha-disclosure" open>
+            <summary>
+              <span>Sign-off &amp; review</span>
+            </summary>
             {draft?.options.standard === "calosha" ? (
               <>
                 <label className="aha-field">
@@ -875,6 +930,8 @@ export function AhaPage() {
                 <label className="aha-field">
                   Foreman
                   <input
+                    id="aha-foreman"
+                    className={draft.foreman.trim() ? undefined : "aha-input--needed"}
                     value={draft.foreman}
                     disabled={saving}
                     onChange={(event) => setDraft({ ...draft, foreman: event.target.value })}
@@ -893,6 +950,7 @@ export function AhaPage() {
               <label className="aha-field">
                 Competent person / foreman
                 <input
+                  id="aha-foreman"
                   value={draft?.competent_person ?? ""}
                   disabled={!draft || saving}
                   onChange={(event) => draft && setDraft({ ...draft, competent_person: event.target.value })}
@@ -904,6 +962,15 @@ export function AhaPage() {
                 <span>Prepared by</span>
                 <span>{preparedBy}</span>
               </div>
+              {draft && (
+                <AhaReviewLog
+                  key={draft.id}
+                  entries={draft.review_log}
+                  profileName={preparedBy}
+                  disabled={saving}
+                  onChange={(review_log) => setDraft({ ...draft, review_log })}
+                />
+              )}
               {draft?.options.standard !== "calosha" && (
                 <>
                   <div className="aha-readonly-row">
@@ -917,20 +984,13 @@ export function AhaPage() {
                 </>
               )}
             </div>
-          </section>
+          </details>
 
-          {draft && (
-            <AhaReviewLog
-              key={draft.id}
-              entries={draft.review_log}
-              profileName={preparedBy}
-              disabled={saving}
-              onChange={(review_log) => setDraft({ ...draft, review_log })}
-            />
-          )}
-
-          <section className="card stack rfi-editor-rail-card">
-            <h3>PDF options</h3>
+          <details className="card stack rfi-editor-rail-card aha-disclosure">
+            <summary>
+              <span>PDF options</span>
+              <span className="muted small">{draft?.options.standard === "em385" ? "EM 385-1-1" : "Cal/OSHA"}</span>
+            </summary>
             {draft && (
               <SegmentedControl
                 aria-label="Safety standard"
@@ -976,82 +1036,22 @@ export function AhaPage() {
                 <span className="aha-mono">{filename}</span>
               </p>
             )}
-            {readiness && (
-              <ul className="rfi-readiness-list" aria-label="PDF readiness">
-                {readiness.items.map((item) => (
-                  <li
-                    key={item.id}
-                    className={`aha-readiness-item${item.ok ? " aha-readiness-item--ok" : ""}`}
-                  >
-                    <span className="aha-readiness-dot" aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="stack rfi-editor-rail-actions aha-rail-actions">
-              {isDirty && <p className="aha-dirty-note">Unsaved changes</p>}
-              <button
-                type="button"
-                className={`btn btn-primary${isDirty ? " aha-save--dirty" : ""}`}
-                disabled={!draft || saving || deleting}
-                onClick={() => void persist(false)}
-              >
-                {saving ? "Saving…" : "Save"}
-                {isDirty && <span className="aha-dirty-dot" aria-hidden="true" />}
-                {isDirty && <span className="sr-only">Unsaved changes</span>}
-              </button>
-              <span className="paint-toolbar-download-wrap pdf-filename-hover">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={!draft || printing || saving || deleting}
-                  onClick={() => void onDownload()}
-                >
-                  {printing ? "Generating…" : "Download PDF"}
-                </button>
-                {filename ? (
-                  <span className="paint-toolbar-download-tip" role="tooltip">
-                    {filename}
-                  </span>
-                ) : null}
-              </span>
-            </div>
-          </section>
-
-          <section className="card stack rfi-editor-rail-card">
-            <h3>RAC key</h3>
-            <ul className="aha-rac-key">
-              {RAC_KEY.map((item) => (
-                <li key={item.level}>
-                  <RacBadge level={item.level} size={30} />
-                  <span>
-                    {item.level} {item.label}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          {draft && (
-            <button
-              type="button"
-              className="ewo-header-delete"
-              disabled={deleting || saving}
-              onClick={() => void onDelete()}
-            >
-              {deleting ? "Deleting…" : "Delete AHA"}
-            </button>
-          )}
+          </details>
         </aside>
       </div>
 
-      {pickerOpen && (
-        <AhaStepLibraryModal
+      {libraryModal && (
+        <AhaLibraryModal
+          mode={libraryModal}
           library={activeLibrary}
-          onClose={() => setPickerOpen(false)}
-          onPick={addLibraryStep}
-          onAddTemplate={addLibraryTemplate}
+          ahaName={draft?.name ?? ""}
+          busy={creating}
+          error={error}
+          onClose={() => {
+            if (!creating) setLibraryModal(null);
+          }}
+          onCreate={(input) => void createFromLibrary(input)}
+          onAdd={addFromLibrary}
         />
       )}
     </div>

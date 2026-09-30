@@ -39,10 +39,16 @@ export function AhaReviewLog({ entries, profileName, disabled, onChange }: Props
     setOpenId(entry.id);
   }
 
+  const reviewLabel = entries.length === 0 ? "Reviews: none yet" : entries.length === 1 ? "1 review" : `${entries.length} reviews`;
+
   return (
-    <section className="card stack rfi-editor-rail-card">
-      <h3>Modified &amp; reviewed</h3>
-      {entries.length === 0 && <p className="muted small">No reviews yet.</p>}
+    <div className="aha-reviews">
+      <div className="aha-review-row">
+        <span>{reviewLabel}</span>
+        <button type="button" className="aha-text-link" disabled={disabled} onClick={add}>
+          + Add review
+        </button>
+      </div>
       <ul className="aha-review-list">
         {entries.map((entry) => (
           <li key={entry.id} className="aha-review-item">
@@ -94,9 +100,6 @@ export function AhaReviewLog({ entries, profileName, disabled, onChange }: Props
           </li>
         ))}
       </ul>
-      <button type="button" className="btn btn-secondary btn-sm" disabled={disabled} onClick={add}>
-        + Add review
-      </button>
-    </section>
+    </div>
   );
 }

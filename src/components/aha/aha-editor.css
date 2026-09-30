@@ -1,3 +1,32 @@
+.main-content:has(.aha-page) {
+  display: flex;
+  flex-direction: column;
+}
+
+.project-main:has(.aha-page) {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1025px) {
+  .project-main:has(.aha-page) .project-main-toolbar {
+    display: none;
+  }
+}
+
+.aha-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.aha-header {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 0.75rem;
+}
+
 .aha-page h2 {
   margin: 0;
   font-size: 1.35rem;
@@ -12,10 +41,10 @@
 }
 
 .aha-layout {
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 320px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
   gap: 1rem;
-  align-items: start;
 }
 
 .aha-list-col {
@@ -24,16 +53,16 @@
 }
 
 .aha-main {
+  flex: 1;
   min-width: 0;
   container-type: inline-size;
 }
 
 .aha-rail {
-  position: sticky;
-  top: 20px;
-  width: 320px;
+  width: 312px;
+  flex-shrink: 0;
   max-width: 100%;
-  align-self: start;
+  align-self: flex-start;
 }
 
 .aha-list-head {
@@ -78,7 +107,7 @@
 .aha-remove-step:focus-visible,
 .aha-step-main:focus-visible,
 .aha-step-controls:focus-visible,
-.aha-step-modal-step:focus-visible {
+.aha-preview-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -97,8 +126,7 @@
 }
 
 .aha-list-row-name,
-.aha-library-name,
-.aha-step-modal-group {
+.aha-library-name {
   font-weight: 700;
 }
 
@@ -108,7 +136,6 @@
 
 .aha-list-row-name,
 .aha-library-name,
-.aha-step-modal-group,
 .aha-library-row p,
 .aha-kicker,
 .aha-sheet-rac .muted,
@@ -117,16 +144,7 @@
   margin: 0;
 }
 
-.aha-library {
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
-}
-
-.aha-library .filter-chips {
-  margin-bottom: 0.15rem;
-}
-
-.aha-library .aha-library-list {
+.aha-library-list {
   gap: 8px;
   width: 100%;
 }
@@ -177,29 +195,8 @@
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-.aha-library-footer {
-  gap: 0.45rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid var(--border);
-}
-
 .aha-library-field {
   gap: 0.2rem;
-}
-
-.aha-library-footer .btn {
-  width: 100%;
-}
-
-.aha-step-modal-head {
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.aha-step-modal-head .btn {
-  flex: 0 0 auto;
-  white-space: normal;
-  text-align: left;
 }
 
 .aha-mono {
@@ -211,9 +208,9 @@
 
 .aha-sheet-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
 }
 
 .aha-sheet-title {
@@ -244,8 +241,323 @@
 .aha-sheet-rac {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.4rem;
   flex: 0 0 auto;
+}
+
+.aha-job-bar,
+.aha-title-actions,
+.aha-rac-legend,
+.aha-steps-toolbar,
+.aha-step-summary,
+.aha-step-summary-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.aha-job-bar,
+.aha-title-actions,
+.aha-rac-legend,
+.aha-steps-toolbar {
+  flex-wrap: wrap;
+}
+
+.aha-title-actions {
+  margin-left: auto;
+  gap: 0.45rem;
+}
+
+.aha-switcher {
+  position: relative;
+}
+
+.aha-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.2rem 0.55rem 0.2rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.aha-switcher-menu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  min-width: 18rem;
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.aha-switcher-option {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aha-switcher-option:hover,
+.aha-switcher-option--selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.aha-switcher-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.aha-switcher-copy .aha-mono {
+  color: var(--muted);
+}
+
+.aha-ready-pill {
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #eab308 22%, transparent);
+  color: #f5c451;
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.aha-ready-pill--done {
+  background: color-mix(in srgb, #2f7d4a 24%, transparent);
+  color: #86efac;
+}
+
+.aha-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.aha-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.4rem 0.05rem 0.55rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.aha-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 650;
+}
+
+.aha-tab-badge {
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #222b40;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.aha-tab-warn {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #eab308;
+  flex: 0 0 auto;
+}
+
+.aha-job-badge {
+  padding: 1px 4px;
+  border: 1px solid #3a4460;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.aha-steps-toolbar {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.55rem;
+}
+
+.aha-steps-toolbar h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.aha-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.aha-legend-pip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.aha-step-summary-main {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0.2rem 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aha-step-summary .aha-step-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.aha-step-counts,
+.aha-step-rac-text {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.aha-step-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 200px;
+  gap: 0.85rem;
+  margin-top: 0.55rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.aha-step-detail h4 {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.aha-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.aha-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.aha-more {
+  position: relative;
+}
+
+.aha-more > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.aha-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.aha-more-menu {
+  position: absolute;
+  right: 0;
+  z-index: 6;
+  min-width: 9rem;
+  margin-top: 0.25rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.aha-more-menu button {
+  width: 100%;
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aha-more-menu button:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.aha-more-menu .aha-more-delete {
+  color: #f87171;
+}
+
+.aha-readiness-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.aha-fix {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.aha-input--needed {
+  box-shadow: inset 0 0 0 1px #eab308;
 }
 
 .aha-kicker {
@@ -257,31 +569,11 @@
 }
 
 .aha-steps-card {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .aha-steps-scroll {
-  max-height: clamp(16rem, calc(100dvh - 32rem), 28rem);
-  overflow-x: auto;
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
-  scrollbar-width: auto;
-  scrollbar-color: color-mix(in srgb, var(--muted) 65%, var(--border)) var(--surface2);
-}
-
-.aha-steps-scroll::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.aha-steps-scroll::-webkit-scrollbar-track {
-  background: var(--surface2);
-  border-radius: 999px;
-}
-
-.aha-steps-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 65%, var(--border));
-  border-radius: 999px;
+  overflow: visible;
 }
 
 .aha-colhead,
@@ -691,6 +983,28 @@
   font-size: 0.8rem;
 }
 
+.aha-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.aha-text-link {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.aha-text-link:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .aha-review-list {
   list-style: none;
   margin: 0;
@@ -886,32 +1200,101 @@
   font-size: 0.85rem;
 }
 
-.aha-step-modal {
-  width: min(640px, 96vw);
-  max-height: min(92vh, 860px);
-  overflow: auto;
+.aha-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 16rem;
 }
 
-.aha-step-modal-list {
+.modal-backdrop:has(.aha-library-modal) {
+  align-items: center;
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.aha-library-modal {
+  width: min(960px, calc(100vw - 2rem));
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
-.aha-step-modal-steps {
+.aha-library-modal-head {
+  padding: 1rem 1.1rem 0.75rem;
+}
+
+.aha-library-modal-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.aha-library-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  min-height: 0;
+  flex: 1 1 auto;
+  border-top: 1px solid var(--border);
+}
+
+.aha-library-modal-pane {
+  min-height: 0;
+  max-height: calc(85vh - 7.5rem);
+  overflow: auto;
+  padding: 0.9rem 1.1rem 1rem;
+}
+
+.aha-library-modal-pane + .aha-library-modal-pane {
+  border-left: 1px solid var(--border);
+}
+
+.aha-library-scope {
+  margin: 0.15rem 0 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.aha-library-scope-group {
+  gap: 8px;
+}
+
+.aha-library-summary {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.aha-library-preview {
+  gap: 0.55rem;
+}
+
+.aha-preview-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+}
+
+.aha-preview-head {
+  display: flex;
+  align-items: center;
   gap: 0.35rem;
 }
 
-.aha-step-modal-step {
+.aha-preview-toggle {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.1rem;
-  width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  padding: 0.15rem 0;
+  border: none;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -919,8 +1302,60 @@
   cursor: pointer;
 }
 
-.aha-step-modal-step:hover {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+.aha-preview-moves {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.15rem;
+}
+
+.aha-preview-steps {
+  list-style: none;
+  margin: 0.35rem 0 0.15rem;
+  padding: 0 0 0 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.aha-preview-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  cursor: pointer;
+}
+
+.aha-preview-step input {
+  margin-top: 0.15rem;
+}
+
+.aha-library-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid var(--border);
+}
+
+.aha-library-modal-error {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .aha-library-modal-body {
+    grid-template-columns: 1fr;
+    overflow: hidden;
+  }
+
+  .aha-library-modal-pane {
+    max-height: min(40vh, calc((85vh - 7.5rem) / 2));
+  }
+
+  .aha-library-modal-pane + .aha-library-modal-pane {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
 }
 
 @container (max-width: 820px) {
@@ -945,13 +1380,21 @@
 
 @media (max-width: 1100px) {
   .aha-layout {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
-  .aha-list-col,
+  .aha-main,
   .aha-rail {
     width: 100%;
-    position: static;
+  }
+
+  .aha-step-detail,
+  .aha-title-actions {
+    margin-left: 0;
+  }
+
+  .aha-step-detail {
+    grid-template-columns: 1fr;
   }
 }
 
