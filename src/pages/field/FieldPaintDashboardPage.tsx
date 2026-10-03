@@ -22,6 +22,7 @@ import {
   type MobilizeCardState,
   type SiteReadyColumnStatus,
 } from "../../lib/startupSiteReadyDigest";
+import { formatJobDateLabel } from "../../lib/manpowerCalendar";
 import {
   FieldEmptyPanel,
   FieldLoadingPanel,
@@ -467,6 +468,9 @@ export function FieldPaintDashboardPage() {
                       {row.nightsWeekends && <span className="badge-nw">Night/Weekend</span>}
                     </div>
                     <div className="field-mobile-sub">{row.gcName || "—"}</div>
+                    <div className="field-mobile-sub">
+                      Job start {formatJobDateLabel(row.startDate) || "—"}
+                    </div>
                   </div>
                   <FieldStatusPill
                     label={paintMobileStatusLabel(row.status)}
@@ -561,6 +565,10 @@ export function FieldPaintDashboardPage() {
                   <div className="paint-header-field">
                     <div className="paint-detail-label">Mobilize</div>
                     <SiteReadyPills statuses={row.siteReady} />
+                  </div>
+                  <div className="paint-header-field">
+                    <div className="paint-detail-label">Job start</div>
+                    <span className="gh-pm">{formatJobDateLabel(row.startDate) || "—"}</span>
                   </div>
                   <div className="paint-header-field">
                     <div className="paint-detail-label">PM</div>

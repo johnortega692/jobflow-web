@@ -1,5 +1,6 @@
 import {
   catalogSeedForId,
+  CUSTOM_GC_STARTUP_ITEM_IDS,
   LEGACY_OPTIONAL_MIGRATION_IDS,
   STARTUP_CHECKLIST_CATALOG,
   STARTUP_CHECKLIST_GROUP_META,
@@ -88,6 +89,15 @@ export function defaultStartupItems(): StartupItemsState {
   return {
     version: 2,
     items: STARTUP_CHECKLIST_CATALOG.map((seed) => seedItem(seed)),
+  };
+}
+
+/** Keep only the custom GC startup and field items enabled. */
+export function applyCustomGcStartupItems(state: StartupItemsState): StartupItemsState {
+  const enabled = new Set<string>(CUSTOM_GC_STARTUP_ITEM_IDS);
+  return {
+    ...state,
+    items: state.items.map((item) => ({ ...item, enabled: enabled.has(item.id) })),
   };
 }
 

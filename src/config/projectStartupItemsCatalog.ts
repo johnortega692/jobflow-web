@@ -208,6 +208,13 @@ export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
     defaultEnabled: true,
   },
   {
+    id: "budget_into_folder",
+    group: "billing",
+    label: "Add Budget into folder",
+    source: "manual",
+    defaultEnabled: false,
+  },
+  {
     id: "billing_portal",
     group: "billing",
     label: "Set up billing portal",
@@ -265,3 +272,18 @@ export const STARTUP_SOURCE_LABELS: Record<StartupChecklistSource, string> = {
 export function catalogSeedForId(id: string): StartupCatalogSeed | undefined {
   return STARTUP_CHECKLIST_CATALOG.find((s) => s.id === id);
 }
+
+/** Enabled on a new job when Custom GC startup and field options is on. */
+export const CUSTOM_GC_STARTUP_ITEM_IDS = [
+  "product_data_submitted",
+  "color_finish_schedule",
+  "submit_brushouts",
+  "jhas_scopes",
+  "crew_orientation",
+  "schedule_obtained",
+  "budget_into_folder",
+  "autodesk_ost",
+  "autodesk_scope",
+  "autodesk_hours_cost_codes",
+  "autodesk_material_qty",
+] as const;

@@ -15,6 +15,7 @@ import {
   computeProjectListSummaries,
   filterProjectsByStage,
   getSpotlight,
+  projectJobStartLabel,
   loadProjectsListSortState,
   loadProjectsListStageFilter,
   nextProjectsListSortState,
@@ -36,11 +37,11 @@ import {
 } from "../lib/icbiPmDefaults";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
-import { loadDefaultStartupItems } from "../lib/projectStartupItems";
+import { CUSTOM_GC_STARTUP_ITEM_IDS, catalogSeedForId } from "../config/projectStartupItemsCatalog";
+import { applyCustomGcStartupItems, loadDefaultStartupItems } from "../lib/projectStartupItems";
 import { listProjectIdsWithApprovedBrushouts } from "../lib/approvedBrushouts";
 import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
 import { isRfiClosed } from "../lib/rfiStatus";
-import { formatDateTime } from "../lib/strings";
 import { type Project } from "../types/database";
 
 function projectSearchText(p: Project): string {
@@ -88,6 +89,7 @@ export function ProjectsPage() {
   const [jobNumber, setJobNumber] = useState("");
   const [jobName, setJobName] = useState("");
   const [icbiIsGc, setIcbiIsGc] = useState(false);
+  const [customGcStartup, setCustomGcStartup] = useState(false);
   const [superId, setSuperId] = useState("");
   const [foremanId, setForemanId] = useState("");
   const [pmId, setPmId] = useState("");
@@ -212,6 +214,7 @@ export function ProjectsPage() {
     setJobNumber("");
     setJobName("");
     setIcbiIsGc(false);
+    setCustomGcStartup(false);
     setSuperId("");
     setForemanId("");
     setPmId("");
@@ -250,7 +253,8 @@ export function ProjectsPage() {
       ...(!pmContact ? jobInfoPatchFromProfilePm(profile, staffPms, jobRole) : {}),
     };
     const billing = defaultProjectBilling();
-    const startupItems = await loadDefaultStartupItems();
+    const startupBase = await loadDefaultStartupItems();
+    const startupItems = customGcStartup ? applyCustomGcStartupItems(startupBase) : startupBase;
     const { data: inserted, error: err } = await supabase
       .from("projects")
       .insert({
@@ -380,6 +384,21 @@ export function ProjectsPage() {
               tell them apart from ICBI's GC-side PO accounting.
             </p>
           )}
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={customGcStartup}
+              onChange={(e) => setCustomGcStartup(e.target.checked)}
+            />
+            Custom GC startup and field options
+          </label>
+          {customGcStartup && (
+            <ul className="muted small" style={{ margin: "0 0 0 1.6rem" }}>
+              {CUSTOM_GC_STARTUP_ITEM_IDS.map((id) => (
+                <li key={id}>{catalogSeedForId(id)?.label ?? id}</li>
+              ))}
+            </ul>
+          )}
           {fieldStaffError && (
             <p className="banner banner-warn">{fieldStaffError}</p>
           )}
@@ -442,7 +461,7 @@ export function ProjectsPage() {
                   <span className="projects-list-sort-label muted small">Sort</span>
                   {(
                     [
-                      ["updated", "Updated"],
+                      ["start", "Job Start"],
                       ["attention", "Needs attention"],
                       ["job", "Job #"],
                       ["name", "Name"],
@@ -508,7 +527,7 @@ export function ProjectsPage() {
                         <th>Submittal</th>
                         <th>Brush-outs</th>
                         <th>Attention</th>
-                        <th>Updated</th>
+                        <th>Job Start</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -537,7 +556,7 @@ export function ProjectsPage() {
                             <td>
                               <ProjectStatusBadge summary={summary} tableMode />
                             </td>
-                            <td className="muted">{formatDateTime(p.updated_at)}</td>
+                            <td className="muted">{projectJobStartLabel(p)}</td>
                             <td className="projects-table-open-cell">
                               <Link
                                 className="btn btn-icon btn-small projects-table-open"

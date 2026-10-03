@@ -1,3 +1,5 @@
+import { formatJobDateLabel } from "./manpowerCalendar";
+import { toIsoDateValue } from "./dateInputUtils";
 import { normalizeProject, type Project } from "../types/database";
 import {
   buildAttentionItems,
@@ -53,7 +55,7 @@ export function computeProjectListSummaries(projects: Project[]): Map<string, Pr
   return map;
 }
 
-export type ProjectsListSort = "updated" | "attention" | "job" | "name";
+export type ProjectsListSort = "start" | "attention" | "job" | "name";
 export type ProjectsListSortDir = "asc" | "desc";
 
 export type ProjectsListStageFilter =
@@ -74,11 +76,22 @@ export type ProjectsListSortState = {
 const SORT_STORAGE_KEY = "jobflow-projects-list-sort";
 const FILTER_STORAGE_KEY = "jobflow-projects-list-stage-filter";
 
-const SORT_VALUES: ProjectsListSort[] = ["updated", "attention", "job", "name"];
+const SORT_VALUES: ProjectsListSort[] = ["start", "attention", "job", "name"];
 
 /** Default direction when first selecting a sort mode. */
 export function defaultSortDir(sort: ProjectsListSort): ProjectsListSortDir {
-  return sort === "job" || sort === "name" ? "asc" : "desc";
+  return sort === "attention" ? "desc" : "asc";
+}
+
+export function projectJobStartLabel(project: Project): string {
+  return formatJobDateLabel(normalizeProject(project).jobInfo.start_date) ?? "—";
+}
+
+function projectJobStartMs(project: Project): number | null {
+  const iso = toIsoDateValue(normalizeProject(project).jobInfo.start_date.trim());
+  if (!iso) return null;
+  const time = new Date(`${iso}T12:00:00`).getTime();
+  return Number.isNaN(time) ? null : time;
 }
 
 const FILTER_VALUES: ProjectsListStageFilter[] = [
@@ -95,23 +108,25 @@ const FILTER_VALUES: ProjectsListStageFilter[] = [
 export function loadProjectsListSortState(): ProjectsListSortState {
   try {
     const stored = sessionStorage.getItem(SORT_STORAGE_KEY);
-    if (!stored) return { sort: "updated", dir: "desc" };
+    if (!stored) return { sort: "start", dir: "asc" };
 
-    // Legacy: plain sort id, or "oldest" (updated asc)
-    if (stored === "oldest") return { sort: "updated", dir: "asc" };
+    // Legacy: plain sort id, "oldest" (updated asc), or the old Updated column.
+    if (stored === "oldest" || stored === "updated") return { sort: "start", dir: "asc" };
     if (SORT_VALUES.includes(stored as ProjectsListSort)) {
       return { sort: stored as ProjectsListSort, dir: defaultSortDir(stored as ProjectsListSort) };
     }
 
-    const parsed = JSON.parse(stored) as Partial<ProjectsListSortState>;
-    if (parsed.sort && SORT_VALUES.includes(parsed.sort)) {
-      const dir = parsed.dir === "asc" || parsed.dir === "desc" ? parsed.dir : defaultSortDir(parsed.sort);
-      return { sort: parsed.sort, dir };
+    const parsed = JSON.parse(stored) as { sort?: string; dir?: string };
+    const rawSort = parsed.sort === "updated" ? "start" : parsed.sort;
+    if (rawSort && SORT_VALUES.includes(rawSort as ProjectsListSort)) {
+      const sort = rawSort as ProjectsListSort;
+      const dir = parsed.dir === "asc" || parsed.dir === "desc" ? parsed.dir : defaultSortDir(sort);
+      return { sort, dir };
     }
   } catch {
     /* ignore */
   }
-  return { sort: "updated", dir: "desc" };
+  return { sort: "start", dir: "asc" };
 }
 
 /** @deprecated Prefer loadProjectsListSortState */
@@ -201,8 +216,13 @@ export function compareProjectsForListSort(
 ): number {
   let cmp = 0;
 
-  if (sort === "updated") {
-    cmp = new Date(a.updated_at ?? 0).getTime() - new Date(b.updated_at ?? 0).getTime();
+  if (sort === "start") {
+    const startA = projectJobStartMs(a);
+    const startB = projectJobStartMs(b);
+    if (startA === null && startB === null) return 0;
+    if (startA === null) return 1;
+    if (startB === null) return -1;
+    cmp = startA - startB;
   } else if (sort === "job") {
     cmp = compareJobNumber(a.job_number ?? "", b.job_number ?? "");
   } else if (sort === "name") {

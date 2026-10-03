@@ -1009,7 +1009,7 @@
 }
 
 .field-dashboard .paint-group-header {
-  grid-template-columns: 28px 110px minmax(0, 1.4fr) auto auto minmax(90px, 120px);
+  grid-template-columns: 28px 110px minmax(0, 1.4fr) auto auto minmax(88px, 110px) minmax(90px, 120px);
 }
 
 .field-dashboard .paint-header-field {
@@ -1471,7 +1471,7 @@
 
 @media (max-width: 900px) {
   .field-dashboard .paint-group-header {
-    grid-template-columns: 28px 90px minmax(0, 1fr) auto auto minmax(80px, 110px);
+    grid-template-columns: 28px 90px minmax(0, 1fr) auto auto minmax(76px, 100px) minmax(80px, 110px);
   }
 
   .field-dashboard .paint-group-detail {
