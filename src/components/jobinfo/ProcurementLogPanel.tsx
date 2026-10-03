@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLetterhead } from "../../contexts/LetterheadContext";
 import { buildProcurementLogRowsFromLines } from "../../lib/procurementLog";
@@ -20,6 +20,8 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasWallcovering = projectHasWallcovering(project.jobInfo);
   const jobNumber = wcTrackerJobNumber(project);
@@ -32,10 +34,26 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
 
   const logRows = useMemo(() => buildProcurementLogRowsFromLines(trackerLines), [trackerLines]);
   const pdfFilename = procurementLogFilename(jobName, jobNumber);
+  const lastUpdateLabel = loadedAt
+    ? `${loadedAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}, ${loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${logRows.length} material${logRows.length === 1 ? "" : "s"}`
+    : "—";
 
   useEffect(() => {
     setLoadedAt(new Date());
   }, [project.data]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setScrolled(el.scrollLeft > 0);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [hasWallcovering, logRows.length]);
 
   async function onExportPdf() {
     if (!logRows.length) {
@@ -73,18 +91,18 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
       {error && <div className="banner banner-error">{error}</div>}
 
       <div className="row-between wrap">
-        <p className="sds-filename-preview muted small">
-          Filename: <code>{pdfFilename}</code>
-        </p>
+        <p className="muted small procurement-log-last-update">Last Update: {lastUpdateLabel}</p>
         <div className="row-gap wrap">
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={printing || !logRows.length}
-            onClick={() => void onExportPdf()}
-          >
-            {printing ? "Exporting…" : "Export PDF"}
-          </button>
+          <span className="procurement-log-export" title={`Filename: ${pdfFilename}`}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={printing || !logRows.length}
+              onClick={() => void onExportPdf()}
+            >
+              {printing ? "Exporting…" : "Export PDF"}
+            </button>
+          </span>
         </div>
       </div>
 
@@ -95,24 +113,29 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
         </p>
       )}
 
-      <section className="card stack procurement-log-meta">
-        <p>
-          <strong>Job Number:</strong> {jobNumber || "—"}
-        </p>
-        <p>
-          <strong>Project:</strong> {jobName || "—"}
-        </p>
-        <p>
-          <strong>Last Update:</strong>{" "}
-          {loadedAt
-            ? `${loadedAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}, ${loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${logRows.length} material${logRows.length === 1 ? "" : "s"}`
-            : "—"}
+      <section className="card procurement-log-meta">
+        <p className="procurement-log-meta-line">
+          <span>
+            <strong>Job Number:</strong> {jobNumber || "—"}
+          </span>
+          <span>
+            <strong>Project:</strong> {jobName || "—"}
+          </span>
         </p>
       </section>
 
       <section className="card procurement-log-table-wrap">
         <h2 className="procurement-log-table-title">Procurement Log</h2>
-        <div className="procurement-log-scroll">
+        {logRows.length === 0 ? (
+          <p className="muted procurement-log-empty">
+            No wallcovering materials yet. Add lines in the <strong>Wallcovering</strong> tab, or copy from the
+            submittal.
+          </p>
+        ) : (
+          <div
+            ref={scrollRef}
+            className={`procurement-log-scroll${scrolled ? " is-scrolled" : ""}`}
+          >
             <table className="procurement-log-table">
               <colgroup>
                 <col className="plog-col-finish" />
@@ -128,39 +151,33 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
                 <tr>
                   <th>Finish</th>
                   <th>Product</th>
-                  <th>Lead Time in Weeks</th>
-                  <th>Approval Received</th>
-                  <th>Date Ordered</th>
-                  <th>Ship Date</th>
-                  <th>Date Received / Tracking</th>
+                  <th>Lead (wks)</th>
+                  <th>Approved</th>
+                  <th>Ordered</th>
+                  <th>Shipped</th>
+                  <th>Received / Tracking</th>
                   <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
-                {logRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="muted procurement-log-empty">
-                      No wallcovering materials yet. Add lines in the <strong>Wallcovering</strong> tab, or
-                      copy from the submittal.
+                {logRows.map((row, i) => (
+                  <tr key={`${row.finish}-${row.product}-${i}`}>
+                    <td>{row.finish}</td>
+                    <td>{row.product}</td>
+                    <td>{row.leadTime}</td>
+                    <td>{row.approvalReceived}</td>
+                    <td>{row.dateOrdered}</td>
+                    <td>{row.shipDate}</td>
+                    <td className="plog-tracking-cell" title={row.dateReceivedTracking}>
+                      {row.dateReceivedTracking}
                     </td>
+                    <td>{row.notes}</td>
                   </tr>
-                ) : (
-                  logRows.map((row, i) => (
-                    <tr key={`${row.finish}-${row.product}-${i}`}>
-                      <td>{row.finish}</td>
-                      <td>{row.product}</td>
-                      <td>{row.leadTime}</td>
-                      <td>{row.approvalReceived}</td>
-                      <td>{row.dateOrdered}</td>
-                      <td>{row.shipDate}</td>
-                      <td>{row.dateReceivedTracking}</td>
-                      <td>{row.notes}</td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
-        </div>
+          </div>
+        )}
       </section>
     </div>
   );

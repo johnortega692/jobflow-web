@@ -189,12 +189,18 @@ function asLineItems(arr: unknown): LineItem[] {
   return arr.map((item) => {
     if (typeof item === "string") return { raw: item, name: item };
     const o = item as Record<string, unknown>;
+    const productId = typeof o.productId === "string"
+      ? o.productId
+      : typeof o.product_id === "string"
+        ? o.product_id
+        : "";
     return {
       name: String(o.name ?? o.raw ?? ""),
       quantity: o.quantity != null ? String(o.quantity) : undefined,
       detail: o.detail != null ? String(o.detail) : undefined,
       raw: o.raw != null ? String(o.raw) : undefined,
       vendor: o.vendor != null ? String(o.vendor) : undefined,
+      productId: productId.trim() || undefined,
     };
   });
 }

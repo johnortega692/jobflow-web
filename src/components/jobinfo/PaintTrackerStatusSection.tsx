@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
 import { FlagSwitch, StageStepper } from "./StageStepper";
 import { addDaysToTodayDisplay } from "../../lib/dateInputUtils";
@@ -10,7 +10,7 @@ import {
   savePaintTrackerState,
 } from "../../lib/fieldTrackerProject";
 import { PAINT_VENDOR_OPTIONS } from "../../lib/googleSheetsConfig";
-import { resolveProjectPaintNotificationRecipients } from "../../lib/jobInfo";
+import { paintTrackerJobLabel, resolveProjectPaintNotificationRecipients } from "../../lib/jobInfo";
 import { JOBFLOW_SCHEDULE_FROM_NAME } from "../../lib/jobflowScheduleFrom";
 import { loadPaintUserSettings } from "../../lib/paintUserSettings";
 import {
@@ -33,6 +33,8 @@ type Props = {
   onOpenJobSetup?: () => void;
   onProjectUpdate?: (project: ProjectForm) => void;
   showStatusPills?: boolean;
+  /** Material Tracker editor layout. Dashboard card leaves this unset. */
+  editorMode?: boolean;
 };
 
 const AUTO_SAVE_MS = 700;
@@ -48,14 +50,16 @@ function TrackerCheckbox({
   checked,
   onChange,
   disabled,
+  muted,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  muted?: boolean;
 }) {
   return (
-    <label className="checkbox-row paint-tracker-flag">
+    <label className={`checkbox-row paint-tracker-flag${muted ? " paint-tracker-flag--muted" : ""}`}>
       <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
@@ -83,6 +87,7 @@ export function PaintTrackerStatusSection({
   onOpenJobSetup,
   onProjectUpdate,
   showStatusPills = true,
+  editorMode = false,
 }: Props) {
   const { user } = useAuth();
   const { settings: letterhead, branding, profile } = useLetterhead();
@@ -98,6 +103,13 @@ export function PaintTrackerStatusSection({
   const saveTimerRef = useRef<number | null>(null);
   const trackerRef = useRef<PaintTrackerState | null>(null);
   const revisionNotesRef = useRef<HTMLTextAreaElement | null>(null);
+  const focusRevisionNotesRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!focusRevisionNotesRef.current || !revisionNotesRef.current) return;
+    focusRevisionNotesRef.current = false;
+    revisionNotesRef.current.focus();
+  });
 
   const jobNumber = project.job_number.trim();
 
@@ -315,6 +327,7 @@ export function PaintTrackerStatusSection({
       if (validationError) {
         setError(validationError);
         if ("revision" in patch && patch.revision) {
+          focusRevisionNotesRef.current = true;
           revisionNotesRef.current?.focus();
         }
       } else {
@@ -360,6 +373,146 @@ export function PaintTrackerStatusSection({
     );
   } else if (loading || !tracker) {
     body = <p className="muted small">Loading paint tracker…</p>;
+  } else if (editorMode) {
+    const notesEmpty = !tracker.revisionNotes.trim();
+    body = (
+      <div
+        className={`paint-editor-body${tracker.noPaint ? " paint-editor-dimmed" : ""}`}
+        inert={tracker.noPaint ? true : undefined}
+      >
+        <div>
+          <p className="muted small paint-tracker-subsection">Submittal status</p>
+          <div className="wc-stage-stepper-row">
+            {(() => {
+              // Same three independent booleans the checkboxes wrote; a tap toggles
+              // its flag exactly as the old checkbox did (incl. the follow-up side
+              // effect on Submitted for approval).
+              const flags = [tracker.submittalOrdered, tracker.submittedForApproval, tracker.approved];
+              const currentIdx = flags.lastIndexOf(true);
+              const stages = [
+                { key: "ordered", label: "Submittal ordered" },
+                { key: "submitted", label: "Submitted for approval" },
+                { key: "approved", label: "Approved" },
+              ];
+              return (
+                <StageStepper
+                  ariaLabel="Submittal status"
+                  disabled={saving || tracker.noPaint}
+                  items={stages.map((s, i) => ({
+                    key: s.key,
+                    label: s.label,
+                    state: !flags[i] ? "todo" : i === currentIdx ? "current" : "done",
+                    title: `Toggle: ${s.label}`,
+                  }))}
+                  onSelect={(key) => {
+                    if (key === "ordered") {
+                      patchTracker({ submittalOrdered: !tracker.submittalOrdered });
+                    } else if (key === "submitted") {
+                      patchTracker(
+                        tracker.submittedForApproval
+                          ? { submittedForApproval: false }
+                          : { submittedForApproval: true, followUp: addDaysToTodayDisplay(14) },
+                      );
+                    } else {
+                      patchTracker({ approved: !tracker.approved });
+                    }
+                  }}
+                />
+              );
+            })()}
+          </div>
+        </div>
+
+        <div className="grid-2">
+          <label>
+            Paint vendor
+            <select
+              value={tracker.paintVendor}
+              disabled={saving}
+              onChange={(e) => patchTracker({ paintVendor: e.target.value as PaintVendorLabel })}
+            >
+              {PAINT_VENDOR_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Follow up
+            <DateInput
+              value={tracker.followUp}
+              disabled={saving || tracker.approved}
+              onChange={(v) => patchTracker({ followUp: v })}
+            />
+            <span className="paint-editor-followup-caption">
+              Sets to 14 days out when submitted for approval
+            </span>
+          </label>
+        </div>
+
+        <div className="paint-editor-flags">
+          <FlagSwitch
+            label="Match existing"
+            tone="accent"
+            checked={tracker.matchExisting}
+            disabled={saving}
+            onChange={(v) => patchTracker({ matchExisting: v })}
+          />
+          <FlagSwitch
+            label="Nights / weekends"
+            tone="accent"
+            checked={tracker.nightsWeekends}
+            disabled={saving}
+            onChange={(v) => patchTracker({ nightsWeekends: v })}
+          />
+        </div>
+
+        <div>
+          <FlagSwitch
+            label="Revision"
+            tone="warn"
+            checked={tracker.revision}
+            disabled={saving || tracker.noPaint}
+            onChange={(v) => patchTracker({ revision: v })}
+          />
+          {tracker.revision && (
+            <div className="paint-editor-revision-panel">
+              <p className="paint-editor-revision-title">Revision requested</p>
+              <p className="paint-editor-revision-sub">
+                Job is marked for Field View. No email goes out unless you send one below.
+              </p>
+              <label>
+                What needs revision
+                <textarea
+                  ref={revisionNotesRef}
+                  rows={3}
+                  value={tracker.revisionNotes}
+                  disabled={saving}
+                  placeholder="Describe what needs revision — required before sending notification"
+                  onChange={(e) => patchTracker({ revisionNotes: e.target.value })}
+                />
+              </label>
+              <TrackerCheckbox
+                label="Send revision notification email"
+                checked={sendRevisionEmailChecked}
+                disabled={saving || notesEmpty}
+                muted={notesEmpty}
+                onChange={(v) => {
+                  setSendRevisionEmailChecked(v);
+                  if (v) void sendRevisionEmailNotification();
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        <p className="muted small paint-editor-footer">
+          Changes save automatically.
+          {saving ? " Saving…" : status ? ` ${status}` : ""}
+        </p>
+      </div>
+    );
   } else {
     body = (
       <>
@@ -505,8 +658,29 @@ export function PaintTrackerStatusSection({
     );
   }
 
+  const editorTracker = editorMode && jobNumber && tracker && !loading ? tracker : null;
+
   return (
     <div className="stack paint-tracker-section paint-tracker-section--dashboard">
+      {editorMode && (
+        <div className="paint-editor-jobline">
+          <p className="muted small job-tracker-job-label">{paintTrackerJobLabel(project)}</p>
+          {editorTracker && (
+            <FlagSwitch
+              label="Paint not needed"
+              tone="neutral"
+              checked={editorTracker.noPaint}
+              disabled={saving}
+              onChange={(v) => patchTracker({ noPaint: v })}
+            />
+          )}
+        </div>
+      )}
+      {editorTracker?.noPaint && (
+        <p className="paint-editor-not-needed-note">
+          Paint isn't part of this job. Turn off Paint not needed to track submittals.
+        </p>
+      )}
       {error && <div className="banner banner-error">{error}</div>}
       {body}
     </div>

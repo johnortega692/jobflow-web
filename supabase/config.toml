@@ -19,3 +19,6 @@ verify_jwt = false
 
 [functions.manpower-fsi-budget-alert]
 verify_jwt = false
+
+[functions.field-tools-identify-tool]
+verify_jwt = false

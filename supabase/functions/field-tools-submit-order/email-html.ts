@@ -92,7 +92,7 @@ export function buildOrderEmailHtml(input: EmailHtmlInput): string {
                     <div style="font-size:22px;font-weight:700;color:#222;margin:0;">${escapeHtml(input.orderTitle)}</div>
                     ${
     input.poNumber
-      ? `<div style="margin-top:8px;"><span style="display:inline-block;background:${NAVY};color:#fff;padding:5px 12px;border-radius:4px;font-size:13px;font-weight:700;letter-spacing:0.5px;">PO# ${escapeHtml(input.poNumber)}</span></div>`
+      ? `<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-top:8px;" align="right"><tr><td bgcolor="${NAVY}" style="background-color:${NAVY};color:#ffffff;padding:5px 12px;font-size:13px;font-weight:700;letter-spacing:0.5px;font-family:Arial,Helvetica,sans-serif;">PO# ${escapeHtml(input.poNumber)}</td></tr></table>`
       : ""
   }
                   </td>
@@ -157,7 +157,7 @@ function sectionTable(title: string, lines: string[]): string {
     .map((line, i) => {
       const bg = i % 2 === 0 ? "#ffffff" : "#fafafa";
       return `<tr style="background:${bg};">
-        <td style="padding:6px 10px;border-bottom:1px solid #e8eaed;font-size:13px;color:#333;">${escapeHtml(line)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e8eaed;font-size:13px;color:#333;">${formatItemHtml(line)}</td>
       </tr>`;
     })
     .join("");
@@ -176,6 +176,13 @@ function sectionTable(title: string, lines: string[]): string {
     </div>`;
 }
 
+function formatItemHtml(line: string): string {
+  const [name, ...rest] = line.split("\n");
+  const productId = rest.join("\n").trim();
+  if (!productId) return escapeHtml(name ?? "");
+  return `${escapeHtml(name ?? "")}<br><span style="color:#5c6b7a;font-size:12px;">${escapeHtml(productId)}</span>`;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -188,16 +195,26 @@ function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/'/g, "&#39;");
 }
 
+function withProductId(line: string, item: Record<string, unknown>): string {
+  const productId = typeof item.productId === "string"
+    ? item.productId.trim()
+    : typeof item.product_id === "string"
+      ? item.product_id.trim()
+      : "";
+  if (!productId || line.includes(productId)) return line;
+  return `${line}\n${productId}`;
+}
+
 export function lineItemsToStrings(items: unknown[]): string[] {
   return items.map((item) => {
     if (typeof item === "string") return item;
     if (item && typeof item === "object") {
       const o = item as Record<string, unknown>;
-      if (typeof o.raw === "string") return o.raw;
+      if (typeof o.raw === "string") return withProductId(o.raw, o);
       if (typeof o.name === "string") {
         const qty = o.quantity ? `${o.quantity} ` : "";
         const detail = o.detail ? ` (${o.detail})` : "";
-        return `${qty}${o.name}${detail}`.trim();
+        return withProductId(`${qty}${o.name}${detail}`.trim(), o);
       }
     }
     return String(item);

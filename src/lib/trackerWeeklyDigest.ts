@@ -363,10 +363,13 @@ function alertSection(
                     <table width="100%" cellpadding="12" cellspacing="0" border="0" style="background-color: ${bg}; border-left: 5px solid ${border}; border-radius: 4px;">
                       <tr>
                         <td>
-                          <p style="margin: 0 0 15px 0; font-size: 16px; font-weight: bold; color: ${titleColor};">
-                            ${title}
-                            <span style="background-color: ${border}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 12px; margin-left: 8px;">${count}</span>
-                          </p>
+                          <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin: 0 0 15px 0;">
+                            <tr>
+                              <td style="font-size: 16px; font-weight: bold; color: ${titleColor}; font-family: Arial, Helvetica, sans-serif;">${title}</td>
+                              <td width="8" style="font-size: 1px; line-height: 1px;">&nbsp;</td>
+                              <td bgcolor="${border}" style="background-color: ${border}; color: #ffffff; padding: 2px 8px; font-size: 12px; font-weight: bold; font-family: Arial, Helvetica, sans-serif;">${count}</td>
+                            </tr>
+                          </table>
                           ${blocks}
                         </td>
                       </tr>

@@ -241,9 +241,9 @@ export function collectWallcoveringSnapshotJobs(
 function chipHtml(chip: WcSnapshotChip): string {
   const style = CHIP_STYLE[chip.tone];
   return `<td style="padding: 0 4px 4px 0;">
-                              <table cellpadding="0" cellspacing="0" border="0">
+                              <table cellpadding="0" cellspacing="0" border="0" role="presentation">
                                 <tr>
-                                  <td style="background-color: ${style.bg}; border: 1px solid ${style.border}; color: ${style.color}; padding: 3px 8px; font-size: 11px; font-weight: bold; font-family: Arial, Helvetica, sans-serif; white-space: nowrap;">
+                                  <td bgcolor="${style.bg}" style="background-color: ${style.bg}; border: 1px solid ${style.border}; color: ${style.color}; padding: 3px 8px; font-size: 11px; font-weight: bold; font-family: Arial, Helvetica, sans-serif; white-space: nowrap;">
                                     ${escHtml(chip.label)}
                                   </td>
                                 </tr>
@@ -252,8 +252,13 @@ function chipHtml(chip: WcSnapshotChip): string {
 }
 
 function legendDot(color: string, border: string, label: string): string {
-  return `<td style="padding: 0 12px 6px 0; font-size: 11px; color: ${THEME.muted}; font-family: Arial, Helvetica, sans-serif; white-space: nowrap;">
-                          <span style="display: inline-block; width: 8px; height: 8px; background-color: ${color}; border: 1px solid ${border}; vertical-align: middle; margin-right: 5px;"></span>${escHtml(label)}
+  return `<td style="padding: 0 14px 8px 0;" valign="middle">
+                          <table cellpadding="0" cellspacing="0" border="0" role="presentation">
+                            <tr>
+                              <td width="10" height="10" bgcolor="${color}" valign="middle" style="width: 10px; height: 10px; background-color: ${color}; border: 1px solid ${border}; font-size: 1px; line-height: 10px;">&nbsp;</td>
+                              <td valign="middle" style="padding-left: 6px; font-size: 12px; line-height: 16px; color: ${THEME.muted}; font-family: Arial, Helvetica, sans-serif;">${escHtml(label)}</td>
+                            </tr>
+                          </table>
                         </td>`;
 }
 
@@ -384,7 +389,7 @@ function snapshotBodyHtml(options: {
       : `<p style="margin: 0; font-size: 14px; color: ${THEME.muted}; font-family: Arial, Helvetica, sans-serif;">No wallcovering jobs to show.</p>`;
 
   return `${intro}
-                    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 10px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-bottom: 10px;">
                       <tr>
                         ${legendDot("#4caf50", "#4caf50", "Delivered")}
                         ${legendDot("#1565c0", "#1565c0", "Shipped")}
@@ -396,8 +401,8 @@ function snapshotBodyHtml(options: {
                     ${tables}
                     <table cellpadding="0" cellspacing="0" border="0" style="margin-top: 16px;">
                       <tr>
-                        <td style="background-color: ${THEME.header}; border-radius: 4px;">
-                          <a href="${options.fieldUrl}" style="display: inline-block; padding: 12px 20px; color: #ffffff; font-size: 14px; font-weight: bold; text-decoration: none; font-family: Arial, Helvetica, sans-serif;">Open Material Tracker</a>
+                        <td bgcolor="${THEME.header}" style="background-color: ${THEME.header}; border-radius: 4px; padding: 12px 20px;">
+                          <a href="${options.fieldUrl}" style="color: #ffffff; font-size: 14px; font-weight: bold; text-decoration: none; font-family: Arial, Helvetica, sans-serif;">Open Material Tracker</a>
                         </td>
                       </tr>
                     </table>

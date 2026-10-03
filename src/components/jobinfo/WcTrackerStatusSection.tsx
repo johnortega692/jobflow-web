@@ -1,5 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { UnsavedChangesDialog } from "../UnsavedChangesDialog";
+import { useUnsavedNavigationGuard } from "../../contexts/UnsavedNavigationContext";
 import { wcTrackerJobNumber } from "../../lib/jobInfo";
 import {
   reloadProject,
@@ -25,6 +27,8 @@ type Props = {
   projectId: string;
   onOpenJobSetup?: () => void;
   onProjectUpdate?: (project: ProjectForm) => void;
+  /** Ask before Paint / Log (or another row) discards an unsaved line. */
+  onRegisterLeave?: (guard: ((proceed: () => void) => void) | null) => void;
 };
 
 function formatListDate(value: string): string {
@@ -39,13 +43,21 @@ function formatListDate(value: string): string {
   return v;
 }
 
-export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onProjectUpdate }: Props) {
+export function WcTrackerStatusSection({
+  project,
+  projectId,
+  onOpenJobSetup,
+  onProjectUpdate,
+  onRegisterLeave,
+}: Props) {
   const [lines, setLines] = useState<WcTrackerLineState[]>([]);
   const [loading, setLoading] = useState(true);
   const [lineSaving, setLineSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** In-place row editor: mode "edit" expands an existing row; "add" appends a draft row. */
   const [editing, setEditing] = useState<{ mode: "add" | "edit"; line: WcTrackerLineState } | null>(null);
+  const baselineRef = useRef<string | null>(null);
+  const [leavePrompt, setLeavePrompt] = useState<(() => void) | null>(null);
 
   const jobNumber = wcTrackerJobNumber(project);
 
@@ -81,37 +93,67 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
     [onProjectUpdate, projectId],
   );
 
+  const isDirty = editing != null && baselineRef.current !== JSON.stringify(editing.line);
+
+  function beginEdit(mode: "add" | "edit", line: WcTrackerLineState) {
+    baselineRef.current = JSON.stringify(line);
+    setEditing({ mode, line });
+  }
+
+  function requestLeave(proceed: () => void) {
+    if (lineSaving) return;
+    if (!isDirty) {
+      proceed();
+      return;
+    }
+    setLeavePrompt(() => proceed);
+  }
+
+  const requestLeaveRef = useRef(requestLeave);
+  requestLeaveRef.current = requestLeave;
+
+  useEffect(() => {
+    if (!onRegisterLeave) return;
+    onRegisterLeave((proceed) => requestLeaveRef.current(proceed));
+    return () => onRegisterLeave(null);
+  }, [onRegisterLeave]);
+
   function openAdd() {
-    setEditing({ mode: "add", line: createEmptyWcTrackerLine() });
+    const start = () => {
+      beginEdit("add", createEmptyWcTrackerLine());
+    };
+    if (editing && isDirty) requestLeave(start);
+    else start();
   }
 
   /** Row click / chevron: expand this row's editor (closing any other), or collapse it. */
   function toggleRow(line: WcTrackerLineState) {
     if (lineSaving) return;
     if (editing?.mode === "edit" && editing.line.id === line.id) {
-      setEditing(null);
+      requestLeave(() => setEditing(null));
       return;
     }
-    setEditing({ mode: "edit", line: { ...line } });
+    const open = () => beginEdit("edit", { ...line });
+    if (editing && isDirty) requestLeave(open);
+    else open();
   }
 
   function closeEditor() {
-    if (lineSaving) return;
-    setEditing(null);
+    requestLeave(() => setEditing(null));
   }
 
-  async function onEditorSave() {
-    if (!editing) return;
+  async function onEditorSave(): Promise<boolean> {
+    if (!editing) return false;
     const draftLine = editing.line;
     const label = draftLine.label.trim();
     const name = draftLine.wallcoveringName.trim();
     if (!label && !name) {
       setError("Enter a label or wallcovering name.");
-      return;
+      return false;
     }
     if (draftLine.revision && !draftLine.revisionNotes.trim()) {
       setError("Enter revision notes for this wallcovering before saving.");
-      return;
+      return false;
     }
 
     const nextLines =
@@ -126,14 +168,39 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
         : `Updated wallcovering line: ${lineLabel}`;
 
     const ok = await persistLines(nextLines, summary);
-    if (ok) setEditing(null);
+    if (ok) {
+      baselineRef.current = null;
+      setEditing(null);
+    }
+    return ok;
   }
+
+  useUnsavedNavigationGuard({
+    enabled: editing != null,
+    sectionLabel: "this wallcovering line",
+    isDirty,
+    onSave: () => onEditorSave(),
+    onDiscard: () => {
+      baselineRef.current = null;
+      setEditing(null);
+      setError(null);
+    },
+  });
 
   async function onLineStageChange(line: WcTrackerLineState, stage: WcFieldStatus) {
     const nextLine = applyWcLineStage(line, stage);
     if (stage === "Needs Revision" && !nextLine.revisionNotes.trim()) {
-      setEditing({ mode: "edit", line: nextLine });
-      setError("Add revision notes for this wallcovering, then save the line.");
+      const openForNotes = () => {
+        const saved = lines.find((l) => l.id === line.id);
+        baselineRef.current = JSON.stringify(saved ?? line);
+        setEditing({ mode: "edit", line: nextLine });
+        setError("Add revision notes for this wallcovering, then save the line.");
+      };
+      if (editing && isDirty && editing.line.id !== line.id) {
+        requestLeave(openForNotes);
+        return;
+      }
+      openForNotes();
       return;
     }
     const nextLines = lines.map((l) => (l.id === line.id ? nextLine : l));
@@ -155,7 +222,7 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
   const expandedId = editing?.mode === "edit" ? editing.line.id : null;
 
   const editorRow = editing ? (
-    <tr className="wc-tracker-editor-row">
+    <tr className="wc-tracker-editor-row is-open">
       <td colSpan={6}>
         <WcTrackerLineInlineEditor
           line={editing.line}
@@ -246,7 +313,7 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
                     return (
                       <Fragment key={line.id}>
                         <tr
-                          className={`wc-tracker-line-row${isOpen ? " wc-tracker-line-row--open" : ""}`}
+                          className={`wc-tracker-line-row${isOpen ? " wc-tracker-line-row--open is-open" : ""}`}
                           onClick={() => toggleRow(line)}
                         >
                           <td>{displayLine.label.trim() || "—"}</td>
@@ -315,10 +382,38 @@ export function WcTrackerStatusSection({ project, projectId, onOpenJobSetup, onP
     );
   }
 
+  async function confirmLeaveSave() {
+    const proceed = leavePrompt;
+    const ok = await onEditorSave();
+    if (!ok || !proceed) return;
+    setLeavePrompt(null);
+    proceed();
+  }
+
+  function confirmLeaveDiscard() {
+    const proceed = leavePrompt;
+    if (!proceed) return;
+    baselineRef.current = null;
+    setEditing(null);
+    setError(null);
+    setLeavePrompt(null);
+    proceed();
+  }
+
   return (
     <div className="stack paint-tracker-section paint-tracker-section--dashboard">
       {error && <div className="banner banner-error">{error}</div>}
       {body}
+      {leavePrompt && (
+        <UnsavedChangesDialog
+          targetLabel="this wallcovering line"
+          saving={lineSaving}
+          stayHint="keep editing"
+          onSave={() => void confirmLeaveSave()}
+          onDiscard={confirmLeaveDiscard}
+          onCancel={() => setLeavePrompt(null)}
+        />
+      )}
     </div>
   );
 }

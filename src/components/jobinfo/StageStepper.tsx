@@ -16,8 +16,8 @@ type FlagSwitchProps = {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
-  /** On-state track color: stage flags = ok, plain attributes = accent, attention = warn. */
-  tone: "ok" | "accent" | "warn";
+  /** On-state track color: stage flags = ok, plain attributes = accent, attention = warn, inactive = neutral gray. */
+  tone: "ok" | "accent" | "warn" | "neutral";
   disabled?: boolean;
 };
 

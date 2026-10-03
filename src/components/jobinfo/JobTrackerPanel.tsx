@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { paintTrackerJobLabel, projectHasWallcovering, wcTrackerJobLabel } from "../../lib/jobInfo";
 import type { ProjectForm } from "../../types/database";
 import { PaintTrackerStatusSection } from "./PaintTrackerStatusSection";
@@ -32,13 +32,24 @@ export function JobTrackerPanel({
 }: Props) {
   const hasWc = projectHasWallcovering(project.jobInfo);
   const [tab, setTab] = useState<TrackerTab>(initialTab ?? "paint");
+  const leaveWallcoveringRef = useRef<(proceed: () => void) => void>((proceed) => proceed());
+  const registerWallcoveringLeave = useCallback((guard: ((proceed: () => void) => void) | null) => {
+    leaveWallcoveringRef.current = guard ?? ((proceed) => proceed());
+  }, []);
 
   const activeTab: TrackerTab =
     tab === "wallcovering" && hasWc ? "wallcovering" : tab === "log" && hasWc && editorMode ? "log" : "paint";
 
   function selectTab(next: TrackerTab) {
-    setTab(next);
-    onTabChange?.(next);
+    const apply = () => {
+      setTab(next);
+      onTabChange?.(next);
+    };
+    if (activeTab === "wallcovering" && next !== activeTab) {
+      leaveWallcoveringRef.current(apply);
+      return;
+    }
+    apply();
   }
 
   return (
@@ -115,7 +126,7 @@ export function JobTrackerPanel({
         </div>
       )}
 
-      {activeTab !== "log" && (
+      {activeTab !== "log" && !(editorMode && activeTab === "paint") && (
         <p className="muted small job-tracker-job-label">
           {activeTab === "paint" ? paintTrackerJobLabel(project) : wcTrackerJobLabel(project)}
         </p>
@@ -129,6 +140,7 @@ export function JobTrackerPanel({
             onOpenJobSetup={onOpenJobSetup}
             onProjectUpdate={onProjectUpdate}
             showStatusPills={!editorMode}
+            editorMode={editorMode}
           />
         </div>
       ) : activeTab === "wallcovering" ? (
@@ -138,6 +150,7 @@ export function JobTrackerPanel({
             projectId={projectId}
             onOpenJobSetup={onOpenJobSetup}
             onProjectUpdate={onProjectUpdate}
+            onRegisterLeave={registerWallcoveringLeave}
           />
         </div>
       ) : (

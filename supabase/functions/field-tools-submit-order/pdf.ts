@@ -11,6 +11,8 @@ export type LineItem = {
   detail?: string;
   raw?: string;
   vendor?: string;
+  productId?: string;
+  product_id?: string;
 };
 
 export type MaterialPdfInput = {
@@ -367,11 +369,21 @@ function tableRowValues(item: LineItem, cols: TableCol[]): string[] {
 }
 
 /** Full cell text, wrapped to the column. Product and sheen/color are never ellipsized. */
+function sundryProductId(item: LineItem): string {
+  return (item.productId ?? item.product_id ?? "").trim();
+}
+
 function tableRowCells(item: LineItem, cols: TableCol[], font: PdfFont): string[][] {
   const values = tableRowValues(item, cols);
   return cols.map((col, i) => {
     const maxW = Math.max(8, col.width - 8);
-    return wrapToWidth(values[i] ?? "", maxW, (value) => font.widthOfTextAtSize(value, CELL_SIZE));
+    const measure = (value: string) => font.widthOfTextAtSize(value, CELL_SIZE);
+    const lines = wrapToWidth(values[i] ?? "", maxW, measure);
+    if (col.key === "name") {
+      const productId = sundryProductId(item);
+      if (productId) lines.push(...wrapToWidth(productId, maxW, measure));
+    }
+    return lines;
   });
 }
 

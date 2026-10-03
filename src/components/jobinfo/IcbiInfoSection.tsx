@@ -8,13 +8,27 @@ import { jobInfoPatchFromStaffSelection, loadProjectStaffSettings } from "../../
 import type { StaffContact } from "../../types/staffContacts";
 import type { JobInfoData } from "../../types/jobInfo";
 
+function isBlank(value: string): boolean {
+  return value.trim() === "";
+}
+
+function inputClass(value: string): string | undefined {
+  return isBlank(value) ? "job-info-input-empty" : undefined;
+}
+
+function fieldClass(filled: boolean, extra?: string): string {
+  return [extra, "job-info-field", filled ? "is-filled" : ""].filter(Boolean).join(" ");
+}
+
 type Props = {
   jobInfo: JobInfoData;
   onChange: (patch: Partial<JobInfoData>) => void;
+  /** Display-only filled/total for the section heading. */
+  progress?: { filled: number; total: number };
 };
 
 /** ICBI staff — single source for Field Tools field orders and Manpower sync. */
-export function IcbiInfoSection({ jobInfo, onChange }: Props) {
+export function IcbiInfoSection({ jobInfo, onChange, progress }: Props) {
   const { profile } = useLetterhead();
   const { jobRole } = useAuth();
   const [pmRoster, setPmRoster] = useState<StaffContact[]>([]);
@@ -81,125 +95,175 @@ export function IcbiInfoSection({ jobInfo, onChange }: Props) {
     );
   }
 
+  const complete = progress != null && progress.total > 0 && progress.filled === progress.total;
+  const pmNameFilled = pmOptions.length > 0 || !isBlank(j.icbi_pm);
+  const superNameFilled = supers.length > 0 || !isBlank(j.field_request_super);
+
   return (
-    <details className="job-section card stack" open>
-      <summary className="job-section-summary">
-        <h3>ICBI Info</h3>
-      </summary>
+    <section id="job-info-sec-icbi" className="job-info-block stack">
+      <h3 className="job-info-block-heading">
+        <span>ICBI</span>
+        {progress && (
+          <span className={`job-info-count${complete ? " job-info-count--complete" : ""}`}>
+            {progress.filled}/{progress.total}
+          </span>
+        )}
+      </h3>
       {loading && <p className="muted small">Loading PM / super lists…</p>}
       {error && <p className="banner banner-warn">{error}</p>}
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={j.icbi_is_gc}
-          onChange={(e) => onChange({ icbi_is_gc: e.target.checked })}
-        />
-        ICBI is the GC on this project
-      </label>
-      {j.icbi_is_gc && (
-        <p className="muted small">
-          Self-perform paint POs for this job get a trailing <strong>P</strong> (e.g.{" "}
-          <code>1126-001P</code>) so they're distinguishable from ICBI's GC-side PO accounting.
-        </p>
-      )}
-      <div className="grid-2">
-        <label>
-          Estimator
-          <input value={j.icbi_estimator} onChange={(e) => onChange({ icbi_estimator: e.target.value })} />
-        </label>
-        <label>
-          PE
-          <input value={j.icbi_engineer} onChange={(e) => onChange({ icbi_engineer: e.target.value })} />
-        </label>
-        <label>
-          PM
-          {pmOptions.length > 0 ? (
-            <select value={j.icbi_pm} onChange={(e) => onPmSelect(e.target.value)}>
-              <option value="">Select PM…</option>
-              {pmOptions.map((o) => (
-                <option key={o.key} value={o.name}>
-                  {o.label}
-                </option>
-              ))}
-              {j.icbi_pm.trim() && !pmInOptions && (
-                <option value={j.icbi_pm}>{j.icbi_pm} (current)</option>
-              )}
-            </select>
-          ) : (
-            <input
-              value={j.icbi_pm}
-              placeholder={profileIsPm ? profile.name.trim() || "Ironwood PM" : "Ironwood PM"}
-              onChange={(e) => onChange({ icbi_pm: e.target.value })}
-            />
-          )}
-        </label>
-        <label>
-          PM email
+      <div className="job-info-nonfield">
+        <label className="checkbox-row job-info-switch">
           <input
-            type="email"
-            value={j.icbi_pm_email}
-            placeholder="CC on Field Tools orders"
-            onChange={(e) => onChange({ icbi_pm_email: e.target.value })}
+            type="checkbox"
+            role="switch"
+            checked={j.icbi_is_gc}
+            onChange={(e) => onChange({ icbi_is_gc: e.target.checked })}
           />
-          <EmailAddressWarning value={j.icbi_pm_email} compact />
+          ICBI is the GC on this project
         </label>
-        <label>
-          Foreman
-          <input value={j.icbi_foreman} onChange={(e) => onChange({ icbi_foreman: e.target.value })} />
-        </label>
-        <label>
-          Foreman email
-          <input
-            type="email"
-            value={j.icbi_foreman_email}
-            placeholder="CC on paint tracker & vendor emails"
-            onChange={(e) => onChange({ icbi_foreman_email: e.target.value })}
-          />
-          <EmailAddressWarning value={j.icbi_foreman_email} compact />
-        </label>
-        <label className="grid-span-2">
-          Team
-          <input
-            value={j.icbi_team}
-            placeholder="Internal trade or division sharing this job"
-            onChange={(e) => onChange({ icbi_team: e.target.value })}
-          />
-        </label>
-        <label>
-          Super
-          {supers.length > 0 ? (
-            <select
-              value={superValue}
-              onChange={(e) => onSuperSelect(e.target.value)}
-            >
-              <option value="">Select super…</option>
-              {supers.map((contact) => (
-                <option key={contact.id} value={contact.name}>
-                  {contact.name}
-                </option>
-              ))}
-              {superValue && !supers.some((c) => c.name === superValue) && (
-                <option value={superValue}>{superValue} (not in Field Tools)</option>
-              )}
-            </select>
-          ) : (
-            <input
-              value={j.field_request_super}
-              placeholder="Super from Field Tools"
-              onChange={(e) => onChange({ field_request_super: e.target.value })}
-            />
-          )}
-        </label>
-        <label>
-          Super email
-          <input
-            type="email"
-            value={j.icbi_super_email}
-            onChange={(e) => onChange({ icbi_super_email: e.target.value })}
-          />
-          <EmailAddressWarning value={j.icbi_super_email} compact />
-        </label>
+        {j.icbi_is_gc && (
+          <p className="muted small">
+            Self-perform paint POs for this job get a trailing <strong>P</strong> (e.g.{" "}
+            <code>1126-001P</code>) so they're distinguishable from ICBI's GC-side PO accounting.
+          </p>
+        )}
       </div>
-    </details>
+      <div className="job-info-subgroup">
+        <h4 className="job-info-subgroup-heading">People</h4>
+        <div className="job-info-people job-info-people--icbi">
+          <div className="job-info-people-head" aria-hidden="true">
+            <span />
+            <span>Name</span>
+            <span>Email</span>
+          </div>
+          <div className={fieldClass(pmNameFilled && !isBlank(j.icbi_pm_email), "job-info-people-row")}>
+            <span className="job-info-people-role">PM</span>
+            <div className="job-info-people-cell">
+              {pmOptions.length > 0 ? (
+                <select value={j.icbi_pm} aria-label="PM" onChange={(e) => onPmSelect(e.target.value)}>
+                  <option value="">Select PM…</option>
+                  {pmOptions.map((o) => (
+                    <option key={o.key} value={o.name}>
+                      {o.label}
+                    </option>
+                  ))}
+                  {j.icbi_pm.trim() && !pmInOptions && (
+                    <option value={j.icbi_pm}>{j.icbi_pm} (current)</option>
+                  )}
+                </select>
+              ) : (
+                <input
+                  aria-label="PM"
+                  className={inputClass(j.icbi_pm)}
+                  value={j.icbi_pm}
+                  placeholder={profileIsPm ? profile.name.trim() || "Ironwood PM" : "Ironwood PM"}
+                  onChange={(e) => onChange({ icbi_pm: e.target.value })}
+                />
+              )}
+            </div>
+            <div className="job-info-people-cell">
+              <input
+                aria-label="PM email"
+                type="email"
+                className={inputClass(j.icbi_pm_email)}
+                value={j.icbi_pm_email}
+                placeholder="CC on Field Tools orders"
+                onChange={(e) => onChange({ icbi_pm_email: e.target.value })}
+              />
+              <EmailAddressWarning value={j.icbi_pm_email} compact />
+            </div>
+          </div>
+          <div className={fieldClass(superNameFilled && !isBlank(j.icbi_super_email), "job-info-people-row")}>
+            <span className="job-info-people-role">Super</span>
+            <div className="job-info-people-cell">
+              {supers.length > 0 ? (
+                <select
+                  aria-label="Super"
+                  value={superValue}
+                  onChange={(e) => onSuperSelect(e.target.value)}
+                >
+                  <option value="">Select super…</option>
+                  {supers.map((contact) => (
+                    <option key={contact.id} value={contact.name}>
+                      {contact.name}
+                    </option>
+                  ))}
+                  {superValue && !supers.some((c) => c.name === superValue) && (
+                    <option value={superValue}>{superValue} (not in Field Tools)</option>
+                  )}
+                </select>
+              ) : (
+                <input
+                  aria-label="Super"
+                  className={inputClass(j.field_request_super)}
+                  value={j.field_request_super}
+                  placeholder="Super from Field Tools"
+                  onChange={(e) => onChange({ field_request_super: e.target.value })}
+                />
+              )}
+            </div>
+            <div className="job-info-people-cell">
+              <input
+                aria-label="Super email"
+                type="email"
+                className={inputClass(j.icbi_super_email)}
+                value={j.icbi_super_email}
+                onChange={(e) => onChange({ icbi_super_email: e.target.value })}
+              />
+              <EmailAddressWarning value={j.icbi_super_email} compact />
+            </div>
+          </div>
+          <div className={fieldClass(!isBlank(j.icbi_foreman) && !isBlank(j.icbi_foreman_email), "job-info-people-row")}>
+            <span className="job-info-people-role">Foreman</span>
+            <input
+              aria-label="Foreman"
+              className={inputClass(j.icbi_foreman)}
+              value={j.icbi_foreman}
+              onChange={(e) => onChange({ icbi_foreman: e.target.value })}
+            />
+            <div className="job-info-people-cell">
+              <input
+                aria-label="Foreman email"
+                type="email"
+                className={inputClass(j.icbi_foreman_email)}
+                value={j.icbi_foreman_email}
+                placeholder="CC on paint tracker & vendor emails"
+                onChange={(e) => onChange({ icbi_foreman_email: e.target.value })}
+              />
+              <EmailAddressWarning value={j.icbi_foreman_email} compact />
+            </div>
+          </div>
+          <div className={fieldClass(!isBlank(j.icbi_estimator), "job-info-people-row")}>
+            <span className="job-info-people-role">Estimator</span>
+            <input
+              aria-label="Estimator"
+              className={inputClass(j.icbi_estimator)}
+              value={j.icbi_estimator}
+              onChange={(e) => onChange({ icbi_estimator: e.target.value })}
+            />
+            <span className="job-info-people-blank" aria-hidden="true">—</span>
+          </div>
+          <div className={fieldClass(!isBlank(j.icbi_engineer), "job-info-people-row")}>
+            <span className="job-info-people-role">PE</span>
+            <input
+              aria-label="PE"
+              className={inputClass(j.icbi_engineer)}
+              value={j.icbi_engineer}
+              onChange={(e) => onChange({ icbi_engineer: e.target.value })}
+            />
+            <span className="job-info-people-blank" aria-hidden="true">—</span>
+          </div>
+        </div>
+      </div>
+      <label className={fieldClass(!isBlank(j.icbi_team))}>
+        Team
+        <input
+          className={inputClass(j.icbi_team)}
+          value={j.icbi_team}
+          placeholder="Internal trade or division sharing this job"
+          onChange={(e) => onChange({ icbi_team: e.target.value })}
+        />
+      </label>
+    </section>
   );
 }

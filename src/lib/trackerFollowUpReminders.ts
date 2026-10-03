@@ -410,22 +410,26 @@ export function buildUpcomingInstallsReminderEmailHtml(
                 <tr><td style="padding: 10px 20px;">
                     <table width="100%" cellpadding="12" cellspacing="0" border="0" style="background-color: #e8eaf6; border-left: 5px solid #3f51b5; border-radius: 4px;">
                       <tr><td>
-                          <p style="margin: 0 0 15px 0; font-size: 16px; font-weight: bold; color: #3f51b5;">
-                            Next ${INSTALL_LOOKAHEAD_DAYS} days
-                            <span style="background-color: #3f51b5; color: white; padding: 3px 10px; border-radius: 12px; font-size: 12px; margin-left: 8px;">${items.length}</span>
-                          </p>`;
+                          <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin: 0 0 15px 0;">
+                            <tr>
+                              <td style="font-size: 16px; font-weight: bold; color: #3f51b5; font-family: Arial, Helvetica, sans-serif;">Next ${INSTALL_LOOKAHEAD_DAYS} days</td>
+                              <td width="8" style="font-size: 1px; line-height: 1px;">&nbsp;</td>
+                              <td bgcolor="#3f51b5" style="background-color: #3f51b5; color: #ffffff; padding: 2px 8px; font-size: 12px; font-weight: bold; font-family: Arial, Helvetica, sans-serif;">${items.length}</td>
+                            </tr>
+                          </table>`;
 
   for (const item of items) {
     const material = item.imageUrl
       ? `<a href="${escHtml(item.imageUrl)}" style="color: #1a73e8; text-decoration: none;">${escHtml(item.wallcoveringName)}</a>`
       : escHtml(item.wallcoveringName);
     const panels = item.hasPanels
-      ? ' <span style="background-color: #ff5722; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">PANELS</span>'
+      ? `<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-top: 4px;"><tr><td bgcolor="#ff5722" style="background-color: #ff5722; color: #ffffff; padding: 2px 6px; font-size: 11px; font-weight: bold; font-family: Arial, Helvetica, sans-serif;">PANELS</td></tr></table>`
       : "";
     html += `<table width="100%" cellpadding="10" cellspacing="0" border="0" style="background-color: #ffffff; border-radius: 4px; margin-bottom: 10px;">
                             <tr><td style="border-left: 3px solid #3f51b5;">
                                 <p style="margin: 0 0 5px 0; font-size: 15px;"><strong style="color: #1a73e8;">${escHtml(item.jobNumber)}</strong> - ${escHtml(item.jobName)}</p>
-                                <p style="margin: 0 0 3px 0; font-size: 13px; color: #666;">Material: ${material} (${escHtml(item.wcLabel)})${panels}</p>
+                                <p style="margin: 0 0 3px 0; font-size: 13px; color: #666;">Material: ${material} (${escHtml(item.wcLabel)})</p>
+                                ${panels}
                                 <p style="margin: 0; font-size: 13px; color: #3f51b5; font-weight: bold;">Install Date: ${escHtml(item.installDateFormatted)} (${item.daysUntil} day${item.daysUntil === 1 ? "" : "s"})</p>
                               </td></tr>
                           </table>`;

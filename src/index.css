@@ -2258,8 +2258,27 @@ th {
   min-width: 0;
 }
 
+.procurement-log-last-update {
+  margin: 0;
+}
+
+.procurement-log-export {
+  display: inline-flex;
+}
+
+.procurement-log-export button:disabled {
+  pointer-events: none;
+}
+
 .procurement-log-page .procurement-log-meta p {
   margin: 0.15rem 0;
+}
+
+.procurement-log-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1.75rem;
 }
 
 .procurement-log-table-title {
@@ -2280,47 +2299,44 @@ th {
   -webkit-overflow-scrolling: touch;
 }
 
+/* 64+260+72+96+96+96+170+280 = 1134 */
 .procurement-log-table {
-  width: 100%;
-  min-width: 900px;
+  width: 1134px;
   table-layout: fixed;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.82rem;
 }
 
-/* Column widths (fixed layout): narrow labels/dates, wide Product and Notes.
-   Sums to 100%: 6 + 21 + 7 + 9 + 9 + 8 + 12 + 28. */
 .procurement-log-table .plog-col-finish {
-  width: 6%;
+  width: 64px;
 }
 
 .procurement-log-table .plog-col-product {
-  width: 21%;
+  width: 260px;
 }
 
 .procurement-log-table .plog-col-lead {
-  width: 7%;
+  width: 72px;
 }
 
-.procurement-log-table .plog-col-date {
-  width: 9%;
-}
-
+.procurement-log-table .plog-col-date,
 .procurement-log-table .plog-col-ship {
-  width: 8%;
+  width: 96px;
 }
 
 .procurement-log-table .plog-col-tracking {
-  width: 12%;
+  width: 170px;
 }
 
 .procurement-log-table .plog-col-notes {
-  width: 28%;
+  width: 280px;
 }
 
 .procurement-log-table th,
 .procurement-log-table td {
-  border: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 0.45rem 0.5rem;
   vertical-align: top;
   text-align: left;
@@ -2333,21 +2349,83 @@ th {
 }
 
 .procurement-log-table th {
+  border-top: 1px solid var(--border);
   background: var(--surface2);
   font-weight: 600;
+  white-space: nowrap;
 }
 
-/* Labels and dates stay on one line; Product/Tracking/Notes wrap in their columns */
+.procurement-log-table th:first-child,
+.procurement-log-table td:first-child {
+  border-left: 1px solid var(--border);
+}
+
+.procurement-log-table tbody tr {
+  background: var(--surface);
+}
+
+.procurement-log-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, #fff 2%, var(--surface));
+}
+
+/* Freeze Finish and Product. Opaque fills so scrolled cells don't show through. */
+.procurement-log-table thead th:nth-child(-n + 2),
+.procurement-log-table tbody td:nth-child(-n + 2) {
+  position: sticky;
+}
+
+.procurement-log-table thead th:nth-child(-n + 2) {
+  z-index: 3;
+  background: var(--surface2);
+}
+
+.procurement-log-table tbody td:nth-child(-n + 2) {
+  z-index: 2;
+  background: var(--surface);
+}
+
+.procurement-log-table tbody tr:nth-child(even) td:nth-child(-n + 2) {
+  background: color-mix(in srgb, #fff 2%, var(--surface));
+}
+
+.procurement-log-table th:nth-child(1),
+.procurement-log-table td:nth-child(1) {
+  left: 0;
+}
+
+.procurement-log-table th:nth-child(2),
+.procurement-log-table td:nth-child(2) {
+  left: 64px;
+  border-right: 1px solid var(--border);
+}
+
+.procurement-log-scroll.is-scrolled .procurement-log-table th:nth-child(2),
+.procurement-log-scroll.is-scrolled .procurement-log-table td:nth-child(2) {
+  box-shadow: 6px 0 8px -6px rgba(0, 0, 0, 0.45);
+}
+
+/* "Lead (wks)" is almost as wide as the 72px column, so this header uses tighter inline padding. */
+.procurement-log-table th:nth-child(3) {
+  padding-inline: 2px;
+  overflow: hidden;
+}
+
+.procurement-log-table td.plog-tracking-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+}
+
+/* Finish, lead, and dates stay on one line; Product and Notes wrap in their columns */
 .procurement-log-table td:nth-child(1),
 .procurement-log-table td:nth-child(3),
 .procurement-log-table td:nth-child(4),
 .procurement-log-table td:nth-child(5),
 .procurement-log-table td:nth-child(6) {
   white-space: nowrap;
-}
-
-.procurement-log-table tbody tr:nth-child(even) {
-  background: rgba(255, 255, 255, 0.02);
 }
 
 .procurement-log-empty {
@@ -10624,6 +10702,91 @@ tr.budget-hours-pdf-hidden td {
   font-weight: 600;
 }
 
+.paint-tracker-flag--muted {
+  opacity: 0.45;
+}
+
+.paint-editor-jobline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.paint-editor-jobline .job-tracker-job-label {
+  margin: 0;
+}
+
+.paint-editor-not-needed-note {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.paint-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.paint-editor-body .paint-tracker-subsection {
+  margin: 0 0 0.45rem;
+}
+
+.paint-editor-dimmed {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.paint-editor-followup-caption {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.paint-editor-flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
+
+.paint-editor-revision-panel {
+  margin-top: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(240, 180, 41, 0.85);
+  background: rgba(240, 180, 41, 0.1);
+  border-radius: 10px;
+}
+
+.paint-editor-revision-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.paint-editor-revision-sub {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.paint-editor-footer {
+  margin: 0;
+}
+
 .job-dashboard {
   gap: 1rem;
 }
@@ -11364,10 +11527,6 @@ a.job-tracker-tab {
   margin-top: 0.25rem;
 }
 
-.job-info-gc-name-override {
-  margin-top: 0.4rem;
-}
-
 .job-info-job-number-field .btn {
   margin-top: 0.4rem;
 }
@@ -11614,7 +11773,7 @@ a.job-tracker-tab {
   margin-top: 0.92rem;
 }
 
-.job-info-field-help {
+.jobinfo-form .job-info-field-help {
   display: block;
   margin-top: 0.25rem;
 }
@@ -11634,6 +11793,11 @@ a.job-tracker-tab {
   border-radius: 0.4rem;
   font-size: 0.82rem;
   line-height: 1.35;
+}
+
+.job-setup-tab-section > .startup-config-status-strip {
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.4rem;
 }
 
 .startup-config-status-strip--public-works {
@@ -12108,19 +12272,22 @@ a.job-tracker-tab {
 .job-info-drawer-panel {
   position: relative;
   z-index: 1;
-  width: min(560px, 100vw);
+  width: min(620px, 100vw);
   max-width: 100%;
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
   background: var(--surface);
   border-left: 1px solid var(--border);
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+  container-name: job-info-drawer;
 }
 
 .job-info-drawer-header {
-  padding: 1rem 1.1rem 0.5rem;
+  flex-shrink: 0;
+  padding: 14px 18px;
   gap: 0.75rem;
   border-bottom: 1px solid var(--border);
 }
@@ -12129,14 +12296,19 @@ a.job-tracker-tab {
   align-items: center;
 }
 
-.job-info-drawer-close {
+.job-info-drawer-header .btn {
+  font-size: 13px;
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+
+.job-info-drawer-header .job-info-drawer-close {
   color: var(--danger);
-  font-size: 1.1rem;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1;
   min-width: 2rem;
-  padding-left: 0.45rem;
-  padding-right: 0.45rem;
+  padding: 7px 10px;
 }
 
 .job-info-drawer-close:hover {
@@ -12144,23 +12316,28 @@ a.job-tracker-tab {
   background: rgba(255, 107, 107, 0.12);
 }
 
+.job-info-drawer-panel > .banner {
+  flex-shrink: 0;
+}
+
 .job-info-drawer-tabs {
   display: flex;
+  flex-shrink: 0;
   gap: 0.25rem;
-  padding: 0.5rem 1.1rem 0;
+  padding: 0 18px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
 .job-info-drawer-tab {
   flex: 1;
-  padding: 0.45rem 0.75rem;
+  padding: 10px;
   border: none;
   border-bottom: 2px solid transparent;
   border-radius: 0.35rem 0.35rem 0 0;
   background: transparent;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -12197,13 +12374,677 @@ a.job-tracker-tab {
 
 .job-info-drawer-header h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .job-info-drawer-body {
   flex: 1;
-  padding: 0.75rem 1.1rem 1.25rem;
+  min-height: 0;
+  padding: 4px 18px 40px;
   overflow: auto;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.job-info-section-nav {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.job-info-section-chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+.job-info-section-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.job-info-section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.job-info-section-chip:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface2));
+}
+
+.job-info-section-chip--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.job-info-count {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.job-info-count--complete {
+  color: var(--ok);
+}
+
+.jobinfo-form .job-info-block-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.jobinfo-form .job-info-block > .job-info-block-heading + * {
+  margin-top: 8px;
+}
+
+.jobinfo-form .job-info-block {
+  margin-top: 22px;
+}
+
+.jobinfo-form .job-info-block-heading + .job-info-subgroup > .job-info-subgroup-heading {
+  margin-top: 0;
+}
+
+.jobinfo-form.stack,
+.jobinfo-form .job-info-block.stack {
+  gap: 0;
+}
+
+.jobinfo-form .job-info-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.jobinfo-form .job-info-subgroup > :not(.job-info-subgroup-heading) + :not(.job-info-subgroup-heading) {
+  margin-top: 10px;
+}
+
+.jobinfo-form .job-info-subgroup-heading {
+  margin: 14px 0 8px;
+  padding: 0 0 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.jobinfo-form .job-info-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px 12px;
+  align-items: start;
+}
+
+.jobinfo-form .job-info-span-2 {
+  grid-column: span 2;
+}
+
+.jobinfo-form .job-info-span-3 {
+  grid-column: span 3;
+}
+
+.jobinfo-form .job-info-span-4 {
+  grid-column: span 4;
+}
+
+.jobinfo-form .job-info-span-6 {
+  grid-column: span 6;
+}
+
+.jobinfo-form .job-info-text-link {
+  display: inline-flex;
+  width: auto;
+  margin-top: 0.3rem;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 6px 10px 6px 0;
+  text-align: left;
+  text-decoration: none;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.jobinfo-form .job-info-text-link:hover:not(:disabled),
+.jobinfo-form .job-info-text-link:focus-visible:not(:disabled) {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.jobinfo-form .job-info-text-link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.jobinfo-form .job-info-money {
+  position: relative;
+  display: block;
+  margin-top: 0;
+}
+
+.jobinfo-form .job-info-money input {
+  margin-top: 0;
+  padding-left: 1.45rem;
+}
+
+.jobinfo-form .job-info-money-prefix {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.jobinfo-form .job-info-switch {
+  align-items: flex-start;
+  margin-top: 0;
+  margin-bottom: 0;
+  gap: 0.55rem;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.jobinfo-form .job-info-switch input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 30px;
+  height: 17px;
+  min-height: 17px;
+  padding: 0;
+  margin: 0.15rem 0 0;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+  position: relative;
+  cursor: pointer;
+}
+
+.jobinfo-form .job-info-switch input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.jobinfo-form .job-info-switch input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.jobinfo-form .job-info-switch input[type="checkbox"]:checked::after {
+  transform: translateX(13px);
+  background: #fff;
+}
+
+.jobinfo-form .job-info-switch input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.jobinfo-form .job-info-switch-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.jobinfo-form .job-info-switch-fields {
+  margin-left: 2.4rem;
+}
+
+.jobinfo-form .job-info-empty-only-switch {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  flex-shrink: 0;
+  gap: 0.4rem;
+  margin-bottom: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.jobinfo-form .job-info-people {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jobinfo-form .job-info-people-head,
+.jobinfo-form .job-info-people-row {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+}
+
+.jobinfo-form .job-info-people--gc .job-info-people-head,
+.jobinfo-form .job-info-people--gc .job-info-people-row {
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1.35fr);
+}
+
+.jobinfo-form .job-info-people--icbi .job-info-people-head,
+.jobinfo-form .job-info-people--icbi .job-info-people-row {
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+.jobinfo-form .job-info-people-head {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.jobinfo-form .job-info-people-role {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--muted);
+  padding-top: 10px;
+  white-space: nowrap;
+}
+
+.jobinfo-form .job-info-people-row input,
+.jobinfo-form .job-info-people-row select {
+  margin-top: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobinfo-form .job-info-people-cell {
+  min-width: 0;
+}
+
+.jobinfo-form .job-info-people-blank {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 37px;
+}
+
+.jobinfo-form .job-info-input-empty {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--border));
+}
+
+.jobinfo-form .job-info-all-filled {
+  margin: 0.35rem 0 0;
+}
+
+.jobinfo-form.is-empty-only .job-info-import-strip,
+.jobinfo-form.is-empty-only .job-info-nonfield,
+.jobinfo-form.is-empty-only .job-info-field.is-filled,
+.jobinfo-form.is-empty-only .job-info-people:not(:has(.job-info-field:not(.is-filled))),
+.jobinfo-form.is-empty-only .job-info-switch-block:not(:has(.job-info-field:not(.is-filled))),
+.jobinfo-form.is-empty-only .job-info-subgroup:not(:has(.job-info-field:not(.is-filled))),
+.jobinfo-form.is-empty-only .job-info-grid:not(:has(.job-info-field:not(.is-filled))),
+.jobinfo-form.is-empty-only .grid-2:not(:has(.job-info-field:not(.is-filled))),
+.jobinfo-form.is-empty-only .job-info-block:not(:has(.job-info-field:not(.is-filled))) {
+  display: none;
+}
+
+@container job-info-drawer (max-width: 519px) {
+  .jobinfo-form .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .jobinfo-form .grid-span-2,
+  .jobinfo-form .job-info-span-2,
+  .jobinfo-form .job-info-span-3,
+  .jobinfo-form .job-info-span-4,
+  .jobinfo-form .job-info-span-6 {
+    grid-column: 1 / -1;
+  }
+
+  .jobinfo-form .job-info-people--gc .job-info-people-head,
+  .jobinfo-form .job-info-people--gc .job-info-people-row,
+  .jobinfo-form .job-info-people--icbi .job-info-people-head,
+  .jobinfo-form .job-info-people--icbi .job-info-people-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .jobinfo-form .job-info-people-role {
+    grid-column: 1 / -1;
+    padding-top: 0.1rem;
+  }
+
+  .jobinfo-form .job-info-people-head > :first-child {
+    display: none;
+  }
+}
+
+.jobinfo-form .job-info-import-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: auto;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.jobinfo-form .job-info-import-help {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.jobinfo-form .job-info-import-strip .btn {
+  flex: none;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.jobinfo-form .grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.jobinfo-form label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 0;
+}
+
+.jobinfo-form label > input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
+.jobinfo-form label > select,
+.jobinfo-form label > textarea,
+.jobinfo-form label > .job-info-money {
+  margin-top: 4px;
+}
+
+.job-info-drawer-body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]),
+.job-info-drawer-body select,
+.job-info-drawer-body textarea {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-width: 1px;
+  border-radius: 8px;
+  min-height: 37px;
+}
+
+.jobinfo-form .job-info-money > input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]) {
+  padding-left: 20px;
+}
+
+.jobinfo-form .job-info-gc-combo {
+  position: relative;
+  display: block;
+  margin-top: 4px;
+}
+
+.jobinfo-form .job-info-gc-combo > input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]) {
+  margin-top: 0;
+  padding-right: 34px;
+}
+
+.jobinfo-form .job-info-gc-combo.has-saved > input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]) {
+  padding-right: 96px;
+}
+
+.job-info-gc-saved {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.job-info-gc-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.job-info-gc-toggle:hover,
+.job-info-gc-toggle:focus-visible {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.job-info-gc-list {
+  position: fixed;
+  z-index: 130;
+  overflow: auto;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.job-info-gc-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.job-info-gc-option.is-active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.job-info-gc-option-name {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.job-info-gc-option-meta,
+.job-info-gc-empty {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.job-info-gc-empty {
+  margin: 0;
+  padding: 8px;
+}
+
+.job-info-gc-match {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.jobinfo-form .job-info-gc-filled {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.jobinfo-form .job-info-gc-filled .job-info-text-link {
+  margin-top: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+@keyframes job-info-gc-flash {
+  0% {
+    background-color: color-mix(in srgb, var(--accent) 32%, var(--bg-elevated));
+  }
+  100% {
+    background-color: var(--bg-elevated);
+  }
+}
+
+.job-info-gc-flash {
+  animation: job-info-gc-flash 600ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-info-gc-flash {
+    animation: none;
+  }
+}
+
+.jobinfo-form .muted,
+.jobinfo-form .small,
+.jobinfo-form .job-info-field-help {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.jobinfo-form .job-info-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.jobinfo-form .job-info-name-row > input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.jobinfo-form .job-info-note {
+  position: relative;
+  flex: none;
+}
+
+.jobinfo-form .job-info-note-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.jobinfo-form .job-info-note-btn:hover,
+.jobinfo-form .job-info-note-btn:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.jobinfo-form .job-info-note-pop {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  width: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.jobinfo-form .job-info-note:hover .job-info-note-pop,
+.jobinfo-form .job-info-note:focus-within .job-info-note-pop {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-info-section-chip,
+  .jobinfo-form .job-info-switch input[type="checkbox"]::after {
+    transition: none;
+  }
 }
 
 .job-info-drawer-tools {
@@ -12231,9 +13072,32 @@ a.job-tracker-tab {
   background: rgba(255, 255, 255, 0.03);
 }
 
-.wc-tracker-line-row--open td {
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom-color: transparent;
+/* Open line + editor share .is-open (from the expanded line id, or the add-line editor).
+   Outline is inset so it stays inside the table and does not shift layout. */
+.wc-tracker-line-row.is-open td {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-bottom-color: var(--border);
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+.wc-tracker-line-row.is-open td:first-child {
+  box-shadow: inset 2px 0 0 0 var(--accent), inset 0 2px 0 0 var(--accent);
+}
+
+.wc-tracker-line-row.is-open td:last-child {
+  box-shadow: inset -2px 0 0 0 var(--accent), inset 0 2px 0 0 var(--accent);
+}
+
+.wc-tracker-editor-row.is-open td {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.wc-tracker-line-row.is-open + .wc-tracker-editor-row.is-open td {
+  box-shadow:
+    inset 2px 0 0 0 var(--accent),
+    inset -2px 0 0 0 var(--accent),
+    inset 0 -2px 0 0 var(--accent);
 }
 
 .wc-tracker-row-chevron {
@@ -12263,6 +13127,12 @@ a.job-tracker-tab {
 
 .wc-tracker-row-chevron svg {
   transition: transform 0.15s ease;
+}
+
+.wc-tracker-row-chevron--open,
+.wc-tracker-row-chevron--open:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .wc-tracker-row-chevron--open svg {
@@ -12379,10 +13249,6 @@ a.job-tracker-tab {
   margin-left: auto;
 }
 
-.wc-stage-stepper-extras .paint-tracker-flag {
-  white-space: nowrap;
-}
-
 /* WC editor: flag switches row under the dates */
 .wc-tracker-editor-flags {
   display: flex;
@@ -12463,6 +13329,11 @@ a.job-tracker-tab {
   border-color: rgba(240, 180, 41, 0.75);
 }
 
+.flag-switch--neutral.flag-switch--on .flag-switch-track {
+  background: rgba(154, 163, 181, 0.45);
+  border-color: rgba(154, 163, 181, 0.7);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .flag-switch-track,
   .flag-switch-knob {
@@ -12470,7 +13341,7 @@ a.job-tracker-tab {
   }
 }
 
-/* Material Tracker page: cap content width (all tabs) */
+/* Material Tracker page: cap content width (Paint, Wallcovering, and Log). */
 .material-tracker-page {
   width: 100%;
   max-width: 900px;
