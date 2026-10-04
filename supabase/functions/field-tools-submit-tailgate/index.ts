@@ -10,6 +10,12 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function formatRevisedDate(raw: string | null | undefined): string {
+  const match = (raw ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return "";
+  return `${match[2]}/${match[3]}/${match[1]}`;
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -135,6 +141,7 @@ Deno.serve(async (req) => {
       topic?: {
         title: string;
         body_text: string;
+        revised_on?: string | null;
         image_mime: string;
         image_base64: string | null;
         pdf_base64: string | null;
@@ -160,11 +167,13 @@ Deno.serve(async (req) => {
     const attendees = Array.isArray(pack.meeting.attendees) ? pack.meeting.attendees : [];
     const names = attendees.map((a) => String(a.name ?? "").trim()).filter(Boolean);
     const jobLabel = [pack.meeting.job_number, pack.meeting.job_name].filter(Boolean).join(" ");
+    const revisedOn = formatRevisedDate(pack.topic.revised_on);
 
     const pdfBytes = await buildTailgatePdf({
       branding,
       title: pack.topic.title,
       bodyText: pack.topic.body_text ?? "",
+      revisedOn,
       jobCode: pack.meeting.job_number,
       jobName: pack.meeting.job_name,
       conductedBy: pack.meeting.submitted_by_name,
@@ -182,6 +191,7 @@ Deno.serve(async (req) => {
       jobLabel,
       conductedBy: pack.meeting.submitted_by_name,
       completedAt,
+      revisedOn,
       names,
       notes: pack.meeting.notes ?? "",
     });

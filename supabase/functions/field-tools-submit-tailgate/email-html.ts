@@ -16,6 +16,7 @@ export function buildTailgateEmailHtml(input: {
   jobLabel: string;
   conductedBy: string;
   completedAt: string;
+  revisedOn: string;
   names: string[];
   notes: string;
 }): string {
@@ -34,6 +35,7 @@ export function buildTailgateEmailHtml(input: {
         <tr><td>${logo}</td></tr>
         <tr><td style="padding-top:16px;font-size:20px;font-weight:700;color:${NAVY};">Safety Tailgate</td></tr>
         <tr><td style="padding-top:8px;">${escapeHtml(input.title)}</td></tr>
+        ${input.revisedOn.trim() ? `<tr><td style="padding-top:4px;">Revised/Date: ${escapeHtml(input.revisedOn)}</td></tr>` : ""}
         <tr><td style="padding-top:12px;font-size:14px;">
           <div><strong>Job:</strong> ${escapeHtml(input.jobLabel)}</div>
           <div><strong>Conducted by:</strong> ${escapeHtml(input.conductedBy)}</div>

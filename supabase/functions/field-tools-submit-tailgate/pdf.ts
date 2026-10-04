@@ -27,6 +27,7 @@ export type TailgatePdfInput = {
   jobName: string;
   conductedBy: string;
   completedAt: string;
+  revisedOn?: string;
   notes: string;
   attendees: TailgateAttendee[];
   topicImageBase64?: string | null;
@@ -130,6 +131,7 @@ async function drawHeader(
   const jobLabel = [input.jobCode, input.jobName].filter(Boolean).join(" ");
   const meta = [
     ["Topic", input.title],
+    ["Revised/Date", input.revisedOn ?? ""],
     ["Job", jobLabel],
     ["Conducted by", input.conductedBy],
     ["Date", input.completedAt],
@@ -148,7 +150,7 @@ async function drawHeader(
   return y;
 }
 
-function stampPageFooters(doc: PDFDocument, font: PDFFont, fontBold: PDFFont, title: string) {
+function stampPageFooters(doc: PDFDocument, font: PDFFont, fontBold: PDFFont, title: string, revisedOn: string) {
   const pages = doc.getPages();
   const total = pages.length;
   const topic = title.replace(/\s+/g, " ").trim();
@@ -192,6 +194,19 @@ function stampPageFooters(doc: PDFDocument, font: PDFFont, fontBold: PDFFont, ti
       font: fontBold,
       color: NAVY,
     });
+    const revised = revisedOn.trim();
+    if (revised) {
+      const rightMax = Math.max(40, (width - labelW) / 2 - MARGIN - 12);
+      const rightText = truncate(`Revised/Date ${revised}`, font, size, rightMax);
+      const drawnW = font.widthOfTextAtSize(rightText, size);
+      page.drawText(rightText, {
+        x: width - MARGIN - drawnW,
+        y: FOOTER_Y,
+        size,
+        font,
+        color: MUTED,
+      });
+    }
   }
 }
 
@@ -369,6 +384,6 @@ export async function buildTailgatePdf(input: TailgatePdfInput): Promise<Uint8Ar
 
   await drawCrewSignInPages(doc, input.attendees, font, fontBold);
 
-  stampPageFooters(doc, font, fontBold, input.title);
+  stampPageFooters(doc, font, fontBold, input.title, input.revisedOn ?? "");
   return doc.save();
 }
