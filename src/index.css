@@ -3636,6 +3636,20 @@ th {
   font-size: 0.75rem;
 }
 
+.plh-logo-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem 1.5rem;
+  align-items: start;
+}
+
+.plh-logo-slot-label {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .plh-logo-row {
   display: flex;
   align-items: flex-start;
@@ -3743,6 +3757,10 @@ th {
   .plh-card-head,
   .plh-logo-row {
     flex-direction: column;
+  }
+
+  .plh-logo-pair {
+    grid-template-columns: 1fr;
   }
 
   .plh-role {
@@ -9817,6 +9835,48 @@ tr.budget-hours-pdf-hidden td {
   display: flex;
   align-items: center;
   height: var(--wc-control-height);
+}
+
+.wc-item-product-url {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.28rem 0 0;
+  padding-left: 26px;
+  min-width: 0;
+}
+
+.wc-product-url-toggle {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.wc-product-url-toggle:hover,
+.wc-product-url-toggle:focus-visible {
+  text-decoration: underline;
+}
+
+.wc-item-product-url input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: var(--wc-control-height);
+  min-height: var(--wc-control-height);
+  max-height: var(--wc-control-height);
+  margin-top: 0;
+  box-sizing: border-box;
+  border-radius: 6px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1.2;
 }
 
 .wc-col-notes input {
@@ -15969,5 +16029,538 @@ input.readonly {
   .sched-day-select,
   .sched-send-btn {
     justify-self: start;
+  }
+}
+
+.wc-print-dialog {
+  width: min(1180px, 94vw);
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 0;
+}
+
+.wc-print-head,
+.wc-print-footer {
+  flex: none;
+}
+
+.wc-print-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: none;
+}
+
+.wc-print-segment {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.wc-print-segment button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.42rem 0.75rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wc-print-segment button + button {
+  border-left: 1px solid var(--border);
+}
+
+.wc-print-segment button.is-on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.wc-print-dialog input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.wc-print-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wc-print-head h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.wc-print-sub {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.wc-print-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.45rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  cursor: pointer;
+}
+
+.wc-print-close:hover {
+  color: var(--text);
+}
+
+.wc-print-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 470px;
+  gap: 0;
+  align-items: stretch;
+}
+
+.wc-print-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 1rem;
+}
+
+.wc-print-kicker {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wc-print-kicker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.wc-print-select-all {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0;
+  cursor: pointer;
+}
+
+.wc-print-select-all:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.wc-print-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wc-print-item-list.is-scroll {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.wc-print-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+  height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 0 0.45rem;
+  border-radius: 8px;
+}
+
+.wc-print-code {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.wc-print-item.is-on {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-elevated));
+}
+
+.wc-print-item:not(.is-on) {
+  opacity: 0.55;
+}
+
+.wc-print-item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.wc-print-stepper {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 0.15rem;
+}
+
+.wc-print-stepper button {
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wc-print-stepper button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wc-print-stepper span {
+  min-width: 1.15rem;
+  text-align: center;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-print-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.85rem 1rem;
+  align-items: start;
+}
+
+.wc-print-qr,
+.wc-print-heading,
+.wc-print-template {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.wc-print-qr select,
+.wc-print-heading input,
+.wc-print-template select {
+  margin-top: 0;
+}
+
+.wc-print-template-line {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.wc-print-item-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.wc-print-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.wc-print-pills button {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 0.32rem 0.75rem;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.wc-print-pills button.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.wc-print-option-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.wc-print-option-extra input {
+  margin-top: 0;
+}
+
+.wc-print-toggles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem 0.75rem;
+}
+
+.wc-print-toggles .check {
+  font-size: 0.88rem;
+}
+
+.wc-print-warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: 0.78rem;
+}
+
+.wc-print-url-warn {
+  flex: none;
+  color: var(--warn);
+  font-size: 0.85rem;
+  line-height: 1;
+  font-variant-emoji: text;
+  cursor: default;
+}
+
+.wc-print-add-urls {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.wc-print-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 0;
+  box-sizing: border-box;
+  width: 470px;
+  padding: 0.9rem 1rem;
+  background: var(--bg);
+  border-radius: 10px;
+  overflow: auto;
+}
+
+.wc-print-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-self: stretch;
+}
+
+.wc-print-hint,
+.wc-print-sheet-caption {
+  margin: 0;
+  align-self: stretch;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.wc-print-preview .wc-print-kicker {
+  align-self: stretch;
+}
+
+.wc-print-orient {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wc-print-orient .wc-print-pills button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.wc-print-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wc-print-heading input {
+  margin: 0;
+}
+
+.wc-print-shape {
+  display: inline-block;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  margin-right: 0.4rem;
+  vertical-align: -2px;
+}
+
+.wc-print-shape-portrait {
+  width: 9px;
+  height: 14px;
+}
+
+.wc-print-shape-landscape {
+  width: 14px;
+  height: 9px;
+  vertical-align: -1px;
+}
+
+.wc-print-preview img,
+.wc-print-preview-empty {
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.wc-print-preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  text-align: center;
+  color: #333;
+  font-size: 0.8rem;
+}
+
+.wc-print-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+}
+
+.wc-print-nav button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.15rem 0.2rem;
+  cursor: pointer;
+}
+
+.wc-print-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wc-sheet-page {
+  position: relative;
+  width: 400px;
+  max-width: 100%;
+  aspect-ratio: 8.5 / 11;
+  flex: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.wc-sheet-cell {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.wc-sheet-cell.is-spot {
+  cursor: pointer;
+}
+
+.wc-sheet-cell.is-used {
+  background: #d7dbe3;
+}
+
+.wc-sheet-cell img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.wc-sheet-cell span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b909a;
+  font-size: 0.72rem;
+}
+
+.wc-print-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.wc-print-footer p {
+  margin: 0;
+}
+
+.wc-print-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+@media (max-width: 800px) {
+  .wc-print-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .wc-print-controls {
+    overflow: visible;
+  }
+
+  .wc-print-preview {
+    width: auto;
+  }
+
+  .wc-sheet-page {
+    width: min(400px, 100%);
+  }
+
+  .wc-print-toggles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wc-print-split {
+    grid-template-columns: 1fr;
   }
 }

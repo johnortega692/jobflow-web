@@ -19,6 +19,8 @@ export type LetterheadSettings = {
   company_phone: string;
   company_license: string;
   logo_url: string;
+  /** Optional pure black-and-white mark for thermal sample labels. Empty falls back to the main logo converted to black and white. */
+  label_logo_url: string;
   signer_name: string;
   signer_title: string;
   signer_phone: string;
@@ -43,8 +45,9 @@ export const emptyLetterheadSettings = (): LetterheadSettings => ({
   company_address: "",
   company_phone: "",
   company_license: "",
-  logo_url: "",
-  signer_name: "",
+    logo_url: "",
+    label_logo_url: "",
+    signer_name: "",
   signer_title: "",
   signer_phone: "",
   signer_email: "",
@@ -79,6 +82,7 @@ export function coerceLetterheadSettings(raw: unknown): LetterheadSettings {
     company_phone: String(o.company_phone ?? ""),
     company_license: String(o.company_license ?? ""),
     logo_url: String(o.logo_url ?? ""),
+    label_logo_url: String(o.label_logo_url ?? ""),
     signer_name: String(o.signer_name ?? ""),
     signer_title: String(o.signer_title ?? ""),
     signer_phone: String(o.signer_phone ?? ""),
@@ -96,6 +100,7 @@ export function normalizeLetterheadSettings(raw: unknown): LetterheadSettings {
     company_phone: s.company_phone.trim(),
     company_license: s.company_license.trim(),
     logo_url: s.logo_url.trim(),
+    label_logo_url: s.label_logo_url.trim(),
     signer_name: s.signer_name.trim(),
     signer_title: s.signer_title.trim(),
     signer_phone: s.signer_phone.trim(),

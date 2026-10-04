@@ -98,6 +98,8 @@ export type WallcoveringItem = {
   /** Unit of measure for material orders; defaults to EA. */
   unit: MaterialOrderUnit | string;
   notes: string;
+  /** Optional product page for sample labels. */
+  product_page_url: string;
   panels: boolean;
   include_in_submittal: boolean;
   /** Include in Orders by Vendor / Order Samples */
@@ -970,6 +972,7 @@ export function emptyWallcoveringItem(): WallcoveringItem {
     qty: "",
     unit: "LY",
     notes: "",
+    product_page_url: "",
     panels: false,
     include_in_submittal: true,
     order: false,
@@ -1262,6 +1265,7 @@ export function normalizeWallcoveringSubmittal(
     const merged = {
       ...emptyWallcoveringItem(),
       ...i,
+      product_page_url: typeof i.product_page_url === "string" ? i.product_page_url.trim() : "",
       order: i.order ?? false,
       spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
     };

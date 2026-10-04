@@ -67,7 +67,9 @@ export function SettingsPage() {
   const { profile, settings, loading, saving, error, setSettings, setProfile, save, reload } =
     useLetterhead();
   const fileRef = useRef<HTMLInputElement>(null);
+  const labelFileRef = useRef<HTMLInputElement>(null);
   const logoUrlRef = useRef<HTMLInputElement>(null);
+  const labelLogoUrlRef = useRef<HTMLInputElement>(null);
   const sectionActionsRef = useRef<Partial<Record<SettingsTabId, SettingsSectionActions>>>({});
   const [activeTab, setActiveTab] = useState<SettingsTabId>("profile");
   const [profilePane, setProfilePane] = useState<ProfilePane>("details");
@@ -79,6 +81,8 @@ export function SettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [logoUrlOpen, setLogoUrlOpen] = useState(false);
+  const [labelLogoUrlOpen, setLabelLogoUrlOpen] = useState(false);
+  const [labelUploading, setLabelUploading] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
 
   const setTabDirty = useCallback((tab: SettingsTabId, dirty: boolean) => {
@@ -146,6 +150,11 @@ export function SettingsPage() {
     if (!logoUrlOpen) return;
     logoUrlRef.current?.focus();
   }, [logoUrlOpen]);
+
+  useEffect(() => {
+    if (!labelLogoUrlOpen) return;
+    labelLogoUrlRef.current?.focus();
+  }, [labelLogoUrlOpen]);
 
   useEffect(() => {
     if (!profileReady) return;
@@ -300,6 +309,22 @@ export function SettingsPage() {
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function onLabelLogoFile(file: File | null) {
+    if (!file || !user) return;
+    setLabelUploading(true);
+    setMessage(null);
+    try {
+      const url = await uploadLetterheadLogo(user.id, file, { orgShared: isAdmin, kind: "label" });
+      setSettings({ label_logo_url: url });
+      setMessage("Label logo uploaded. Save to keep it.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Label logo upload failed");
+    } finally {
+      setLabelUploading(false);
+      if (labelFileRef.current) labelFileRef.current.value = "";
     }
   }
 
@@ -609,72 +634,149 @@ export function SettingsPage() {
                 disabled={!isAdmin}
               />
             </div>
-            <div className="plh-logo-row">
-              <div className="plh-logo-preview">
-                {settings.logo_url ? (
-                  <img src={settings.logo_url} alt="Company logo preview" />
-                ) : (
-                  <span className="plh-logo-placeholder">[Your logo]</span>
-                )}
-              </div>
-              <div className="plh-logo-meta">
-                <p className="plh-logo-file">
-                  {settings.logo_url ? (
-                    <>
-                      {logoFileLabel(settings.logo_url)}
-                      <span> · uploaded</span>
-                    </>
-                  ) : (
-                    "No logo yet"
-                  )}
-                </p>
-                {isAdmin ? (
-                  <div className="plh-logo-actions">
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(e) => void onLogoFile(e.target.files?.[0] ?? null)}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-accent btn-small"
-                      disabled={uploading}
-                      onClick={() => fileRef.current?.click()}
-                    >
-                      {uploading ? "Uploading…" : settings.logo_url ? "Replace logo" : "Upload logo"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-small plh-btn-remove"
-                      disabled={!settings.logo_url}
-                      onClick={() => setSettings({ logo_url: "" })}
-                    >
-                      Remove
-                    </button>
+            <div className="plh-logo-pair">
+              <div className="plh-logo-slot">
+                <p className="plh-logo-slot-label">Logo</p>
+                <div className="plh-logo-row">
+                  <div className="plh-logo-preview">
+                    {settings.logo_url ? (
+                      <img src={settings.logo_url} alt="Company logo preview" />
+                    ) : (
+                      <span className="plh-logo-placeholder">[Your logo]</span>
+                    )}
                   </div>
-                ) : null}
-                {isAdmin ? (
-                  logoUrlOpen ? (
-                    <input
-                      ref={logoUrlRef}
-                      value={settings.logo_url}
-                      onChange={(e) => setSettings({ logo_url: e.target.value })}
-                      placeholder="https://… or /logo.png"
-                      aria-label="Logo image URL"
-                      className="plh-logo-url"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="plh-url-link"
-                      onClick={() => setLogoUrlOpen(true)}
-                    >
-                      Use an image URL instead
-                    </button>
-                  )
-                ) : null}
+                  <div className="plh-logo-meta">
+                    <p className="plh-logo-file">
+                      {settings.logo_url ? (
+                        <>
+                          {logoFileLabel(settings.logo_url)}
+                          <span> · uploaded</span>
+                        </>
+                      ) : (
+                        "No logo yet"
+                      )}
+                    </p>
+                    {isAdmin ? (
+                      <div className="plh-logo-actions">
+                        <input
+                          ref={fileRef}
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(e) => void onLogoFile(e.target.files?.[0] ?? null)}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-outline-accent btn-small"
+                          disabled={uploading}
+                          onClick={() => fileRef.current?.click()}
+                        >
+                          {uploading ? "Uploading…" : settings.logo_url ? "Replace logo" : "Upload logo"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-small plh-btn-remove"
+                          disabled={!settings.logo_url}
+                          onClick={() => setSettings({ logo_url: "" })}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null}
+                    {isAdmin ? (
+                      logoUrlOpen ? (
+                        <input
+                          ref={logoUrlRef}
+                          value={settings.logo_url}
+                          onChange={(e) => setSettings({ logo_url: e.target.value })}
+                          placeholder="https://… or /logo.png"
+                          aria-label="Logo image URL"
+                          className="plh-logo-url"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="plh-url-link"
+                          onClick={() => setLogoUrlOpen(true)}
+                        >
+                          Use an image URL instead
+                        </button>
+                      )
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="plh-logo-slot">
+                <p className="plh-logo-slot-label">Label logo (black &amp; white)</p>
+                <div className="plh-logo-row">
+                  <div className="plh-logo-preview">
+                    {settings.label_logo_url ? (
+                      <img src={settings.label_logo_url} alt="Black and white label logo preview" />
+                    ) : (
+                      <span className="plh-logo-placeholder">[Label logo]</span>
+                    )}
+                  </div>
+                  <div className="plh-logo-meta">
+                    <p className="plh-logo-file">
+                      {settings.label_logo_url ? (
+                        <>
+                          {logoFileLabel(settings.label_logo_url)}
+                          <span> · uploaded</span>
+                        </>
+                      ) : (
+                        "No label logo yet"
+                      )}
+                    </p>
+                    {isAdmin ? (
+                      <div className="plh-logo-actions">
+                        <input
+                          ref={labelFileRef}
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(e) => void onLabelLogoFile(e.target.files?.[0] ?? null)}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-outline-accent btn-small"
+                          disabled={labelUploading}
+                          onClick={() => labelFileRef.current?.click()}
+                        >
+                          {labelUploading ? "Uploading…" : settings.label_logo_url ? "Replace logo" : "Upload logo"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-small plh-btn-remove"
+                          disabled={!settings.label_logo_url}
+                          onClick={() => setSettings({ label_logo_url: "" })}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null}
+                    {isAdmin ? (
+                      labelLogoUrlOpen ? (
+                        <input
+                          ref={labelLogoUrlRef}
+                          value={settings.label_logo_url}
+                          onChange={(e) => setSettings({ label_logo_url: e.target.value })}
+                          placeholder="https://… or /label-logo.png"
+                          aria-label="Label logo image URL"
+                          className="plh-logo-url"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="plh-url-link"
+                          onClick={() => setLabelLogoUrlOpen(true)}
+                        >
+                          Use an image URL instead
+                        </button>
+                      )
+                    ) : null}
+                    <p className="plh-hint">Used on thermal sample labels. Pure black on white prints best.</p>
+                  </div>
+                </div>
               </div>
             </div>
           </section>

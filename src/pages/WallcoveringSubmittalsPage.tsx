@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { SubmittalHistoryModal } from "../components/paint/SubmittalHistoryModal";
+import { PrintSampleLabelsDialog } from "../components/wallcovering/PrintSampleLabelsDialog";
 import { WallcoveringBulkAddModal } from "../components/wallcovering/WallcoveringBulkAddModal";
 import { WallcoveringItemRow } from "../components/wallcovering/WallcoveringItemRow";
 import { WallcoveringSubmittalMetaPanel } from "../components/wallcovering/WallcoveringSubmittalMetaPanel";
@@ -70,7 +71,11 @@ import {
   type WallcoveringSubmittalData,
 } from "../types/tradeDocuments";
 
-type Ctx = { project: ProjectForm; projectId: string };
+type Ctx = {
+  project: ProjectForm;
+  projectId: string;
+  setProject: (project: ProjectForm) => void;
+};
 
 function moveItem<T>(items: T[], from: number, to: number): T[] {
   if (to < 0 || to >= items.length) return items;
@@ -92,13 +97,14 @@ function normalizeWcDraft(raw: WallcoveringSubmittalData): WallcoveringSubmittal
 export function WallcoveringSubmittalsPage() {
   const { user } = useAuth();
   const { branding } = useLetterhead();
-  const { project, projectId } = useOutletContext<Ctx>();
+  const { project, projectId, setProject } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
   const [draft, setDraft] = useState<WallcoveringSubmittalData>(defaultWallcoveringSubmittal());
   const [history, setHistory] = useState<SubmittalHistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [startRevisionOpen, setStartRevisionOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   const [trackerBusy, setTrackerBusy] = useState<"update" | "add" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
@@ -1077,6 +1083,9 @@ export function WallcoveringSubmittalsPage() {
                 >
                   Add multiple…
                 </button>
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => setPrintOpen(true)}>
+                  Print labels
+                </button>
               </div>
             )}
           </div>
@@ -1103,6 +1112,9 @@ export function WallcoveringSubmittalsPage() {
                     onClick={() => setBulkOpen(true)}
                   >
                     Add multiple…
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-small" onClick={() => setPrintOpen(true)}>
+                    Print labels
                   </button>
                 </div>
               </div>
@@ -1166,6 +1178,19 @@ export function WallcoveringSubmittalsPage() {
           </p>
         </div>
       </section>
+
+      {printOpen && (
+        <PrintSampleLabelsDialog
+          userId={user?.id}
+          project={project}
+          projectId={projectId}
+          setProject={setProject}
+          draft={draft}
+          projectName={wcPrint.job_name}
+          jobNumber={wcPrint.job_number}
+          onClose={() => setPrintOpen(false)}
+        />
+      )}
 
       {bulkOpen && (
         <WallcoveringBulkAddModal

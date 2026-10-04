@@ -118,6 +118,7 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     track_job_number: str(o.track_job_number),
     track_job_name: str(o.track_job_name),
     track_contract_amount: str(o.track_contract_amount),
+    sample_share_url: str(o.sample_share_url).trim(),
   };
 
   if (!info.job_city && !info.job_zip && project.job_address2?.trim()) {

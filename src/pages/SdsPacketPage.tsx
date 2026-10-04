@@ -420,7 +420,7 @@ export function SdsPacketPage() {
                 checked={draft.include_stamp}
                 onChange={(e) => setDraft({ ...draft, include_stamp: e.target.checked })}
               />
-              Header stamp on manufacturer PDFs
+              Add banner to product data
             </label>
             <label className="check">
               <input

@@ -36,6 +36,7 @@ function mergeSettings(saved: LetterheadSettings, env: Partial<LetterheadSetting
     company_phone: pick("company_phone"),
     company_license: pick("company_license"),
     logo_url: pick("logo_url"),
+    label_logo_url: saved.label_logo_url.trim(),
     signer_name: pick("signer_name"),
     signer_title: pick("signer_title"),
     signer_phone: pick("signer_phone"),
@@ -189,6 +190,7 @@ export async function saveLetterheadSettings(
     company_phone: normalized.company_phone,
     company_license: normalized.company_license,
     logo_url: normalized.logo_url,
+    label_logo_url: normalized.label_logo_url,
     pdf_show: normalized.pdf_show,
   });
 }
@@ -212,11 +214,12 @@ export async function uploadEmailSignatureLogo(userId: string, file: File): Prom
 export async function uploadLetterheadLogo(
   userId: string,
   file: File,
-  options?: { orgShared?: boolean },
+  options?: { orgShared?: boolean; kind?: "logo" | "label" },
 ): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "png";
   const safeExt = ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext) ? ext : "png";
-  const path = options?.orgShared ? `org/logo.${safeExt}` : `${userId}/logo.${safeExt}`;
+  const base = options?.kind === "label" ? "label-logo" : "logo";
+  const path = options?.orgShared ? `org/${base}.${safeExt}` : `${userId}/${base}.${safeExt}`;
 
   const { error: uploadError } = await supabase.storage.from("letterhead").upload(path, file, {
     upsert: true,

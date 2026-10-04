@@ -83,6 +83,8 @@ export type JobInfoData = {
   track_job_name: string;
   /** Track contract amount (falls back to contract_amount) */
   track_contract_amount: string;
+  /** Default QR target for wallcovering sample labels. */
+  sample_share_url: string;
 };
 
 export const JOB_TYPES = ["Commercial", "Residential"] as const;
@@ -151,5 +153,6 @@ export function defaultJobInfo(): JobInfoData {
     track_job_number: "",
     track_job_name: "",
     track_contract_amount: "",
+    sample_share_url: "",
   };
 }

@@ -5,6 +5,7 @@ export const ORG_SETTINGS_KEYS = [
   "company_phone",
   "company_license",
   "logo_url",
+  "label_logo_url",
   "pdf_show",
   "material_vendors",
   "architects",
@@ -47,6 +48,7 @@ export const PERSONAL_SETTINGS_KEYS = [
   "work_order_total_positions",
   "work_order_text_spacing",
   "compose_email_method",
+  "sample_label_print",
 ] as const;
 
 const ORG_KEY_SET = new Set<string>(ORG_SETTINGS_KEYS);

@@ -1,4 +1,4 @@
-import type { DragEvent } from "react";
+import { useState, type DragEvent } from "react";
 import { FLOOR_ORDER } from "../../lib/printCore";
 import { isTrackInfillItem } from "../../lib/wcTrackInfill";
 import type { WallcoveringItem } from "../../types/tradeDocuments";
@@ -51,6 +51,7 @@ export function WallcoveringItemRow({
   const missingQty = !isTrack && !item.qty.trim();
   const unitOptions: readonly string[] = isTrack ? TRACK_UNITS : CONTENT_UNITS;
   const unitValue = unitOptions.includes(item.unit) ? item.unit : isTrack ? "LF" : "LY";
+  const [productUrlOpen, setProductUrlOpen] = useState(() => Boolean(item.product_page_url.trim()));
 
   return (
     <div
@@ -272,6 +273,26 @@ export function WallcoveringItemRow({
             </div>
           </>
         )}
+      </div>
+      <div className="wc-item-product-url">
+        <button
+          type="button"
+          className="wc-product-url-toggle"
+          aria-expanded={productUrlOpen}
+          onClick={() => setProductUrlOpen((open) => !open)}
+        >
+          Product page
+        </button>
+        {productUrlOpen ? (
+          <input
+            type="url"
+            inputMode="url"
+            value={item.product_page_url}
+            placeholder="https://"
+            onChange={(e) => onChange({ product_page_url: e.target.value })}
+            aria-label={`Product page URL row ${index + 1}`}
+          />
+        ) : null}
       </div>
     </div>
   );
