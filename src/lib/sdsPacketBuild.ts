@@ -12,12 +12,10 @@ import {
   sectionAttachmentKinds,
   sectionIncludedDocuments,
   sectionHasAnyAttachment,
-  sectionsGroupedByCategory,
   sdsPacketSpecSectionsLabel,
   sortSdsSectionsBySpec,
   tocAttachmentLabel,
   tocSectionTitle,
-  type SdsSectionCategory,
 } from "./sdsSectionModel";
 import {
   packetEndPageLabel,
@@ -59,18 +57,6 @@ function sectionTitle(section: SdsSection): string {
   const finish = section.finish_type.trim() || "—";
   if (product !== "—" && finish !== "—") return `${product} – ${finish}`;
   return product !== "—" ? product : "Section";
-}
-
-function categoriesInPacket(sections: SdsSection[]): SdsSectionCategory[] {
-  const seen = new Set<SdsSectionCategory>();
-  const out: SdsSectionCategory[] = [];
-  for (const section of sectionsGroupedByCategory(sections)) {
-    if (!seen.has(section.category)) {
-      seen.add(section.category);
-      out.push(section.category);
-    }
-  }
-  return out;
 }
 
 async function embedLogo(doc: PDFDocument, logoUrl: string): Promise<PDFImage | null> {
@@ -382,7 +368,6 @@ async function addCoverPage(
     coverRows.push([coverSpecs.includes(";") ? "Spec Sections" : "Spec Section", coverSpecs]);
   }
   coverRows.push(
-    ["Categories", categoriesInPacket(packet.sections).join(", ") || "—"],
     ["Products Included", String(packetProductCount(packet.sections))],
     ["Documents Included", String(packetDocumentCount(packet.sections))],
     ["Contractor", branding.companyName || "—"],
@@ -501,10 +486,9 @@ function productSummaryColumns(sections: SdsSection[]): ProductSummaryColumn[] {
   const showSpec = sections.some((section) => section.spec_section.trim());
   const candidates: (ProductSummaryColumn & { optional: boolean })[] = [
     { header: "#", weight: 0.04, optional: false, cell: (_section: SdsSection, rowNum) => String(rowNum) },
-    { header: "Category", weight: 0.09, optional: true, cell: (section) => summaryCell(section.category) },
     {
       header: "System / Material",
-      weight: showSpec ? 0.11 : 0.12,
+      weight: showSpec ? 0.14 : 0.16,
       optional: true,
       cell: (section) => summaryCell(section.system_material),
     },
@@ -600,8 +584,8 @@ function addMaterialSummaryPage(
   for (const section of ordered) {
     const band = cols.some((col) => col.header === "Spec")
       ? section.spec_section.trim() || "(No spec section)"
-      : section.category;
-    if (band !== lastBand) {
+      : "";
+    if (band && band !== lastBand) {
       lastBand = band;
       const headerBottom = y - 12;
       page.drawRectangle({
@@ -652,8 +636,43 @@ function addMaterialSummaryPage(
   return rowRects;
 }
 
-function addCategoryDivider(
-  category: SdsSectionCategory,
+function specGroupKey(section: SdsSection): string {
+  return section.spec_section.trim();
+}
+
+function specDividerParts(spec: string): { kicker: string; title: string } {
+  const trimmed = spec.trim();
+  if (!trimmed) return { kicker: "", title: "No spec section" };
+  const dash = trimmed.indexOf(" - ");
+  if (dash === -1) return { kicker: "", title: trimmed };
+  return {
+    kicker: trimmed.slice(0, dash).trim(),
+    title: trimmed.slice(dash + 3).trim() || trimmed,
+  };
+}
+
+function drawFittedCentered(
+  page: PDFPage,
+  text: string,
+  y: number,
+  font: BuildContext["bold"],
+  maxSize: number,
+  color: RGB,
+) {
+  const maxWidth = LETTER[0] - 108;
+  let size = maxSize;
+  while (size > 12 && font.widthOfTextAtSize(text, size) > maxWidth) size -= 1;
+  page.drawText(text, {
+    x: LETTER[0] / 2 - font.widthOfTextAtSize(text, size) / 2,
+    y,
+    size,
+    font,
+    color,
+  });
+}
+
+function addSpecDivider(
+  spec: string,
   packet: SdsPacketData,
   project: ProjectInfo,
   branding: PrintBranding,
@@ -661,18 +680,23 @@ function addCategoryDivider(
 ) {
   const page = ctx.doc.addPage(LETTER);
   const w = LETTER[0];
+  const { kicker, title } = specDividerParts(spec);
   drawRunningHeader(page, ctx, branding, packet, project);
 
-  page.drawText(category.toUpperCase(), {
-    x: w / 2 - ctx.bold.widthOfTextAtSize(category.toUpperCase(), 28) / 2,
-    y: LETTER[1] / 2 + 20,
-    size: 28,
-    font: ctx.bold,
-    color: rgb(0.1, 0.1, 0.18),
-  });
+  const titleY = kicker ? LETTER[1] / 2 + 8 : LETTER[1] / 2 + 20;
+  if (kicker) {
+    page.drawText(kicker, {
+      x: w / 2 - ctx.font.widthOfTextAtSize(kicker, 12) / 2,
+      y: LETTER[1] / 2 + 36,
+      size: 12,
+      font: ctx.font,
+      color: rgb(0.33, 0.33, 0.33),
+    });
+  }
+  drawFittedCentered(page, title.toUpperCase(), titleY, ctx.bold, 26, rgb(0.1, 0.1, 0.18));
   page.drawText("Product sections follow", {
     x: w / 2 - ctx.font.widthOfTextAtSize("Product sections follow", 11) / 2,
-    y: LETTER[1] / 2 - 8,
+    y: titleY - 28,
     size: 11,
     font: ctx.font,
     color: rgb(0.4, 0.4, 0.4),
@@ -698,7 +722,7 @@ function addSectionDivider(
   const product = section.product.trim() || "—";
   const finish = section.finish_type.trim() || "—";
   const systemMaterial = section.system_material.trim() || "—";
-  const category = section.category || "—";
+  const spec = section.spec_section.trim() || "—";
 
   page.drawText(`SECTION ${sectionNum}`, {
     x: margin,
@@ -729,7 +753,7 @@ function addSectionDivider(
   const labelW = 94;
   const valueW = w - margin * 2 - labelW;
   const infoRows: [string, string][] = [
-    ["Category:", category],
+    ["Spec:", spec],
     ["Manufacturer:", manufacturer],
     ["Product:", product],
     ["Finish / Type:", finish],
@@ -821,8 +845,9 @@ async function appendPdfWithStamp(
     ctx.doc.addPage(page);
     if (includeStamp) {
       const { width, height } = page.getSize();
-      page.drawRectangle({ x: 0, y: height - 28, width, height: 28, color: rgb(0.95, 0.95, 0.95) });
-      page.drawText(stamp, { x: 36, y: height - 20, size: 8, font: ctx.bold, color: rgb(0.15, 0.15, 0.15) });
+      const bannerHeight = 14;
+      page.drawRectangle({ x: 0, y: height - bannerHeight, width, height: bannerHeight, color: rgb(0.95, 0.95, 0.95) });
+      page.drawText(stamp, { x: 8, y: height - 11, size: 8, font: ctx.bold, color: rgb(0.15, 0.15, 0.15) });
     }
   }
 }
@@ -1024,9 +1049,9 @@ export async function buildSdsPacketPdf(
     (packet.include_toc ? 1 : 0) +
     1 +
     groupedSections.reduce((n, s, i, arr) => {
-      const categoryBreak =
-        packet.include_dividers && (i === 0 || s.category !== arr[i - 1]!.category) ? 1 : 0;
-      return n + categoryBreak + (packet.include_dividers ? 1 : 0) + countSectionPdfPages(s);
+      const specBreak =
+        packet.include_dividers && (i === 0 || specGroupKey(s) !== specGroupKey(arr[i - 1]!)) ? 1 : 0;
+      return n + specBreak + (packet.include_dividers ? 1 : 0) + countSectionPdfPages(s);
     }, 0) +
     (packet.include_end ? 1 : 0);
   let step = 0;
@@ -1072,6 +1097,13 @@ export async function buildSdsPacketPdf(
   for (let i = 0; i < groupedSections.length; i++) {
     const section = groupedSections[i]!;
     const num = i + 1;
+
+    if (packet.include_dividers && (i === 0 || specGroupKey(section) !== specGroupKey(groupedSections[i - 1]!))) {
+      const specLabel = specDividerParts(section.spec_section).title;
+      tick(`Spec: ${specLabel}`);
+      addSpecDivider(section.spec_section, packet, project, branding, ctx);
+    }
+
     sectionStartPages.push(pageCount());
 
     if (packet.include_toc) {
@@ -1079,10 +1111,6 @@ export async function buildSdsPacketPdf(
     }
 
     if (packet.include_dividers) {
-      if (i === 0 || section.category !== groupedSections[i - 1]!.category) {
-        tick(`Category: ${section.category}`);
-        addCategoryDivider(section.category, packet, project, branding, ctx);
-      }
       tick(`Section ${num} divider`);
       addSectionDivider(num, section, packet, project, branding, ctx);
     }

@@ -1,6 +1,6 @@
-import { NavLink, Outlet, useOutletContext } from "react-router-dom";
+import { NavLink, Navigate, Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { useUnsavedNavigation } from "../../contexts/UnsavedNavigationContext";
-import { projectHasWallcovering } from "../../lib/jobInfo";
+import { projectHasFrp, projectHasWallcovering } from "../../lib/jobInfo";
 import type { ProjectForm } from "../../types/database";
 
 type Ctx = {
@@ -15,13 +15,14 @@ type HubTab = {
   /** Path under /submittals; empty string = log (index). */
   path: string;
   requiresWallcovering?: boolean;
+  requiresFrp?: boolean;
 };
 
 const HUB_TABS: HubTab[] = [
   { id: "log", label: "Log", path: "" },
   { id: "paint", label: "Paint", path: "paint" },
   { id: "wallcovering", label: "Wallcovering", path: "wallcovering", requiresWallcovering: true },
-  { id: "frp", label: "FRP", path: "frp" },
+  { id: "frp", label: "FRP", path: "frp", requiresFrp: true },
   { id: "package", label: "Package", path: "package" },
   { id: "transmittal", label: "Transmittal", path: "transmittal" },
 ];
@@ -30,10 +31,20 @@ export function SubmittalsHubLayout() {
   const ctx = useOutletContext<Ctx>();
   const { project, projectId } = ctx;
   const { requestNavigation } = useUnsavedNavigation();
+  const location = useLocation();
   const base = `/projects/${projectId}/submittals`;
   const showWc = projectHasWallcovering(project.jobInfo);
+  const showFrp = projectHasFrp(project.jobInfo);
 
-  const tabs = HUB_TABS.filter((tab) => !tab.requiresWallcovering || showWc);
+  const tabs = HUB_TABS.filter((tab) => {
+    if (tab.requiresWallcovering && !showWc) return false;
+    if (tab.requiresFrp && !showFrp) return false;
+    return true;
+  });
+
+  const onHiddenTrade =
+    (!showWc && location.pathname.startsWith(`${base}/wallcovering`)) ||
+    (!showFrp && location.pathname.startsWith(`${base}/frp`));
 
   return (
     <div className="submittals-hub stack">
@@ -56,7 +67,7 @@ export function SubmittalsHubLayout() {
           );
         })}
       </nav>
-      <Outlet context={ctx} />
+      {onHiddenTrade ? <Navigate to={base} replace /> : <Outlet context={ctx} />}
     </div>
   );
 }

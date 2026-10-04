@@ -1134,7 +1134,7 @@ export function normalizePendingItem(raw: Partial<PendingSubmittalItem> | null |
   return {
     id: rawObj.id?.trim() || crypto.randomUUID(),
     submittal_type: rawObj.submittal_type?.trim() || "Product Data",
-    scope: rawObj.scope?.trim() || "Paint",
+    scope: rawObj.scope == null ? "Paint" : rawObj.scope.trim(),
     spec: rawObj.spec?.trim() ?? "",
     section: rawObj.section?.trim() ?? "",
     spec_section: rawObj.spec_section?.trim() || rawObj.section?.trim() || "",

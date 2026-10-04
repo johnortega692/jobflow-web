@@ -4,11 +4,10 @@ import { requiredAttachmentsForPacketType } from "../../lib/sdsPacketRequirement
 import { parseSdsFilename, removeSdsPdf, uploadSdsPdf } from "../../lib/sdsFileStorage";
 import {
   SDS_ATTACHMENT_KINDS,
-  SDS_SECTION_CATEGORIES,
   sanitizeFinishType,
   type SdsAttachmentKind,
 } from "../../lib/sdsSectionModel";
-import type { SdsSection, SdsSectionCategory } from "../../types/tradeDocuments";
+import type { SdsSection } from "../../types/tradeDocuments";
 import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
 
 type Props = {
@@ -125,20 +124,7 @@ export function SdsSectionEditorModal({
         <div className="sds-section-editor-body stack">
           {error && <div className="banner banner-error">{error}</div>}
           <div className="grid-2">
-            <label>
-              Category
-              <select
-                value={section.category}
-                onChange={(e) => patch({ category: e.target.value as SdsSectionCategory })}
-              >
-                {SDS_SECTION_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
+            <label className="grid-span-2">
               Spec section
               <SpecSectionSelect
                 value={section.spec_section}

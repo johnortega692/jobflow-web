@@ -1,5 +1,4 @@
 import { logSubmittalTypeForPacket } from "./sdsPacketPresets";
-import { sdsPacketLogScope } from "./sdsPacketHelpers";
 import { parseSpecSectionForLog, sdsSubmittalDescription } from "./submittalLogHelpers";
 import { recordPdfLogRow } from "./submittalLogService";
 import { loadTransmittalContentAutoOn } from "./transmittalCategories";
@@ -27,10 +26,9 @@ export async function appendSdsPacketSubmittalRow(
   const label = packetSpecForIntegrations(packet);
   const parseSource = packetSpecForLogParse(packet);
   const { spec, section } = parseSpecSectionForLog(parseSource);
-  const scope = sdsPacketLogScope(packet);
   const row = await recordPdfLogRow(projectId, {
     submittal_type: logSubmittalTypeForPacket(packet.packet_type),
-    scope,
+    scope: "",
     spec,
     section: section || label,
     notes: sdsSubmittalDescription(label, packet.packet_type),
@@ -49,14 +47,13 @@ export async function queueSdsForTransmittal(
   const label = packetSpecForIntegrations(packet);
   const parseSource = packetSpecForLogParse(packet);
   const { spec, section } = parseSpecSectionForLog(parseSource);
-  const scope = sdsPacketLogScope(packet);
   const transmittal = tradeData.transmittal ?? defaultTransmittal();
   const autoOn = await loadTransmittalContentAutoOn(userId);
   const nextTransmittal = queuePendingItem(
     transmittal,
     {
       submittal_type: logSubmittalTypeForPacket(packet.packet_type),
-      scope,
+      scope: "",
       spec,
       section: section || label,
       spec_section: label,

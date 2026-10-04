@@ -17,6 +17,8 @@ import {
   coerceTransmittalContract,
   hasTransmittalContractSwitch,
   icbiSuperEmail,
+  projectHasFrp,
+  projectHasWallcovering,
   icbiSuperintendent,
   transmittalPrintInfo,
 } from "../lib/jobInfo";
@@ -91,6 +93,8 @@ export function TransmittalPage() {
   const { user } = useAuth();
   const { branding, profile } = useLetterhead();
   const { project, projectId } = useOutletContext<Ctx>();
+  const showWc = projectHasWallcovering(project.jobInfo);
+  const showFrp = projectHasFrp(project.jobInfo);
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
   const [draft, setDraft] = useState<TransmittalData>(defaultTransmittal());
   const [status, setStatus] = useState<string | null>(null);
@@ -316,7 +320,11 @@ export function TransmittalPage() {
   }
 
   async function onGenerate() {
-    const mergedDraft = mergeActiveTransmittalNumber(draft);
+    const mergedDraft = mergeActiveTransmittalNumber({
+      ...draft,
+      include_wc_sheet: showWc ? draft.include_wc_sheet : false,
+      include_frp_sheet: showFrp ? draft.include_frp_sheet : false,
+    });
     const ok = await persistTransmittal(mergedDraft);
     if (!ok) return;
     let pdfResult;
@@ -911,6 +919,7 @@ export function TransmittalPage() {
                 <span aria-hidden> ▾</span>
               </button>
             </div>
+            {showWc && (
             <div className="transmittal-build-sheet-row">
               <label className="check">
                 <input
@@ -932,6 +941,8 @@ export function TransmittalPage() {
                 <span aria-hidden> ▾</span>
               </button>
             </div>
+            )}
+            {showFrp && (
             <div className="transmittal-build-sheet-row">
               <label className="check">
                 <input
@@ -953,6 +964,7 @@ export function TransmittalPage() {
                 <span aria-hidden> ▾</span>
               </button>
             </div>
+            )}
             <label className="check">
               <input
                 type="checkbox"

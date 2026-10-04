@@ -873,20 +873,6 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                   </div>
                 )}
               </div>
-              <div className="job-info-grid">
-                <label className={fieldClass(!isBlank(j.sample_share_url), "job-info-span-6")}>
-                  Sample share link
-                  <input
-                    type="url"
-                    inputMode="url"
-                    className={inputClass(j.sample_share_url)}
-                    value={j.sample_share_url}
-                    placeholder="https://"
-                    onChange={(e) => setJobInfo({ sample_share_url: e.target.value })}
-                  />
-                  <span className="muted small job-info-field-help">Default QR target for sample labels.</span>
-                </label>
-              </div>
               <div className="job-info-switch-block">
                 <label className="checkbox-row job-info-wc-toggle job-info-switch job-info-nonfield">
                   <input

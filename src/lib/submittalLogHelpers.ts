@@ -121,7 +121,7 @@ export function normalizeLogRow(raw: Partial<SubmittalLogRow> | null | undefined
     id: raw.id?.trim() || newLogRowId(),
     line_number: formatLineNumberDisplay(raw.line_number ?? base.line_number),
     spec: raw.spec?.trim() ?? "",
-    scope: raw.scope?.trim() || "Paint",
+    scope: raw.scope == null ? base.scope : raw.scope.trim(),
     section: raw.section?.trim() ?? "",
     submittal_type: raw.submittal_type?.trim() ?? "",
     submit_date: raw.submit_date?.trim() ?? "",
