@@ -2543,7 +2543,8 @@ th {
 }
 
 .po-tracker-action-col {
-  width: 4.5rem;
+  width: auto;
+  min-width: 4.5rem;
   text-align: right !important;
   white-space: nowrap;
 }

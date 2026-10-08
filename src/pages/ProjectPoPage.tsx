@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { FieldToolsOrderViewModal } from "../components/fieldTools/FieldToolsOrderViewModal";
+import { LastMinReceiptsModal } from "../components/fieldTools/LastMinReceiptsModal";
 import { projectTradeJobIdentities, type TransmittalContract } from "../lib/jobInfo";
 import {
   formatPoOrderMeta,
@@ -84,6 +85,7 @@ export function ProjectPoPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [viewOrder, setViewOrder] = useState<ViewTarget | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<{ orderId: string; poNumber: string } | null>(null);
   const [contractFilter, setContractFilter] = useState<TransmittalContract | "all">("all");
   const [hiddenFromFieldApps, setHiddenFromFieldApps] = useState(false);
   const [visibilityLoaded, setVisibilityLoaded] = useState(false);
@@ -345,23 +347,36 @@ export function ProjectPoPage() {
                     </label>
                   </td>
                   <td className="po-tracker-action-col">
-                    {row.source === "field_tools" ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() =>
-                          setViewOrder({
-                            orderId: row.orderId,
-                            poNumber: row.poNumber,
-                            dispatchId: row.dispatchId,
-                          })
-                        }
-                      >
-                        View
-                      </button>
-                    ) : (
-                      <span className="muted small">PDF</span>
-                    )}
+                    <div className="row-gap" style={{ justifyContent: "flex-end" }}>
+                      {row.orderType === "last_min" && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() =>
+                            setReceiptOrder({ orderId: row.orderId, poNumber: row.poNumber })
+                          }
+                        >
+                          Receipt
+                        </button>
+                      )}
+                      {row.source === "field_tools" ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() =>
+                            setViewOrder({
+                              orderId: row.orderId,
+                              poNumber: row.poNumber,
+                              dispatchId: row.dispatchId,
+                            })
+                          }
+                        >
+                          View
+                        </button>
+                      ) : (
+                        <span className="muted small">PDF</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -375,6 +390,14 @@ export function ProjectPoPage() {
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+
+      {receiptOrder && (
+        <LastMinReceiptsModal
+          orderId={receiptOrder.orderId}
+          poNumber={receiptOrder.poNumber}
+          onClose={() => setReceiptOrder(null)}
+        />
+      )}
 
       {viewOrder && viewRow && (
         <FieldToolsOrderViewModal
