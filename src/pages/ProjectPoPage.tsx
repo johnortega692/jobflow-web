@@ -16,16 +16,82 @@ type Ctx = { project: ProjectForm; projectId: string };
 
 type ViewTarget = { orderId: string; poNumber: string; dispatchId: string };
 
-function formatDateNeeded(value: string): string {
-  const d = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+/** Known paint vendors. Longer keys are matched first so "Sherwin Williams" wins over shorter prefixes. */
+const VENDOR_SHORT_CODES: Record<string, string> = {
+  "sherwin williams": "S-W",
+  "sherwin william": "S-W",
+  "dunn edwards": "D-E",
+  "dunn edward": "D-E",
+  "benjamin moore": "B-M",
+  ppg: "PPG",
+  vista: "Vista",
+};
+
+function formatMdYy(d: Date): string {
+  return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`;
 }
 
-function formatSubmittedAt(iso: string): string {
+function formatCompactTime(d: Date): string {
+  const hours24 = d.getHours();
+  const suffix = hours24 >= 12 ? "p" : "a";
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${String(d.getMinutes()).padStart(2, "0")}${suffix}`;
+}
+
+function formatSubmittedParts(iso: string): { date: string; time: string } | null {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  if (Number.isNaN(d.getTime())) return null;
+  return { date: formatMdYy(d), time: formatCompactTime(d) };
+}
+
+function formatNeededDate(value: string | null): string {
+  if (!value) return "—";
+  const d = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return value;
+  return formatMdYy(d);
+}
+
+function vendorShortCode(label: string): string | null {
+  const normalized = label
+    .toLowerCase()
+    .replace(/['’.]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!normalized) return null;
+  const keys = Object.keys(VENDOR_SHORT_CODES).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (normalized === key || normalized.startsWith(key)) return VENDOR_SHORT_CODES[key];
+  }
+  return null;
+}
+
+function shortPersonName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? "";
+  const initial = parts[0]?.[0]?.toUpperCase() ?? "";
+  return `${initial}. ${parts[parts.length - 1]}`;
+}
+
+function orderDispatchLabel(row: FieldToolsPoDispatchRow): string {
+  const parts = formatPoOrderMeta(row).split(" · ");
+  return parts.length > 1 ? parts.slice(1).join(" · ") : "";
+}
+
+function orderTypeChip(type: string): { label: string; tone: string } {
+  switch (type) {
+    case "pm_order":
+      return { label: "PM", tone: "pm" };
+    case "last_min":
+      return { label: "Last-min", tone: "last-min" };
+    case "haul_off":
+      return { label: "Haul", tone: "haul" };
+    case "job_scope_kit":
+      return { label: "Kit", tone: "kit" };
+    case "material_order":
+      return { label: "Order", tone: "order" };
+    default:
+      return { label: "Field", tone: "field" };
+  }
 }
 
 function PoReceivedFieldIcon({ size = 16 }: { size?: number }) {
@@ -74,6 +140,50 @@ function PoCompletedIcon({ size = 16 }: { size?: number }) {
       <path d="M12 12v-1" />
       <path d="M15 12v-2" />
       <path d="M12 12v-1" />
+    </svg>
+  );
+}
+
+function PoViewIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6" />
+    </svg>
+  );
+}
+
+function PoReceiptIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2" />
+      <path d="M9 7h6" />
+      <path d="M9 11h6" />
+      <path d="M9 15h4" />
     </svg>
   );
 }
@@ -278,7 +388,19 @@ export function ProjectPoPage() {
         </p>
       ) : (
         <div className="po-tracker-table-wrap">
-          <table className="po-tracker-table">
+          <table className={`po-tracker-table${hasMultipleContracts ? " po-tracker-table--contracts" : ""}`}>
+            <colgroup>
+              <col className="po-tracker-col-po" />
+              {hasMultipleContracts && <col className="po-tracker-col-contract" />}
+              <col className="po-tracker-col-submitted" />
+              <col className="po-tracker-col-order" />
+              <col className="po-tracker-col-vendor" />
+              <col className="po-tracker-col-by" />
+              <col className="po-tracker-col-needed" />
+              <col className="po-tracker-col-check" />
+              <col className="po-tracker-col-check" />
+              <col className="po-tracker-col-actions" />
+            </colgroup>
             <thead>
               <tr>
                 <th>PO#</th>
@@ -290,96 +412,119 @@ export function ProjectPoPage() {
                 <th>Needed</th>
                 <th className="po-tracker-check-col" title="Received Field">
                   <span className="po-tracker-th-icon">
-                    <PoReceivedFieldIcon size={18} />
+                    <PoReceivedFieldIcon size={15} />
                   </span>
                   <span className="sr-only">Received Field</span>
                 </th>
                 <th className="po-tracker-check-col" title="Completed">
                   <span className="po-tracker-th-icon">
-                    <PoCompletedIcon size={18} />
+                    <PoCompletedIcon size={15} />
                   </span>
                   <span className="sr-only">Completed</span>
                 </th>
-                <th className="po-tracker-action-col"> </th>
+                <th className="po-tracker-action-col">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.dispatchId} className={row.completed ? "po-tracker-row--done" : undefined}>
-                  <td>
-                    <strong>{row.poNumber}</strong>
-                  </td>
-                  {hasMultipleContracts && <td>{row.contractLabel}</td>}
-                  <td>{formatSubmittedAt(row.submittedAt)}</td>
-                  <td>
-                    <div>{formatPoOrderMeta(row)}</div>
-                    <div className="muted small">
-                      {row.jobNumber}
-                      {row.jobName ? ` · ${row.jobName}` : ""}
-                    </div>
-                    {row.emailStatus !== "sent" && (
-                      <div className="muted small">Email: {row.emailStatus}</div>
-                    )}
-                  </td>
-                  <td>{row.vendorLabel || "—"}</td>
-                  <td>{row.submittedBy || "—"}</td>
-                  <td>{row.dateNeeded ? formatDateNeeded(row.dateNeeded) : "—"}</td>
-                  <td className="po-tracker-check-col">
-                    <label className="po-tracker-check">
-                      <input
-                        type="checkbox"
-                        checked={row.receivedField}
-                        disabled={busyId === row.dispatchId}
-                        onChange={(e) => void toggleRow(row, "receivedField", e.target.checked)}
-                      />
-                      <span className="sr-only">Received Field for {row.poNumber}</span>
-                    </label>
-                  </td>
-                  <td className="po-tracker-check-col">
-                    <label className="po-tracker-check">
-                      <input
-                        type="checkbox"
-                        checked={row.completed}
-                        disabled={busyId === row.dispatchId}
-                        onChange={(e) => void toggleRow(row, "completed", e.target.checked)}
-                      />
-                      <span className="sr-only">Completed for {row.poNumber}</span>
-                    </label>
-                  </td>
-                  <td className="po-tracker-action-col">
-                    <div className="row-gap" style={{ justifyContent: "flex-end" }}>
-                      {row.orderType === "last_min" && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() =>
-                            setReceiptOrder({ orderId: row.orderId, poNumber: row.poNumber })
-                          }
-                        >
-                          Receipt
-                        </button>
-                      )}
-                      {row.source === "field_tools" ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() =>
-                            setViewOrder({
-                              orderId: row.orderId,
-                              poNumber: row.poNumber,
-                              dispatchId: row.dispatchId,
-                            })
-                          }
-                        >
-                          View
-                        </button>
+              {filteredRows.map((row) => {
+                const submitted = formatSubmittedParts(row.submittedAt);
+                const chip = orderTypeChip(row.orderType);
+                const dispatchLabel = orderDispatchLabel(row);
+                const emailNote = row.emailStatus !== "sent" ? `Email: ${row.emailStatus}` : "";
+                const vendorFull = row.vendorLabel.trim();
+                const vendorCode = vendorFull ? vendorShortCode(vendorFull) : null;
+                const byFull = row.submittedBy.trim();
+                const byShort = byFull ? shortPersonName(byFull) : "";
+                return (
+                  <tr key={row.dispatchId} className={row.completed ? "po-tracker-row--done" : undefined}>
+                    <td title={row.poNumber}>
+                      <strong>{row.poNumber}</strong>
+                    </td>
+                    {hasMultipleContracts && <td title={row.contractLabel}>{row.contractLabel}</td>}
+                    <td title={submitted ? `${submitted.date} ${submitted.time}` : row.submittedAt}>
+                      {submitted ? (
+                        <span className="po-tracker-line">
+                          {submitted.date} <span className="po-tracker-sub">{submitted.time}</span>
+                        </span>
                       ) : (
-                        <span className="muted small">PDF</span>
+                        row.submittedAt
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td title={[formatPoOrderMeta(row), emailNote].filter(Boolean).join(" · ")}>
+                      <span className="po-tracker-line po-tracker-order-line">
+                        <span className={`po-tracker-type po-tracker-type--${chip.tone}`}>{chip.label}</span>
+                        <span className="po-tracker-order-text">
+                          {dispatchLabel ? ` · ${dispatchLabel}` : ""}
+                          {emailNote ? ` · ${emailNote}` : ""}
+                        </span>
+                      </span>
+                    </td>
+                    <td title={vendorFull || undefined}>{vendorCode || vendorFull || "—"}</td>
+                    <td title={byFull || undefined}>{byShort || "—"}</td>
+                    <td>{formatNeededDate(row.dateNeeded)}</td>
+                    <td className="po-tracker-check-col">
+                      <label className="po-tracker-check">
+                        <input
+                          type="checkbox"
+                          checked={row.receivedField}
+                          disabled={busyId === row.dispatchId}
+                          onChange={(e) => void toggleRow(row, "receivedField", e.target.checked)}
+                        />
+                        <span className="sr-only">Received Field for {row.poNumber}</span>
+                      </label>
+                    </td>
+                    <td className="po-tracker-check-col">
+                      <label className="po-tracker-check">
+                        <input
+                          type="checkbox"
+                          checked={row.completed}
+                          disabled={busyId === row.dispatchId}
+                          onChange={(e) => void toggleRow(row, "completed", e.target.checked)}
+                        />
+                        <span className="sr-only">Completed for {row.poNumber}</span>
+                      </label>
+                    </td>
+                    <td className="po-tracker-action-col">
+                      <div className="po-tracker-actions">
+                        {row.orderType === "last_min" && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost po-tracker-icon-btn"
+                            aria-label={`View receipt for PO ${row.poNumber}`}
+                            title="Receipt"
+                            onClick={() =>
+                              setReceiptOrder({ orderId: row.orderId, poNumber: row.poNumber })
+                            }
+                          >
+                            <PoReceiptIcon />
+                          </button>
+                        )}
+                        {row.source === "field_tools" ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost po-tracker-icon-btn"
+                            aria-label={`View PO ${row.poNumber}`}
+                            title="View"
+                            onClick={() =>
+                              setViewOrder({
+                                orderId: row.orderId,
+                                poNumber: row.poNumber,
+                                dispatchId: row.dispatchId,
+                              })
+                            }
+                          >
+                            <PoViewIcon />
+                          </button>
+                        ) : (
+                          <span className="muted small">PDF</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
