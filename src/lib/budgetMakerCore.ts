@@ -115,7 +115,7 @@ export function bucketLabel(
   lib: BudgetLibrary,
   opts?: { showTemplate?: boolean; showIndex?: boolean },
 ): string {
-  const codePart = stripParentheticals(formatCostCode(bucket.cost_code, lib, bucket.cost_class));
+  const codePart = stripParentheticals(bucketCostCodeText(bucket, lib));
   const classPart = stripParentheticals(
     formatCostClassPart(bucket.cost_class, lib, bucket.template_type),
   );
@@ -236,7 +236,17 @@ export function costClassGlAcct(lib: BudgetLibrary, costClass: string): string {
   return "";
 }
 
+/** Cost-code label for a bucket. Imported work-item names win over the catalog description. */
+export function bucketCostCodeText(bucket: BudgetBucket, lib: BudgetLibrary): string {
+  const code = fmtCell(bucket.cost_code).trim();
+  const name = fmtCell(bucket.work_item).trim();
+  if (name) return code ? `${code} - ${name}` : name;
+  return formatCostCode(bucket.cost_code, lib, bucket.cost_class);
+}
+
 export function workItemForBucket(bucket: BudgetBucket, lib: BudgetLibrary): string {
+  const custom = fmtCell(bucket.work_item).trim();
+  if (custom) return custom;
   const code = fmtCell(bucket.cost_code);
   const cls = fmtCell(bucket.cost_class);
   if (cls) {
@@ -581,6 +591,7 @@ export function bucketSnapshot(bucket: BudgetBucket): BudgetBucket {
   };
   if (bucket.template_type) row.template_type = fmtCell(bucket.template_type);
   if (bucket.notes) row.notes = fmtCell(bucket.notes);
+  if (bucket.work_item) row.work_item = fmtCell(bucket.work_item).trim();
   return row;
 }
 
@@ -720,7 +731,7 @@ export function buildSummaryRows(
     rows.push({
       bucketIdx: i,
       workItem: workItemForBucket(bucket, lib),
-      costCode: formatCostCode(bucket.cost_code, lib, bucket.cost_class),
+      costCode: bucketCostCodeText(bucket, lib),
       costClass: bucket.cost_class,
       glAcct: costClassGlAcct(lib, bucket.cost_class),
       hours: hours ? String(Math.trunc(hours)) : "",

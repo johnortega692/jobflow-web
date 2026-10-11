@@ -36,6 +36,7 @@ import {
   applyBudgetContractSlice,
   mergeActiveBudgetContractSlice,
 } from "../lib/budgetPerContract";
+import { parseBudgetExcelFile } from "../lib/budgetExcelImport";
 import { loadBudgetLibrary, downloadBudgetExcel, saveBudgetLibrary } from "../lib/budgetLibrary";
 import { downloadBudgetPdf, downloadHoursPdf } from "../lib/budgetExportPdf";
 import { budgetHoursPdfFilename, budgetPdfFilename } from "../lib/pdfFilenames";
@@ -88,11 +89,14 @@ export function BudgetPage() {
   const [targetBucket, setTargetBucket] = useState(0);
   const [showBuckets, setShowBuckets] = useState(false);
   const [splitLineId, setSplitLineId] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const [importing, setImporting] = useState<null | "pdf" | "excel">(null);
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [pushingManpower, setPushingManpower] = useState(false);
   const [pdfDragOver, setPdfDragOver] = useState(false);
   const pdfRef = useRef<HTMLInputElement>(null);
+  const excelRef = useRef<HTMLInputElement>(null);
+  const importMenuRef = useRef<HTMLDivElement>(null);
   const lib = library ?? defaultBudgetLibrary();
 
   const templateNames = useMemo(
@@ -229,14 +233,16 @@ export function BudgetPage() {
     const name = draft.scanned_pdf_name.trim();
     if (name === "Manual entry") return `✏️ ${visibleLines.length} manual line${visibleLines.length === 1 ? "" : "s"}`;
     if (name) {
-      return `📄 ${visibleLines.length} item${visibleLines.length === 1 ? "" : "s"} · ${name}${hiddenCount ? ` · ${hiddenCount} hidden` : ""}`;
+      const fromExcel = /\.xlsx?$|\.xlsm$/i.test(name);
+      const mark = fromExcel ? "📊" : "📄";
+      return `${mark} ${visibleLines.length} item${visibleLines.length === 1 ? "" : "s"} · ${name}${hiddenCount ? ` · ${hiddenCount} hidden` : ""}`;
     }
     return `${visibleLines.length} line${visibleLines.length === 1 ? "" : "s"}${hiddenCount ? ` · ${hiddenCount} hidden` : ""}`;
   }
 
   function requireLines(action: string): boolean {
     if (draft.lines.length) return true;
-    setError(`Add lines manually or scan a PDF first (${action}).`);
+    setError(`Add lines manually or import a PDF or Excel file first (${action}).`);
     return false;
   }
 
@@ -421,13 +427,39 @@ export function BudgetPage() {
     }
   }
 
+  useEffect(() => {
+    if (!importMenuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!importMenuRef.current?.contains(event.target as Node)) setImportMenuOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setImportMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [importMenuOpen]);
+
+  function openImportPicker(kind: "pdf" | "excel") {
+    setImportMenuOpen(false);
+    if (kind === "pdf") pdfRef.current?.click();
+    else excelRef.current?.click();
+  }
+
+  function isExcelImport(name: string): boolean {
+    return /\.xlsx?$|\.xlsm$/i.test(name);
+  }
+
   async function onPdfFile(file: File | null) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       setError("Please choose a PDF file.");
       return;
     }
-    setScanning(true);
+    setImporting("pdf");
     setError(null);
     try {
       const lines = await parseBudgetPdf(await file.arrayBuffer());
@@ -440,14 +472,44 @@ export function BudgetPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF scan failed");
     } finally {
-      setScanning(false);
+      setImporting(null);
       if (pdfRef.current) pdfRef.current.value = "";
     }
   }
 
-  function pickPdfFromDataTransfer(dataTransfer: DataTransfer | null): File | null {
-    if (!dataTransfer?.files.length) return null;
-    return [...dataTransfer.files].find((file) => file.name.toLowerCase().endsWith(".pdf")) ?? null;
+  async function onExcelFile(file: File | null) {
+    if (!file) return;
+    if (!isExcelImport(file.name)) {
+      setError("Please choose an Excel file (.xlsx or .xls).");
+      return;
+    }
+    setImporting("excel");
+    setError(null);
+    try {
+      const imported = await parseBudgetExcelFile(await file.arrayBuffer(), lib);
+      patch({
+        lines: imported.lines,
+        buckets: imported.buckets,
+        scanned_pdf_name: file.name,
+        loaded_template_name: "",
+      });
+      setSelectedLineIds(new Set());
+      setTargetBucket(0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Excel import failed");
+    } finally {
+      setImporting(null);
+      if (excelRef.current) excelRef.current.value = "";
+    }
+  }
+
+  function pickImportFile(files: FileList | File[]): File | null {
+    return (
+      [...files].find((file) => {
+        const name = file.name.toLowerCase();
+        return name.endsWith(".pdf") || isExcelImport(name);
+      }) ?? null
+    );
   }
 
   function onPdfDragEnter(e: DragEvent<HTMLElement>) {
@@ -473,8 +535,15 @@ export function BudgetPage() {
     e.preventDefault();
     e.stopPropagation();
     setPdfDragOver(false);
-    const file = pickPdfFromDataTransfer(e.dataTransfer);
-    if (file) void onPdfFile(file);
+    const files = [...(e.dataTransfer?.files ?? [])];
+    if (!files.length) return;
+    const file = pickImportFile(files);
+    if (!file) {
+      setError("Drop a Job Cost Summary PDF or an Initial PM Budget Excel file (.xlsx).");
+      return;
+    }
+    if (file.name.toLowerCase().endsWith(".pdf")) void onPdfFile(file);
+    else void onExcelFile(file);
   }
 
   function pushSelected() {
@@ -633,25 +702,68 @@ export function BudgetPage() {
           </div>
 
           <div className="budget-tools-row">
-            <label
-              className="btn btn-secondary btn-sm budget-toolbar-btn"
-              style={scanning ? { opacity: 0.65, pointerEvents: "none" } : undefined}
-              title="Import a Job Cost Summary PDF into line items"
-            >
-              <BudgetIconImport />
-              {scanning ? "Scanning…" : "Import PDF"}
+            <div className="budget-import-menu" ref={importMenuRef}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm budget-toolbar-btn"
+                disabled={importing !== null}
+                aria-haspopup="menu"
+                aria-expanded={importMenuOpen}
+                title="Import a Job Cost Summary PDF or an Initial PM Budget Excel file"
+                onClick={() => setImportMenuOpen((open) => !open)}
+              >
+                <BudgetIconImport />
+                {importing === "pdf" ? "Scanning…" : importing === "excel" ? "Importing…" : "Import"}
+                <svg className="budget-import-chevron" viewBox="0 0 12 12" aria-hidden="true">
+                  <path
+                    d="M2.5 4.5 6 8l3.5-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              {importMenuOpen && (
+                <div className="budget-import-menu-panel" role="menu" aria-label="Import budget">
+                  <button type="button" role="menuitem" onClick={() => openImportPicker("pdf")}>
+                    <BudgetIconPdf />
+                    PDF
+                    <span className="budget-import-menu-hint">Job Cost Summary</span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => openImportPicker("excel")}>
+                    <BudgetIconExcel />
+                    Excel
+                    <span className="budget-import-menu-hint">PM budget sheet</span>
+                  </button>
+                </div>
+              )}
               <input
                 ref={pdfRef}
                 type="file"
                 accept=".pdf,application/pdf"
                 className="sr-only"
-                disabled={scanning}
+                tabIndex={-1}
+                disabled={importing !== null}
                 onClick={(e) => {
                   (e.currentTarget as HTMLInputElement).value = "";
                 }}
                 onChange={(e) => void onPdfFile(e.target.files?.[0] ?? null)}
               />
-            </label>
+              <input
+                ref={excelRef}
+                type="file"
+                accept=".xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="sr-only"
+                tabIndex={-1}
+                disabled={importing !== null}
+                onClick={(e) => {
+                  (e.currentTarget as HTMLInputElement).value = "";
+                }}
+                onChange={(e) => void onExcelFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
             <span className="budget-tools-divider" aria-hidden="true" />
             <div className="budget-attached-cluster" role="group" aria-label="Export">
               <span className="budget-attached-cluster-label">Export</span>
@@ -890,8 +1002,8 @@ export function BudgetPage() {
 
           {!draft.lines.length && (
             <p className="muted budget-drop-hint">
-              Drag and drop a Job Cost Summary PDF here, use <strong>Import PDF</strong>, or click{" "}
-              <strong>Add</strong> to enter job cost items by hand.
+              Drag and drop a Job Cost Summary PDF or an Initial PM Budget Excel file here, use{" "}
+              <strong>Import</strong>, or click <strong>Add</strong> to enter job cost items by hand.
             </p>
           )}
 

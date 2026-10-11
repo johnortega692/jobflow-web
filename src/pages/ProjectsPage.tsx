@@ -1,6 +1,10 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BrushoutsAddedPill } from "../components/projects/BrushoutsAddedPill";
+import { ProjectsActiveFilters } from "../components/projects/ProjectsActiveFilters";
+import { ProjectsFiltersMenu } from "../components/projects/ProjectsFiltersMenu";
+import { ProjectsListSortControl } from "../components/projects/ProjectsListSortControl";
+import { ProjectsStatusChips } from "../components/projects/ProjectsStatusChips";
 import { ProjectsAttentionCard } from "../components/projects/ProjectsAttentionCard";
 import { ProjectStatusBadge } from "../components/projects/ProjectStatusBadge";
 import { SubmittalStagePill } from "../components/projects/SubmittalStagePill";
@@ -13,18 +17,28 @@ import { loadFieldToolsStaffForJobflow } from "../lib/fieldToolsStaff";
 import {
   compareProjectsForListSort,
   computeProjectListSummaries,
-  filterProjectsByStage,
+  defaultSortDir,
   getSpotlight,
   projectJobStartLabel,
+  projectJobStartRelative,
   loadProjectsListSortState,
-  loadProjectsListStageFilter,
-  nextProjectsListSortState,
+  projectsListColumnForSort,
   saveProjectsListSortState,
-  saveProjectsListStageFilter,
   type ProjectsListSort,
+  type ProjectsListSortColumn,
   type ProjectsListSortState,
-  type ProjectsListStageFilter,
 } from "../lib/projectListSummary";
+import {
+  defaultProjectsListFilters,
+  filterProjectsForList,
+  generalContractorOptions,
+  loadProjectsListFilters,
+  removeProjectsListFilterPill,
+  saveProjectsListFilters,
+  statusChipCounts,
+  toggleStatusFilter,
+  type ProjectsListFilters,
+} from "../lib/projectListFilters";
 import {
   findStaffContact,
   jobInfoPatchFromStaffSelection,
@@ -43,12 +57,6 @@ import { listProjectIdsWithApprovedBrushouts } from "../lib/approvedBrushouts";
 import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
 import { isRfiClosed } from "../lib/rfiStatus";
 import { type Project } from "../types/database";
-
-function projectSearchText(p: Project): string {
-  return [p.job_number, p.job_name, p.contractor, p.architect, p.owner, p.job_address, p.job_address2]
-    .join(" ")
-    .toLowerCase();
-}
 
 function normalizeJobNumber(value: string): string {
   return value.trim().toLowerCase();
@@ -103,9 +111,8 @@ export function ProjectsPage() {
   const [listSortState, setListSortState] = useState<ProjectsListSortState>(() =>
     loadProjectsListSortState(),
   );
-  const [stageFilter, setStageFilter] = useState<ProjectsListStageFilter>(() =>
-    loadProjectsListStageFilter(),
-  );
+  const [listFilters, setListFilters] = useState<ProjectsListFilters>(() => loadProjectsListFilters());
+  const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const pmDefaultedRef = useRef(false);
 
   const summaries = useMemo(() => {
@@ -124,26 +131,74 @@ export function ProjectsPage() {
     return next;
   }, [projects, openRfiCounts]);
 
-  const attentionSpotlight = useMemo(() => getSpotlight(projects, summaries), [projects, summaries]);
-
+  const openProjects = useMemo(
+    () => projects.filter((project) => !doneIds.has(project.id)),
+    [projects, doneIds],
+  );
+  const attentionSpotlight = useMemo(
+    () => getSpotlight(openProjects, summaries),
+    [openProjects, summaries],
+  );
+  const filterContext = useMemo(
+    () => ({
+      search,
+      summaries,
+      brushoutsAdded: approvedBrushoutIds,
+      doneIds,
+    }),
+    [search, summaries, approvedBrushoutIds, doneIds],
+  );
+  const listUniverse = useMemo(
+    () => (listFilters.includeClosed ? projects : openProjects),
+    [projects, openProjects, listFilters.includeClosed],
+  );
+  const gcOptions = useMemo(() => generalContractorOptions(listUniverse), [listUniverse]);
+  const statusPool = useMemo(
+    () => filterProjectsForList(projects, listFilters, filterContext, { ignoreStatus: true }),
+    [projects, listFilters, filterContext],
+  );
+  const statusCounts = useMemo(() => statusChipCounts(statusPool, summaries), [statusPool, summaries]);
   const filteredProjects = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const searched = q ? projects.filter((p) => projectSearchText(p).includes(q)) : projects;
-    const staged = filterProjectsByStage(searched, summaries, stageFilter);
-    return [...staged].sort((a, b) =>
-      compareProjectsForListSort(a, b, summaries, listSortState.sort, listSortState.dir),
+    const matched = filterProjectsForList(projects, listFilters, filterContext);
+    return [...matched].sort((a, b) =>
+      compareProjectsForListSort(
+        a,
+        b,
+        summaries,
+        listSortState.sort,
+        listSortState.dir,
+        approvedBrushoutIds,
+      ),
     );
-  }, [projects, search, summaries, listSortState, stageFilter]);
+  }, [projects, listFilters, filterContext, summaries, listSortState, approvedBrushoutIds]);
 
-  function onListSortChange(sort: ProjectsListSort) {
-    const next = nextProjectsListSortState(listSortState, sort);
+  function applyListSort(next: ProjectsListSortState) {
     setListSortState(next);
     saveProjectsListSortState(next);
   }
 
-  function onStageFilterChange(filter: ProjectsListStageFilter) {
-    setStageFilter(filter);
-    saveProjectsListStageFilter(filter);
+  function onSelectSort(sort: ProjectsListSort) {
+    applyListSort({ sort, dir: defaultSortDir(sort) });
+  }
+
+  function onToggleSortDir() {
+    applyListSort({
+      sort: listSortState.sort,
+      dir: listSortState.dir === "asc" ? "desc" : "asc",
+    });
+  }
+
+  function onColumnSort(column: ProjectsListSortColumn) {
+    if (projectsListColumnForSort(listSortState.sort) === column) {
+      onToggleSortDir();
+      return;
+    }
+    onSelectSort(column);
+  }
+
+  function applyListFilters(next: ProjectsListFilters) {
+    setListFilters(next);
+    saveProjectsListFilters(next);
   }
 
   async function loadProjects() {
@@ -164,7 +219,7 @@ export function ProjectsPage() {
       setError(doneRes.error);
       return;
     }
-    const done = new Set(doneRes.ids);
+    setDoneIds(new Set(doneRes.ids));
     setApprovedBrushoutIds(brushoutIds);
     const rfiCounts = new Map<string, number>();
     for (const row of rfiRes.data ?? []) {
@@ -173,7 +228,7 @@ export function ProjectsPage() {
       rfiCounts.set(projectId, (rfiCounts.get(projectId) ?? 0) + 1);
     }
     setOpenRfiCounts(rfiCounts);
-    setProjects((data ?? []).filter((p) => !done.has(p.id)));
+    setProjects(data ?? []);
   }
 
   useEffect(() => {
@@ -429,111 +484,110 @@ export function ProjectsPage() {
         </div>
       ) : (
         <>
-          {projects.length > 0 && <ProjectsAttentionCard spotlight={attentionSpotlight} />}
+          {openProjects.length > 0 && <ProjectsAttentionCard spotlight={attentionSpotlight} />}
 
-          <div className="projects-search-wrap">
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search job #, name, GC, address…"
-              aria-label="Search projects"
+          <div className="projects-toolbar">
+            <div className="projects-toolbar-search">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search job #, name, GC, address…"
+                aria-label="Search projects"
+              />
+              {search.trim() && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSearch("")}>
+                  Clear
+                </button>
+              )}
+            </div>
+            <ProjectsListSortControl
+              sort={listSortState.sort}
+              dir={listSortState.dir}
+              onSelect={onSelectSort}
+              onToggleDir={onToggleSortDir}
             />
-            {search.trim() && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSearch("")}>
-                Clear
-              </button>
-            )}
+            <ProjectsFiltersMenu
+              filters={listFilters}
+              gcOptions={gcOptions}
+              onChange={applyListFilters}
+            />
           </div>
 
-          {filteredProjects.length === 0 ? (
-            <div className="card empty-state">
-              <p>
-                {search.trim()
-                  ? `No projects match “${search.trim()}”.`
-                  : "No projects match this filter."}
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="projects-list-controls">
-                <div className="projects-list-sort" role="group" aria-label="Sort projects">
-                  <span className="projects-list-sort-label muted small">Sort</span>
-                  {(
-                    [
-                      ["start", "Job Start"],
-                      ["attention", "Needs attention"],
-                      ["job", "Job #"],
-                      ["name", "Name"],
-                    ] as const
-                  ).map(([id, label]) => {
-                    const active = listSortState.sort === id;
-                    const dirMark = active ? (listSortState.dir === "asc" ? " ↑" : " ↓") : "";
-                    const title = active
-                      ? `Sort by ${label} (${listSortState.dir === "asc" ? "ascending" : "descending"}). Click again to reverse.`
-                      : `Sort by ${label}`;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        className={`projects-list-sort-btn${active ? " projects-list-sort-btn--active" : ""}`}
-                        onClick={() => onListSortChange(id)}
-                        title={title}
-                        aria-pressed={active}
-                        aria-label={title}
-                      >
-                        {label}
-                        {dirMark}
-                      </button>
-                    );
-                  })}
-                </div>
-                <span className="projects-list-controls-sep" aria-hidden="true" />
-                <div className="projects-list-sort" role="group" aria-label="Filter by submittal stage">
-                  <span className="projects-list-sort-label muted small">Filter</span>
-                  {(
-                    [
-                      ["all", "All"],
-                      ["not_started", "Not started"],
-                      ["not_needed", "Not Needed"],
-                      ["match_existing", "Match Existing"],
-                      ["ordered", "Ordered"],
-                      ["submitted", "Submitted"],
-                      ["revision", "Revision"],
-                      ["approved", "Approved"],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className={`projects-list-sort-btn projects-list-filter-btn${stageFilter === id ? " projects-list-filter-btn--active" : ""}`}
-                      onClick={() => onStageFilterChange(id)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          <ProjectsStatusChips
+            filters={listFilters}
+            counts={statusCounts}
+            total={statusPool.length}
+            onToggle={(id) => applyListFilters(toggleStatusFilter(listFilters, id))}
+            onClear={() => applyListFilters({ ...listFilters, stages: [] })}
+          />
 
-              <div className="card projects-table-shell">
+          <ProjectsActiveFilters
+            shown={filteredProjects.length}
+            total={listUniverse.length}
+            filters={listFilters}
+            onRemove={(key) => applyListFilters(removeProjectsListFilterPill(listFilters, key))}
+            onClear={() => applyListFilters(defaultProjectsListFilters())}
+          />
+
+          <div className="card projects-table-shell">
                 <div
                   className={`projects-table-scroller${filteredProjects.length > 10 ? " projects-table-scroller--scroll" : ""}`}
                 >
                   <table className="projects-table">
                     <thead>
                       <tr>
-                        <th>Job #</th>
-                        <th>Name</th>
-                        <th>Submittal</th>
-                        <th>Brush-outs</th>
-                        <th>Attention</th>
-                        <th>Job Start</th>
+                        {(
+                          [
+                            ["job", "Job #"],
+                            ["name", "Name"],
+                            ["submittal", "Submittal"],
+                            ["brushouts", "Brush-outs"],
+                            ["attention", "Attention"],
+                            ["start", "Job start"],
+                          ] as const
+                        ).map(([column, label]) => {
+                          const active = projectsListColumnForSort(listSortState.sort) === column;
+                          const arrowDir = active ? listSortState.dir : defaultSortDir(column);
+                          return (
+                            <th
+                              key={column}
+                              aria-sort={active ? (listSortState.dir === "asc" ? "ascending" : "descending") : "none"}
+                            >
+                              <button
+                                type="button"
+                                className={`projects-table-sort${active ? " projects-table-sort--active" : ""}`}
+                                onClick={() => onColumnSort(column)}
+                              >
+                                {label}
+                                <span className="projects-table-sort-arrow" aria-hidden="true">
+                                  {arrowDir === "asc" ? "▲" : "▼"}
+                                </span>
+                              </button>
+                            </th>
+                          );
+                        })}
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
+                      {filteredProjects.length === 0 ? (
+                        <tr>
+                          <td className="projects-table-empty" colSpan={7}>
+                            No jobs match these filters.{" "}
+                            <button
+                              type="button"
+                              className="projects-filters-clear"
+                              onClick={() => applyListFilters(defaultProjectsListFilters())}
+                            >
+                              Clear filters
+                            </button>
+                          </td>
+                        </tr>
+                      ) : null}
                       {filteredProjects.map((p) => {
                         const summary = summaries.get(p.id)!;
+                        const startRelative = projectJobStartRelative(p);
                         return (
                           <tr
                             key={p.id}
@@ -556,7 +610,16 @@ export function ProjectsPage() {
                             <td>
                               <ProjectStatusBadge summary={summary} tableMode />
                             </td>
-                            <td className="muted">{projectJobStartLabel(p)}</td>
+                            <td>
+                              <div className="muted">{projectJobStartLabel(p)}</div>
+                              {startRelative && (
+                                <div
+                                  className={`projects-start-relative${startRelative.soon ? " projects-start-relative--soon" : ""}`}
+                                >
+                                  {startRelative.text}
+                                </div>
+                              )}
+                            </td>
                             <td className="projects-table-open-cell">
                               <Link
                                 className="btn btn-icon btn-small projects-table-open"
@@ -584,8 +647,6 @@ export function ProjectsPage() {
                   </table>
                 </div>
               </div>
-            </>
-          )}
         </>
       )}
     </div>

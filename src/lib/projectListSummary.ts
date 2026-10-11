@@ -55,8 +55,81 @@ export function computeProjectListSummaries(projects: Project[]): Map<string, Pr
   return map;
 }
 
-export type ProjectsListSort = "start" | "attention" | "job" | "name";
+export const PROJECTS_LIST_SORT_DEFAULT_DIR = {
+  start: "desc",
+  starting_soon: "asc",
+  updated: "desc",
+  stale: "desc",
+  created: "desc",
+  attention: "desc",
+  submittal: "asc",
+  brushouts: "asc",
+  job: "desc",
+  name: "asc",
+  gc: "asc",
+} as const;
+
+export type ProjectsListSort = keyof typeof PROJECTS_LIST_SORT_DEFAULT_DIR;
 export type ProjectsListSortDir = "asc" | "desc";
+
+export type ProjectsListSortOption = {
+  id: ProjectsListSort;
+  label: string;
+  hint: string;
+};
+
+export type ProjectsListSortGroup = {
+  label: string;
+  options: ProjectsListSortOption[];
+};
+
+const SORT_OPTION_META: Record<ProjectsListSort, { label: string; hint: string }> = {
+  start: { label: "Job start", hint: "latest first" },
+  starting_soon: { label: "Starting soon", hint: "nearest first" },
+  updated: { label: "Last updated", hint: "latest first" },
+  stale: { label: "Most stale", hint: "oldest first" },
+  created: { label: "Date created", hint: "latest first" },
+  attention: { label: "Needs attention", hint: "most first" },
+  submittal: { label: "Submittal stage", hint: "pipeline order" },
+  brushouts: { label: "Brush-outs", hint: "not added first" },
+  job: { label: "Job #", hint: "highest first" },
+  name: { label: "Name", hint: "A–Z" },
+  gc: { label: "GC", hint: "A–Z" },
+};
+
+const SORT_GROUP_ORDER: { label: string; ids: ProjectsListSort[] }[] = [
+  { label: "Dates", ids: ["start", "starting_soon", "updated", "stale", "created"] },
+  { label: "Status", ids: ["attention", "submittal", "brushouts"] },
+  { label: "Job", ids: ["job", "name", "gc"] },
+];
+
+export const PROJECTS_LIST_SORT_GROUPS: ProjectsListSortGroup[] = SORT_GROUP_ORDER.map((group) => ({
+  label: group.label,
+  options: group.ids.map((id) => ({ id, ...SORT_OPTION_META[id] })),
+}));
+
+/** Table column highlighted for a sort. Starting soon uses Job start; stale/updated/created/GC have no column. */
+export type ProjectsListSortColumn = "job" | "name" | "submittal" | "brushouts" | "attention" | "start";
+
+export function projectsListColumnForSort(sort: ProjectsListSort): ProjectsListSortColumn | null {
+  switch (sort) {
+    case "starting_soon":
+    case "start":
+      return "start";
+    case "job":
+    case "name":
+    case "submittal":
+    case "brushouts":
+    case "attention":
+      return sort;
+    default:
+      return null;
+  }
+}
+
+export function projectsListSortLabel(sort: ProjectsListSort): string {
+  return SORT_OPTION_META[sort].label;
+}
 
 export type ProjectsListStageFilter =
   | "all"
@@ -76,11 +149,11 @@ export type ProjectsListSortState = {
 const SORT_STORAGE_KEY = "jobflow-projects-list-sort";
 const FILTER_STORAGE_KEY = "jobflow-projects-list-stage-filter";
 
-const SORT_VALUES: ProjectsListSort[] = ["start", "attention", "job", "name"];
+const SORT_VALUES = Object.keys(PROJECTS_LIST_SORT_DEFAULT_DIR) as ProjectsListSort[];
 
 /** Default direction when first selecting a sort mode. */
 export function defaultSortDir(sort: ProjectsListSort): ProjectsListSortDir {
-  return sort === "attention" ? "desc" : "asc";
+  return PROJECTS_LIST_SORT_DEFAULT_DIR[sort];
 }
 
 export function projectJobStartLabel(project: Project): string {
@@ -105,28 +178,28 @@ const FILTER_VALUES: ProjectsListStageFilter[] = [
   "approved",
 ];
 
+const DEFAULT_SORT_STATE: ProjectsListSortState = { sort: "start", dir: "desc" };
+
 export function loadProjectsListSortState(): ProjectsListSortState {
   try {
-    const stored = sessionStorage.getItem(SORT_STORAGE_KEY);
-    if (!stored) return { sort: "start", dir: "asc" };
+    const stored = localStorage.getItem(SORT_STORAGE_KEY);
+    if (!stored) return DEFAULT_SORT_STATE;
 
-    // Legacy: plain sort id, "oldest" (updated asc), or the old Updated column.
-    if (stored === "oldest" || stored === "updated") return { sort: "start", dir: "asc" };
     if (SORT_VALUES.includes(stored as ProjectsListSort)) {
-      return { sort: stored as ProjectsListSort, dir: defaultSortDir(stored as ProjectsListSort) };
+      const sort = stored as ProjectsListSort;
+      return { sort, dir: defaultSortDir(sort) };
     }
 
     const parsed = JSON.parse(stored) as { sort?: string; dir?: string };
-    const rawSort = parsed.sort === "updated" ? "start" : parsed.sort;
-    if (rawSort && SORT_VALUES.includes(rawSort as ProjectsListSort)) {
-      const sort = rawSort as ProjectsListSort;
+    if (parsed.sort && SORT_VALUES.includes(parsed.sort as ProjectsListSort)) {
+      const sort = parsed.sort as ProjectsListSort;
       const dir = parsed.dir === "asc" || parsed.dir === "desc" ? parsed.dir : defaultSortDir(sort);
       return { sort, dir };
     }
   } catch {
     /* ignore */
   }
-  return { sort: "start", dir: "asc" };
+  return DEFAULT_SORT_STATE;
 }
 
 /** @deprecated Prefer loadProjectsListSortState */
@@ -136,7 +209,7 @@ export function loadProjectsListSort(): ProjectsListSort {
 
 export function saveProjectsListSortState(state: ProjectsListSortState): void {
   try {
-    sessionStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(state));
   } catch {
     /* ignore */
   }
@@ -200,11 +273,95 @@ export function filterProjectsByStage(
   return projects.filter((p) => stageMatchesFilter(summaries.get(p.id)?.submittalStage ?? "", filter));
 }
 
+const SUBMITTAL_STAGE_ORDER = [
+  "Not started",
+  "Ordered",
+  "Submitted",
+  "Revision",
+  "Approved",
+  "Match Existing",
+  "Not Needed",
+];
+
 function compareJobNumber(a: string, b: string): number {
   const na = parseInt(a.replace(/\D/g, ""), 10);
   const nb = parseInt(b.replace(/\D/g, ""), 10);
   if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) return na - nb;
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function compareName(a: Project, b: Project): number {
+  return (a.job_name ?? "").localeCompare(b.job_name ?? "", undefined, { sensitivity: "base" });
+}
+
+function applyDir(cmp: number, dir: ProjectsListSortDir): number {
+  return dir === "asc" ? cmp : -cmp;
+}
+
+/** Direction applies to the primary key. Equal keys fall back to Name A–Z. */
+function finishSort(cmp: number, dir: ProjectsListSortDir, a: Project, b: Project): number {
+  if (cmp !== 0) return applyDir(cmp, dir);
+  return compareName(a, b);
+}
+
+function timestampOrNull(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+/** Missing updates count as the oldest timestamp, matching the spotlight tie-break. */
+function attentionUpdatedMs(project: Project): number {
+  return timestampOrNull(project.updated_at) ?? 0;
+}
+
+function compareMissingLast(
+  aValue: number | null,
+  bValue: number | null,
+  dir: ProjectsListSortDir,
+  a: Project,
+  b: Project,
+  compareValues: (left: number, right: number) => number,
+): number {
+  if (aValue === null && bValue === null) return compareName(a, b);
+  if (aValue === null) return 1;
+  if (bValue === null) return -1;
+  return finishSort(compareValues(aValue, bValue), dir, a, b);
+}
+
+function startIso(project: Project): string | null {
+  const iso = toIsoDateValue(normalizeProject(project).jobInfo.start_date.trim());
+  return iso || null;
+}
+
+export function projectStartDaysUntil(project: Project): number | null {
+  const iso = startIso(project);
+  if (!iso) return null;
+  return daysUntilIso(iso);
+}
+
+/**
+ * Ascending rank for Starting soon: today and future dates by days-until,
+ * then jobs that have already started (most recently started first).
+ */
+function startingSoonRank(iso: string): number {
+  const days = daysUntilIso(iso);
+  if (days === null) return Number.MAX_SAFE_INTEGER;
+  if (days >= 0) return days;
+  return 100_000 + -days;
+}
+
+function submittalRank(stage: string): number {
+  const index = SUBMITTAL_STAGE_ORDER.indexOf(stage);
+  return index === -1 ? SUBMITTAL_STAGE_ORDER.length : index;
+}
+
+export function projectJobStartRelative(project: Project): { text: string; soon: boolean } | null {
+  const days = projectStartDaysUntil(project);
+  if (days === null) return null;
+  if (days === 0) return { text: "today", soon: true };
+  if (days > 0) return { text: `in ${days}d`, soon: days <= 30 };
+  return { text: `${-days}d ago`, soon: false };
 }
 
 export function compareProjectsForListSort(
@@ -213,40 +370,72 @@ export function compareProjectsForListSort(
   summaries: Map<string, ProjectListSummary>,
   sort: ProjectsListSort,
   dir: ProjectsListSortDir = defaultSortDir(sort),
+  brushoutsAdded?: ReadonlySet<string>,
 ): number {
-  let cmp = 0;
-
   if (sort === "start") {
-    const startA = projectJobStartMs(a);
-    const startB = projectJobStartMs(b);
-    if (startA === null && startB === null) return 0;
-    if (startA === null) return 1;
-    if (startB === null) return -1;
-    cmp = startA - startB;
-  } else if (sort === "job") {
-    cmp = compareJobNumber(a.job_number ?? "", b.job_number ?? "");
-  } else if (sort === "name") {
-    cmp = (a.job_name ?? "").localeCompare(b.job_name ?? "", undefined, {
-      sensitivity: "base",
-    });
-  } else {
-    const sa = summaries.get(a.id)!;
-    const sb = summaries.get(b.id)!;
-
-    if (sa.attentionCount !== sb.attentionCount) {
-      cmp = sa.attentionCount - sb.attentionCount;
-    } else if (sa.nextDueDays !== null && sb.nextDueDays !== null) {
-      cmp = sa.nextDueDays - sb.nextDueDays;
-    } else if (sa.nextDueDays !== null) {
-      cmp = -1;
-    } else if (sb.nextDueDays !== null) {
-      cmp = 1;
-    } else {
-      cmp = new Date(a.updated_at ?? 0).getTime() - new Date(b.updated_at ?? 0).getTime();
-    }
+    return compareMissingLast(projectJobStartMs(a), projectJobStartMs(b), dir, a, b, (left, right) => left - right);
   }
 
-  return dir === "asc" ? cmp : -cmp;
+  if (sort === "starting_soon") {
+    const isoA = startIso(a);
+    const isoB = startIso(b);
+    const rankA = isoA ? startingSoonRank(isoA) : null;
+    const rankB = isoB ? startingSoonRank(isoB) : null;
+    return compareMissingLast(rankA, rankB, dir, a, b, (left, right) => left - right);
+  }
+
+  if (sort === "updated" || sort === "created") {
+    const read = sort === "updated" ? timestampOrNull(a.updated_at) : timestampOrNull(a.created_at);
+    const other = sort === "updated" ? timestampOrNull(b.updated_at) : timestampOrNull(b.created_at);
+    return compareMissingLast(read, other, dir, a, b, (left, right) => left - right);
+  }
+
+  if (sort === "stale") {
+    return compareMissingLast(
+      timestampOrNull(a.updated_at),
+      timestampOrNull(b.updated_at),
+      dir,
+      a,
+      b,
+      (left, right) => right - left,
+    );
+  }
+
+  if (sort === "job") {
+    return finishSort(compareJobNumber(a.job_number ?? "", b.job_number ?? ""), dir, a, b);
+  }
+
+  if (sort === "name") {
+    return finishSort(compareName(a, b), dir, a, b);
+  }
+
+  if (sort === "gc") {
+    const ga = (a.contractor ?? "").trim();
+    const gb = (b.contractor ?? "").trim();
+    if (!ga && !gb) return compareName(a, b);
+    if (!ga) return 1;
+    if (!gb) return -1;
+    return finishSort(ga.localeCompare(gb, undefined, { sensitivity: "base" }), dir, a, b);
+  }
+
+  if (sort === "submittal") {
+    const ra = submittalRank(summaries.get(a.id)?.submittalStage ?? "");
+    const rb = submittalRank(summaries.get(b.id)?.submittalStage ?? "");
+    return finishSort(ra - rb, dir, a, b);
+  }
+
+  if (sort === "brushouts") {
+    const ba = brushoutsAdded?.has(a.id) ? 1 : 0;
+    const bb = brushoutsAdded?.has(b.id) ? 1 : 0;
+    return finishSort(ba - bb, dir, a, b);
+  }
+
+  const flagsA = summaries.get(a.id)?.attentionCount ?? 0;
+  const flagsB = summaries.get(b.id)?.attentionCount ?? 0;
+  if (flagsA !== flagsB) return finishSort(flagsA - flagsB, dir, a, b);
+  const stale = attentionUpdatedMs(a) - attentionUpdatedMs(b);
+  if (stale !== 0) return stale;
+  return compareName(a, b);
 }
 
 export type ProjectsAttentionSpotlight = {
@@ -291,7 +480,7 @@ export function getSpotlight(
 
   flagged.sort((a, b) => {
     if (b.flagCount !== a.flagCount) return b.flagCount - a.flagCount;
-    return new Date(a.project.updated_at ?? 0).getTime() - new Date(b.project.updated_at ?? 0).getTime();
+    return attentionUpdatedMs(a.project) - attentionUpdatedMs(b.project);
   });
 
   const top = flagged[0]!;
