@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getFieldToolsOrder } from "../../lib/fieldToolsPoTracker";
+import { getFieldToolsOrder, listOrderReceiptImages, type OrderReceiptImage } from "../../lib/fieldToolsPoTracker";
 import {
   buildOrderDetailGroups,
   buildOrderDetailRows,
@@ -39,6 +39,9 @@ export function FieldToolsOrderViewModal({
   const [order, setOrder] = useState<FieldToolsOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [receipts, setReceipts] = useState<OrderReceiptImage[]>([]);
+  const [receiptsLoading, setReceiptsLoading] = useState(false);
+  const [receiptsError, setReceiptsError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +61,32 @@ export function FieldToolsOrderViewModal({
       cancelled = true;
     };
   }, [orderId]);
+
+  const isLastMin = order?.order_type === "last_min";
+
+  useEffect(() => {
+    if (!isLastMin) {
+      setReceipts([]);
+      setReceiptsError(null);
+      return;
+    }
+    let cancelled = false;
+    setReceiptsLoading(true);
+    setReceiptsError(null);
+    void listOrderReceiptImages(orderId)
+      .then((rows) => {
+        if (!cancelled) setReceipts(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) setReceiptsError(e instanceof Error ? e.message : "Could not load the receipt.");
+      })
+      .finally(() => {
+        if (!cancelled) setReceiptsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLastMin, orderId]);
 
   const groups = order ? buildOrderDetailGroups(order) : [];
   const detailRows = order ? buildOrderDetailRows(order) : [];
@@ -151,8 +180,28 @@ export function FieldToolsOrderViewModal({
                   </div>
                 ))}
               </div>
-            ) : (
+            ) : isLastMin ? null : (
               <p className="muted">No line items recorded for this order.</p>
+            )}
+
+            {isLastMin && (
+              <div className="field-tools-order-cart">
+                <p className="field-tools-order-cart-title">Receipt</p>
+                {receiptsLoading && <p className="muted small">Loading receipt…</p>}
+                {receiptsError && <div className="banner banner-error">{receiptsError}</div>}
+                {!receiptsLoading && !receiptsError && receipts.length === 0 && (
+                  <p className="muted small">No receipt was uploaded in Field Tools for this order.</p>
+                )}
+                {receipts.map((receipt) => (
+                  <a key={receipt.id} href={receipt.url} target="_blank" rel="noreferrer">
+                    <img
+                      src={receipt.url}
+                      alt={`Receipt for PO ${poNumber}`}
+                      style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 8 }}
+                    />
+                  </a>
+                ))}
+              </div>
             )}
 
             {haulOffPhoto ? (

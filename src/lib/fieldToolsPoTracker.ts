@@ -230,6 +230,46 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
   );
 }
 
+export type OrderReceiptImage = {
+  id: string;
+  url: string;
+  uploadedBy: string;
+  createdAt: string;
+};
+
+const RECEIPT_BUCKET = "field-tools-receipts";
+
+export async function listOrderReceiptImages(orderId: string): Promise<OrderReceiptImage[]> {
+  const { data, error } = await supabase
+    .from("field_tools_order_receipts")
+    .select("id, storage_path, uploaded_by_name, created_at")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as Array<{
+    id: string;
+    storage_path: string;
+    uploaded_by_name: string;
+    created_at: string;
+  }>;
+  const images: OrderReceiptImage[] = [];
+  for (const row of rows) {
+    const signed = await supabase.storage.from(RECEIPT_BUCKET).createSignedUrl(row.storage_path, 60 * 30);
+    if (signed.error || !signed.data?.signedUrl) {
+      throw new Error(signed.error?.message || "Could not open the receipt photo.");
+    }
+    images.push({
+      id: row.id,
+      url: signed.data.signedUrl,
+      uploadedBy: row.uploaded_by_name?.trim() ?? "",
+      createdAt: row.created_at,
+    });
+  }
+  return images;
+}
+
 export async function getFieldToolsOrder(orderId: string): Promise<FieldToolsOrder | null> {
   const { data, error } = await supabase
     .from("field_tools_orders")

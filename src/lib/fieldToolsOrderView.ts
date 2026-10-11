@@ -193,6 +193,13 @@ export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
     rows.push({ label: "Sundries vendor", value: sundriesVendor });
   }
 
+  if (order.order_type === "last_min") {
+    const store = asString(payload.storeName);
+    if (store) rows.push({ label: "Store", value: store });
+    const amount = asString(payload.amount);
+    if (amount) rows.push({ label: "Amount", value: amount.startsWith("$") ? amount : `$${amount}` });
+  }
+
   const pm = asString(payload.pm);
   if (pm) rows.push({ label: "PM", value: pm });
 
