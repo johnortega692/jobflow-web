@@ -610,8 +610,8 @@ export function PaintSubmittalsPage() {
       ...createNewSubmittalPackageDraft(draft, history),
       submittal_type: "new" as const,
       subject: paintSubjectForPackage(draft.package_type, "new"),
-      auto_label: true,
-      items: withMaybeAutoLabels([emptyPaintItem()], true),
+      auto_label: false,
+      items: withMaybeAutoLabels([emptyPaintItem()], false),
     };
     const leadOnly = (draft.spec_sections?.[0] || draft.spec_section || "").trim();
     setDraft(withPaintSpecSections(nextBase, leadOnly ? [leadOnly] : ["09 91 23 - Interior Painting"]));

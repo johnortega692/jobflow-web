@@ -8,6 +8,8 @@ import {
   defaultProjectBilling,
   normalizeManpowerCells,
   normalizeManpowerPhases,
+  normalizeProjectBilling,
+  type GcScheduleSaved,
   type ManpowerCell,
   type ManpowerPhase,
   type ProjectBillingData,
@@ -30,6 +32,7 @@ export type FieldLaborProjectionSummary = {
   hoursDifference: number;
   phases: ManpowerPhase[];
   cells: ManpowerCell[];
+  gcSchedule?: GcScheduleSaved;
 };
 
 function num(value: unknown, fallback = 0): number {
@@ -59,6 +62,7 @@ function parseLaborProjectionPayload(raw: unknown): FieldLaborProjectionSummary 
     hoursDifference,
     phases: normalizeManpowerPhases(o.phases),
     cells: normalizeManpowerCells(o.cells),
+    gcSchedule: normalizeProjectBilling({ gcSchedule: o.gc_schedule }).gcSchedule,
   };
 }
 
@@ -70,6 +74,7 @@ export function billingFromLaborProjection(plan: FieldLaborProjectionSummary): P
     manpowerPhases: plan.phases,
     manpowerWeekCount: plan.weekCount,
     manpowerCells: plan.cells,
+    gcSchedule: plan.gcSchedule,
   };
 }
 
@@ -121,11 +126,13 @@ export async function saveFieldLaborProjectionCells(
   projectId: string,
   cells: ManpowerCell[],
   userName = "Field view",
+  gcSchedule?: GcScheduleSaved | null,
 ): Promise<{ plan: FieldLaborProjectionSummary | null; error: string | null }> {
   const { data, error } = await supabase.rpc("field_view_save_labor_projection" as never, {
     p_project_id: projectId,
     p_cells: cells,
     p_user_name: userName,
+    p_gc_schedule: gcSchedule ?? null,
     ...fieldViewRpcAuthArgs(loadFieldViewSession()),
   } as never);
   if (error) {

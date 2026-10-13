@@ -15395,6 +15395,340 @@ input.readonly {
   flex: 1 1 16rem;
 }
 
+.billing-manpower-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.gc-schedule-modal {
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+}
+
+.gc-schedule-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 1.25rem;
+  border: 1px dashed currentColor;
+  border-radius: 10px;
+  opacity: 0.9;
+}
+
+.gc-schedule-drop.is-drag {
+  opacity: 1;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.gc-schedule-drop-title {
+  margin: 0;
+  font-weight: 650;
+}
+
+.gc-schedule-scroll {
+  overflow: auto;
+  max-height: min(60vh, 34rem);
+}
+
+.gc-schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.gc-schedule-table th,
+.gc-schedule-table td {
+  text-align: left;
+  padding: 0.45rem 0.4rem;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.gc-schedule-table th {
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.gc-schedule-name {
+  display: block;
+  font-weight: 600;
+}
+
+.gc-schedule-id,
+.gc-schedule-note {
+  display: block;
+}
+
+.gc-schedule-hours {
+  width: 5.5rem;
+}
+
+.gc-schedule-table tr.is-blocked {
+  opacity: 0.55;
+}
+
+.gc-schedule-table select {
+  max-width: 14rem;
+  margin-top: 0.25rem;
+}
+
+.gc-schedule-done {
+  margin: 0;
+}
+
+.gc-schedule-place-option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.92rem;
+}
+
+.gc-schedule-board {
+  display: grid;
+  grid-template-columns: 1.25rem 3.4rem minmax(0, 1.6fr) minmax(7.5rem, 0.8fr) 6.8rem 4.6rem max-content;
+  column-gap: 0.75rem;
+  row-gap: 0.2rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.gc-schedule-file,
+.gc-schedule-done,
+.gc-schedule-empty,
+.gc-schedule-footer,
+.gc-schedule-detail {
+  grid-column: 1 / -1;
+}
+
+.gc-schedule-row,
+.gc-schedule-line {
+  display: contents;
+}
+
+.gc-schedule-line--head > * {
+  padding-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gc-schedule-line--head > :nth-child(6) {
+  text-align: center;
+}
+
+.gc-schedule-line--head > :nth-child(7),
+.gc-schedule-sent {
+  justify-self: end;
+}
+
+.gc-schedule-row.is-selected .gc-schedule-line > * {
+  background: rgba(79, 140, 255, 0.08);
+}
+
+.gc-schedule-file {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.gc-schedule-file-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.gc-schedule-line > * {
+  min-width: 0;
+}
+
+.gc-schedule-line > input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.gc-schedule-id-col,
+.gc-schedule-trade-code,
+.gc-schedule-dates {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.gc-schedule-activity {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.gc-schedule-hour-box {
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  margin: 0;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.gc-schedule-hour-box.is-readonly {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gc-schedule-sent {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.gc-schedule-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.gc-schedule-icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.gc-schedule-icon.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.gc-schedule-chevron.is-open svg {
+  transform: rotate(180deg);
+}
+
+.gc-schedule-detail {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(8.5rem, 0.9fr) auto;
+  gap: 0.75rem 1rem;
+  margin: 0.15rem 0 0.45rem;
+  padding: 0.85rem 0.75rem 0.75rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.gc-schedule-detail label:first-child {
+  grid-column: 1 / 3;
+}
+
+.gc-schedule-detail label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.gc-schedule-detail input,
+.gc-schedule-detail select {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.gc-schedule-need {
+  align-self: end;
+  margin: 0 0 0.45rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.gc-schedule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  align-self: end;
+  gap: 0.35rem;
+  margin-bottom: 0.15rem;
+  padding: 0.35rem 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  cursor: pointer;
+}
+
+.gc-schedule-remove svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.gc-schedule-empty {
+  margin: 0.4rem 0;
+}
+
+.gc-schedule-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.gc-schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.gc-schedule-status {
+  display: inline-block;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.gc-schedule-status--projection {
+  color: var(--accent, #1d6f42);
+}
+
+.gc-schedule-status--upcoming {
+  color: var(--accent, #1d6f42);
+}
+
+.gc-schedule-status--open {
+  opacity: 0.75;
+}
+
 .billing-manpower-schedule-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 11.5rem)) minmax(0, auto);
@@ -15489,6 +15823,14 @@ input.readonly {
   z-index: 1;
 }
 
+.billing-manpower-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.billing-manpower-table tbody tr:hover td.billing-manpower-sticky {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
 .billing-manpower-phase-col {
   left: 0;
   width: 120px;
@@ -15529,7 +15871,8 @@ input.readonly {
   flex-direction: column;
   gap: 1px;
   line-height: 1.2;
-  border-left: 3px solid transparent;
+  border-left: 0;
+  box-shadow: inset 3px 0 0 var(--phase-stripe, var(--border));
   padding-left: 6px;
   min-width: 0;
 }
@@ -15602,24 +15945,131 @@ input.readonly {
 .billing-manpower-contract-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 2px 4px;
+  border-bottom: 1px solid var(--border);
 }
 
 .billing-manpower-contract-tab {
-  border: 1px solid var(--border, #dadce0);
-  background: var(--bg-elevated, #fff);
-  color: var(--text-soft, #3c4043);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 9.5rem;
+  margin: 0 0 -1px;
+  padding: 8px 12px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-align: left;
   cursor: pointer;
 }
 
+.billing-manpower-contract-tab[data-contract="paint"] {
+  --trade-color: #2dd4bf;
+}
+
+.billing-manpower-contract-tab[data-contract="wallcovering"] {
+  --trade-color: #c084fc;
+}
+
+.billing-manpower-contract-tab[data-contract="frp"] {
+  --trade-color: #22d3ee;
+}
+
+.billing-manpower-contract-tab[data-contract="track"] {
+  --trade-color: #fbbf24;
+}
+
 .billing-manpower-contract-tab.active {
-  border-color: var(--accent, #1a73e8);
-  color: var(--accent, #1a73e8);
-  background: color-mix(in srgb, var(--accent, #1a73e8) 10%, transparent);
+  color: var(--text);
+  border-bottom-color: var(--trade-color, var(--accent));
+}
+
+.billing-manpower-tab-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.billing-manpower-trade-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--trade-color, var(--muted));
+}
+
+.billing-manpower-tab-budget {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.billing-manpower-tab-meter {
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.billing-manpower-tab-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--trade-color, var(--accent));
+}
+
+.billing-manpower-tab-split {
+  width: 1px;
+  align-self: stretch;
+  margin: 8px 10px 10px;
+  background: var(--border);
+}
+
+.billing-manpower-contract-tab--gc {
+  min-width: 0;
+  margin: 0 0 8px 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  border-bottom-color: var(--border);
+}
+
+.billing-manpower-contract-tab--gc.active {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.billing-manpower-gc-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.billing-manpower-gc-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.billing-manpower-tab-actions {
+  display: flex;
+  align-items: center;
+  margin: 0 0 8px auto;
 }
 
 .billing-manpower-contract-summary,
@@ -15922,7 +16372,6 @@ input.readonly {
 }
 
 .billing-manpower-phase-name {
-  border-left: 3px solid var(--border);
   font-weight: 500;
 }
 

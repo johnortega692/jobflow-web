@@ -323,6 +323,8 @@ export function BillingPage() {
         onBillingChange={setBilling}
         onPersistQuiet={persistQuiet}
         onScheduleDatesChange={persistScheduleDates}
+        projectId={projectId}
+        jobNumber={project.job_number}
       />
 
       <ManpowerMonthlyBudgetCard

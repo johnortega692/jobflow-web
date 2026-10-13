@@ -101,7 +101,12 @@ export function FieldManpowerPlanPage() {
     async (next: ProjectBillingData) => {
       if (!plan) return false;
       setSaving(true);
-      const result = await saveFieldLaborProjectionCells(plan.projectId, next.manpowerCells, actorName);
+      const result = await saveFieldLaborProjectionCells(
+        plan.projectId,
+        next.manpowerCells,
+        actorName,
+        next.gcSchedule ?? null,
+      );
       setSaving(false);
       if (result.error || !result.plan) {
         setError(result.error ?? "Save failed");
@@ -163,6 +168,8 @@ export function FieldManpowerPlanPage() {
           variant="field"
           onBillingChange={setBilling}
           onPersistQuiet={persistQuiet}
+          projectId={plan.projectId}
+          jobNumber={plan.jobNumber}
         />
       </div>
     );

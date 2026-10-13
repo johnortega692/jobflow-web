@@ -65,6 +65,31 @@ export type ProjectBillingData = {
   monthMaterial: Record<string, number>;
   /** `${contract}:${monthKey}` → fixed amount billed to GC. */
   monthBilled: Record<string, number>;
+  /** Imported GC schedule rows, including any sent to Upcoming. */
+  gcSchedule?: GcScheduleSaved;
+};
+
+export type GcScheduleStatus = "projection" | "upcoming" | "open";
+
+export type GcScheduleSavedItem = {
+  id: string;
+  activityId: string;
+  name: string;
+  trade: "paint" | "wallcovering";
+  startIso: string;
+  finishIso: string;
+  hours: number;
+  phaseId: string;
+  /** projection = hours on the grid; upcoming = sent to Upcoming; open = saved, not applied. */
+  status: GcScheduleStatus;
+  upcomingDateIso: string;
+  upcomingTitle: string;
+};
+
+export type GcScheduleSaved = {
+  fileName: string;
+  importedAt: string;
+  items: GcScheduleSavedItem[];
 };
 
 export const BILLING_DATA_KEY = "billing" as const;
@@ -249,6 +274,45 @@ function normalizeManpowerPeriodActuals(raw: unknown): ManpowerPeriodActual[] {
   return raw.map(normalizeManpowerPeriodActual).filter((r): r is ManpowerPeriodActual => Boolean(r));
 }
 
+function normalizeGcSchedule(raw: unknown): GcScheduleSaved | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const items = Array.isArray(o.items)
+    ? o.items.map(normalizeGcScheduleItem).filter((item): item is GcScheduleSavedItem => Boolean(item))
+    : [];
+  if (!items.length && !str(o.fileName).trim()) return undefined;
+  return {
+    fileName: str(o.fileName).trim(),
+    importedAt: str(o.importedAt).trim(),
+    items,
+  };
+}
+
+function normalizeGcScheduleItem(raw: unknown): GcScheduleSavedItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const name = str(o.name).replace(/\s+/g, " ").trim();
+  const id = str(o.id).trim();
+  if (!name || !id) return null;
+  const trade = str(o.trade) === "wallcovering" ? "wallcovering" : "paint";
+  const statusRaw = str(o.status);
+  const status: GcScheduleStatus =
+    statusRaw === "projection" || statusRaw === "upcoming" ? statusRaw : "open";
+  return {
+    id,
+    activityId: str(o.activityId).trim(),
+    name: name.slice(0, 180),
+    trade,
+    startIso: str(o.startIso).trim(),
+    finishIso: str(o.finishIso).trim(),
+    hours: num(o.hours),
+    phaseId: str(o.phaseId).trim(),
+    status,
+    upcomingDateIso: str(o.upcomingDateIso).trim(),
+    upcomingTitle: str(o.upcomingTitle).trim().slice(0, 120),
+  };
+}
+
 export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return defaultProjectBilling();
@@ -264,6 +328,7 @@ export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
     calculatorLaborRates: rates.length ? rates : defaultCalculatorLaborRates(),
     monthMaterial: normalizeMoneyMap(o.monthMaterial),
     monthBilled: normalizeMoneyMap(o.monthBilled),
+    gcSchedule: normalizeGcSchedule(o.gcSchedule),
   };
 }
 

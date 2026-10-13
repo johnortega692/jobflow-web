@@ -1180,11 +1180,11 @@ export function defaultPaintSubmittal(): PaintSubmittalData {
     // TODO: remove once downstream reads leadSpecSection()
     spec_section: lead,
     date: formatToday(),
-    items: applyPaintAutoLabels([emptyPaintItem()]),
+    items: [emptyPaintItem()],
     submittal_ordered: false,
     paint_vendor: "PPG",
     show_floor: false,
-    auto_label: true,
+    auto_label: false,
   };
 }
 

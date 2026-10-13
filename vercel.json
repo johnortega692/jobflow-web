@@ -4,6 +4,10 @@
       "memory": 1024,
       "maxDuration": 60
     },
+    "api/extract-gc-schedule.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
     "api/rfi-assist.ts": {
       "maxDuration": 60
     },
