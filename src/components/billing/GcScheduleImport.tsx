@@ -230,10 +230,11 @@ export function GcScheduleImport({
     leaveUnset = false,
   ): GcScheduleSaved {
     const manual = (billing.gcSchedule?.items ?? []).filter((item) => item.id.startsWith("manual:"));
-    const imported: GcScheduleSavedItem[] = rows.map((row, index) => {
+    const imported: GcScheduleSavedItem[] = rows.flatMap((row, index) => {
       const draft = row.draft;
-      const hours = leaveUnset || !draft ? 0 : parseHours(draft.hours);
-      const used = !leaveUnset && Boolean(draft?.use) && !row.placement.blocked;
+      if (!draft?.use || row.placement.blocked) return [];
+      const hours = leaveUnset ? 0 : parseHours(draft.hours);
+      const used = !leaveUnset;
       const title = upcomingEventTitle(jobNumber, row.activity.name);
       let status: GcScheduleStatus = "open";
       if (used && row.placement.destination === "projection" && hours > 0 && projectionSaved) {
@@ -270,6 +271,7 @@ export function GcScheduleImport({
   async function apply() {
     if (!parsed || applying) return;
     if (!placeActivities) {
+      if (chosen.length === 0) return;
       setApplying(true);
       setError(null);
       try {
@@ -284,7 +286,7 @@ export function GcScheduleImport({
           return;
         }
         onStored?.();
-        const count = rows.length;
+        const count = chosen.length;
         setDoneLines([
           count === 1
             ? "Saved 1 activity on the GC schedule tab. Hours and where it goes were left unset."
@@ -414,9 +416,10 @@ export function GcScheduleImport({
             </div>
 
             <p className="muted small">
-              Paint and wallcovering activities from the GC schedule. Check the ones to use. A date that falls on
-              this projection adds hours to that week. If the projection has no schedule dates, or the activity is
-              not on the projection calendar, it is added to Upcoming.
+              Paint and wallcovering activities from the GC schedule. Check an activity to add it to this job.
+              Unchecked activities are left out. A date that falls on this projection adds hours to that week. If
+              the projection has no schedule dates, or the activity is not on the projection calendar, it is added
+              to Upcoming.
             </p>
 
             {error ? <div className="banner banner-error">{error}</div> : null}
@@ -615,12 +618,16 @@ export function GcScheduleImport({
                   <p className="muted small">
                     {placeActivities
                       ? `${projectionCount} to the projection${needsHours ? ` · ${needsHours} need hours` : ""} · ${upcomingCount} to Upcoming`
-                      : "Hours and where it goes stay unset. The list is saved on the GC schedule tab."}
+                      : "Checked activities are saved on the GC schedule tab. Hours and where it goes stay unset."}
                   </p>
                   <button
                     type="button"
                     className="btn btn-primary btn-small"
-                    disabled={busy || (placeActivities && projectionCount === 0 && upcomingCount === 0)}
+                    disabled={
+                      busy ||
+                      chosen.length === 0 ||
+                      (placeActivities && projectionCount === 0 && upcomingCount === 0)
+                    }
                     onClick={() => void apply()}
                   >
                     {applying ? "Saving…" : placeActivities ? "Use selected" : "Save list"}

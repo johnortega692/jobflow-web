@@ -19,7 +19,9 @@ import {
 } from "../../lib/fieldTrackerStatus";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
 import { createEmptyWcTrackerLine, type WcTrackerLineState } from "../../types/fieldTracker";
+import { ensurePackageShareToken } from "../../lib/materialPackageLabel";
 import type { ProjectForm, Json } from "../../types/database";
+import { PackageLabelDialog } from "./PackageLabelDialog";
 import { WcTrackerLineInlineEditor } from "./WcTrackerLineInlineEditor";
 
 type Props = {
@@ -58,6 +60,7 @@ export function WcTrackerStatusSection({
   const [editing, setEditing] = useState<{ mode: "add" | "edit"; line: WcTrackerLineState } | null>(null);
   const baselineRef = useRef<string | null>(null);
   const [leavePrompt, setLeavePrompt] = useState<(() => void) | null>(null);
+  const [labelLine, setLabelLine] = useState<WcTrackerLineState | null>(null);
 
   const jobNumber = wcTrackerJobNumber(project);
 
@@ -175,6 +178,31 @@ export function WcTrackerStatusSection({
     return ok;
   }
 
+  async function onPrintPackages() {
+    if (!editing) return;
+    const draftLine = ensurePackageShareToken(editing.line);
+    const label = draftLine.label.trim();
+    const name = draftLine.wallcoveringName.trim();
+    if (!label && !name) {
+      setError("Enter a label or wallcovering name.");
+      return;
+    }
+    if (draftLine.revision && !draftLine.revisionNotes.trim()) {
+      setError("Enter revision notes for this wallcovering before saving.");
+      return;
+    }
+    const nextLines =
+      editing.mode === "add"
+        ? [...lines.filter((line) => line.id !== draftLine.id), draftLine]
+        : lines.map((line) => (line.id === draftLine.id ? draftLine : line));
+    const lineLabel = label || name;
+    const ok = await persistLines(nextLines, `Package label for ${lineLabel}`);
+    if (!ok) return;
+    baselineRef.current = JSON.stringify(draftLine);
+    setEditing({ mode: "edit", line: draftLine });
+    setLabelLine(draftLine);
+  }
+
   useUnsavedNavigationGuard({
     enabled: editing != null,
     sectionLabel: "this wallcovering line",
@@ -232,6 +260,7 @@ export function WcTrackerStatusSection({
           onSave={() => void onEditorSave()}
           onCancel={closeEditor}
           onDelete={editing.mode === "edit" ? () => void onEditorDelete() : undefined}
+          onPrintLabels={() => void onPrintPackages()}
         />
       </td>
     </tr>
@@ -404,6 +433,9 @@ export function WcTrackerStatusSection({
     <div className="stack paint-tracker-section paint-tracker-section--dashboard">
       {error && <div className="banner banner-error">{error}</div>}
       {body}
+      {labelLine ? (
+        <PackageLabelDialog project={project} line={labelLine} onClose={() => setLabelLine(null)} />
+      ) : null}
       {leavePrompt && (
         <UnsavedChangesDialog
           targetLabel="this wallcovering line"

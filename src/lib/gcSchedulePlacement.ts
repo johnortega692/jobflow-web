@@ -62,12 +62,12 @@ export function defaultPhaseId(phases: ManpowerPhase[], trade: GcTrade, activity
   return best.id;
 }
 
-function dateAllowed(iso: string, nowMonday: string): "ok" | "past" | "far" {
-  const earliest = addWeeksIso(nowMonday, -2);
-  const latest = addWeeksIso(nowMonday, 26);
+/** About six months. Older than this stays off Upcoming; later dates are not capped. */
+const UPCOMING_PAST_WEEKS = 26;
+
+function dateAllowed(iso: string, nowMonday: string): "ok" | "past" {
+  const earliest = addWeeksIso(nowMonday, -UPCOMING_PAST_WEEKS);
   if (iso < earliest) return "past";
-  const monday = mondayIsoFromDateInput(iso);
-  if (!monday || monday > latest) return "far";
   return "ok";
 }
 
@@ -136,10 +136,7 @@ export function placeGcActivity(input: {
 
   const window = dateAllowed(activityDate, nowMonday);
   if (window === "past") {
-    return upcoming(activityDate, "That GC date is too far in the past for Upcoming.", true);
-  }
-  if (window === "far") {
-    return upcoming(activityDate, "That GC date is more than about six months out.", true);
+    return upcoming(activityDate, "That GC date is more than about six months in the past for Upcoming.", true);
   }
 
   if (!hasSchedule) {

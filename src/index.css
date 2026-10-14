@@ -15490,7 +15490,7 @@ input.readonly {
 
 .gc-schedule-board {
   display: grid;
-  grid-template-columns: 1.25rem 3.4rem minmax(0, 1.6fr) minmax(7.5rem, 0.8fr) 6.8rem 4.6rem max-content;
+  grid-template-columns: 1.25rem 3.4rem minmax(0, 1.6fr) minmax(7.5rem, 0.8fr) 13rem 4.6rem max-content;
   column-gap: 0.75rem;
   row-gap: 0.2rem;
   align-items: center;
@@ -17739,4 +17739,232 @@ input.readonly {
   .wc-print-split {
     grid-template-columns: 1fr;
   }
+}
+
+.pkg-page {
+  min-height: 100vh;
+  padding: 1rem 0.85rem 2.5rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.pkg-card {
+  width: min(28rem, 100%);
+  margin: 0 auto;
+  padding: 0.85rem 0.85rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.pkg-image {
+  display: block;
+  width: 100%;
+  max-height: 16rem;
+  margin: 0 0 0.9rem;
+  object-fit: contain;
+  border-radius: 12px;
+  background: var(--surface2);
+}
+
+.pkg-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pkg-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pkg-status {
+  margin: 0;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pkg-status-delivered {
+  background: rgba(67, 160, 71, 0.2);
+  color: #81c784;
+}
+
+.pkg-status-ordered {
+  background: rgba(63, 81, 181, 0.22);
+  color: #9fa8da;
+}
+
+.pkg-status-revision {
+  background: rgba(240, 180, 41, 0.18);
+  color: #f0b429;
+}
+
+.pkg-status-approved {
+  background: rgba(249, 198, 0, 0.15);
+  color: #ffd54f;
+}
+
+.pkg-status-sent {
+  background: rgba(38, 166, 154, 0.18);
+  color: #4db6ac;
+}
+
+.pkg-status-submittal {
+  background: rgba(79, 140, 255, 0.16);
+  color: #8eb4ff;
+}
+
+.pkg-status-idle {
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+.pkg-job {
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.pkg-code {
+  margin: 0.35rem 0 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.pkg-card h1 {
+  margin: 0.15rem 0 0;
+  font-size: 1.2rem;
+  line-height: 1.3;
+}
+
+.pkg-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+  margin: 1rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.pkg-facts div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.pkg-facts .pkg-wide {
+  grid-column: 1 / -1;
+}
+
+.pkg-facts dt {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pkg-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.pkg-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pkg-flags li {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.pkg-notes {
+  margin-top: 0.95rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.pkg-notes h2 {
+  margin: 0 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pkg-notes p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.pkg-docs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6rem;
+  margin-top: 1rem;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pkg-docs:hover {
+  text-decoration: none;
+  background: var(--accent-hover);
+}
+
+.pkg-link-text,
+.pkg-muted {
+  color: var(--muted);
+}
+
+.pkg-link-text {
+  margin: 1rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.pkg-label-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+.pkg-label-preview {
+  display: block;
+  width: min(220px, 100%);
+  height: auto;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.pkg-label-copies {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.pkg-label-copies input {
+  width: 5rem;
 }

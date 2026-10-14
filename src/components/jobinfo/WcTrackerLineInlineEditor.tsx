@@ -32,6 +32,7 @@ type Props = {
   onSave: () => void;
   onCancel: () => void;
   onDelete?: () => void;
+  onPrintLabels?: () => void;
 };
 
 /** Inline (in-table) editor for a wallcovering tracker line. */
@@ -43,6 +44,7 @@ export function WcTrackerLineInlineEditor({
   onSave,
   onCancel,
   onDelete,
+  onPrintLabels,
 }: Props) {
   const deliveryNotesId = useId();
 
@@ -155,7 +157,7 @@ export function WcTrackerLineInlineEditor({
             <input value={line.tracking} onChange={(e) => patch({ tracking: e.target.value })} />
           </label>
           <label className="wc-col-2">
-            Dropbox link
+            Link
             <input value={line.dropbox} onChange={(e) => patch({ dropbox: e.target.value })} />
           </label>
           <label>
@@ -212,6 +214,11 @@ export function WcTrackerLineInlineEditor({
           <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={onCancel}>
             Cancel
           </button>
+          {onPrintLabels ? (
+            <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={onPrintLabels}>
+              Package labels
+            </button>
+          ) : null}
           <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={onSave}>
             {saving ? "Saving…" : "Save line"}
           </button>

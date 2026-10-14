@@ -40,6 +40,8 @@ export const SHEET_LABEL_PX_H = 600;
 /** Left column share of the sheet label. Divider sits on the column's right edge. */
 export const SHEET_LABEL_COLUMN_RATIO = 0.26;
 export const SHEET_LABEL_COLUMN_PAD = 15;
+/** Space between a rule and the type beside it, at 300 dpi. */
+export const SHEET_LABEL_RULE_PAD = 28;
 
 export function sheetLabelTemplateById(id: string | undefined): SheetLabelTemplate {
   return SHEET_LABEL_TEMPLATES.find((template) => template.id === id) ?? DEFAULT_SHEET_LABEL_TEMPLATE;

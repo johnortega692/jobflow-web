@@ -4,6 +4,7 @@ import { LetterheadProvider } from "./contexts/LetterheadContext";
 import { ProtectedRoute } from "./components/Layout";
 import { ProjectLayout } from "./components/ProjectLayout";
 import { LoginPage } from "./pages/LoginPage";
+import { MaterialPackagePage } from "./pages/MaterialPackagePage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectsByGcPage } from "./pages/ProjectsByGcPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
@@ -47,6 +48,7 @@ export default function App() {
         <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/pkg/:token" element={<MaterialPackagePage />} />
           <Route path="/field" element={<FieldDashboardLayout />}>
             <Route index element={<Navigate to="paint" replace />} />
             <Route path="wallcovering" element={<FieldWallcoveringDashboardPage />} />

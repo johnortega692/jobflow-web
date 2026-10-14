@@ -14,8 +14,8 @@ export type UpcomingGcResult = {
 
 const CODE_MESSAGE: Record<string, string> = {
   EVENT_DATE_REQUIRED: "That activity needs a date.",
-  EVENT_DATE_PAST: "That date is too far in the past for Upcoming.",
-  EVENT_TOO_FAR: "That date is more than about six months out.",
+  EVENT_DATE_PAST: "That date is more than about six months in the past for Upcoming.",
+  EVENT_TOO_FAR: "That date is too far out to add to Upcoming.",
   EVENT_TITLE_REQUIRED: "Activity name is required.",
   EVENT_TITLE_TOO_LONG: "Activity name is too long.",
   WEEK_LABEL_TAKEN: "That week label is already used by another year.",

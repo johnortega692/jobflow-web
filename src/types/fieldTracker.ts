@@ -59,6 +59,8 @@ export type WcTrackerLineState = {
   notesDelivered: string;
   dropbox: string;
   imageUrl: string;
+  /** Public token encoded in the package-label QR code. */
+  shareToken: string;
 };
 
 export const defaultWcTrackerState = (): WcTrackerState => ({
@@ -100,6 +102,7 @@ export const defaultWcTrackerLineFields = (): Omit<WcTrackerLineState, "id" | "l
   notesDelivered: "",
   dropbox: "",
   imageUrl: "",
+  shareToken: "",
 });
 
 export const defaultPaintTrackerState = (): PaintTrackerState => ({
@@ -178,6 +181,7 @@ export function normalizeWcTrackerLine(raw: unknown, fallbackId: string): WcTrac
     notesDelivered: String(o.notesDelivered ?? defaults.notesDelivered),
     dropbox: String(o.dropbox ?? defaults.dropbox),
     imageUrl: String(o.imageUrl ?? defaults.imageUrl),
+    shareToken: String(o.shareToken ?? defaults.shareToken).trim(),
   };
 }
 

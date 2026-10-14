@@ -1,7 +1,13 @@
 import { create as createQr } from "qrcode";
 import { logoToBlackAndWhitePng } from "./sampleLabelLogo";
 import { withPngPhys } from "./pngPhys";
-import { SHEET_LABEL_COLUMN_PAD, SHEET_LABEL_COLUMN_RATIO, SHEET_LABEL_PX_H, SHEET_LABEL_PX_W } from "./sheetLabelTemplate";
+import {
+  SHEET_LABEL_COLUMN_PAD,
+  SHEET_LABEL_COLUMN_RATIO,
+  SHEET_LABEL_PX_H,
+  SHEET_LABEL_PX_W,
+  SHEET_LABEL_RULE_PAD,
+} from "./sheetLabelTemplate";
 import {
   SAMPLE_LABEL_BAND_H,
   SAMPLE_LABEL_DPI,
@@ -236,13 +242,20 @@ function drawBandRow(
   itemLabel: string,
   subtitle: string,
   codePx: number,
+  mark = "",
 ): void {
   const pad = 14;
   const gap = 12;
-  const inner = Math.max(40, width - pad * 2);
+  const markText = mark.trim();
   ctx.fillStyle = WHITE;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
+  let markW = 0;
+  if (markText) {
+    ctx.font = font(22);
+    markW = measure(ctx, markText);
+  }
+  const inner = Math.max(40, width - pad * 2 - (markW > 0 ? markW + gap : 0));
   ctx.font = font(16);
   let heading = subtitle.trim();
   if (heading && measure(ctx, heading) > inner) heading = linesOf(ctx, heading, inner, 1)[0] ?? "";
@@ -264,12 +277,23 @@ function drawBandRow(
     ctx.font = font(16);
     ctx.fillText(heading, cursor, centerY);
   }
+  if (markText) {
+    ctx.font = font(22);
+    ctx.textAlign = "right";
+    ctx.fillText(markText, x + width - pad, centerY);
+  }
 }
 
-function drawBand(ctx: CanvasRenderingContext2D, y: number, itemLabel: string, subtitle: string): void {
+function drawBand(
+  ctx: CanvasRenderingContext2D,
+  y: number,
+  itemLabel: string,
+  subtitle: string,
+  mark = "",
+): void {
   ctx.fillStyle = BLACK;
   fillRoundRect(ctx, SAMPLE_LABEL_MARGIN, y, CONTENT_W, SAMPLE_LABEL_BAND_H, 4);
-  drawBandRow(ctx, SAMPLE_LABEL_MARGIN, y + SAMPLE_LABEL_BAND_H / 2, CONTENT_W, itemLabel, subtitle, 44);
+  drawBandRow(ctx, SAMPLE_LABEL_MARGIN, y + SAMPLE_LABEL_BAND_H / 2, CONTENT_W, itemLabel, subtitle, 44, mark);
 }
 
 function fieldBlockHeight(
@@ -433,10 +457,11 @@ function drawLandscapeBand(
   width: number,
   itemLabel: string,
   subtitle: string,
+  mark = "",
 ): void {
   ctx.fillStyle = BLACK;
   fillRoundRect(ctx, x, y, width, SAMPLE_LABEL_LANDSCAPE_BAND_H, 4);
-  drawBandRow(ctx, x, y + SAMPLE_LABEL_LANDSCAPE_BAND_H / 2, width, itemLabel, subtitle, 40);
+  drawBandRow(ctx, x, y + SAMPLE_LABEL_LANDSCAPE_BAND_H / 2, width, itemLabel, subtitle, 40, mark);
 }
 
 function specValueLines(
@@ -546,11 +571,14 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
   const pad = sheet ? SHEET_LABEL_COLUMN_PAD / sheetScale : SAMPLE_LABEL_LANDSCAPE_COL_PAD;
   const columnRight = columnX + columnW;
   const innerLeft = columnX + pad;
-  const innerRight = columnRight - pad;
+  const innerRight = columnRight - (sheet ? SHEET_LABEL_RULE_PAD / sheetScale : pad);
   const innerW = innerRight - innerLeft;
-  const rightX = columnRight + SAMPLE_LABEL_LANDSCAPE_RULE;
   const rightLimit = sheet ? SHEET_LABEL_PX_W / sheetScale - pad : width - side;
-  const rightW = rightLimit - rightX;
+  const rulePad = sheet ? SHEET_LABEL_RULE_PAD / sheetScale : 0;
+  const textX = columnRight + SAMPLE_LABEL_LANDSCAPE_RULE + rulePad;
+  const textW = rightLimit - textX;
+  const rightX = textX;
+  const rightW = textW;
   const contentLeft = sheet ? pad : side;
   const contentW = rightLimit - contentLeft;
 
@@ -601,7 +629,7 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
 
   let y = columnTop;
   if (sampleLabelBlockOn(input, "band")) {
-    drawLandscapeBand(ctx, rightX, y, rightW, input.itemLabel, bandHeading(input));
+    drawLandscapeBand(ctx, rightX, y, rightW, input.itemLabel, bandHeading(input), input.packageMark ?? "");
     y += SAMPLE_LABEL_LANDSCAPE_BAND_H + 6;
   }
 
@@ -628,10 +656,11 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
   const row = metas.slice(1).filter((field) => field.on && field.value.trim());
   const projectOn = Boolean(project?.on && project.value.trim());
   if (projectOn || row.length) {
-    if (drewField) y += 6;
+    const splitGap = sheet ? rulePad : 6;
+    if (drewField) y += splitGap;
     ctx.fillStyle = BLACK;
-    ctx.fillRect(rightX, y, rightW, 1);
-    y += 1 + 6;
+    ctx.fillRect(sheet ? columnRight : rightX, y, sheet ? rightLimit - columnRight : rightW, 1);
+    y += 1 + splitGap;
     if (projectOn && project) {
       y += drawLandscapeField(ctx, rightX, y, rightW, project.label, project.value, 16);
       if (row.length) y += 4;
@@ -774,7 +803,7 @@ function drawPortraitWithoutQr(ctx: CanvasRenderingContext2D, state: DrawState, 
     y += headerH + 8;
   }
   if (sampleLabelBlockOn(input, "band")) {
-    drawBand(ctx, y, input.itemLabel, bandHeading(input));
+    drawBand(ctx, y, input.itemLabel, bandHeading(input), input.packageMark ?? "");
     y += SAMPLE_LABEL_BAND_H + 8;
   }
 
@@ -853,7 +882,7 @@ export async function renderSampleLabel(input: SampleLabelInput): Promise<HTMLCa
   }
 
   if (sampleLabelBlockOn(input, "band")) {
-    drawBand(ctx, y, input.itemLabel, bandHeading(input));
+    drawBand(ctx, y, input.itemLabel, bandHeading(input), input.packageMark ?? "");
     y += SAMPLE_LABEL_BAND_H + 8;
   }
 

@@ -69,6 +69,8 @@ export type SampleLabelInput = {
   orientation?: SampleLabelOrientation;
   /** Black-band wording. Omitted keeps "WALLCOVERING SAMPLE". Blank prints the item code only. */
   bandText?: string;
+  /** Package sequence on the right of the black band, e.g. "1 of 4". */
+  packageMark?: string;
 };
 
 export function sampleLabelBlockOn(input: SampleLabelInput, block: SampleLabelBlock): boolean {
