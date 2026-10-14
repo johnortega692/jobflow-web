@@ -22,6 +22,7 @@ import {
   SAMPLE_LABEL_LANDSCAPE_MARGIN_X,
   SAMPLE_LABEL_LANDSCAPE_QR,
   SAMPLE_LABEL_LANDSCAPE_RULE,
+  SAMPLE_LABEL_LANDSCAPE_RULE_PAD,
   SAMPLE_LABEL_LANDSCAPE_WIDTH,
   SAMPLE_LABEL_LOGO_MAX_H,
   SAMPLE_LABEL_MARGIN,
@@ -571,10 +572,10 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
   const pad = sheet ? SHEET_LABEL_COLUMN_PAD / sheetScale : SAMPLE_LABEL_LANDSCAPE_COL_PAD;
   const columnRight = columnX + columnW;
   const innerLeft = columnX + pad;
-  const innerRight = columnRight - (sheet ? SHEET_LABEL_RULE_PAD / sheetScale : pad);
+  const rulePad = sheet ? SHEET_LABEL_RULE_PAD / sheetScale : SAMPLE_LABEL_LANDSCAPE_RULE_PAD;
+  const innerRight = columnRight - rulePad;
   const innerW = innerRight - innerLeft;
   const rightLimit = sheet ? SHEET_LABEL_PX_W / sheetScale - pad : width - side;
-  const rulePad = sheet ? SHEET_LABEL_RULE_PAD / sheetScale : 0;
   const textX = columnRight + SAMPLE_LABEL_LANDSCAPE_RULE + rulePad;
   const textW = rightLimit - textX;
   const rightX = textX;
@@ -656,10 +657,10 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
   const row = metas.slice(1).filter((field) => field.on && field.value.trim());
   const projectOn = Boolean(project?.on && project.value.trim());
   if (projectOn || row.length) {
-    const splitGap = sheet ? rulePad : 6;
+    const splitGap = rulePad;
     if (drewField) y += splitGap;
     ctx.fillStyle = BLACK;
-    ctx.fillRect(sheet ? columnRight : rightX, y, sheet ? rightLimit - columnRight : rightW, 1);
+    ctx.fillRect(columnRight, y, rightLimit - columnRight, 1);
     y += 1 + splitGap;
     if (projectOn && project) {
       y += drawLandscapeField(ctx, rightX, y, rightW, project.label, project.value, 16);

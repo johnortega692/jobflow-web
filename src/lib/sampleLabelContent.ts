@@ -25,6 +25,8 @@ export const SAMPLE_LABEL_LANDSCAPE_COL_W = 156;
 export const SAMPLE_LABEL_LANDSCAPE_COL_PAD = 10;
 export const SAMPLE_LABEL_LANDSCAPE_QR = 128;
 export const SAMPLE_LABEL_LANDSCAPE_RULE = 2;
+/** Space between a landscape rule and the type beside it, at 203 dpi. */
+export const SAMPLE_LABEL_LANDSCAPE_RULE_PAD = 18;
 export const SAMPLE_LABEL_LANDSCAPE_BAND_H = 56;
 /** Column width minus the left and right inner padding. */
 export const SAMPLE_LABEL_LANDSCAPE_LOGO_MAX_W =
