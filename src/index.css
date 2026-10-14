@@ -17744,48 +17744,46 @@ input.readonly {
 .pkg-page {
   min-height: 100vh;
   padding: 1rem 0.85rem 2.5rem;
-  background: var(--bg);
+  background: #0e1218;
   color: var(--text);
 }
 
-.pkg-card {
-  width: min(28rem, 100%);
+.pkg-sheet {
+  width: min(26rem, 100%);
   margin: 0 auto;
-  padding: 0.85rem 0.85rem 1.15rem;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--surface);
 }
 
-.pkg-image {
-  display: block;
-  width: 100%;
-  max-height: 16rem;
-  margin: 0 0 0.9rem;
-  object-fit: contain;
-  border-radius: 12px;
-  background: var(--surface2);
+.pkg-missing {
+  margin: 2rem 0 0;
+  font-size: 1.2rem;
+  line-height: 1.3;
 }
 
-.pkg-top {
+.pkg-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.pkg-head h1 {
+  margin: 0.1rem 0 0;
+  font-size: 1.35rem;
+  line-height: 1.15;
 }
 
 .pkg-kicker {
   margin: 0;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .pkg-status {
-  margin: 0;
-  padding: 0.15rem 0.6rem;
+  margin: 0.15rem 0 0;
+  padding: 0.2rem 0.65rem;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 700;
@@ -17827,106 +17825,181 @@ input.readonly {
   color: var(--muted);
 }
 
-.pkg-job {
-  margin: 0.55rem 0 0;
+.pkg-photo {
+  position: relative;
+  margin-top: 0.9rem;
+  border-radius: 16px;
+  background: #cfcfcf;
+  overflow: hidden;
+}
+
+.pkg-photo-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.pkg-photo img,
+.pkg-zoom-layer img {
+  display: block;
+  width: 100%;
+  max-height: 16rem;
+  object-fit: contain;
+}
+
+.pkg-zoom {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  padding: 0.28rem 0.6rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(18, 21, 28, 0.72);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.pkg-identity,
+.pkg-stats > div,
+.pkg-history {
+  margin-top: 0.7rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 16px;
+  background: #1a2030;
+}
+
+.pkg-identity-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
   color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 600;
+  font-size: 0.82rem;
 }
 
 .pkg-code {
-  margin: 0.35rem 0 0;
-  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0 0.45rem;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
-.pkg-card h1 {
-  margin: 0.15rem 0 0;
-  font-size: 1.2rem;
+.pkg-identity h2 {
+  margin: 0.45rem 0 0;
+  font-size: 1.15rem;
   line-height: 1.3;
 }
 
-.pkg-facts {
+.pkg-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem 1rem;
-  margin: 1rem 0 0;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border);
+  gap: 0.7rem;
 }
 
-.pkg-facts div {
-  display: grid;
-  gap: 0.12rem;
-  min-width: 0;
+.pkg-stats-one {
+  grid-template-columns: 1fr;
 }
 
-.pkg-facts .pkg-wide {
-  grid-column: 1 / -1;
+.pkg-stat {
+  margin: 0.2rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 750;
+  line-height: 1.2;
 }
 
-.pkg-facts dt {
+.pkg-stat-sub {
+  margin: 0.15rem 0 0;
   color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
 }
 
-.pkg-facts dd {
+.pkg-stat-soon {
+  color: #7dcea0;
+  font-weight: 650;
+}
+
+.pkg-alert {
+  margin-top: 0.7rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 14px;
+  background: rgba(180, 60, 50, 0.28);
+  color: #ffb4a8;
+}
+
+.pkg-alert p {
   margin: 0;
-  overflow-wrap: anywhere;
 }
 
-.pkg-flags {
+.pkg-alert p:first-child {
+  font-weight: 750;
+}
+
+.pkg-alert p + p {
+  margin-top: 0.15rem;
+  font-size: 0.88rem;
+}
+
+.pkg-history summary {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.9rem 0 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.pkg-history summary::-webkit-details-marker {
+  display: none;
+}
+
+.pkg-history summary span:last-child {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.pkg-history ol {
+  margin: 0.75rem 0 0;
   padding: 0;
   list-style: none;
 }
 
-.pkg-flags li {
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  background: var(--surface2);
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-  font-weight: 600;
+.pkg-history li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.pkg-notes {
-  margin-top: 0.95rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border);
-}
-
-.pkg-notes h2 {
-  margin: 0 0 0.3rem;
+.pkg-history li span:first-child {
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.pkg-notes p {
-  margin: 0;
-  white-space: pre-wrap;
 }
 
 .pkg-docs {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.6rem;
-  margin-top: 1rem;
-  padding: 0 0.9rem;
+  min-height: 2.7rem;
+  margin-top: 0.85rem;
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
-  font-weight: 700;
+  font-weight: 750;
   text-decoration: none;
 }
 
@@ -17935,14 +18008,37 @@ input.readonly {
   background: var(--accent-hover);
 }
 
-.pkg-link-text,
 .pkg-muted {
   color: var(--muted);
 }
 
-.pkg-link-text {
-  margin: 1rem 0 0;
-  overflow-wrap: anywhere;
+.pkg-zoom-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.88);
+}
+
+.pkg-zoom-layer img {
+  max-height: calc(100vh - 5rem);
+  border-radius: 12px;
+  background: #cfcfcf;
+}
+
+.pkg-zoom-close {
+  position: absolute;
+  top: 0.8rem;
+  right: 0.8rem;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #12151c;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .pkg-label-dialog {

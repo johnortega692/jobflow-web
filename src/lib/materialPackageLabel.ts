@@ -8,9 +8,12 @@ export function ensurePackageShareToken(line: WcTrackerLineState): WcTrackerLine
   return { ...line, shareToken: crypto.randomUUID() };
 }
 
-export function materialPackageUrl(token: string, origin = window.location.origin): string {
+export function materialPackageUrl(token: string, origin = window.location.origin, box?: number): string {
   const base = origin.replace(/\/$/, "");
-  return `${base}/pkg/${encodeURIComponent(token.trim())}`;
+  const url = `${base}/pkg/${encodeURIComponent(token.trim())}`;
+  const place = Math.floor(box ?? 0);
+  if (!Number.isFinite(place) || place < 1) return url;
+  return `${url}?n=${place}`;
 }
 
 /** "1 of 4" for the package at this position in the order. */

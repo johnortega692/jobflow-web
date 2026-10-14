@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
+import { parseFlexibleDate } from "../lib/dateInputUtils";
+import { packageLabelCopies } from "../lib/materialPackageLabel";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 
 type PackageCard = {
@@ -75,6 +77,8 @@ const FLAG_KEYS = [
   "delivered",
 ] as const;
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function asText(value: unknown): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
@@ -98,8 +102,37 @@ function httpUrl(value: string): string {
   return "";
 }
 
+function monthDay(date: Date): string {
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function weekdayMonthDay(date: Date): string {
+  return `${WEEKDAYS[date.getDay()]} ${monthDay(date)}`;
+}
+
+function dayStart(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+function relativeDay(date: Date, now = new Date()): string {
+  const days = Math.round((dayStart(date) - dayStart(now)) / 86_400_000);
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days === -1) return "yesterday";
+  if (days > 1) return `in ${days} days`;
+  return `${Math.abs(days)} days ago`;
+}
+
+function firstDate(text: string): Date | null {
+  const match = text.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/);
+  return match ? parseFlexibleDate(match[0]) : parseFlexibleDate(text);
+}
+
 function packageStatus(card: PackageCard): { label: string; tone: string } {
-  if (card.delivered) return { label: "Delivered", tone: "delivered" };
+  if (card.delivered) {
+    const stamped = firstDate(card.delivery_notes);
+    return { label: stamped ? `Delivered ${monthDay(stamped)}` : "Delivered", tone: "delivered" };
+  }
   if (card.material_order) return { label: "Material order", tone: "ordered" };
   if (card.revision && !card.approved) return { label: "Needs revision", tone: "revision" };
   if (card.approved) return { label: "Approved", tone: "approved" };
@@ -108,23 +141,52 @@ function packageStatus(card: PackageCard): { label: string; tone: string } {
   return { label: "Not started", tone: "idle" };
 }
 
+function materialTitle(card: PackageCard): string {
+  const product = card.product.trim();
+  const color = card.color.trim();
+  const maker = card.manufacturer.trim();
+  if (product && color) return `${[maker, product].filter(Boolean).join(" ")} — ${color}`;
+  return card.material_name.trim() || product || maker || "Material";
+}
+
 function leadTimeLabel(value: string): string {
   const text = value.trim();
   if (!text || /week/i.test(text)) return text;
   return `${text} weeks`;
 }
 
-function containedIn(name: string, value: string): boolean {
-  const part = value.trim().toLowerCase();
-  if (!part) return true;
-  return name.trim().toLowerCase().includes(part);
+type HistoryItem = { label: string; value: string; at: number };
+
+function historyItems(card: PackageCard): HistoryItem[] {
+  const dated: HistoryItem[] = [];
+  const addDate = (label: string, raw: string) => {
+    const text = raw.trim();
+    if (!text) return;
+    const date = parseFlexibleDate(text) ?? firstDate(text);
+    dated.push({ label, value: text, at: date ? date.getTime() : Number.MAX_SAFE_INTEGER });
+  };
+  addDate("Approval received", card.approval_received);
+  addDate("Date ordered", card.date_ordered);
+  addDate("Ship date", card.ship_date);
+  addDate("Follow up", card.follow_up);
+  addDate("ESD follow up", card.esd_follow_up);
+  addDate("Delivered", card.delivery_notes);
+  if (card.lead_time.trim()) {
+    dated.push({ label: "Lead time", value: leadTimeLabel(card.lead_time), at: Number.MAX_SAFE_INTEGER - 2 });
+  }
+  if (card.tracking.trim()) {
+    dated.push({ label: "Tracking", value: card.tracking.trim(), at: Number.MAX_SAFE_INTEGER - 1 });
+  }
+  return dated.sort((a, b) => a.at - b.at || a.label.localeCompare(b.label));
 }
 
 export function MaterialPackagePage() {
   const { token } = useParams();
+  const [searchParams] = useSearchParams();
   const [card, setCard] = useState<PackageCard | null>(null);
   const [missing, setMissing] = useState(false);
   const [imageHidden, setImageHidden] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
     const code = token?.trim() ?? "";
@@ -136,6 +198,7 @@ export function MaterialPackagePage() {
     setMissing(false);
     setCard(null);
     setImageHidden(false);
+    setZoomed(false);
     void supabase
       .rpc("material_package_card" as never, { p_token: code } as never)
       .then(({ data, error }) => {
@@ -154,101 +217,117 @@ export function MaterialPackagePage() {
   }, [token]);
 
   const job = [card?.job_number, card?.job_name].filter(Boolean).join(" ");
-  const title = card?.material_name.trim() || card?.product.trim() || card?.label.trim() || "Material";
+  const title = card ? materialTitle(card) : "Material";
   const image = httpUrl(card?.image_url ?? "");
+  const showImage = Boolean(image) && !imageHidden;
   const link = httpUrl(card?.document_url ?? "");
   const status = card ? packageStatus(card) : null;
+  const packageCount = card ? packageLabelCopies(card.package_qty) : 1;
+  const hasPackageCount = Boolean(card?.package_qty.trim().match(/^\d+/));
+  const boxNumber = Number(searchParams.get("n"));
+  const box =
+    hasPackageCount && Number.isFinite(boxNumber) && boxNumber >= 1
+      ? Math.min(packageCount, Math.floor(boxNumber))
+      : 0;
   const order = [card?.order_qty, card?.order_unit].filter(Boolean).join(" ");
-  const facts = card
-    ? (
-        [
-          ["Manufacturer", containedIn(title, card.manufacturer) ? "" : card.manufacturer],
-          ["Product", card.product !== title && !containedIn(title, card.product) ? card.product : ""],
-          ["Color", containedIn(title, card.color) ? "" : card.color],
-          ["Approval received", card.approval_received],
-          ["Date ordered", card.date_ordered],
-          ["Ship date", card.ship_date],
-          ["Install date", card.install_date],
-          ["Lead time", leadTimeLabel(card.lead_time)],
-          ["Package qty", card.package_qty],
-          ["Order qty", order],
-          ["Follow up", card.follow_up],
-          ["ESD follow up", card.esd_follow_up],
-          ["Tracking", card.tracking, true],
-        ] as [string, string, boolean?][]
-      ).filter((row) => row[1].trim())
-    : [];
-  const flags = card
-    ? [
-        card.field_measure ? "Field measure" : "",
-        card.shops ? "Shops" : "",
-        card.panels ? "Panels" : "",
-        card.revision ? "Needs revision" : "",
-      ].filter(Boolean)
-    : [];
+  const install = card ? parseFlexibleDate(card.install_date) : null;
+  const history = card ? historyItems(card) : [];
+  const needsRevision = Boolean(card?.revision && !card.approved);
 
   return (
     <main className="pkg-page">
-      <article className="pkg-card">
+      <article className="pkg-sheet">
         {!card && !missing ? <p className="pkg-muted">Loading…</p> : null}
-        {missing ? <h1>This package label is no longer on the tracker.</h1> : null}
+        {missing ? <h1 className="pkg-missing">This package label is no longer on the tracker.</h1> : null}
         {card && status ? (
           <>
-            {image && !imageHidden ? (
-              <img className="pkg-image" src={image} alt="" onError={() => setImageHidden(true)} />
-            ) : null}
-            <div className="pkg-top">
-              <p className="pkg-kicker">Material</p>
+            <header className="pkg-head">
+              <div>
+                <p className="pkg-kicker">Job</p>
+                <h1>{job || "Material package"}</h1>
+              </div>
               <p className={`pkg-status pkg-status-${status.tone}`}>{status.label}</p>
-            </div>
-            {job ? <p className="pkg-job">{job}</p> : null}
-            {card.label.trim() ? <p className="pkg-code">{card.label.trim()}</p> : null}
-            <h1>{title}</h1>
-            {facts.length > 0 ? (
-              <dl className="pkg-facts">
-                {facts.map(([label, value, wide]) => (
-                  <div key={label} className={wide ? "pkg-wide" : undefined}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
+            </header>
+
+            {showImage ? (
+              <div className="pkg-photo">
+                <button type="button" className="pkg-photo-open" onClick={() => setZoomed(true)}>
+                  <img src={image} alt="" onError={() => setImageHidden(true)} />
+                </button>
+                <button type="button" className="pkg-zoom" onClick={() => setZoomed(true)}>
+                  Tap to zoom
+                </button>
+              </div>
             ) : null}
-            {flags.length > 0 ? (
-              <ul className="pkg-flags">
-                {flags.map((flag) => (
-                  <li key={flag}>{flag}</li>
-                ))}
-              </ul>
-            ) : null}
-            {card.delivery_notes.trim() ? (
-              <section className="pkg-notes">
-                <h2>Delivery notes</h2>
-                <p>{card.delivery_notes.trim()}</p>
+
+            <section className="pkg-identity">
+              <p className="pkg-identity-kicker">
+                {card.label.trim() ? <span className="pkg-code">{card.label.trim()}</span> : null}
+                <span>Wallcovering</span>
+              </p>
+              <h2>{title}</h2>
+            </section>
+
+            <section className={`pkg-stats${install ? "" : " pkg-stats-one"}`}>
+              <div>
+                <p className="pkg-kicker">This box</p>
+                <p className="pkg-stat">
+                  {box ? `Pkg ${box} of ${packageCount}` : hasPackageCount ? `${packageCount} packages` : "1 package"}
+                </p>
+                {order ? <p className="pkg-stat-sub">{order} ordered total</p> : null}
+              </div>
+              {install ? (
+                <div>
+                  <p className="pkg-kicker">Install</p>
+                  <p className="pkg-stat">{weekdayMonthDay(install)}</p>
+                  <p className="pkg-stat-sub pkg-stat-soon">{relativeDay(install)}</p>
+                </div>
+              ) : null}
+            </section>
+
+            {needsRevision ? (
+              <section className="pkg-alert">
+                <p>Needs revision</p>
+                <p>{card.revision_notes.trim() || "Check with PM before installing."}</p>
               </section>
             ) : null}
-            {card.revision && card.revision_notes.trim() ? (
-              <section className="pkg-notes">
-                <h2>Revision notes</h2>
-                <p>{card.revision_notes.trim()}</p>
-              </section>
+
+            {history.length > 0 ? (
+              <details className="pkg-history">
+                <summary>
+                  <span>Procurement history</span>
+                  <span>
+                    {history.length} {history.length === 1 ? "item" : "items"}
+                  </span>
+                </summary>
+                <ol>
+                  {history.map((item) => (
+                    <li key={`${item.label}-${item.value}`}>
+                      <span>{item.label}</span>
+                      <span>{item.value}</span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
             ) : null}
-            {card.order_notes.trim() ? (
-              <section className="pkg-notes">
-                <h2>Order notes</h2>
-                <p>{card.order_notes.trim()}</p>
-              </section>
-            ) : null}
+
             {link ? (
               <a className="pkg-docs" href={link} target="_blank" rel="noopener noreferrer">
-                Open link
+                Product page
               </a>
-            ) : card.document_url.trim() ? (
-              <p className="pkg-link-text">{card.document_url.trim()}</p>
             ) : null}
           </>
         ) : null}
       </article>
+
+      {zoomed && showImage ? (
+        <div className="pkg-zoom-layer" role="presentation" onClick={() => setZoomed(false)}>
+          <button type="button" className="pkg-zoom-close" aria-label="Close photo" onClick={() => setZoomed(false)}>
+            Close
+          </button>
+          <img src={image} alt={title} onClick={(event) => event.stopPropagation()} />
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -50,7 +50,6 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
   const name = line.label.trim() || line.wallcoveringName.trim() || "Material";
   const sheetMode = media === "sheet";
   const template = DEFAULT_SHEET_LABEL_TEMPLATE;
-  const qrUrl = materialPackageUrl(line.shareToken);
 
   const thermalInputs = useMemo(
     () =>
@@ -60,12 +59,12 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
           line,
           jobNumber,
           jobName,
-          qrUrl,
+          qrUrl: materialPackageUrl(line.shareToken, window.location.origin, index + 1),
           orientation,
           packageMark: packageLabelMark(index + 1, copies),
         }),
       ),
-    [copies, settings, line, jobNumber, jobName, qrUrl, orientation],
+    [copies, settings, line, jobNumber, jobName, orientation],
   );
   const sheetInputs = useMemo(
     () =>
@@ -75,13 +74,13 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
           line,
           jobNumber,
           jobName,
-          qrUrl,
+          qrUrl: materialPackageUrl(line.shareToken, window.location.origin, index + 1),
           orientation: "landscape",
           colorLogo: true,
           packageMark: packageLabelMark(index + 1, copies),
         }),
       ),
-    [copies, settings, line, jobNumber, jobName, qrUrl],
+    [copies, settings, line, jobNumber, jobName],
   );
   const sheetPages = useMemo(() => layoutSheetPages(template, copies, sheetStart), [copies, sheetStart, template]);
   const spotsLeft = (sheetPages[sheetPage] ?? []).filter((slot) => slot.kind === "empty").length;
