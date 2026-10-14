@@ -37,6 +37,8 @@ export type SubmittalPdfFloorSection = {
   columns: string[];
   colWeights: number[] | "auto";
   rows: string[][];
+  /** Extra left inset, in points, for each body row. */
+  rowPadLeft?: number[];
 };
 
 export type TradeSubmittalPdfOptions = {
@@ -214,6 +216,8 @@ export async function buildTradeSubmittalPdfBytes(
         section.colWeights,
         section.rows,
         9,
+        PDF_MARGIN_X,
+        { rowPadLeft: section.rowPadLeft },
       );
     }
   }

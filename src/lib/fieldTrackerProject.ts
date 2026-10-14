@@ -34,6 +34,7 @@ import {
   type WallcoveringSubmittalData,
 } from "../types/tradeDocuments.js";
 import { harmonizeTrackerRevision } from "./paintTrackerRevision.js";
+import { applySubmittalComponents, isApsTrackItem, mergeLineComponents, migrateApsTrackerLine, normalizeWcComponents } from "./wcComponents";
 
 export function withSyncedPaintVendor(trade: ProjectTradeData, submittal: PaintSubmittalData): ProjectTradeData {
   const vendor = normalizePaintVendor(submittal.paint_vendor ?? "PPG");
@@ -108,13 +109,17 @@ function orderFieldsFromItem(item: WallcoveringItem): Pick<
 function linesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
   const defaults = defaultWcTrackerLineFields();
   return items
-    .filter((i) => i.label.trim() || i.product.trim() || i.manufacturer.trim())
+    .filter((i) => !isApsTrackItem(i) && (i.label.trim() || i.product.trim() || i.manufacturer.trim()))
     .map((item, index) => ({
       id: `submittal-${index}`,
       label: item.label.trim(),
       wallcoveringName: wcNameFromItem(item) || item.product.trim(),
       ...defaults,
       ...orderFieldsFromItem(item),
+      components: normalizeWcComponents(item.components, item.label),
+      fabricatedAssembly: Boolean(item.fabricatedAssembly),
+      shopDrawings: Boolean(item.shopDrawings),
+      e84ClassA: Boolean(item.e84ClassA),
     }));
 }
 
@@ -182,6 +187,10 @@ function lineFromSubmittalItem(item: WallcoveringItem, index: number): WcTracker
     wallcoveringName,
     ...defaultWcTrackerLineFields(),
     ...orderFieldsFromItem(item),
+    components: normalizeWcComponents(item.components, label),
+    fabricatedAssembly: Boolean(item.fabricatedAssembly),
+    shopDrawings: Boolean(item.shopDrawings),
+    e84ClassA: Boolean(item.e84ClassA),
   };
 }
 
@@ -201,6 +210,10 @@ function updatedLineFromMatch(match: WcTrackerLineState, item: WallcoveringItem)
     orderUnit: match.orderUnit.trim() || fromItem.orderUnit,
     orderNotes: match.orderNotes.trim() || fromItem.orderNotes,
     orderSelected: match.orderSelected ?? fromItem.orderSelected,
+    fabricatedAssembly: Boolean(item.fabricatedAssembly),
+    shopDrawings: Boolean(item.shopDrawings),
+    e84ClassA: Boolean(item.e84ClassA),
+    components: mergeLineComponents(match, normalizeWcComponents(item.components, item.label)).components,
   };
 }
 
@@ -230,7 +243,7 @@ export function mergeWcTrackerLinesFromSubmittal(
   const updateMatches = options.updateMatches !== false;
   const addUnmatched = options.addUnmatched !== false;
   const submittable = items.filter(
-    (i) => i.label.trim() || i.product.trim() || i.manufacturer.trim(),
+    (i) => !isApsTrackItem(i) && (i.label.trim() || i.product.trim() || i.manufacturer.trim()),
   );
   if (!submittable.length) {
     return { lines: existing, added: 0, updated: 0, unchanged: existing.length };
@@ -300,7 +313,7 @@ export async function updateWcTrackerFromSubmittalItems(
   options: MergeWcTrackerOptions = {},
 ): Promise<{ error: string | null; added: number; updated: number; total: number }> {
   const submittable = items.filter(
-    (i) => i.label.trim() || i.product.trim() || i.manufacturer.trim(),
+    (i) => !isApsTrackItem(i) && (i.label.trim() || i.product.trim() || i.manufacturer.trim()),
   );
   if (!submittable.length) {
     return { error: null, added: 0, updated: 0, total: 0 };
@@ -373,9 +386,11 @@ export function resolveWcTracker(trade: ProjectTradeData): WcTrackerState {
 }
 
 export function resolveWcTrackerLines(trade: ProjectTradeData): WcTrackerLineState[] {
+  const items = normalizeWallcoveringSubmittal(trade.wallcovering_submittal).items;
   const stored = normalizeWcTrackerLines(trade.wc_tracker_lines);
-  if (stored.length) return stored;
-  return linesFromSubmittal(trade.wallcovering_submittal?.items ?? []);
+  const base = stored.length ? stored : linesFromSubmittal(items);
+  const migrated = migrateApsTrackerLine(applySubmittalComponents(base, items));
+  return migrated.length ? migrated : linesFromSubmittal(items);
 }
 
 export function hasStoredWcTrackerLines(trade: ProjectTradeData): boolean {

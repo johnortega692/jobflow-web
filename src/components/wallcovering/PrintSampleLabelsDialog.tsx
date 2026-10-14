@@ -23,6 +23,7 @@ import {
   type SampleLabelMedia,
   type SampleLabelPrintPrefs,
 } from "../../lib/sampleLabelPrefs";
+import { niimbotPrintSupported, printNiimbotLabels } from "../../lib/niimbotPrint";
 import { renderSampleLabel, renderSheetLabel } from "../../lib/sampleLabelRender";
 import { downloadSheetLabelsPdf } from "../../lib/sheetLabelExport";
 import { DEFAULT_SHEET_LABEL_TEMPLATE, SHEET_LABEL_TEMPLATES, layoutSheetPages, sheetLabelTemplateById } from "../../lib/sheetLabelTemplate";
@@ -126,8 +127,10 @@ export function PrintSampleLabelsDialog({
   const [sheetUrls, setSheetUrls] = useState<string[]>([]);
   const [sheetStart, setSheetStart] = useState(1);
   const [sheetPage, setSheetPage] = useState(0);
-  const [busy, setBusy] = useState<"pdf" | "zip" | "test" | null>(null);
+  const [busy, setBusy] = useState<"pdf" | "zip" | "test" | "print" | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [printNote, setPrintNote] = useState<string | null>(null);
+  const canPrintNiimbot = niimbotPrintSupported();
   const prefsTouched = useRef(false);
   const prefsSaved = useRef("");
   const projectRef = useRef(project);
@@ -394,6 +397,24 @@ export function PrintSampleLabelsDialog({
       stem: uniqueSampleLabelStem(itemTitle(row.item), row.index, used),
     };
     });
+  }
+
+  async function onPrintNiimbot() {
+    if (!selected.length || busy) return;
+    setBusy("print");
+    setDownloadError(null);
+    setPrintNote(null);
+    try {
+      await printNiimbotLabels(
+        filesForDownload().map((file) => ({ input: file.input, copies: file.copies })),
+        setPrintNote,
+      );
+    } catch (error) {
+      setPrintNote(null);
+      setDownloadError(error instanceof Error ? error.message : "Could not print on the NIIMBOT.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function onDownloadPdf() {
@@ -822,7 +843,11 @@ export function PrintSampleLabelsDialog({
           <p className="muted small">
             {sheetMode
               ? "Print at 100% / Actual size. Turn off Fit to page."
-              : "Open in the NIIMBOT desktop app, pick 50 x 80, print"}
+              : printNote
+                ? printNote
+                : canPrintNiimbot
+                  ? "Prints on a nearby B1. Chrome or Edge."
+                  : "This browser can't reach the printer. Download the PDF and open it in the NIIMBOT app."}
           </p>
           <div className="wc-print-actions">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -857,9 +882,19 @@ export function PrintSampleLabelsDialog({
                 >
                   {busy === "zip" ? "Preparing PNGs…" : "Download PNGs (.zip)"}
                 </button>
+                {canPrintNiimbot ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={selected.length === 0 || busy !== null}
+                    onClick={() => void onPrintNiimbot()}
+                  >
+                    {busy === "print" ? "Printing…" : "Print on NIIMBOT"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className={canPrintNiimbot ? "btn btn-secondary" : "btn btn-primary"}
                   disabled={selected.length === 0 || busy !== null}
                   onClick={() => void onDownloadPdf()}
                 >

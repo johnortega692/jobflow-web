@@ -1,4 +1,5 @@
 import type { PaintVendorLabel } from "../lib/googleSheetsConfig.js";
+import { normalizeWcComponents, type WcComponent } from "../lib/wcComponents";
 
 export type PaintTrackerState = {
   matchExisting: boolean;
@@ -61,6 +62,11 @@ export type WcTrackerLineState = {
   imageUrl: string;
   /** Public token encoded in the package-label QR code. */
   shareToken: string;
+  /** Trim, core, fabric, and mounting under this finish. */
+  components: WcComponent[];
+  fabricatedAssembly: boolean;
+  shopDrawings: boolean;
+  e84ClassA: boolean;
 };
 
 export const defaultWcTrackerState = (): WcTrackerState => ({
@@ -103,6 +109,10 @@ export const defaultWcTrackerLineFields = (): Omit<WcTrackerLineState, "id" | "l
   dropbox: "",
   imageUrl: "",
   shareToken: "",
+  components: [],
+  fabricatedAssembly: false,
+  shopDrawings: false,
+  e84ClassA: false,
 });
 
 export const defaultPaintTrackerState = (): PaintTrackerState => ({
@@ -182,6 +192,10 @@ export function normalizeWcTrackerLine(raw: unknown, fallbackId: string): WcTrac
     dropbox: String(o.dropbox ?? defaults.dropbox),
     imageUrl: String(o.imageUrl ?? defaults.imageUrl),
     shareToken: String(o.shareToken ?? defaults.shareToken).trim(),
+    components: normalizeWcComponents(o.components, label),
+    fabricatedAssembly: Boolean(o.fabricatedAssembly),
+    shopDrawings: Boolean(o.shopDrawings),
+    e84ClassA: Boolean(o.e84ClassA),
   };
 }
 

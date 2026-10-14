@@ -1,9 +1,11 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { DateInput } from "../DateInput";
 import { formatDateDisplay } from "../../lib/dateInputUtils";
 import { applyWcDateOrdered, applyWcLineStage, type WcFieldStatus } from "../../lib/fieldTrackerStatus";
+import { panelFabricationBlocked } from "../../lib/wcComponents";
 import { FlagSwitch, StageStepper } from "./StageStepper";
 import type { WcTrackerLineState } from "../../types/fieldTracker";
+import { WcComponentEditor } from "../wallcovering/WcComponentEditor";
 
 /** Append "MM/DD/YYYY Delivered" on its own line. Skip if that stamp is already present. */
 function appendDeliveredNote(notes: string, today = new Date()): string {
@@ -47,6 +49,7 @@ export function WcTrackerLineInlineEditor({
   onPrintLabels,
 }: Props) {
   const deliveryNotesId = useId();
+  const [gateNote, setGateNote] = useState<string | null>(null);
 
   function patch(p: Partial<WcTrackerLineState>) {
     onChange({ ...line, ...p });
@@ -66,9 +69,18 @@ export function WcTrackerLineInlineEditor({
             state: i < currentIdx ? "done" : i === currentIdx ? "current" : "todo",
             title: `Set stage: ${stage.label}`,
           }))}
-          onSelect={(key) => onChange(applyWcLineStage(line, key as WcFieldStatus))}
+          onSelect={(key) => {
+            const stage = key as WcFieldStatus;
+            if ((stage === "Material Ordered" || stage === "Delivered") && panelFabricationBlocked(line)) {
+              setGateNote("Fabric has to reach the fabricator before these panels can start fabrication.");
+              return;
+            }
+            setGateNote(null);
+            onChange(applyWcLineStage(line, stage));
+          }}
         />
       </div>
+      {gateNote ? <p className="banner banner-warn">{gateNote}</p> : null}
 
       <div className="wc-tracker-editor-grid">
         <label>
@@ -196,6 +208,18 @@ export function WcTrackerLineInlineEditor({
           )}
         </div>
       </details>
+
+      <WcComponentEditor
+        parentLabel={line.label}
+        components={line.components ?? []}
+        mode="tracker"
+        panels={line.panels}
+        fabricatedAssembly={line.fabricatedAssembly}
+        shopDrawings={line.shopDrawings}
+        e84ClassA={line.e84ClassA}
+        onChange={(components) => patch({ components })}
+        onPanelFlags={(flags) => patch(flags)}
+      />
 
       <div className="row-between wrap wc-tracker-inline-editor-footer">
         <div className="row-gap wrap">

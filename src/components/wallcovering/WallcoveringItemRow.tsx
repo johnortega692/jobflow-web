@@ -1,7 +1,9 @@
 import { useState, type DragEvent } from "react";
 import { FLOOR_ORDER } from "../../lib/printCore";
 import { isTrackInfillItem } from "../../lib/wcTrackInfill";
+import { normalizeWcComponents } from "../../lib/wcComponents";
 import type { WallcoveringItem } from "../../types/tradeDocuments";
+import { WcComponentEditor } from "./WcComponentEditor";
 
 const CONTENT_UNITS = ["LY", "SY", "RL", "EA"] as const;
 const TRACK_UNITS = ["LF", "EA"] as const;
@@ -274,6 +276,19 @@ export function WallcoveringItemRow({
           </>
         )}
       </div>
+      {!isTrack ? (
+        <WcComponentEditor
+          parentLabel={item.label}
+          components={normalizeWcComponents(item.components, item.label)}
+          mode="submittal"
+          panels={item.panels}
+          fabricatedAssembly={item.fabricatedAssembly}
+          shopDrawings={item.shopDrawings}
+          e84ClassA={item.e84ClassA}
+          onChange={(components) => onChange({ components })}
+          onPanelFlags={(patch) => onChange(patch)}
+        />
+      ) : null}
       <div className="wc-item-product-url">
         <button
           type="button"

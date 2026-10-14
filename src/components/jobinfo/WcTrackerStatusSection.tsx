@@ -17,6 +17,7 @@ import {
   wcStatusLabel,
   type WcFieldStatus,
 } from "../../lib/fieldTrackerStatus";
+import { installReady, installReadyCount, panelFabricationBlocked } from "../../lib/wcComponents";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
 import { createEmptyWcTrackerLine, type WcTrackerLineState } from "../../types/fieldTracker";
 import { ensurePackageShareToken } from "../../lib/materialPackageLabel";
@@ -75,6 +76,7 @@ export function WcTrackerStatusSection({
   }, [resolved]);
 
   const overallStatus = useMemo(() => wcOverallStatus(lines), [lines]);
+  const ready = useMemo(() => installReadyCount(lines), [lines]);
 
   const persistLines = useCallback(
     async (nextLines: WcTrackerLineState[], summary = "Wallcovering tracker updated") => {
@@ -216,6 +218,10 @@ export function WcTrackerStatusSection({
   });
 
   async function onLineStageChange(line: WcTrackerLineState, stage: WcFieldStatus) {
+    if ((stage === "Material Ordered" || stage === "Delivered") && panelFabricationBlocked(line)) {
+      setError("Fabric has to reach the fabricator before these panels can start fabrication.");
+      return;
+    }
     const nextLine = applyWcLineStage(line, stage);
     if (stage === "Needs Revision" && !nextLine.revisionNotes.trim()) {
       const openForNotes = () => {
@@ -251,7 +257,7 @@ export function WcTrackerStatusSection({
 
   const editorRow = editing ? (
     <tr className="wc-tracker-editor-row is-open">
-      <td colSpan={6}>
+      <td colSpan={7}>
         <WcTrackerLineInlineEditor
           line={editing.line}
           mode={editing.mode}
@@ -310,6 +316,8 @@ export function WcTrackerStatusSection({
             <div className="row-between wrap wc-tracker-list-toolbar">
               <span className="muted small">
                 {lines.length} material{lines.length === 1 ? "" : "s"}
+                {ready.total > 0 ? ` · ${ready.ready} of ${ready.total} lines ready` : ""}
+                {overallStatus ? ` · ${wcStatusLabel(overallStatus)}` : ""}
               </span>
               <button
                 type="button"
@@ -328,6 +336,7 @@ export function WcTrackerStatusSection({
                     <th>Label</th>
                     <th>Wallcovering</th>
                     <th>Status</th>
+                    <th>Install ready</th>
                     <th>Install</th>
                     <th>Ordered</th>
                     <th aria-label="Actions" />
@@ -338,6 +347,7 @@ export function WcTrackerStatusSection({
                     const isOpen = expandedId === line.id;
                     const displayLine = isOpen && editing ? editing.line : line;
                     const fieldStatus = wcFieldStatus(displayLine);
+                    const readyState = installReady(displayLine);
                     const lineName = displayLine.label.trim() || displayLine.wallcoveringName.trim() || "line";
                     return (
                       <Fragment key={line.id}>
@@ -365,6 +375,13 @@ export function WcTrackerStatusSection({
                                 </option>
                               ))}
                             </select>
+                          </td>
+                          <td>
+                            {readyState.ready
+                              ? "Ready"
+                              : readyState.waiting
+                                ? `Waiting: ${readyState.waiting}`
+                                : "—"}
                           </td>
                           <td>{formatListDate(displayLine.installDate)}</td>
                           <td>{formatListDate(displayLine.dateOrdered)}</td>

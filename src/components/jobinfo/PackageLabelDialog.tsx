@@ -17,6 +17,7 @@ import {
 import { downloadSampleLabelsPdf, downloadSampleLabelsZip } from "../../lib/sampleLabelExport";
 import type { SampleLabelMedia } from "../../lib/sampleLabelPrefs";
 import { renderSampleLabel, renderSheetLabel } from "../../lib/sampleLabelRender";
+import { niimbotPrintSupported, printNiimbotLabels } from "../../lib/niimbotPrint";
 import { downloadSheetLabelsPdf } from "../../lib/sheetLabelExport";
 import { DEFAULT_SHEET_LABEL_TEMPLATE, layoutSheetPages } from "../../lib/sheetLabelTemplate";
 import type { WcTrackerLineState } from "../../types/fieldTracker";
@@ -43,8 +44,10 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState("");
   const [sheetUrls, setSheetUrls] = useState<string[]>([]);
-  const [busy, setBusy] = useState<null | "pdf" | "zip" | "test">(null);
+  const [busy, setBusy] = useState<null | "pdf" | "zip" | "test" | "print">(null);
   const [error, setError] = useState<string | null>(null);
+  const [printNote, setPrintNote] = useState<string | null>(null);
+  const canPrintNiimbot = niimbotPrintSupported();
   const jobNumber = wcTrackerJobNumber(project);
   const jobName = wcTrackerJobName(project);
   const name = line.label.trim() || line.wallcoveringName.trim() || "Material";
@@ -142,6 +145,23 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
       else await downloadSampleLabelsPdf(files, `${fileStem} labels.pdf`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not download the labels.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function printOnNiimbot() {
+    setBusy("print");
+    setError(null);
+    setPrintNote(null);
+    try {
+      await printNiimbotLabels(
+        thermalInputs.map((input) => ({ input, copies: 1 })),
+        setPrintNote,
+      );
+    } catch (err) {
+      setPrintNote(null);
+      setError(err instanceof Error ? err.message : "Could not print on the NIIMBOT.");
     } finally {
       setBusy(null);
     }
@@ -365,7 +385,11 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
           <p className="muted small">
             {sheetMode
               ? "Print at 100% / Actual size. Turn off Fit to page."
-              : "Open in the NIIMBOT desktop app, pick 50 x 80, print"}
+              : printNote
+                ? printNote
+                : canPrintNiimbot
+                  ? "Prints on a nearby B1. Chrome or Edge."
+                  : "This browser can't reach the printer. Download the PDF and open it in the NIIMBOT app."}
           </p>
           <div className="wc-print-actions">
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy !== null}>
@@ -400,9 +424,19 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
                 >
                   {busy === "zip" ? "Preparing PNGs…" : "Download PNGs (.zip)"}
                 </button>
+                {canPrintNiimbot ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busy !== null || copies < 1}
+                    onClick={() => void printOnNiimbot()}
+                  >
+                    {busy === "print" ? "Printing…" : "Print on NIIMBOT"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className={canPrintNiimbot ? "btn btn-secondary" : "btn btn-primary"}
                   disabled={busy !== null}
                   onClick={() => void downloadThermal("pdf")}
                 >

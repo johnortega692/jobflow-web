@@ -21,6 +21,7 @@ import {
 } from "../types/tradeDocuments";
 import { downloadTradeSubmittalPdf, type SubmittalPdfFloorSection } from "./tradeSubmittalPdf";
 import { isTrackInfillItem } from "./wcTrackInfill";
+import { componentOnPdf, normalizeWcComponents } from "./wcComponents";
 
 const SUBMITTAL_CSS = `
 @page { size: letter; margin: 0.5in 0.55in; }
@@ -96,6 +97,27 @@ type ProjectInfo = ProjectPrintInfo;
 function wcRows(items: WallcoveringItem[], substitution: boolean): string {
   return items
     .map((item, i) => {
+      const components = normalizeWcComponents(item.components, item.label)
+        .filter(componentOnPdf)
+        .map((component) =>
+          substitution
+            ? `<tr>
+      <td></td>
+      <td style="padding-left:18px">${esc(component.tag)}</td>
+      <td></td>
+      <td>${esc(component.finish)}</td>
+      <td>${esc(component.vendor)}</td>
+      <td>${esc(component.item)}</td>
+    </tr>`
+            : `<tr>
+      <td></td>
+      <td>${esc(component.vendor)}</td>
+      <td>${esc(component.item)}</td>
+      <td>${esc(component.finish)}</td>
+      <td style="padding-left:18px">${esc(component.tag)}</td>
+    </tr>`,
+        )
+        .join("");
       if (substitution) {
         return `<tr>
       <td>${i + 1}</td>
@@ -104,7 +126,7 @@ function wcRows(items: WallcoveringItem[], substitution: boolean): string {
       <td><strong>${esc(item.color)}</strong></td>
       <td>${esc(item.manufacturer)}</td>
       <td>${esc(item.product)}</td>
-    </tr>`;
+    </tr>${components}`;
       }
       return `<tr>
       <td>${i + 1}</td>
@@ -112,7 +134,7 @@ function wcRows(items: WallcoveringItem[], substitution: boolean): string {
       <td>${esc(item.product)}</td>
       <td>${esc(item.color)}</td>
       <td>${esc(item.label)}</td>
-    </tr>`;
+    </tr>${components}`;
     })
     .join("");
 }
@@ -158,26 +180,42 @@ function wcSectionColumns(substitution: boolean): Pick<SubmittalPdfFloorSection,
       };
 }
 
-function wcItemRowsForPdf(items: WallcoveringItem[], substitution: boolean): string[][] {
-  return items.map((item, i) => {
+function wcItemRowsForPdf(
+  items: WallcoveringItem[],
+  substitution: boolean,
+): { rows: string[][]; rowPadLeft: number[] } {
+  const rows: string[][] = [];
+  const rowPadLeft: number[] = [];
+  items.forEach((item, i) => {
     if (substitution) {
-      return [
+      rows.push([
         String(i + 1),
         item.label.trim(),
         item.previous_color.trim(),
         item.color.trim(),
         item.manufacturer.trim(),
         item.product.trim(),
-      ];
+      ]);
+    } else {
+      rows.push([
+        String(i + 1),
+        item.manufacturer.trim(),
+        item.product.trim(),
+        item.color.trim(),
+        item.label.trim(),
+      ]);
     }
-    return [
-      String(i + 1),
-      item.manufacturer.trim(),
-      item.product.trim(),
-      item.color.trim(),
-      item.label.trim(),
-    ];
+    rowPadLeft.push(0);
+    for (const component of normalizeWcComponents(item.components, item.label).filter(componentOnPdf)) {
+      rows.push(
+        substitution
+          ? ["", component.tag, "", component.finish, component.vendor, component.item]
+          : ["", component.vendor, component.item, component.finish, component.tag],
+      );
+      rowPadLeft.push(14);
+    }
   });
+  return { rows, rowPadLeft };
 }
 
 export function buildWallcoveringSubmittalSections(
@@ -201,7 +239,7 @@ export function buildWallcoveringSubmittalSections(
     .map(([floor, floorItems]) => ({
       floorLabel: floor || undefined,
       ...cols,
-      rows: wcItemRowsForPdf(floorItems, substitution),
+      ...wcItemRowsForPdf(floorItems, substitution),
     }));
 
   if (secondaryItems.length) {
@@ -209,7 +247,7 @@ export function buildWallcoveringSubmittalSections(
       bannerSubject: paintSpecSectionShortLabel(data.spec_sections?.[1] ?? ""),
       bannerSpec: data.spec_sections?.[1],
       ...cols,
-      rows: wcItemRowsForPdf(secondaryItems, substitution),
+      ...wcItemRowsForPdf(secondaryItems, substitution),
     });
   }
 

@@ -224,6 +224,8 @@ export type PdfTableDrawOptions = {
   headerPadY?: number;
   /** Top margin when starting a continuation page. Defaults to `PDF_MARGIN_TOP`. */
   marginTop?: number;
+  /** Extra left inset, in points, for each body row. */
+  rowPadLeft?: number[];
 };
 
 /** Min points for an auto-sized column — keeps a short header from collapsing too narrow. */
@@ -371,9 +373,10 @@ export function drawDataTable(
           borderWidth: 0.25,
         });
       }
-      const drawn = truncate(cell, font, fontSize, colWidths[ci]! - 8);
+      const extra = options.rowPadLeft?.[ri] ?? 0;
+      const drawn = truncate(cell, font, fontSize, Math.max(8, colWidths[ci]! - 8 - extra));
       page.drawText(drawn, {
-        x: cellTextX(cell, ci, x, colWidths[ci]!, font),
+        x: cellTextX(cell, ci, x, colWidths[ci]!, font) + extra,
         y: y - rowHeight + padY,
         size: fontSize,
         font,

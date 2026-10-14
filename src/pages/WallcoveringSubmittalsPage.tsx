@@ -25,6 +25,7 @@ import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
 import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
 import { queuePendingItem } from "../lib/transmittalHelpers";
 import { updateWcTrackerFromSubmittalItems, syncWcSubmittalOrdered } from "../lib/fieldTrackerProject";
+import { defaultGotTrackComponent, normalizeWcComponents, refreshComponentTags } from "../lib/wcComponents";
 import {
   applyGotTrackToggle,
   detectGotTrack,
@@ -90,7 +91,7 @@ function normalizeWcDraft(raw: WallcoveringSubmittalData): WallcoveringSubmittal
   return {
     ...normalized,
     items: withTrackRowLast(normalized.items),
-    got_track: raw.got_track ?? detectGotTrack(normalized.items),
+    got_track: Boolean(raw.got_track) || detectGotTrack(normalized.items),
   };
 }
 
@@ -214,7 +215,7 @@ export function WallcoveringSubmittalsPage() {
     );
   const autoLabel = draft.auto_label !== false;
   const showFloor = draft.show_floor === true || wcItemsHaveFloor(draft.items);
-  const hasTrack = Boolean(draft.got_track) || draft.items.some(isTrackInfillItem);
+  const hasTrack = Boolean(draft.got_track) || detectGotTrack(draft.items);
   const contentCount = wcContentItems(draft.items).length;
   const itemsReadiness = useMemo(() => wcItemsReadiness(draft.items), [draft.items]);
   const sampleItems = useMemo(() => orderedWallcoveringItems(draft.items), [draft.items]);
@@ -264,7 +265,7 @@ export function WallcoveringSubmittalsPage() {
   }
 
   function withMaybeAutoLabels(items: WallcoveringItem[], enabled: boolean): WallcoveringItem[] {
-    return enabled ? applyWcAutoLabels(items) : items;
+    return refreshComponentTags(enabled ? applyWcAutoLabels(items) : items);
   }
 
   function clearDragState() {
@@ -280,6 +281,7 @@ export function WallcoveringSubmittalsPage() {
       const row = emptyWallcoveringItem();
       row.spec_scope = scope;
       if (enabled) row.label = wcRowAutoLabel(content.length);
+      if (d.got_track) row.components = [defaultGotTrackComponent(row.label)];
       const track = d.items.find(isTrackInfillItem);
       const next = track ? [...content, row, track] : [...content, row];
       // Keep secondary rows after primary content but before track when dual.
@@ -1201,8 +1203,17 @@ export function WallcoveringSubmittalsPage() {
               const content = wcContentItems(d.items).filter(
                 (i) => i.label || i.color || i.manufacturer || i.product,
               );
+              const incoming = d.got_track
+                ? items.map((item) => {
+                    const components = normalizeWcComponents(item.components, item.label);
+                    if (components.some((component) => component.type === "trim")) {
+                      return { ...item, components };
+                    }
+                    return { ...item, components: [...components, defaultGotTrackComponent(item.label)] };
+                  })
+                : items;
               const track = d.items.find(isTrackInfillItem);
-              const merged = track ? [...content, ...items, track] : [...content, ...items];
+              const merged = track ? [...content, ...incoming, track] : [...content, ...incoming];
               if (opts.turnOffAutoLabel) {
                 return { ...d, auto_label: false, items: withTrackRowLast(merged) };
               }

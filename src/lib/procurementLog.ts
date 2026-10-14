@@ -1,4 +1,5 @@
 import type { WcTrackerLineState } from "../types/fieldTracker";
+import { WC_COMPONENT_TYPE_LABEL, isApsTrackItem } from "./wcComponents";
 
 export type ProcurementLogRow = {
   finish: string;
@@ -35,19 +36,35 @@ export function buildProcurementNotesFromLine(line: WcTrackerLineState): string 
   return `${autoNotes.join("; ")} | ${existing}`;
 }
 
+function lineRow(line: WcTrackerLineState): ProcurementLogRow {
+  return {
+    finish: line.label.trim(),
+    product: line.wallcoveringName.trim(),
+    leadTime: line.leadTime.trim(),
+    approvalReceived: formatCell(line.approvalReceived),
+    dateOrdered: formatCell(line.dateOrdered),
+    shipDate: formatCell(line.shipDate),
+    dateReceivedTracking: formatCell(line.tracking),
+    notes: buildProcurementNotesFromLine(line),
+  };
+}
+
 export function buildProcurementLogRowsFromLines(lines: WcTrackerLineState[]): ProcurementLogRow[] {
   return lines
-    .filter((line) => line.wallcoveringName.trim() !== INTERNAL_TRACKING_PRODUCT)
-    .map((line) => ({
-      finish: line.label.trim(),
-      product: line.wallcoveringName.trim(),
-      leadTime: line.leadTime.trim(),
-      approvalReceived: formatCell(line.approvalReceived),
-      dateOrdered: formatCell(line.dateOrdered),
-      shipDate: formatCell(line.shipDate),
-      dateReceivedTracking: formatCell(line.tracking),
-      notes: buildProcurementNotesFromLine(line),
-    }));
+    .filter((line) => line.wallcoveringName.trim() !== INTERNAL_TRACKING_PRODUCT && !isApsTrackItem({ product: line.wallcoveringName, manufacturer: line.manufacturer }))
+    .flatMap((line) => [
+      lineRow(line),
+      ...(line.components ?? []).map((component) => ({
+        finish: [line.label.trim(), WC_COMPONENT_TYPE_LABEL[component.type]].filter(Boolean).join(" · "),
+        product: [component.item, component.finish].filter((part) => part.trim()).join(", "),
+        leadTime: "",
+        approvalReceived: "",
+        dateOrdered: formatCell(component.dateOrdered),
+        shipDate: formatCell(component.shipDate),
+        dateReceivedTracking: formatCell(component.tracking),
+        notes: component.vendor.trim(),
+      })),
+    ]);
 }
 
 /** @deprecated Use buildProcurementLogRowsFromLines — sheet row adapter for one-time import. */

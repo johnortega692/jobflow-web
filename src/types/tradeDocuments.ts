@@ -9,6 +9,7 @@ import { normalizeSdsSection as normalizeSdsSectionRow, sortSdsSectionsBySpec } 
 import { applyPaintAutoLabels, paintItemsSuggestAutoLabel } from "../lib/paintItemLabels.js";
 import { applyFrpAutoLabels, frpItemsSuggestAutoLabel, parseFrpQtyField } from "../lib/frpItemLabels.js";
 import { applyWcAutoLabels, parseWcQtyField, wcItemsHaveFloor, wcItemsSuggestAutoLabel } from "../lib/wcItemLabels.js";
+import { migrateTrackItems, normalizeWcComponents, refreshComponentTags } from "../lib/wcComponents";
 
 /** Paint dual-table model is binary (`primary` | `secondary`); chip UI is capped to match. */
 export const MAX_PAINT_SPEC_SECTIONS = 2;
@@ -106,6 +107,10 @@ export type WallcoveringItem = {
   order: boolean;
   /** Defaults to primary. Used when package has an optional 2nd spec. */
   spec_scope?: PaintItemSpecScope;
+  components?: import("../lib/wcComponents").WcComponent[];
+  fabricatedAssembly?: boolean;
+  shopDrawings?: boolean;
+  e84ClassA?: boolean;
 };
 
 export type TradeSubmittalType = "new" | "revised" | "substitution" | "original";
@@ -977,6 +982,10 @@ export function emptyWallcoveringItem(): WallcoveringItem {
     include_in_submittal: true,
     order: false,
     spec_scope: "primary",
+    components: [],
+    fabricatedAssembly: false,
+    shopDrawings: false,
+    e84ClassA: false,
   };
 }
 
@@ -1270,11 +1279,20 @@ export function normalizeWallcoveringSubmittal(
       spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
     };
     const parsed = parseWcQtyField(merged.qty, i.unit?.trim() || merged.unit, "LY");
-    return { ...merged, qty: parsed.qty, unit: parsed.unit };
+    return {
+      ...merged,
+      qty: parsed.qty,
+      unit: parsed.unit,
+      components: normalizeWcComponents(i.components, String(i.label ?? "")),
+      fabricatedAssembly: Boolean(i.fabricatedAssembly),
+      shopDrawings: Boolean(i.shopDrawings),
+      e84ClassA: Boolean(i.e84ClassA),
+    };
   });
+  const migrated = migrateTrackItems(items);
   const auto_label =
-    typeof raw.auto_label === "boolean" ? raw.auto_label : wcItemsSuggestAutoLabel(items);
-  const labeled = auto_label ? applyWcAutoLabels(items) : items;
+    typeof raw.auto_label === "boolean" ? raw.auto_label : wcItemsSuggestAutoLabel(migrated);
+  const labeled = refreshComponentTags(auto_label ? applyWcAutoLabels(migrated) : migrated);
   const resolved = normalizeWcSpecSections(raw);
   const spec_sections = resolved.length ? resolved : [...(base.spec_sections ?? [base.spec_section])];
   return {

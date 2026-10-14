@@ -1,14 +1,12 @@
 import type { WallcoveringItem } from "../types/tradeDocuments";
 import { emptyWallcoveringItem } from "../types/tradeDocuments";
+import { applyGotTrackComponents, hasGotTrack, isApsTrackItem } from "./wcComponents";
 
 export const WC_TRACK_MFR = "APS";
 export const WC_TRACK_PRODUCT = "Track and Infill";
 
 export function isTrackInfillItem(item: WallcoveringItem): boolean {
-  return (
-    item.product.trim() === WC_TRACK_PRODUCT &&
-    item.manufacturer.trim().toUpperCase() === WC_TRACK_MFR
-  );
+  return isApsTrackItem(item);
 }
 
 export function trackInfillPreset(previous?: WallcoveringItem | null): WallcoveringItem {
@@ -39,16 +37,12 @@ export function withTrackRowLast(items: WallcoveringItem[]): WallcoveringItem[] 
 export function applyGotTrackToggle(
   items: WallcoveringItem[],
   gotTrack: boolean,
-  previousTrack?: WallcoveringItem | null,
+  _previousTrack?: WallcoveringItem | null,
 ): WallcoveringItem[] {
-  if (gotTrack) {
-    if (items.some(isTrackInfillItem)) return withTrackRowLast(items);
-    return withTrackRowLast([...items, trackInfillPreset(previousTrack)]);
-  }
-  const next = items.filter((i) => !isTrackInfillItem(i));
+  const next = applyGotTrackComponents(items, gotTrack);
   return next.length ? next : [emptyWallcoveringItem()];
 }
 
 export function detectGotTrack(items: WallcoveringItem[]): boolean {
-  return items.some(isTrackInfillItem);
+  return hasGotTrack(items);
 }
