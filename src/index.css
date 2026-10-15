@@ -17265,6 +17265,46 @@ input.readonly {
   margin-bottom: 0;
 }
 
+.wc-print-dialog.pkg-label-dialog {
+  width: min(36rem, 94vw);
+}
+
+.wc-print-dialog.pkg-label-dialog.is-landscape {
+  width: min(42rem, 94vw);
+}
+
+.wc-print-dialog.pkg-label-dialog.is-sheet {
+  width: min(46rem, 94vw);
+}
+
+.wc-print-dialog.pkg-label-dialog .wc-print-head {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.wc-print-dialog.pkg-label-dialog .wc-print-body {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.wc-print-dialog.pkg-label-dialog .wc-print-controls {
+  width: 15rem;
+  padding-right: 0.85rem;
+}
+
+.wc-print-dialog.pkg-label-dialog .wc-print-preview {
+  width: auto;
+}
+
+.wc-print-dialog.pkg-label-dialog .wc-print-footer {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+}
+
+.wc-print-dialog.pkg-label-dialog .wc-print-actions {
+  justify-content: flex-end;
+}
+
 .wc-print-head,
 .wc-print-footer {
   flex: none;
@@ -17759,6 +17799,18 @@ input.readonly {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.45rem;
+}
+
+.wc-print-icon-btn {
+  width: 2.35rem;
+  min-width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+}
+
+.wc-print-icon-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 @media (max-width: 800px) {

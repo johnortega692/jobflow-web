@@ -223,9 +223,11 @@ function drawBandRow(
   subtitle: string,
   codePx: number,
   mark = "",
+  metrics: { pad?: number; gap?: number; headingPx?: number } = {},
 ): void {
-  const pad = 14;
-  const gap = 12;
+  const pad = metrics.pad ?? 14;
+  const gap = metrics.gap ?? 12;
+  const headingPx = metrics.headingPx ?? 16;
   const markText = mark.trim();
   ctx.fillStyle = WHITE;
   ctx.textAlign = "left";
@@ -236,7 +238,7 @@ function drawBandRow(
     markW = measure(ctx, markText);
   }
   const inner = Math.max(40, width - pad * 2 - (markW > 0 ? markW + gap : 0));
-  ctx.font = font(16);
+  ctx.font = font(headingPx);
   let heading = subtitle.trim();
   if (heading && measure(ctx, heading) > inner) heading = linesOf(ctx, heading, inner, 1)[0] ?? "";
   let headingW = heading ? measure(ctx, heading) : 0;
@@ -254,7 +256,7 @@ function drawBandRow(
     cursor += measure(ctx, codeText) + (heading ? gap : 0);
   }
   if (heading) {
-    ctx.font = font(16);
+    ctx.font = font(headingPx);
     ctx.fillText(heading, cursor, centerY);
   }
   if (markText) {
@@ -416,7 +418,11 @@ function drawLandscapeBand(
 ): void {
   ctx.fillStyle = BLACK;
   fillRoundRect(ctx, x, y, width, SAMPLE_LABEL_LANDSCAPE_BAND_H, 4);
-  drawBandRow(ctx, x, y + SAMPLE_LABEL_LANDSCAPE_BAND_H / 2, width, itemLabel, subtitle, 40, mark);
+  drawBandRow(ctx, x, y + SAMPLE_LABEL_LANDSCAPE_BAND_H / 2, width, itemLabel, subtitle, 40, mark, {
+    pad: 8,
+    gap: 8,
+    headingPx: 14,
+  });
 }
 
 function specValueLines(

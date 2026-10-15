@@ -34,6 +34,27 @@ type Props = {
   onClose: () => void;
 };
 
+function ZipIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9" r="1.4" />
+      <path d="m21 16-4.5-4.5L8 20" />
+    </svg>
+  );
+}
+
+function PdfIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6" />
+      <path d="M9 17h4" />
+    </svg>
+  );
+}
+
 export function PackageLabelDialog({ project, line, onClose }: Props) {
   const { settings } = useLetterhead();
   const [copies, setCopies] = useState(() => packageLabelCopies(line.packageQty));
@@ -188,7 +209,7 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="modal card wc-print-dialog"
+        className={`modal card wc-print-dialog pkg-label-dialog${sheetMode ? " is-sheet" : orientation === "landscape" ? " is-landscape" : " is-portrait"}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pkg-label-title"
@@ -413,11 +434,13 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
               <>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-secondary wc-print-icon-btn"
                   disabled={busy !== null}
+                  aria-label={busy === "zip" ? "Preparing PNGs" : "Download PNGs (.zip)"}
+                  title={busy === "zip" ? "Preparing PNGs…" : "Download PNGs (.zip)"}
                   onClick={() => void downloadThermal("zip")}
                 >
-                  {busy === "zip" ? "Preparing PNGs…" : "Download PNGs (.zip)"}
+                  <ZipIcon />
                 </button>
                 {canPrintNiimbot ? (
                   <button
@@ -431,11 +454,13 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
                 ) : null}
                 <button
                   type="button"
-                  className={canPrintNiimbot ? "btn btn-secondary" : "btn btn-primary"}
+                  className={`${canPrintNiimbot ? "btn btn-secondary" : "btn btn-primary"} wc-print-icon-btn`}
                   disabled={busy !== null}
+                  aria-label={busy === "pdf" ? "Preparing PDF" : "Download PDF (one label per page)"}
+                  title={busy === "pdf" ? "Preparing PDF…" : "Download PDF (one label per page)"}
                   onClick={() => void downloadThermal("pdf")}
                 >
-                  {busy === "pdf" ? "Preparing PDF…" : "Download PDF (one label per page)"}
+                  <PdfIcon />
                 </button>
               </>
             )}

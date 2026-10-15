@@ -20,13 +20,13 @@ export const SAMPLE_LABEL_LANDSCAPE_HEIGHT = 384;
 export const SAMPLE_LABEL_LANDSCAPE_MARGIN_TOP = 12;
 export const SAMPLE_LABEL_LANDSCAPE_MARGIN_X = 14;
 export const SAMPLE_LABEL_LANDSCAPE_MARGIN_BOTTOM = 10;
-export const SAMPLE_LABEL_LANDSCAPE_COL_W = 176;
-/** Inner inset. 10px at 203 dpi; the sheet frame scales it to about 15px at 300 dpi. */
-export const SAMPLE_LABEL_LANDSCAPE_COL_PAD = 10;
-export const SAMPLE_LABEL_LANDSCAPE_QR = 154;
+export const SAMPLE_LABEL_LANDSCAPE_COL_W = 208;
+/** Inner inset. The sheet frame scales its own pad. */
+export const SAMPLE_LABEL_LANDSCAPE_COL_PAD = 6;
+export const SAMPLE_LABEL_LANDSCAPE_QR = 194;
 export const SAMPLE_LABEL_LANDSCAPE_RULE = 2;
 /** Space between a landscape rule and the type beside it, at 203 dpi. */
-export const SAMPLE_LABEL_LANDSCAPE_RULE_PAD = 12;
+export const SAMPLE_LABEL_LANDSCAPE_RULE_PAD = 8;
 export const SAMPLE_LABEL_LANDSCAPE_BAND_H = 56;
 /** Column width minus the left and right inner padding. */
 export const SAMPLE_LABEL_LANDSCAPE_LOGO_MAX_W =
