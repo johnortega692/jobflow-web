@@ -5,7 +5,7 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("function refused(name, res)")) process.exit(0);
+if (src.includes("async function waitForPageEnd")) process.exit(0);
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -150,6 +150,16 @@ const finish = `  async function finishJob(model, target, onProgress) {
 const finishPatched = `  async function finishJob(model, target, onProgress) {
     const want = Math.max(1, target | 0);
     const reached = await waitPage(want, onProgress);
+    const end = await sendWait(0xf3, [0x01], 0xf4, 8000);
+    const endOk = !!(end && end.data && end.data.length && end.data[0] === 1);
+    logAlways(\`PrintEnd \${endOk ? "ok" : "not acknowledged"} page=\${_pageSeen == null ? "?" : _pageSeen}/\${want} row=\${_printRow}\`);
+    if (reached || endOk) return;
+    throw unconfirmed(\`printer counter stopped at page \${_pageSeen == null ? "?" : _pageSeen} of \${want} after \${PAGE_WAIT_MS}ms; PrintEnd was not acknowledged and the paper did not feed\`);
+  }`;
+
+const finishCurrent = `  async function finishJob(model, target, onProgress) {
+    const want = Math.max(1, target | 0);
+    const reached = await waitPage(want, onProgress);
     const end = await sendWait(0xf3, [0x01], 0xf4, 4000);
     const endOk = !!(end && end.data && end.data.length && end.data[0] === 1);
     logAlways(\`PrintEnd \${endOk ? "ok" : "not acknowledged"} page=\${_pageSeen == null ? "?" : _pageSeen}/\${want}\`);
@@ -237,7 +247,7 @@ const endOld = `    await sendImage(buf, H, stride);                            
       : \`\${prefix}PageEnd UNACKED after \${ackMs} ms (PAGE_ACK_MS)\`);
     return pageEnd != null;`;
 
-const endNew = `    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
+const endTimed = `    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
     logAlways(\`image sent \${H} rows\`);
 
     if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
@@ -252,6 +262,79 @@ const endNew = `    await sendImage(buf, H, stride);                            
       throw new Error(\`print stopped at \${why} after \${ackMs}ms. PrintEnd was sent once to release the printer; the label did not feed.\`);
     }
     return true;`;
+
+const endNew = `    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
+    logAlways(\`image sent \${H} rows\`);
+
+    if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
+
+    const pageEnd = await waitForPageEnd(H);
+    if (!pageEnd) {
+      const where = _printRow < 0 ? "before any row printed" : \`while printing row \${_printRow} of \${H}\`;
+      await endJob();
+      throw new Error(\`print stopped at PageEnd \${where}. PrintEnd was sent once to release the printer; the label did not feed.\`);
+    }
+    return true;`;
+
+const pageEndWait = `  let _printRow = -1;
+  async function nextPacket(timeoutMs) {
+    if (lastUnsolicited) {
+      const pending = lastUnsolicited;
+      lastUnsolicited = null;
+      return pending;
+    }
+    let entry;
+    const wait = new Promise((resolve) => { entry = registerWait(null, resolve); });
+    const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
+    if (!res) clearWait(entry);
+    if (!res && lastUnsolicited) {
+      const late = lastUnsolicited;
+      lastUnsolicited = null;
+      return late;
+    }
+    return res;
+  }
+
+  // 0xD3 is the B1's row counter. On an 80 mm label it is still climbing when a
+  // fixed 10s PageEnd wait gives up, and 0xE4 arrives only after the last row.
+  // Keep waiting while that counter moves. Stop only when it stalls or never starts.
+  async function waitForPageEnd(height) {
+    lastUnsolicited = null;
+    await send(0xe3, [0x01]);
+    const started = Date.now();
+    _printRow = -1;
+    let lastMove = started;
+    const hardCap = Math.max(PAGE_ACK_MS, 45000);
+    while (Date.now() - started < hardCap) {
+      const pkt = await nextPacket(400);
+      if (pkt && pkt.cmd === 0xe4) {
+        const why = refused("PageEnd", pkt);
+        if (why) {
+          logAlways(\`print stopped at \${why} after \${Date.now() - started}ms row=\${_printRow}\`);
+          return null;
+        }
+        logAlways(\`PageEnd ok in \${Date.now() - started}ms row=\${_printRow} of \${height}\`);
+        return pkt;
+      }
+      if (pkt && pkt.cmd === 0xd3 && pkt.data && pkt.data.length >= 2) {
+        const row = (pkt.data[0] << 8) | pkt.data[1];
+        if (row !== _printRow) {
+          _printRow = row;
+          lastMove = Date.now();
+          logAlways(\`printing row \${row} of \${height}\`);
+        }
+      } else if (pkt && pkt.cmd === 0xdb) {
+        logAlways(\`print stopped at PageEnd refused, printer error db \${hex(pkt.data || [])}\`);
+        return null;
+      }
+      if (_printRow < 0 && Date.now() - started >= PAGE_ACK_MS) return null;
+      if (_printRow >= 0 && _printRow < height - 1 && Date.now() - lastMove >= 5000) return null;
+    }
+    logAlways(\`print stopped at PageEnd after \${Date.now() - started}ms row=\${_printRow} of \${height}\`);
+    return null;
+  }
+
+  async function sendPagePacked(model, size, buf, stride, copies, onProgress, tag, deferAck) {`;
 
 const finishFalse = `  async function finishJob(model, target, onProgress) {
     const want = Math.max(1, target | 0);
@@ -268,6 +351,7 @@ const finishFalse = `  async function finishJob(model, target, onProgress) {
 if (src.includes(waitPage)) src = src.replace(waitPage, waitPagePatched);
 if (src.includes(finish)) src = src.replace(finish, finishPatched);
 if (src.includes(finishFalse)) src = src.replace(finishFalse, finishPatched);
+if (src.includes(finishCurrent)) src = src.replace(finishCurrent, finishPatched);
 src = src
   .replaceAll(
     "if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`)) && _pageSeen != null) {",
@@ -287,11 +371,18 @@ if (src.includes(bitmapOld)) src = src.replace(bitmapOld, bitmapNew);
 if (src.includes(beginOld)) src = src.replace(beginOld, beginNew);
 if (src.includes(pageOld)) src = src.replace(pageOld, pageNew);
 if (src.includes(endOld)) src = src.replace(endOld, endNew);
+if (src.includes(endTimed)) src = src.replace(endTimed, endNew);
+if (!src.includes("async function waitForPageEnd")) {
+  src = src.replace(
+    "  async function sendPagePacked(model, size, buf, stride, copies, onProgress, tag, deferAck) {",
+    pageEndWait,
+  );
+}
 src = src.replace(
   "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
   "return new Error(`print not confirmed: ${reason}`);",
 );
-if (!src.includes("function refused(name, res)") || src.includes("_pageSeen == null) return")) {
+if (!src.includes("function refused(name, res)") || !src.includes("async function waitForPageEnd") || src.includes("_pageSeen == null) return")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
 }
