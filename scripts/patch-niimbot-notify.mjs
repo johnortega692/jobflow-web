@@ -253,23 +253,44 @@ const endNew = `    await sendImage(buf, H, stride);                            
     }
     return true;`;
 
-if (!src.includes(waitPage) || !src.includes(finish) || !src.includes(bitmapOld) || !src.includes(beginOld) || !src.includes(pageOld) || !src.includes(endOld)) {
-  console.error("niimbot finish patch did not match the installed driver");
-  process.exit(1);
-}
+const finishFalse = `  async function finishJob(model, target, onProgress) {
+    const want = Math.max(1, target | 0);
+    const reached = await waitPage(want, onProgress);
+    // PageEnd already parked the label. PrintEnd is what feeds it out, and a B1 often
+    // never sends a page counter for that. An acknowledged PrintEnd, or a counter that
+    // never spoke at all, means the label was fed. A counter that did speak and stopped
+    // short is a real stall.
+    const end = await sendWait(0xf3, [0x01], 0xf4, 4000);
+    if (reached || end || _pageSeen == null) return;
+    throw unconfirmed(\`printer counter stopped at page \${_pageSeen} of \${want} after \${PAGE_WAIT_MS}ms\`);
+  }`;
 
+if (src.includes(waitPage)) src = src.replace(waitPage, waitPagePatched);
+if (src.includes(finish)) src = src.replace(finish, finishPatched);
+if (src.includes(finishFalse)) src = src.replace(finishFalse, finishPatched);
 src = src
-  .replace(waitPage, waitPagePatched)
-  .replace(finish, finishPatched)
-  .replace("    const buf = new Uint8Array(stride * h);\n    for (let y = 0; y < h; y++) {", "    const buf = new Uint8Array(stride * h);\n    let black = 0;\n    for (let y = 0; y < h; y++) {")
-  .replace(bitmapOld, bitmapNew)
-  .replace(beginOld, beginNew)
-  .replace(pageOld, pageNew)
-  .replace(endOld, endNew)
-  .replace(
-    "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
-    "return new Error(`print not confirmed: ${reason}`);",
+  .replaceAll(
+    "if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`)) && _pageSeen != null) {",
+    "if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`))) {",
+  )
+  .replaceAll(
+    "if (!problem && !await waitPage(N, onProgress) && _pageSeen != null) {",
+    "if (!problem && !await waitPage(N, onProgress)) {",
   );
+if (!src.includes("let black = 0;")) {
+  src = src.replace(
+    "    const buf = new Uint8Array(stride * h);\n    for (let y = 0; y < h; y++) {",
+    "    const buf = new Uint8Array(stride * h);\n    let black = 0;\n    for (let y = 0; y < h; y++) {",
+  );
+}
+if (src.includes(bitmapOld)) src = src.replace(bitmapOld, bitmapNew);
+if (src.includes(beginOld)) src = src.replace(beginOld, beginNew);
+if (src.includes(pageOld)) src = src.replace(pageOld, pageNew);
+if (src.includes(endOld)) src = src.replace(endOld, endNew);
+src = src.replace(
+  "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
+  "return new Error(`print not confirmed: ${reason}`);",
+);
 if (!src.includes("function refused(name, res)") || src.includes("_pageSeen == null) return")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
