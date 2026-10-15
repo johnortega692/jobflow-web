@@ -20,6 +20,8 @@ type NiimbotSize = {
 type NiimbotApi = {
   isSupported: () => boolean;
   connect: (model: NiimbotModel) => Promise<void>;
+  /** How long to wait for the printer to report the page finished. */
+  PAGE_WAIT_MS: number;
   printImage: (
     url: string,
     opts: { model: NiimbotModel; size: NiimbotSize; copies?: number; onProgress?: (status: string) => void },
@@ -58,6 +60,9 @@ function printFailure(error: unknown): string {
   }
   const message = error instanceof Error ? error.message : "Could not print on the NIIMBOT.";
   if (/cancel|chooser/i.test(message)) return "No printer was selected.";
+  if (/print not confirmed/i.test(message)) {
+    return "The printer didn't confirm the label finished. Check the paper before printing again.";
+  }
   return message;
 }
 
@@ -77,6 +82,7 @@ export async function printNiimbotLabels(
   if (!pending.length) throw new Error("Nothing to print.");
 
   onProgress?.("Connecting…");
+  api.PAGE_WAIT_MS = 60000;
   const connected = api.connect(B1_MODEL);
   const urls: string[] = [];
   try {

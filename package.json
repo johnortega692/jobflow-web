@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "postinstall": "node scripts/patch-niimbot-notify.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "supabase:login": "supabase login",
