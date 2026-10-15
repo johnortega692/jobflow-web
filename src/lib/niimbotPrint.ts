@@ -25,6 +25,8 @@ type NiimbotApi = {
   BUNDLE_MAX: number;
   /** How long to wait for the printer to report the page finished. */
   PAGE_WAIT_MS: number;
+  /** How long to wait for the PageEnd acknowledgement, in milliseconds. */
+  PAGE_ACK_MS: number;
   /** Upper bound for waiting on PageEnd and the feed, in milliseconds. */
   COMPLETION_MS: number;
   probe: (cmd: number, data?: number[], timeoutMs?: number) => Promise<{ cmd: number; data: number[] } | null>;
