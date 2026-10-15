@@ -5,7 +5,7 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("async function waitForPageEnd")) process.exit(0);
+if (src.includes("async function waitForPageEnd") && !src.includes("lastMove >= 5000")) process.exit(0);
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -295,17 +295,21 @@ const pageEndWait = `  let _printRow = -1;
     return res;
   }
 
-  // 0xD3 is the B1's row counter. On an 80 mm label it is still climbing when a
-  // fixed 10s PageEnd wait gives up, and 0xE4 arrives only after the last row.
-  // Keep waiting while that counter moves. Stop only when it stalls or never starts.
+  // This B1 sends one 0xD3 when PageEnd starts (row 199 of 640) and the next
+  // packet only when the page is done, about 12s later. A short silence is the
+  // print, not a stall. 0xE4 is the finished reply.
+  function pageEndDeadline(row, height, started) {
+    const remaining = Math.max(1, height - Math.max(0, row));
+    return Math.max(started + 20000, Date.now() + remaining * 80);
+  }
+
   async function waitForPageEnd(height) {
     lastUnsolicited = null;
     await send(0xe3, [0x01]);
     const started = Date.now();
     _printRow = -1;
-    let lastMove = started;
-    const hardCap = Math.max(PAGE_ACK_MS, 45000);
-    while (Date.now() - started < hardCap) {
+    let deadline = started + PAGE_ACK_MS;
+    while (Date.now() < deadline && Date.now() - started < 90000) {
       const pkt = await nextPacket(400);
       if (pkt && pkt.cmd === 0xe4) {
         const why = refused("PageEnd", pkt);
@@ -320,15 +324,14 @@ const pageEndWait = `  let _printRow = -1;
         const row = (pkt.data[0] << 8) | pkt.data[1];
         if (row !== _printRow) {
           _printRow = row;
-          lastMove = Date.now();
           logAlways(\`printing row \${row} of \${height}\`);
         }
+        deadline = row >= height - 1 ? Date.now() + 4000 : pageEndDeadline(row, height, started);
       } else if (pkt && pkt.cmd === 0xdb) {
         logAlways(\`print stopped at PageEnd refused, printer error db \${hex(pkt.data || [])}\`);
         return null;
       }
       if (_printRow < 0 && Date.now() - started >= PAGE_ACK_MS) return null;
-      if (_printRow >= 0 && _printRow < height - 1 && Date.now() - lastMove >= 5000) return null;
     }
     logAlways(\`print stopped at PageEnd after \${Date.now() - started}ms row=\${_printRow} of \${height}\`);
     return null;
@@ -378,6 +381,7 @@ if (!src.includes("async function waitForPageEnd")) {
     pageEndWait,
   );
 }
+src = src.replace("      if (_printRow >= 0 && _printRow < height - 1 && Date.now() - lastMove >= 5000) return null;\n", "");
 src = src.replace(
   "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
   "return new Error(`print not confirmed: ${reason}`);",
