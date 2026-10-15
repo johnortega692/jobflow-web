@@ -25,8 +25,8 @@ type NiimbotApi = {
   BUNDLE_MAX: number;
   /** How long to wait for the printer to report the page finished. */
   PAGE_WAIT_MS: number;
-  /** How long to wait for the printer to accept one page. */
-  PAGE_ACK_MS: number;
+  /** Upper bound for waiting on PageEnd and the feed, in milliseconds. */
+  COMPLETION_MS: number;
   probe: (cmd: number, data?: number[], timeoutMs?: number) => Promise<{ cmd: number; data: number[] } | null>;
   printImage: (
     url: string,
@@ -106,6 +106,7 @@ export async function printNiimbotLabels(
   api.BUNDLE_MAX = 0;
   api.PAGE_WAIT_MS = 25000;
   api.PAGE_ACK_MS = 10000;
+  api.COMPLETION_MS = 45000;
   const connected = api.connect(B1_MODEL);
   const urls: string[] = [];
   try {

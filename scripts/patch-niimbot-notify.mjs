@@ -5,7 +5,7 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("feed after PageEnd")) process.exit(0);
+if (src.includes("completion stamped")) process.exit(0);
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -149,6 +149,37 @@ const finish = `  async function finishJob(model, target, onProgress) {
 
 const finishPatched = `  async function finishJob(model, target, onProgress) {
     const want = Math.max(1, target | 0);
+    if (!_pageAck) {
+      throw unconfirmed(\`PageEnd was not acknowledged (printed row \${_printRow} of \${_pageRows}). PrintEnd was not sent\`);
+    }
+    onProgress && onProgress("feeding…");
+    stamp(\`PrintEnd f3 sent\`);
+    await send(0xf3, [0x01]);
+    const feedStart = Date.now();
+    const feedLimit = Math.min(20000, Math.max(8000, COMPLETION_MS | 0));
+    let feedAck = false;
+    while (Date.now() - feedStart < feedLimit) {
+      const pkt = await nextPacket(400);
+      if (!pkt) continue;
+      if (pkt.cmd === 0xd3 && pkt.data && pkt.data.length >= 2) noteRow(pkt.data, _pageRows);
+      else if (pkt.cmd === 0xf4) {
+        feedAck = !!(pkt.data && pkt.data.length && pkt.data[0] === 1);
+        stamp(\`PrintEnd f4 \${hex(pkt.data || [])} after \${Date.now() - feedStart}ms\`);
+        break;
+      }
+    }
+    const printed = _printRow >= _pageRows - 1;
+    stamp(\`completion stamped row=\${_printRow}/\${_pageRows} pageAck=true feedAck=\${feedAck} printed=\${printed} pages=\${want}\`);
+    if (!printed) {
+      throw unconfirmed(\`commands were acknowledged but the printer only reached row \${_printRow} of \${_pageRows}, so the label was not printed\`);
+    }
+    if (!feedAck) {
+      throw unconfirmed(\`the printer reached row \${_printRow} of \${_pageRows} but did not acknowledge the feed\`);
+    }
+  }`;
+
+const finishFed = `  async function finishJob(model, target, onProgress) {
+    const want = Math.max(1, target | 0);
     // 0xE4 already accepted the page. 0xF3 [1] -> 0xF4 [1] is the feed in the
     // niimbot-web-bluetooth b1 sequence. This B1 does not send 0xB3 before that,
     // and waiting for the page counter leaves the label parked under the head.
@@ -285,69 +316,82 @@ const endNew = `    await sendImage(buf, H, stride);                            
     const pageEnd = await waitForPageEnd(H);
     if (!pageEnd) {
       const where = _printRow < 0 ? "before any row printed" : \`while printing row \${_printRow} of \${H}\`;
+      throw new Error(\`print stopped at PageEnd \${where}. PrintEnd was not sent.\`);
+    }
+    return true;`;
+
+const endAbort = `    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
+    logAlways(\`image sent \${H} rows\`);
+
+    if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
+
+    const pageEnd = await waitForPageEnd(H);
+    if (!pageEnd) {
+      const where = _printRow < 0 ? "before any row printed" : \`while printing row \${_printRow} of \${H}\`;
       await endJob();
       throw new Error(\`print stopped at PageEnd \${where}. PrintEnd was sent once to release the printer; the label did not feed.\`);
     }
     return true;`;
 
 const pageEndWait = `  let _printRow = -1;
+  let _pageRows = 0;
+  let _pageAck = false;
+  let COMPLETION_MS = 45000;
+  function stamp(m) {
+    const d = new Date();
+    const p = (n, w = 2) => String(n).padStart(w, "0");
+    const clock = \`\${p(d.getHours())}:\${p(d.getMinutes())}:\${p(d.getSeconds())}.\${p(d.getMilliseconds(), 3)}\`;
+    logAlways(\`\${clock} t+\${Date.now() - (_t0 || Date.now())}ms \${m}\`);
+  }
+  function noteRow(data, height) {
+    const row = (data[0] << 8) | data[1];
+    const flag = data.length > 2 ? data[2] : -1;
+    if (row !== _printRow) _printRow = row;
+    stamp(\`d3 \${hex(data)} = printed row \${row} of \${height} flag=\${flag}\`);
+    return row;
+  }
   async function nextPacket(timeoutMs) {
-    if (lastUnsolicited) {
-      const pending = lastUnsolicited;
-      lastUnsolicited = null;
-      return pending;
-    }
+    if (rxQueue.length) return rxQueue.shift();
+    lastUnsolicited = null;
     let entry;
     const wait = new Promise((resolve) => { entry = registerWait(null, resolve); });
     const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
     if (!res) clearWait(entry);
-    if (!res && lastUnsolicited) {
-      const late = lastUnsolicited;
-      lastUnsolicited = null;
-      return late;
-    }
+    if (rxQueue.length) return rxQueue.shift();
     return res;
   }
 
-  // This B1 sends one 0xD3 when PageEnd starts (row 199 of 640) and the next
-  // packet only when the page is done, about 12s later. A short silence is the
-  // print, not a stall. 0xE4 is the finished reply.
-  function pageEndDeadline(row, height, started) {
-    const remaining = Math.max(1, height - Math.max(0, row));
-    return Math.max(started + 20000, Date.now() + remaining * 80);
-  }
-
+  // Protocol 3: PageEnd (0xE3 -> 0xE4) must be acknowledged before PrintEnd (0xF3).
+  // 0xD3 is the printed-row counter, big-endian. 00 c7 01 is row 199, not an error.
+  // e4 and f4 on this B1 arrive after the row counter reaches the last line.
   async function waitForPageEnd(height) {
+    _pageRows = height;
+    _pageAck = false;
+    _printRow = -1;
+    rxQueue.length = 0;
     lastUnsolicited = null;
+    const limit = Math.min(60000, Math.max(15000, COMPLETION_MS | 0));
+    stamp(\`PageEnd e3 sent, waiting up to \${limit}ms for e4 before PrintEnd\`);
     await send(0xe3, [0x01]);
     const started = Date.now();
-    _printRow = -1;
-    let deadline = started + PAGE_ACK_MS;
-    while (Date.now() < deadline && Date.now() - started < 90000) {
+    while (Date.now() - started < limit) {
       const pkt = await nextPacket(400);
-      if (pkt && pkt.cmd === 0xe4) {
+      if (!pkt) continue;
+      if (pkt.cmd === 0xd3 && pkt.data && pkt.data.length >= 2) noteRow(pkt.data, height);
+      else if (pkt.cmd === 0xe4) {
         const why = refused("PageEnd", pkt);
-        if (why) {
-          logAlways(\`print stopped at \${why} after \${Date.now() - started}ms row=\${_printRow}\`);
-          return null;
-        }
-        logAlways(\`PageEnd ok in \${Date.now() - started}ms row=\${_printRow} of \${height}\`);
+        stamp(why
+          ? \`PageEnd e4 refused \${hex(pkt.data || [])} after \${Date.now() - started}ms row=\${_printRow}\`
+          : \`PageEnd e4 \${hex(pkt.data || [])} after \${Date.now() - started}ms row=\${_printRow} of \${height}\`);
+        if (why) return null;
+        _pageAck = true;
         return pkt;
-      }
-      if (pkt && pkt.cmd === 0xd3 && pkt.data && pkt.data.length >= 2) {
-        const row = (pkt.data[0] << 8) | pkt.data[1];
-        if (row !== _printRow) {
-          _printRow = row;
-          logAlways(\`d3 \${hex(pkt.data)} = printed row \${row} of \${height}\`);
-        }
-        deadline = row >= height - 1 ? Date.now() + 4000 : pageEndDeadline(row, height, started);
-      } else if (pkt && pkt.cmd === 0xdb) {
-        logAlways(\`print stopped at PageEnd refused, printer error db \${hex(pkt.data || [])}\`);
+      } else if (pkt.cmd === 0xdb) {
+        stamp(\`PageEnd refused, printer error db \${hex(pkt.data || [])}\`);
         return null;
       }
-      if (_printRow < 0 && Date.now() - started >= PAGE_ACK_MS) return null;
     }
-    logAlways(\`print stopped at PageEnd after \${Date.now() - started}ms row=\${_printRow} of \${height}\`);
+    stamp(\`PageEnd timed out after \${Date.now() - started}ms row=\${_printRow} of \${height}; PrintEnd not sent\`);
     return null;
   }
 
@@ -370,6 +414,7 @@ if (src.includes(finish)) src = src.replace(finish, finishPatched);
 if (src.includes(finishFalse)) src = src.replace(finishFalse, finishPatched);
 if (src.includes(finishCurrent)) src = src.replace(finishCurrent, finishPatched);
 if (src.includes(finishWait)) src = src.replace(finishWait, finishPatched);
+if (src.includes(finishFed)) src = src.replace(finishFed, finishPatched);
 src = src
   .replaceAll(
     "if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`)) && _pageSeen != null) {",
@@ -390,13 +435,45 @@ if (src.includes(beginOld)) src = src.replace(beginOld, beginNew);
 if (src.includes(pageOld)) src = src.replace(pageOld, pageNew);
 if (src.includes(endOld)) src = src.replace(endOld, endNew);
 if (src.includes(endTimed)) src = src.replace(endTimed, endNew);
+if (src.includes(endAbort)) src = src.replace(endAbort, endNew);
 if (!src.includes("async function waitForPageEnd")) {
   src = src.replace(
     "  async function sendPagePacked(model, size, buf, stride, copies, onProgress, tag, deferAck) {",
     pageEndWait,
   );
 }
-src = src.replace("      if (_printRow >= 0 && _printRow < height - 1 && Date.now() - lastMove >= 5000) return null;\n", "");
+if (!src.includes("let rxQueue")) {
+  src = src.replace(
+    "let lastUnsolicited = null; // last unsolicited response (e.g. status during the poll)",
+    "let lastUnsolicited = null; // last unsolicited response (e.g. status during the poll)\n  let rxQueue = [];",
+  );
+}
+src = src.replace(
+  `    } else {
+      lastUnsolicited = { cmd, data };
+    }`,
+  `    } else {
+      const pkt = { cmd, data };
+      rxQueue.push(pkt);
+      if (rxQueue.length > 32) rxQueue.shift();
+      lastUnsolicited = pkt;
+    }`,
+);
+if (!src.includes("get COMPLETION_MS()")) {
+  src = src.replace(
+    "get PAGE_ACK_MS() { return PAGE_ACK_MS; }, set PAGE_ACK_MS(v) { PAGE_ACK_MS = Math.max(1, v | 0); },",
+    "get PAGE_ACK_MS() { return PAGE_ACK_MS; }, set PAGE_ACK_MS(v) { PAGE_ACK_MS = Math.max(1, v | 0); },\n    get COMPLETION_MS() { return COMPLETION_MS; }, set COMPLETION_MS(v) { COMPLETION_MS = Math.min(60000, Math.max(8000, v | 0)); },",
+  );
+}
+src = src.replace(/async function waitForPageEnd\(height\) \{[\s\S]*?\n  \}\n/, `${pageEndWait.match(/async function waitForPageEnd\(height\) \{[\s\S]*\n  \}\n/)[0]}`);
+if (!src.includes("function stamp(m)")) {
+  const helpers = pageEndWait.slice(pageEndWait.indexOf("  let _pageRows"), pageEndWait.indexOf("  async function nextPacket"));
+  src = src.replace("  async function waitForPageEnd(height) {", `${helpers}  async function waitForPageEnd(height) {`);
+}
+const nextPacketNew = pageEndWait.match(/async function nextPacket\(timeoutMs\) \{[\s\S]*?\n  \}\n/);
+if (nextPacketNew && !src.includes("if (rxQueue.length) return rxQueue.shift();")) {
+  src = src.replace(/async function nextPacket\(timeoutMs\) \{[\s\S]*?\n  \}\n/, nextPacketNew[0]);
+}
 src = src.replace(
   "logAlways(`printing row ${row} of ${height}`);",
   "logAlways(`d3 ${hex(pkt.data)} = printed row ${row} of ${height}`);",
@@ -430,7 +507,7 @@ src = src.replace(
   "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
   "return new Error(`print not confirmed: ${reason}`);",
 );
-if (!src.includes("function refused(name, res)") || !src.includes("async function waitForPageEnd") || !src.includes("feed after PageEnd") || src.includes("_pageSeen == null) return")) {
+if (!src.includes("function refused(name, res)") || !src.includes("completion stamped") || !src.includes("PrintEnd was not sent") || src.includes("_pageSeen == null) return")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
 }
