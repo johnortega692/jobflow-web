@@ -22,6 +22,8 @@ type NiimbotApi = {
   connect: (model: NiimbotModel) => Promise<void>;
   /** How long to wait for the printer to report the page finished. */
   PAGE_WAIT_MS: number;
+  /** How long to wait for the printer to accept one page. */
+  PAGE_ACK_MS: number;
   printImage: (
     url: string,
     opts: { model: NiimbotModel; size: NiimbotSize; copies?: number; onProgress?: (status: string) => void },
@@ -82,7 +84,8 @@ export async function printNiimbotLabels(
   if (!pending.length) throw new Error("Nothing to print.");
 
   onProgress?.("Connecting…");
-  api.PAGE_WAIT_MS = 60000;
+  api.PAGE_WAIT_MS = 10000;
+  api.PAGE_ACK_MS = 20000;
   const connected = api.connect(B1_MODEL);
   const urls: string[] = [];
   try {
