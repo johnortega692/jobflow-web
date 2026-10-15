@@ -5,7 +5,7 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("async function waitForPageEnd") && !src.includes("lastMove >= 5000")) process.exit(0);
+if (src.includes("feed after PageEnd")) process.exit(0);
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -148,6 +148,20 @@ const finish = `  async function finishJob(model, target, onProgress) {
   }`;
 
 const finishPatched = `  async function finishJob(model, target, onProgress) {
+    const want = Math.max(1, target | 0);
+    // 0xE4 already accepted the page. 0xF3 [1] -> 0xF4 [1] is the feed in the
+    // niimbot-web-bluetooth b1 sequence. This B1 does not send 0xB3 before that,
+    // and waiting for the page counter leaves the label parked under the head.
+    onProgress && onProgress("feeding…");
+    const end = await sendWait(0xf3, [0x01], 0xf4, 8000);
+    const endOk = !!(end && end.data && end.data.length && end.data[0] === 1);
+    logAlways(\`feed after PageEnd row=\${_printRow} pages=\${want} PrintEnd \${endOk ? "ok " + hex(end.data || []) : "not acknowledged"}\`);
+    if (!endOk) {
+      throw unconfirmed(\`PrintEnd (0xF3) was not acknowledged, so the label was not fed (printed row \${_printRow} of the page)\`);
+    }
+  }`;
+
+const finishWait = `  async function finishJob(model, target, onProgress) {
     const want = Math.max(1, target | 0);
     const reached = await waitPage(want, onProgress);
     const end = await sendWait(0xf3, [0x01], 0xf4, 8000);
@@ -324,7 +338,7 @@ const pageEndWait = `  let _printRow = -1;
         const row = (pkt.data[0] << 8) | pkt.data[1];
         if (row !== _printRow) {
           _printRow = row;
-          logAlways(\`printing row \${row} of \${height}\`);
+          logAlways(\`d3 \${hex(pkt.data)} = printed row \${row} of \${height}\`);
         }
         deadline = row >= height - 1 ? Date.now() + 4000 : pageEndDeadline(row, height, started);
       } else if (pkt && pkt.cmd === 0xdb) {
@@ -355,6 +369,7 @@ if (src.includes(waitPage)) src = src.replace(waitPage, waitPagePatched);
 if (src.includes(finish)) src = src.replace(finish, finishPatched);
 if (src.includes(finishFalse)) src = src.replace(finishFalse, finishPatched);
 if (src.includes(finishCurrent)) src = src.replace(finishCurrent, finishPatched);
+if (src.includes(finishWait)) src = src.replace(finishWait, finishPatched);
 src = src
   .replaceAll(
     "if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`)) && _pageSeen != null) {",
@@ -383,10 +398,39 @@ if (!src.includes("async function waitForPageEnd")) {
 }
 src = src.replace("      if (_printRow >= 0 && _printRow < height - 1 && Date.now() - lastMove >= 5000) return null;\n", "");
 src = src.replace(
+  "logAlways(`printing row ${row} of ${height}`);",
+  "logAlways(`d3 ${hex(pkt.data)} = printed row ${row} of ${height}`);",
+);
+const sendImageOld = `  async function sendImage(buf, h, stride) {
+    let r = 0;
+    while (r < h) {`;
+const sendImageNew = `  async function sendImage(buf, h, stride) {
+    let r = 0;
+    let packets = 0;
+    let covered = 0;
+    while (r < h) {`;
+if (src.includes(sendImageOld) && !src.includes("let packets = 0;")) src = src.replace(sendImageOld, sendImageNew);
+src = src.replace(
+  `      r += run;
+    }
+    await flushBundle();   // push any rows still pending before PageEnd
+  }`,
+  `      packets++;
+      covered += run;
+      r += run;
+    }
+    await flushBundle();   // push any rows still pending before PageEnd
+    let black = 0;
+    for (let i = 0; i < buf.length; i++) { let v = buf[i]; while (v) { black += v & 1; v >>= 1; } }
+    logAlways(\`image packets=\${packets} rows=\${covered}/\${h} black=\${black} stride=\${stride}\`);
+    if (covered !== h) throw new Error(\`image covered \${covered} of \${h} rows\`);
+  }`,
+);
+src = src.replace(
   "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
   "return new Error(`print not confirmed: ${reason}`);",
 );
-if (!src.includes("function refused(name, res)") || !src.includes("async function waitForPageEnd") || src.includes("_pageSeen == null) return")) {
+if (!src.includes("function refused(name, res)") || !src.includes("async function waitForPageEnd") || !src.includes("feed after PageEnd") || src.includes("_pageSeen == null) return")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
 }
