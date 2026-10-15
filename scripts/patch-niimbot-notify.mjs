@@ -5,7 +5,7 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("status poll before PrintEnd")) process.exit(0);
+if (src.includes("batch streams the next page during the print")) process.exit(0);
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -370,6 +370,7 @@ const endTimed = `    await sendImage(buf, H, stride);                          
 const endNew = `    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
     logAlways(\`image sent \${H} rows\`);
 
+    _pageRows = H;
     if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
 
     const pageEnd = await waitForPageEnd(H);
@@ -645,7 +646,115 @@ src = src.replace(
   "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
   "return new Error(`print not confirmed: ${reason}`);",
 );
-if (!src.includes("function refused(name, res)") || !src.includes("status poll before PrintEnd") || !src.includes("function noteStatus(") || !src.includes("function niimblueCounts(") || !src.includes("PrintEnd was not sent") || src.includes("_pageSeen == null) return") || src.includes("data[2] = 0;")) {
+if (!src.includes("_pageRows = H;")) {
+  src = src.replace(
+    "    if (deferAck) return { ackPromise: sendPageEndAsync(tag) };",
+    "    _pageRows = H;\n    if (deferAck) return { ackPromise: sendPageEndAsync(tag) };",
+  );
+}
+const pageEndAsyncOld = `  async function sendPageEndAsync(tag) {
+    const ackT0 = Date.now();
+    const pageEnd = await sendWait(0xe3, [0x01], 0xe4, PAGE_ACK_MS);          // PageEnd (0xE3)
+    const ackMs = Date.now() - ackT0;
+    const prefix = tag ? \`\${tag}: \` : "";
+    tlog(pageEnd != null
+      ? \`\${prefix}PageEnd acked in \${ackMs} ms\`
+      : \`\${prefix}PageEnd UNACKED after \${ackMs} ms (PAGE_ACK_MS)\`);
+    return pageEnd != null;
+  }`;
+const pageEndAsyncNew = `  async function sendPageEndAsync(tag) {
+    const limit = Math.min(60000, Math.max(15000, COMPLETION_MS | 0));
+    const ackT0 = Date.now();
+    stamp(\`PageEnd e3 sent, waiting up to \${limit}ms for e4 while the next page is sent\`);
+    const pageEnd = await sendWait(0xe3, [0x01], 0xe4, limit);
+    const ackMs = Date.now() - ackT0;
+    const prefix = tag ? \`\${tag}: \` : "";
+    const why = refused("PageEnd", pageEnd);
+    stamp(why
+      ? \`\${prefix}PageEnd e4 missing after \${ackMs}ms row=\${_printRow}\`
+      : \`\${prefix}PageEnd e4 \${hex((pageEnd && pageEnd.data) || [])} after \${ackMs}ms row=\${_printRow}\`);
+    return !why;
+  }`;
+if (src.includes(pageEndAsyncOld)) src = src.replace(pageEndAsyncOld, pageEndAsyncNew);
+const batchOld = `    // Single job for the whole batch (both tasks): pages stream back-to-back, no
+    // retract between. The B1 (protocol 3) supports this natively — printStart7b
+    // with totalPages>1 parks the paper at the printhead after each PageEnd and only
+    // feeds out on the final PrintEnd (verified against niimbluelib's B1PrintTask).
+    await beginJob(model, N, onProgress, density);`;
+const batchNew = `    // batch streams the next page during the print. 0xE4 on this B1 arrives with
+    // the last printed row, so waiting for it before the next image leaves a gap
+    // and a separate PrintEnd retracts the paper. One PrintEnd feeds the batch.
+    await beginJob(model, N, onProgress, density);`;
+if (src.includes(batchOld)) src = src.replace(batchOld, batchNew);
+const batchLoopOld = `    tlog(\`job started (\${N} pages)\`);
+    // Anything that means "the printer stopped confirming" stops the loop. Sending more
+    // pages into a printer that is not keeping up is how a batch ends up short AND
+    // desynchronised — the 4-of-5 run on 2026-08-13 came out with every label numbered 1.
+    let problem = null;
+    for (let i = 0; i < N && !problem; i++) {
+      const tag = \`label \${i + 1}/\${N}\`;
+      onProgress && onProgress(\`\${tag}: sending…\`);
+      const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px, offsetY);
+      tlog(\`page \${i}: start sending\`);
+      const acked = await sendPagePacked(model, size, buf, stride, 1,
+        (s) => onProgress && onProgress(\`\${tag}: \${s}\`), tag);
+      tlog(acked ? \`page \${i}: PageEnd acked\` : \`page \${i}: sent but PageEnd went UNACKED\`);
+      if (!acked) { problem = \`page \${i + 1} of \${N} was never acknowledged after \${PAGE_ACK_MS}ms (no PageEnd ack)\`; break; }
+      // Send page i, THEN wait for page i-LOOKAHEAD to finish — so the just-sent
+      // page is already buffered before the printer needs it (no inter-label stop).
+      if (i - LOOKAHEAD >= 0) {
+        const want = i - LOOKAHEAD + 1;
+        if (!await waitPage(want, (s) => onProgress && onProgress(\`\${tag}: \${s}\`))) {
+          problem = \`printer counter stalled at page \${_pageSeen == null ? "?" : _pageSeen} of \${want} while streaming (\${PAGE_WAIT_MS}ms)\`;
+        }
+      }
+    }
+    if (!problem && !await waitPage(N, onProgress)) {                       // drain remaining pages
+      problem = \`printer counter stopped at page \${_pageSeen == null ? "?" : _pageSeen} of \${N} after \${PAGE_WAIT_MS}ms\`;
+    }
+    // PrintEnd goes out either way — it is what feeds out and retracts the paper.
+    // The throw comes after, never instead. (See finishJob for the same ordering.)
+    tlog(problem ? \`job UNCONFIRMED (\${problem}); sending PrintEnd anyway\` : \`all \${N} pages printed; sending PrintEnd\`);
+    await endJob();
+    if (problem) throw unconfirmed(problem);`;
+const batchLoopNew = `    tlog(\`job started (\${N} pages, next page streams during the print)\`);
+    let problem = null;
+    const pending = [];
+    try {
+      for (let i = 0; i < N && !problem; i++) {
+        const tag = \`label \${i + 1}/\${N}\`;
+        onProgress && onProgress(\`\${tag}: sending…\`);
+        const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px, offsetY);
+        tlog(\`page \${i}: start sending\`);
+        const sent = await sendPagePacked(model, size, buf, stride, 1,
+          (s) => onProgress && onProgress(\`\${tag}: \${s}\`), tag, true);
+        pending.push(sent.ackPromise);
+        if (pending.length > 1) {
+          const acked = await pending.shift();
+          if (!acked) problem = \`page \${i} of \${N} was never acknowledged (no PageEnd ack)\`;
+        }
+      }
+      while (pending.length && !problem) {
+        const acked = await pending.shift();
+        if (!acked) problem = \`a page was never acknowledged (no PageEnd ack)\`;
+      }
+      if (problem) {
+        stamp(\`batch stopped (\${problem}); PrintEnd once, job not resent\`);
+        await send(0xf3, [0x01]);
+        _pageAck = true;
+        throw unconfirmed(problem);
+      }
+      _pageAck = true;
+      await finishJob(model, N, onProgress);
+    } catch (error) {
+      if (!_pageAck) {
+        stamp(\`batch failed before the feed; PrintEnd once, job not resent\`);
+        try { await send(0xf3, [0x01]); } catch (releaseError) { logAlways(\`PrintEnd after a failed batch: \${releaseError && releaseError.message ? releaseError.message : releaseError}\`); }
+      }
+      throw error;
+    }`;
+if (src.includes(batchLoopOld)) src = src.replace(batchLoopOld, batchLoopNew);
+if (!src.includes("function refused(name, res)") || !src.includes("batch streams the next page during the print") || !src.includes("function noteStatus(") || !src.includes("function niimblueCounts(") || !src.includes("PrintEnd was not sent") || src.includes("_pageSeen == null) return") || src.includes("data[2] = 0;")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
 }

@@ -34,6 +34,10 @@ type NiimbotApi = {
     url: string,
     opts: { model: NiimbotModel; size: NiimbotSize; copies?: number; onProgress?: (status: string) => void },
   ) => Promise<void>;
+  printBatch: (
+    urls: string[],
+    opts: { model: NiimbotModel; size: NiimbotSize; onProgress?: (status: string) => void },
+  ) => Promise<void>;
 };
 
 const B1_MODEL: NiimbotModel = {
@@ -174,16 +178,22 @@ export async function printNiimbotLabels(
       `[niimbot] print page ${size.w_px}×${size.h_px} (design ${SAMPLE_LABEL_WIDTH}×${SAMPLE_LABEL_HEIGHT}, white columns past the 384-dot head)`,
     );
     const total = pages.reduce((sum, page) => sum + page.copies, 0);
-    let done = 0;
-    for (const page of pages) {
-      onProgress?.(`Printing ${done + 1} of ${total}…`);
-      await api.printImage(page.url, {
+    if (pages.length === 1) {
+      onProgress?.(`Printing 1 of ${total}…`);
+      await api.printImage(pages[0].url, {
         model,
         size,
-        copies: page.copies,
-        onProgress: () => onProgress?.(`Printing ${Math.min(total, done + 1)} of ${total}…`),
+        copies: pages[0].copies,
+        onProgress: () => onProgress?.(`Printing 1 of ${total}…`),
       });
-      done += page.copies;
+    } else {
+      const queued = pages.flatMap((page) => Array.from({ length: page.copies }, () => page.url));
+      onProgress?.(`Printing ${queued.length} labels…`);
+      await api.printBatch(queued, {
+        model,
+        size,
+        onProgress: (status) => onProgress?.(status),
+      });
     }
     onProgress?.(`Printed ${total} label${total === 1 ? "" : "s"}.`);
   } catch (error) {
