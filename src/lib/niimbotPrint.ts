@@ -20,10 +20,14 @@ type NiimbotSize = {
 type NiimbotApi = {
   isSupported: () => boolean;
   connect: (model: NiimbotModel) => Promise<void>;
+  DEBUG: boolean;
+  /** 0 sends one protocol frame per Bluetooth write. */
+  BUNDLE_MAX: number;
   /** How long to wait for the printer to report the page finished. */
   PAGE_WAIT_MS: number;
   /** How long to wait for the printer to accept one page. */
   PAGE_ACK_MS: number;
+  probe: (cmd: number, data?: number[], timeoutMs?: number) => Promise<{ cmd: number; data: number[] } | null>;
   printImage: (
     url: string,
     opts: { model: NiimbotModel; size: NiimbotSize; copies?: number; onProgress?: (status: string) => void },
@@ -62,10 +66,24 @@ function printFailure(error: unknown): string {
   }
   const message = error instanceof Error ? error.message : "Could not print on the NIIMBOT.";
   if (/cancel|chooser/i.test(message)) return "No printer was selected.";
-  if (/print not confirmed/i.test(message)) {
-    return "The printer didn't confirm the label finished. Check the paper before printing again.";
-  }
   return message;
+}
+
+const KNOWN_LABEL_TYPES = new Set([1, 2, 3, 4, 5, 6, 10]);
+
+function readU16(data: number[], offset: number): number {
+  return ((data[offset] ?? 0) << 8) | (data[offset + 1] ?? 0);
+}
+
+/** RFID paper reply: gap px, total height px, type, then millimetres × 10. */
+function readPaperRoll(data: number[] | undefined): { labelType: number; heightPx: number; heightMm: number; widthMm: number } | null {
+  if (!data || data.length < 18) return null;
+  const heightPx = readU16(data, 2);
+  const labelType = data[4] ?? 0;
+  const heightMm = readU16(data, 7) / 10;
+  const widthMm = readU16(data, 11) / 10;
+  if (!KNOWN_LABEL_TYPES.has(labelType) || heightPx < 80 || heightPx > 2400) return null;
+  return { labelType, heightPx, heightMm, widthMm };
 }
 
 /**
@@ -84,12 +102,31 @@ export async function printNiimbotLabels(
   if (!pending.length) throw new Error("Nothing to print.");
 
   onProgress?.("Connecting…");
-  api.PAGE_WAIT_MS = 10000;
-  api.PAGE_ACK_MS = 20000;
+  api.DEBUG = true;
+  api.BUNDLE_MAX = 0;
+  api.PAGE_WAIT_MS = 25000;
+  api.PAGE_ACK_MS = 10000;
   const connected = api.connect(B1_MODEL);
   const urls: string[] = [];
   try {
     await connected;
+    const paper = readPaperRoll((await api.probe(0x59, [0x01], 800))?.data);
+    let model = B1_MODEL;
+    let size = B1_50X80;
+    if (paper) {
+      console.log(
+        `[niimbot] roll ${paper.widthMm}×${paper.heightMm} mm type=${paper.labelType} height=${paper.heightPx}px`,
+      );
+      if (Math.abs(paper.heightPx - SAMPLE_LABEL_HEIGHT) > 48) {
+        throw new Error(
+          `The roll in the printer is ${paper.widthMm} × ${paper.heightMm} mm. This label is 50 × 80 mm, so the printer will not feed it.`,
+        );
+      }
+      model = { ...B1_MODEL, label_type: paper.labelType };
+      size = { ...B1_50X80, h_px: paper.heightPx, w_px: SAMPLE_LABEL_WIDTH };
+    } else {
+      console.log("[niimbot] roll size not reported; using 50×80 mm gap labels, 384×640 at 203 dpi");
+    }
     onProgress?.("Drawing labels…");
     const pages: { url: string; copies: number }[] = [];
     for (const job of pending) {
@@ -103,8 +140,8 @@ export async function printNiimbotLabels(
     for (const page of pages) {
       onProgress?.(`Printing ${done + 1} of ${total}…`);
       await api.printImage(page.url, {
-        model: B1_MODEL,
-        size: B1_50X80,
+        model,
+        size,
         copies: page.copies,
         onProgress: () => onProgress?.(`Printing ${Math.min(total, done + 1)} of ${total}…`),
       });

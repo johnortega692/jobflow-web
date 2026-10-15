@@ -5,7 +5,7 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("_pageSeen == null) return")) process.exit(0);
+if (src.includes("function refused(name, res)")) process.exit(0);
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -150,31 +150,127 @@ const finish = `  async function finishJob(model, target, onProgress) {
 const finishPatched = `  async function finishJob(model, target, onProgress) {
     const want = Math.max(1, target | 0);
     const reached = await waitPage(want, onProgress);
-    // PageEnd already parked the label. PrintEnd is what feeds it out, and a B1 often
-    // never sends a page counter for that. An acknowledged PrintEnd, or a counter that
-    // never spoke at all, means the label was fed. A counter that did speak and stopped
-    // short is a real stall.
     const end = await sendWait(0xf3, [0x01], 0xf4, 4000);
-    if (reached || end || _pageSeen == null) return;
-    throw unconfirmed(\`printer counter stopped at page \${_pageSeen} of \${want} after \${PAGE_WAIT_MS}ms\`);
+    const endOk = !!(end && end.data && end.data.length && end.data[0] === 1);
+    logAlways(\`PrintEnd \${endOk ? "ok" : "not acknowledged"} page=\${_pageSeen == null ? "?" : _pageSeen}/\${want}\`);
+    if (!reached) {
+      throw unconfirmed(\`printer counter stopped at page \${_pageSeen == null ? "?" : _pageSeen} of \${want} after \${PAGE_WAIT_MS}ms; PrintEnd \${endOk ? "was acknowledged but the paper did not finish" : "was not acknowledged and the paper did not feed"}\`);
+    }
   }`;
 
-if (!src.includes(waitPage) || !src.includes(finish)) {
+const bitmapOld = `        if (px[i + 3] > 32 && lum < 128) buf[y * stride + (x >> 3)] |= 0x80 >> (x & 7);`;
+const bitmapNew = `        if (px[i + 3] > 32 && lum < 128) {
+          buf[y * stride + (x >> 3)] |= 0x80 >> (x & 7);
+          black++;
+        }`;
+
+const beginOld = `  async function beginJob(model, totalPages, onProgress, density) {
+    onProgress && onProgress("configuring…");
+    await sendWait(0x21, [density], 0x31, 1000);                             // SetDensity
+    await sendWait(0x23, [model.label_type], 0x33, 1000);                   // SetLabelType
+    const n = Math.max(1, totalPages | 0);
+    const start = isB1(model)
+      ? [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0]                          // printStart 7b
+      : [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0, model.speed, 0];         // printStart 9b (…, speed, flag)
+    await sendWait(0x01, start, 0x02, 2000);                                // PrintStart
+  }`;
+
+const beginNew = `  // A setup reply is success only when data[0] === 1. Any other payload, a 0xDB
+  // print-error, or silence means the printer did not accept that step. Do not
+  // continue, and do not send the command again.
+  function refused(name, res) {
+    if (res && res.cmd === 0xdb) return \`\${name} refused, printer error db \${hex(res.data || [])}\`;
+    if (!res) {
+      const err = lastUnsolicited && lastUnsolicited.cmd === 0xdb ? lastUnsolicited : null;
+      if (err) { lastUnsolicited = null; return \`\${name} refused, printer error db \${hex(err.data || [])}\`; }
+      return \`\${name} got no response\`;
+    }
+    if (!res.data || !res.data.length || res.data[0] !== 1) return \`\${name} refused (\${hex(res.data || [])})\`;
+    logAlways(\`\${name} ok \${hex(res.data || [])}\`);
+    return "";
+  }
+  function requireAccepted(name, res) {
+    const why = refused(name, res);
+    if (why) throw new Error(\`print stopped at \${why}\`);
+  }
+
+  async function beginJob(model, totalPages, onProgress, density) {
+    onProgress && onProgress("configuring…");
+    requireAccepted("SetDensity", await sendWait(0x21, [density], 0x31, 1000));
+    requireAccepted("SetLabelType", await sendWait(0x23, [model.label_type], 0x33, 1000));
+    const n = Math.max(1, totalPages | 0);
+    const start = isB1(model)
+      ? [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0]                          // printStart 7b
+      : [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0, model.speed, 0];         // printStart 9b (…, speed, flag)
+    requireAccepted("PrintStart", await sendWait(0x01, start, 0x02, 2000));
+    logAlways(\`PrintStart pages=\${n} labelType=\${model.label_type} task=\${model.task || "?"}\`);
+  }`;
+
+const pageOld = `    if (isB1(model)) {
+      await sendWait(0x03, [0x01], 0x04, 1000);                             // PageStart (B1 only)
+      await sendWait(0x13, [
+        (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff, (c >> 8) & 0xff, c & 0xff,
+      ], 0x14, 2000);                                                       // SetPageSize 6b (rows, cols, copies)
+    } else {`;
+
+const pageNew = `    logAlways(\`page \${W}×\${H}px copies=\${c}\`);
+    if (isB1(model)) {
+      requireAccepted("PageStart", await sendWait(0x03, [0x01], 0x04, 1000));
+      requireAccepted("SetPageSize", await sendWait(0x13, [
+        (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff, (c >> 8) & 0xff, c & 0xff,
+      ], 0x14, 2000));                                                      // SetPageSize 6b (rows, cols, copies)
+    } else {`;
+
+const endOld = `    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
+
+    if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
+
+    // RETURN whether PageEnd was acknowledged. Discarding this is how a page that the
+    // printer never confirmed still got logged as buffered and acked, directly under the
+    // ⚠ warning saying it had not been.
+    const ackT0 = Date.now();
+    const pageEnd = await sendWait(0xe3, [0x01], 0xe4, PAGE_ACK_MS);          // PageEnd (0xE3)
+    const ackMs = Date.now() - ackT0;
+    const prefix = tag ? \`\${tag}: \` : "";
+    tlog(pageEnd != null
+      ? \`\${prefix}PageEnd acked in \${ackMs} ms\`
+      : \`\${prefix}PageEnd UNACKED after \${ackMs} ms (PAGE_ACK_MS)\`);
+    return pageEnd != null;`;
+
+const endNew = `    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
+    logAlways(\`image sent \${H} rows\`);
+
+    if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
+
+    const ackT0 = Date.now();
+    const pageEnd = await sendWait(0xe3, [0x01], 0xe4, PAGE_ACK_MS);          // PageEnd (0xE3)
+    const ackMs = Date.now() - ackT0;
+    const why = refused("PageEnd", pageEnd);
+    logAlways(why ? \`print stopped at \${why} after \${ackMs}ms\` : \`PageEnd ok in \${ackMs}ms\`);
+    if (why) {
+      await endJob();
+      throw new Error(\`print stopped at \${why} after \${ackMs}ms. PrintEnd was sent once to release the printer; the label did not feed.\`);
+    }
+    return true;`;
+
+if (!src.includes(waitPage) || !src.includes(finish) || !src.includes(bitmapOld) || !src.includes(beginOld) || !src.includes(pageOld) || !src.includes(endOld)) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
 }
 
-src = src.replace(waitPage, waitPagePatched).replace(finish, finishPatched);
 src = src
-  .replaceAll(
-    "if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`))) {",
-    "if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`)) && _pageSeen != null) {",
-  )
-  .replaceAll(
-    "if (!problem && !await waitPage(N, onProgress)) {",
-    "if (!problem && !await waitPage(N, onProgress) && _pageSeen != null) {",
+  .replace(waitPage, waitPagePatched)
+  .replace(finish, finishPatched)
+  .replace("    const buf = new Uint8Array(stride * h);\n    for (let y = 0; y < h; y++) {", "    const buf = new Uint8Array(stride * h);\n    let black = 0;\n    for (let y = 0; y < h; y++) {")
+  .replace(bitmapOld, bitmapNew)
+  .replace(beginOld, beginNew)
+  .replace(pageOld, pageNew)
+  .replace(endOld, endNew)
+  .replace(
+    "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
+    "return new Error(`print not confirmed: ${reason}`);",
   );
-if (!src.includes("_pageSeen == null) return") || src.includes("if (!problem && !await waitPage(N, onProgress)) {")) {
+if (!src.includes("function refused(name, res)") || src.includes("_pageSeen == null) return")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
 }
