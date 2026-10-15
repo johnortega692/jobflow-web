@@ -44,9 +44,16 @@ const B1_MODEL: NiimbotModel = {
   speed: 1,
 };
 
+/**
+ * NiimBlue encodes a 50 mm label at 8 px/mm, which is 400 columns.
+ * The B1 printhead is 384 dots. NiimBlue does not crop the canvas to the head;
+ * it sends the 400-column page and the head prints the first 384 dots.
+ */
+const B1_PAGE_WIDTH = 50 * 8;
+
 /** 50 × 80 mm at 203 dpi, already the print-page size after landscape rotation. */
 const B1_50X80: NiimbotSize = {
-  w_px: SAMPLE_LABEL_WIDTH,
+  w_px: B1_PAGE_WIDTH,
   h_px: SAMPLE_LABEL_HEIGHT,
   dpi: 203,
   offset_y_px: 0,
@@ -88,6 +95,29 @@ function readPaperRoll(data: number[] | undefined): { labelType: number; heightP
   return { labelType, heightPx, heightMm, widthMm };
 }
 
+/** Place the 384-wide design on the left of the 400-column page. Do not scale it. */
+async function printPageUrl(url: string): Promise<{ url: string }> {
+  const bitmap = await createImageBitmap(await fetch(url).then((response) => response.blob()));
+  try {
+    if (bitmap.width >= B1_PAGE_WIDTH) return { url };
+    const canvas = document.createElement("canvas");
+    canvas.width = B1_PAGE_WIDTH;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Could not prepare the print page.");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(bitmap, 0, 0);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((value) => (value ? resolve(value) : reject(new Error("Could not prepare the print page."))), "image/png");
+    });
+    return { url: URL.createObjectURL(blob) };
+  } finally {
+    bitmap.close();
+  }
+}
+
 /**
  * Send rendered 50×80 labels to a paired B1. Call this directly from the print click
  * so the browser still treats the Bluetooth chooser as a user gesture.
@@ -126,18 +156,23 @@ export async function printNiimbotLabels(
         );
       }
       model = { ...B1_MODEL, label_type: paper.labelType };
-      size = { ...B1_50X80, h_px: paper.heightPx, w_px: SAMPLE_LABEL_WIDTH };
+      size = { ...B1_50X80, h_px: paper.heightPx };
     } else {
-      console.log("[niimbot] roll size not reported; using 50×80 mm gap labels, 384×640 at 203 dpi");
+      console.log("[niimbot] roll size not reported; using 50×80 mm gap labels");
     }
     onProgress?.("Drawing labels…");
     const pages: { url: string; copies: number }[] = [];
     for (const job of pending) {
       const blob = await renderSampleLabelPng(job.input);
-      const url = URL.createObjectURL(blob);
-      urls.push(url);
-      pages.push({ url, copies: Math.max(1, Math.min(99, job.copies)) });
+      const rendered = URL.createObjectURL(blob);
+      urls.push(rendered);
+      const page = await printPageUrl(rendered);
+      if (page.url !== rendered) urls.push(page.url);
+      pages.push({ url: page.url, copies: Math.max(1, Math.min(99, job.copies)) });
     }
+    console.log(
+      `[niimbot] print page ${size.w_px}×${size.h_px} (design ${SAMPLE_LABEL_WIDTH}×${SAMPLE_LABEL_HEIGHT}, white columns past the 384-dot head)`,
+    );
     const total = pages.reduce((sum, page) => sum + page.copies, 0);
     let done = 0;
     for (const page of pages) {

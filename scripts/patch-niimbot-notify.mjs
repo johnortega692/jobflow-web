@@ -5,7 +5,7 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("completion stamped")) process.exit(0);
+if (src.includes("status poll before PrintEnd")) process.exit(0);
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -147,7 +147,7 @@ const finish = `  async function finishJob(model, target, onProgress) {
     }
   }`;
 
-const finishPatched = `  async function finishJob(model, target, onProgress) {
+const finishBeforeStatus = `  async function finishJob(model, target, onProgress) {
     const want = Math.max(1, target | 0);
     if (!_pageAck) {
       throw unconfirmed(\`PageEnd was not acknowledged (printed row \${_printRow} of \${_pageRows}). PrintEnd was not sent\`);
@@ -172,6 +172,65 @@ const finishPatched = `  async function finishJob(model, target, onProgress) {
     stamp(\`completion stamped row=\${_printRow}/\${_pageRows} pageAck=true feedAck=\${feedAck} printed=\${printed} pages=\${want}\`);
     if (!printed) {
       throw unconfirmed(\`commands were acknowledged but the printer only reached row \${_printRow} of \${_pageRows}, so the label was not printed\`);
+    }
+    if (!feedAck) {
+      throw unconfirmed(\`the printer reached row \${_printRow} of \${_pageRows} but did not acknowledge the feed\`);
+    }
+  }`;
+
+const finishPatched = `  async function finishJob(model, target, onProgress) {
+    const want = Math.max(1, target | 0);
+    if (!_pageAck) {
+      throw unconfirmed(\`PageEnd was not acknowledged (printed row \${_printRow} of \${_pageRows}). PrintEnd was not sent\`);
+    }
+    // status poll before PrintEnd. NiimBlue B1PrintTask waits until 0xA3 -> 0xB3
+    // reports page == totalPages, and only then sends 0xF3. 0xE4 accepts the page
+    // command. 0xF4 accepts the feed command. Neither one means the label fed.
+    onProgress && onProgress("printing…");
+    const limit = Math.min(60000, Math.max(15000, COMPLETION_MS | 0));
+    const pollStart = Date.now();
+    stamp(\`PrintStatus poll, waiting up to \${limit}ms for page \${want} before PrintEnd\`);
+    let statusOk = _statusPage === want;
+    while (!statusOk && Date.now() - pollStart < limit) {
+      await send(0xa3, [0x01]);
+      const slice = Date.now();
+      while (Date.now() - slice < 250) {
+        const pkt = await nextPacket(80);
+        if (!pkt) continue;
+        if (pkt.cmd === 0xd3 && pkt.data && pkt.data.length >= 2) noteRow(pkt.data, _pageRows);
+        else if (pkt.cmd === 0xb3 && pkt.data && pkt.data.length >= 4) noteStatus(pkt.data);
+        else if (pkt.cmd === 0xdb) {
+          stamp(\`print status error db \${hex(pkt.data || [])}\`);
+          break;
+        }
+      }
+      statusOk = _statusPage === want;
+    }
+    stamp(\`PrintStatus after \${Date.now() - pollStart}ms page=\${_statusPage}/\${want} print=\${_statusPrint}% feed=\${_statusFeed}% row=\${_printRow}/\${_pageRows}\`);
+    onProgress && onProgress("feeding…");
+    stamp(\`PrintEnd f3 sent\`);
+    await send(0xf3, [0x01]);
+    const feedStart = Date.now();
+    const feedLimit = Math.min(20000, Math.max(8000, COMPLETION_MS | 0));
+    let feedAck = false;
+    while (Date.now() - feedStart < feedLimit) {
+      const pkt = await nextPacket(400);
+      if (!pkt) continue;
+      if (pkt.cmd === 0xd3 && pkt.data && pkt.data.length >= 2) noteRow(pkt.data, _pageRows);
+      else if (pkt.cmd === 0xb3 && pkt.data && pkt.data.length >= 4) noteStatus(pkt.data);
+      else if (pkt.cmd === 0xf4) {
+        feedAck = !!(pkt.data && pkt.data.length && pkt.data[0] === 1);
+        stamp(\`PrintEnd f4 \${hex(pkt.data || [])} after \${Date.now() - feedStart}ms\`);
+        break;
+      }
+    }
+    const printed = _printRow >= _pageRows - 1;
+    stamp(\`completion stamped row=\${_printRow}/\${_pageRows} page=\${_statusPage}/\${want} pageAck=true feedAck=\${feedAck} printed=\${printed}\`);
+    if (!statusOk) {
+      throw unconfirmed(\`the printer did not report page \${want} finished (last status page \${_statusPage}, row \${_printRow} of \${_pageRows}). PrintEnd was sent once and the job was not sent again\`);
+    }
+    if (!printed) {
+      throw unconfirmed(\`page status reached \${want} but the row counter only reached \${_printRow} of \${_pageRows}, so the label was not printed\`);
     }
     if (!feedAck) {
       throw unconfirmed(\`the printer reached row \${_printRow} of \${_pageRows} but did not acknowledge the feed\`);
@@ -336,6 +395,9 @@ const endAbort = `    await sendImage(buf, H, stride);                          
 const pageEndWait = `  let _printRow = -1;
   let _pageRows = 0;
   let _pageAck = false;
+  let _statusPage = -1;
+  let _statusPrint = -1;
+  let _statusFeed = -1;
   let COMPLETION_MS = 45000;
   function stamp(m) {
     const d = new Date();
@@ -349,6 +411,12 @@ const pageEndWait = `  let _printRow = -1;
     if (row !== _printRow) _printRow = row;
     stamp(\`d3 \${hex(data)} = printed row \${row} of \${height} flag=\${flag}\`);
     return row;
+  }
+  function noteStatus(data) {
+    _statusPage = (data[0] << 8) | data[1];
+    _statusPrint = data[2];
+    _statusFeed = data.length > 3 ? data[3] : -1;
+    stamp(\`b3 page=\${_statusPage} print=\${_statusPrint}% feed=\${_statusFeed}% row=\${_printRow}\`);
   }
   async function nextPacket(timeoutMs) {
     if (rxQueue.length) return rxQueue.shift();
@@ -368,6 +436,9 @@ const pageEndWait = `  let _printRow = -1;
     _pageRows = height;
     _pageAck = false;
     _printRow = -1;
+    _statusPage = -1;
+    _statusPrint = -1;
+    _statusFeed = -1;
     rxQueue.length = 0;
     lastUnsolicited = null;
     const limit = Math.min(60000, Math.max(15000, COMPLETION_MS | 0));
@@ -378,6 +449,7 @@ const pageEndWait = `  let _printRow = -1;
       const pkt = await nextPacket(400);
       if (!pkt) continue;
       if (pkt.cmd === 0xd3 && pkt.data && pkt.data.length >= 2) noteRow(pkt.data, height);
+      else if (pkt.cmd === 0xb3 && pkt.data && pkt.data.length >= 4) noteStatus(pkt.data);
       else if (pkt.cmd === 0xe4) {
         const why = refused("PageEnd", pkt);
         stamp(why
@@ -410,6 +482,7 @@ const finishFalse = `  async function finishJob(model, target, onProgress) {
   }`;
 
 if (src.includes(waitPage)) src = src.replace(waitPage, waitPagePatched);
+if (src.includes(finishBeforeStatus)) src = src.replace(finishBeforeStatus, finishPatched);
 if (src.includes(finish)) src = src.replace(finish, finishPatched);
 if (src.includes(finishFalse)) src = src.replace(finishFalse, finishPatched);
 if (src.includes(finishCurrent)) src = src.replace(finishCurrent, finishPatched);
@@ -470,6 +543,18 @@ if (!src.includes("function stamp(m)")) {
   const helpers = pageEndWait.slice(pageEndWait.indexOf("  let _pageRows"), pageEndWait.indexOf("  async function nextPacket"));
   src = src.replace("  async function waitForPageEnd(height) {", `${helpers}  async function waitForPageEnd(height) {`);
 }
+if (!src.includes("let _statusPage")) {
+  src = src.replace(
+    "  let _pageAck = false;",
+    "  let _pageAck = false;\n  let _statusPage = -1;\n  let _statusPrint = -1;\n  let _statusFeed = -1;",
+  );
+}
+if (!src.includes("function noteStatus(")) {
+  src = src.replace(
+    "  async function nextPacket(timeoutMs) {",
+    "  function noteStatus(data) {\n    _statusPage = (data[0] << 8) | data[1];\n    _statusPrint = data[2];\n    _statusFeed = data.length > 3 ? data[3] : -1;\n    stamp(`b3 page=${_statusPage} print=${_statusPrint}% feed=${_statusFeed}% row=${_printRow}`);\n  }\n  async function nextPacket(timeoutMs) {",
+  );
+}
 const nextPacketNew = pageEndWait.match(/async function nextPacket\(timeoutMs\) \{[\s\S]*?\n  \}\n/);
 if (nextPacketNew && !src.includes("if (rxQueue.length) return rxQueue.shift();")) {
   src = src.replace(/async function nextPacket\(timeoutMs\) \{[\s\S]*?\n  \}\n/, nextPacketNew[0]);
@@ -487,6 +572,59 @@ const sendImageNew = `  async function sendImage(buf, h, stride) {
     let covered = 0;
     while (r < h) {`;
 if (src.includes(sendImageOld) && !src.includes("let packets = 0;")) src = src.replace(sendImageOld, sendImageNew);
+if (!src.includes("function niimblueCounts(")) {
+  src = src.replace(
+    "  async function sendImage(buf, h, stride) {",
+    `  // niimblue row counts. A 384-dot row is 48 bytes and uses three segment counts.
+  // A 50 mm row is 400 px, 50 bytes, which does not fit and uses total mode [0, lo, hi].
+  function niimblueCounts(buf, off, stride, total) {
+    const chunkSize = Math.floor(384 / 8 / 3);
+    if (stride > chunkSize * 3) return [0, total & 0xff, (total >> 8) & 0xff];
+    const parts = [0, 0, 0];
+    for (let b = 0; b < stride; b++) {
+      let v = buf[off + b];
+      const chunk = Math.floor(b / chunkSize);
+      while (v) { if (v & 1) parts[chunk]++; v >>= 1; }
+    }
+    return parts;
+  }
+  function indexBlackPixels(buf, off, stride) {
+    const out = [];
+    for (let b = 0; b < stride; b++) {
+      const v = buf[off + b];
+      for (let bit = 0; bit < 8; bit++) {
+        if (v & (0x80 >> bit)) {
+          const pos = b * 8 + bit;
+          out.push((pos >> 8) & 0xff, pos & 0xff);
+        }
+      }
+    }
+    return out;
+  }
+  async function sendImage(buf, h, stride) {`,
+  );
+}
+const rowTotal = `      } else {
+        const total = popcountRow(buf, off, stride);
+        const data = new Array(6 + stride);
+        data[0] = (r >> 8) & 0xff; data[1] = r & 0xff; data[2] = 0;
+        data[3] = total & 0xff; data[4] = (total >> 8) & 0xff; data[5] = run;
+        for (let b = 0; b < stride; b++) data[6 + b] = buf[off + b];
+        await sendBundled(0x85, data);
+      }`;
+const rowNiim = `      } else {
+        const total = popcountRow(buf, off, stride);
+        const counts = niimblueCounts(buf, off, stride, total);
+        const head = [(r >> 8) & 0xff, r & 0xff, counts[0], counts[1], counts[2], run];
+        if (total <= 6) {
+          await sendBundled(0x83, head.concat(indexBlackPixels(buf, off, stride)));
+        } else {
+          const data = head.slice();
+          for (let b = 0; b < stride; b++) data.push(buf[off + b]);
+          await sendBundled(0x85, data);
+        }
+      }`;
+if (src.includes(rowTotal)) src = src.replace(rowTotal, rowNiim);
 src = src.replace(
   `      r += run;
     }
@@ -507,7 +645,7 @@ src = src.replace(
   "return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);",
   "return new Error(`print not confirmed: ${reason}`);",
 );
-if (!src.includes("function refused(name, res)") || !src.includes("completion stamped") || !src.includes("PrintEnd was not sent") || src.includes("_pageSeen == null) return")) {
+if (!src.includes("function refused(name, res)") || !src.includes("status poll before PrintEnd") || !src.includes("function noteStatus(") || !src.includes("function niimblueCounts(") || !src.includes("PrintEnd was not sent") || src.includes("_pageSeen == null) return") || src.includes("data[2] = 0;")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
 }
