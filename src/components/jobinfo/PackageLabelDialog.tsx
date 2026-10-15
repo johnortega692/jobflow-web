@@ -228,11 +228,6 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
 
         <div className="wc-print-body">
           <div className="wc-print-controls">
-            <p className="muted small">
-              The QR code opens this material, its photo, and document links. Each label is numbered{" "}
-              {packageLabelMark(1, copies)}
-              {copies > 1 ? ` through ${packageLabelMark(copies, copies)}` : ""}.
-            </p>
             <label className="pkg-label-copies">
               Labels
               <input
