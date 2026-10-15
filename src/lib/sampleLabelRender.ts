@@ -31,7 +31,6 @@ import {
   SAMPLE_LABEL_WIDTH,
   qrModuleGeometry,
   sampleLabelBlockOn,
-  sampleLabelQrCaption,
   sampleLabelSpecLines,
   wrapTextLines,
   type SampleLabelInput,
@@ -39,7 +38,6 @@ import {
 
 const SANS = "Arial, Helvetica, sans-serif";
 const MONO = "Consolas, 'Courier New', monospace";
-const CAPTION_MAX_W = 148;
 const CONTENT_W = SAMPLE_LABEL_WIDTH - SAMPLE_LABEL_MARGIN * 2;
 const BLACK = "#000000";
 const WHITE = "#ffffff";
@@ -164,21 +162,10 @@ type DrawState = {
   showQr: boolean;
 };
 
-function captionText(input: SampleLabelInput): string {
-  if (input.qrKind === "none") return "";
-  return sampleLabelQrCaption(input.qrKind, input.companyName);
-}
-
-function qrCaptionHeight(ctx: CanvasRenderingContext2D, input: SampleLabelInput): number {
-  ctx.font = font(12);
-  const captionLines = linesOf(ctx, captionText(input), CAPTION_MAX_W, 2).length || 1;
-  return 4 + captionLines * 14;
-}
-
 function headerHeight(state: DrawState): number {
-  const { ctx, logo, showQr, input } = state;
+  const { logo, showQr } = state;
   if (!showQr) return logo?.height ?? 0;
-  return SAMPLE_LABEL_QR_PX + qrCaptionHeight(ctx, input);
+  return SAMPLE_LABEL_QR_PX;
 }
 
 function drawHeader(state: DrawState, y: number): void {
@@ -189,7 +176,7 @@ function drawHeader(state: DrawState, y: number): void {
     ctx.drawImage(logo, x, y);
     return;
   }
-  const blockH = SAMPLE_LABEL_QR_PX + qrCaptionHeight(ctx, input);
+  const blockH = SAMPLE_LABEL_QR_PX;
   if (logo) {
     const areaW = CONTENT_W - SAMPLE_LABEL_QR_PX - 12;
     const x = SAMPLE_LABEL_MARGIN + Math.round((areaW - logo.width) / 2);
@@ -198,14 +185,6 @@ function drawHeader(state: DrawState, y: number): void {
   }
   const qrX = SAMPLE_LABEL_WIDTH - SAMPLE_LABEL_MARGIN - SAMPLE_LABEL_QR_PX;
   drawQr(ctx, input.qrUrl, qrX, y);
-  ctx.font = font(12);
-  ctx.fillStyle = BLACK;
-  const lines = linesOf(ctx, captionText(input), CAPTION_MAX_W, 2);
-  const widest = lines.reduce((max, line) => Math.max(max, measure(ctx, line)), 0);
-  const rightLimit = SAMPLE_LABEL_WIDTH - SAMPLE_LABEL_MARGIN;
-  let captionX = qrX + SAMPLE_LABEL_QR_PX / 2;
-  if (captionX + widest / 2 > rightLimit) captionX = rightLimit - widest / 2;
-  drawLines(ctx, lines, captionX, y + SAMPLE_LABEL_QR_PX + 4, 14, "center");
 }
 
 function drawQr(ctx: CanvasRenderingContext2D, url: string, x: number, y: number, boxPx = SAMPLE_LABEL_QR_PX): void {
@@ -426,31 +405,6 @@ function containedLogoSize(
   };
 }
 
-function drawLandscapeCaption(
-  ctx: CanvasRenderingContext2D,
-  input: SampleLabelInput,
-  qrX: number,
-  qrY: number,
-  innerLeft: number,
-  innerRight: number,
-): void {
-  ctx.font = font(12);
-  ctx.fillStyle = BLACK;
-  const maxW = innerRight - innerLeft;
-  const lines = linesOf(ctx, captionText(input), maxW, 2);
-  const widest = lines.reduce((max, line) => Math.max(max, measure(ctx, line)), 0);
-  let captionX = qrX + SAMPLE_LABEL_LANDSCAPE_QR / 2;
-  if (captionX - widest / 2 < innerLeft) captionX = innerLeft + widest / 2;
-  if (captionX + widest / 2 > innerRight) captionX = innerRight - widest / 2;
-  drawLines(ctx, lines, captionX, qrY + SAMPLE_LABEL_LANDSCAPE_QR + 4, 14, "center");
-}
-
-function landscapeCaptionHeight(ctx: CanvasRenderingContext2D, input: SampleLabelInput, maxW: number): number {
-  ctx.font = font(12);
-  const count = linesOf(ctx, captionText(input), maxW, 2).length || 1;
-  return 4 + count * 14;
-}
-
 function drawLandscapeBand(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -592,9 +546,9 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
 
   const qrOn = showQr(input);
   const logoOn = sampleLabelBlockOn(input, "logo") && Boolean(input.logoUrl.trim());
-  const captionH = qrOn ? landscapeCaptionHeight(ctx, input, innerW) : 0;
+  const qrSize = Math.min(SAMPLE_LABEL_LANDSCAPE_QR, Math.floor(innerW), Math.max(1, columnH - 10));
   const logoMaxH = qrOn
-    ? Math.max(1, columnH - 8 - SAMPLE_LABEL_LANDSCAPE_QR - captionH)
+    ? Math.max(1, columnH - 10 - qrSize)
     : sheet
       ? Math.max(1, columnH * 0.6)
       : columnH;
@@ -617,11 +571,10 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
     }
     if (qrOn) {
       const regionTop = logoDraw ? columnTop + logoDraw.h + 10 : columnTop;
-      const blockH = SAMPLE_LABEL_LANDSCAPE_QR + captionH;
+      const blockH = qrSize;
       const qrY = regionTop + Math.round((footerRuleY - regionTop - blockH) / 2);
-      const qrX = place(innerLeft, innerW, SAMPLE_LABEL_LANDSCAPE_QR);
-      drawQr(ctx, input.qrUrl, qrX, qrY, SAMPLE_LABEL_LANDSCAPE_QR);
-      drawLandscapeCaption(ctx, input, qrX, qrY, innerLeft, innerRight);
+      const qrX = place(innerLeft, innerW, qrSize);
+      drawQr(ctx, input.qrUrl, qrX, qrY, qrSize);
     }
   }
 

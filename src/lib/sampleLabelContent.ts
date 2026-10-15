@@ -9,7 +9,7 @@ export const SAMPLE_LABEL_WIDTH = 384;
 export const SAMPLE_LABEL_HEIGHT = 640;
 export const SAMPLE_LABEL_DPI = 203;
 export const SAMPLE_LABEL_MARGIN = 12;
-export const SAMPLE_LABEL_QR_PX = 116;
+export const SAMPLE_LABEL_QR_PX = 168;
 export const SAMPLE_LABEL_QR_QUIET = 2;
 export const SAMPLE_LABEL_LOGO_MAX_H = 92;
 export const SAMPLE_LABEL_BAND_H = 64;
@@ -20,13 +20,13 @@ export const SAMPLE_LABEL_LANDSCAPE_HEIGHT = 384;
 export const SAMPLE_LABEL_LANDSCAPE_MARGIN_TOP = 12;
 export const SAMPLE_LABEL_LANDSCAPE_MARGIN_X = 14;
 export const SAMPLE_LABEL_LANDSCAPE_MARGIN_BOTTOM = 10;
-export const SAMPLE_LABEL_LANDSCAPE_COL_W = 156;
+export const SAMPLE_LABEL_LANDSCAPE_COL_W = 176;
 /** Inner inset. 10px at 203 dpi; the sheet frame scales it to about 15px at 300 dpi. */
 export const SAMPLE_LABEL_LANDSCAPE_COL_PAD = 10;
-export const SAMPLE_LABEL_LANDSCAPE_QR = 128;
+export const SAMPLE_LABEL_LANDSCAPE_QR = 154;
 export const SAMPLE_LABEL_LANDSCAPE_RULE = 2;
 /** Space between a landscape rule and the type beside it, at 203 dpi. */
-export const SAMPLE_LABEL_LANDSCAPE_RULE_PAD = 18;
+export const SAMPLE_LABEL_LANDSCAPE_RULE_PAD = 12;
 export const SAMPLE_LABEL_LANDSCAPE_BAND_H = 56;
 /** Column width minus the left and right inner padding. */
 export const SAMPLE_LABEL_LANDSCAPE_LOGO_MAX_W =
@@ -77,13 +77,6 @@ export type SampleLabelInput = {
 
 export function sampleLabelBlockOn(input: SampleLabelInput, block: SampleLabelBlock): boolean {
   return input.blocks?.[block] !== false;
-}
-
-export function sampleLabelQrCaption(kind: Exclude<SampleLabelQrKind, "none">, companyName: string): string {
-  if (kind === "share") return "SCAN FOR SPECS & SUBMITTAL FILES";
-  if (kind === "product") return "SCAN FOR PRODUCT DATA";
-  const name = companyName.trim().toUpperCase();
-  return name ? `${name} WEBSITE` : "WEBSITE";
 }
 
 /** Product page, then the project share link, then a company website, otherwise no QR. */
