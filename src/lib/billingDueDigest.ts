@@ -13,6 +13,7 @@ import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 import { loadAllProjectsForField } from "./fieldTrackerProject.js";
 import { loadVisibleProjectsForTrackerEmails } from "./projectFieldAppVisibility.js";
+import { nextWeekdaySendDate } from "./trackerEmailSchedule.js";
 
 /** Days before Billing Due day to email the ICBI PM. */
 export const BILLING_DUE_REMINDER_DAYS_BEFORE = 4;
@@ -87,8 +88,9 @@ export function effectiveBillingDueDate(year: number, monthIndex: number, dueDay
 }
 
 /**
- * True when today is exactly {@link BILLING_DUE_REMINDER_DAYS_BEFORE} days before
- * this job's billing due day (this month or next month occurrence).
+ * True when today is the send day for this job's billing-due reminder:
+ * {@link BILLING_DUE_REMINDER_DAYS_BEFORE} days before due, rolled to Monday
+ * when that day falls on a weekend.
  */
 export function isBillingDueReminderToday(dueDayRaw: string, today = new Date()): boolean {
   const dueDay = Number(normalizeBillingDueDay(dueDayRaw));
@@ -101,7 +103,7 @@ export function isBillingDueReminderToday(dueDayRaw: string, today = new Date())
     const due = effectiveBillingDueDate(y, m, dueDay);
     const remind = startOfDay(new Date(due));
     remind.setDate(remind.getDate() - BILLING_DUE_REMINDER_DAYS_BEFORE);
-    if (sameCalendarDay(remind, todayStart)) return true;
+    if (sameCalendarDay(nextWeekdaySendDate(remind), todayStart)) return true;
   }
   return false;
 }
@@ -116,7 +118,7 @@ function upcomingDueDateForReminder(dueDay: number, today: Date): Date {
     );
     const remind = startOfDay(new Date(due));
     remind.setDate(remind.getDate() - BILLING_DUE_REMINDER_DAYS_BEFORE);
-    if (sameCalendarDay(remind, todayStart)) return due;
+    if (sameCalendarDay(nextWeekdaySendDate(remind), todayStart)) return due;
   }
   return effectiveBillingDueDate(todayStart.getFullYear(), todayStart.getMonth(), dueDay);
 }

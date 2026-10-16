@@ -67,3 +67,45 @@ export async function downloadSheetLabelsPdf(
 ): Promise<void> {
   downloadPdfBytes(await buildSheetLabelsPdf(args), filename);
 }
+
+/** Build the sheet PDF and open the browser print dialog. */
+export async function printSheetLabelsPdf(args: {
+  inputs: SampleLabelInput[];
+  template: SheetLabelTemplate;
+  startAt: number;
+  outlines?: boolean;
+}): Promise<void> {
+  const bytes = await buildSheetLabelsPdf({ ...args, outlines: args.outlines ?? false });
+  const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  await new Promise<void>((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;width:0;height:0;border:0;left:-9999px;top:0;";
+    const cleanup = () => {
+      frame.remove();
+      URL.revokeObjectURL(url);
+    };
+    frame.onload = () => {
+      window.setTimeout(() => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+          window.setTimeout(() => {
+            cleanup();
+            resolve();
+          }, 1500);
+        } catch (err) {
+          cleanup();
+          reject(err instanceof Error ? err : new Error("Could not open the print dialog."));
+        }
+      }, 250);
+    };
+    frame.onerror = () => {
+      cleanup();
+      reject(new Error("Could not open the print dialog."));
+    };
+    frame.src = url;
+    document.body.appendChild(frame);
+  });
+}

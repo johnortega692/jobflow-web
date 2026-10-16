@@ -409,7 +409,7 @@ export function TrackerSchedulesSettingsSection({
           <div className="sched-card-copy">
             <strong>Send daily follow-up / install reminders</strong>
             <p>
-              every day · {hourLabel} {tzShort}
+              weekdays · Mon–Fri · {hourLabel} {tzShort}
             </p>
           </div>
           <span className="sched-hint">Send now = test copy to you</span>
@@ -474,7 +474,7 @@ export function TrackerSchedulesSettingsSection({
           <div className="sched-card-copy">
             <strong>Send weekly submittal digests</strong>
             <p>
-              pick a day per digest · {hourLabel} {tzShort}
+              pick a day per digest · Sat/Sun send Monday · {hourLabel} {tzShort}
             </p>
           </div>
           <span className="sched-hint">Send now = test copy to you</span>

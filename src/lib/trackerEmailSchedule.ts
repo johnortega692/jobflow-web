@@ -79,6 +79,28 @@ export function weekdayLabel(weekday: number): string {
   return WEEKDAY_LABELS[normalizeWeekday(weekday, DEFAULT_DIGEST_WEEKDAY)] ?? "Friday";
 }
 
+export function isWeekendWeekday(weekday: number): boolean {
+  return weekday === 0 || weekday === 6;
+}
+
+/**
+ * Configured send days that fall on Saturday or Sunday roll to Monday.
+ * Daily jobs skip the weekend entirely and pick up again Monday.
+ */
+export function effectiveScheduleWeekday(weekday: number, fallback = DEFAULT_DIGEST_WEEKDAY): number {
+  const day = normalizeWeekday(weekday, fallback);
+  return isWeekendWeekday(day) ? 1 : day;
+}
+
+/** If `date` is Sat/Sun, move it to the following Monday. Otherwise keep the same calendar day. */
+export function nextWeekdaySendDate(date: Date): Date {
+  const out = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = out.getDay();
+  if (day === 6) out.setDate(out.getDate() + 2);
+  else if (day === 0) out.setDate(out.getDate() + 1);
+  return out;
+}
+
 export function normalizeHour(raw: unknown, fallback = DEFAULT_SEND_HOUR): number {
   const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
   if (!Number.isInteger(n) || n < 0 || n > 23) return fallback;
@@ -209,9 +231,11 @@ export function trackerCronUtcHint(
   timezone = DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone,
 ): string {
   const when = `${formatSendHourLabel(sendHour)} ${timezone.replace(/_/g, " ")}`;
-  if (kind === "daily") return `Sends every day at ${when}.`;
+  if (kind === "daily") return `Sends weekdays (Mon–Fri) at ${when}.`;
   const fallback = kind === "site_ready" ? DEFAULT_SITE_READY_WEEKDAY : DEFAULT_DIGEST_WEEKDAY;
-  return `Sends ${weekdayLabel(normalizeWeekday(weekday, fallback))} at ${when}.`;
+  const day = effectiveScheduleWeekday(weekday, fallback);
+  const note = isWeekendWeekday(normalizeWeekday(weekday, fallback)) ? " (weekend → Monday)" : "";
+  return `Sends ${weekdayLabel(day)}${note} at ${when}.`;
 }
 
 /** Default copy when settings have not loaded a custom send hour yet. */
@@ -242,10 +266,12 @@ export function trackerCronSlotsDueOnUtcDate(
   const sendHour = normalizeHour(weekdays?.sendHour, DEFAULT_SEND_HOUR);
   const { weekday, hour } = zonedWeekdayAndHour(now, timezone);
   if (hour !== sendHour) return [];
-  const slots: TrackerEmailCronSlot[] = ["daily"];
-  const digest = normalizeWeekday(weekdays?.digestWeekday, DEFAULT_DIGEST_WEEKDAY);
-  const wcDigest = normalizeWeekday(weekdays?.wallcoveringDigestWeekday, digest);
-  const siteReady = normalizeWeekday(weekdays?.siteReadyWeekday, DEFAULT_SITE_READY_WEEKDAY);
+  const slots: TrackerEmailCronSlot[] = [];
+  // Daily follow-ups / installs / billing skip Sat–Sun.
+  if (!isWeekendWeekday(weekday)) slots.push("daily");
+  const digest = effectiveScheduleWeekday(weekdays?.digestWeekday, DEFAULT_DIGEST_WEEKDAY);
+  const wcDigest = effectiveScheduleWeekday(weekdays?.wallcoveringDigestWeekday, digest);
+  const siteReady = effectiveScheduleWeekday(weekdays?.siteReadyWeekday, DEFAULT_SITE_READY_WEEKDAY);
   if (weekday === siteReady) slots.push("monday");
   if (weekday === digest || weekday === wcDigest) slots.push("weekly");
   return slots;

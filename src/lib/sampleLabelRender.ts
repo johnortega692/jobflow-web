@@ -4,6 +4,7 @@ import { withPngPhys } from "./pngPhys";
 import {
   SHEET_LABEL_COLUMN_PAD,
   SHEET_LABEL_COLUMN_RATIO,
+  SHEET_LABEL_DPI,
   SHEET_LABEL_PX_H,
   SHEET_LABEL_PX_W,
   SHEET_LABEL_RULE_PAD,
@@ -655,6 +656,7 @@ async function renderLandscapeLabel(input: SampleLabelInput, sheet = false): Pro
 /** Landscape layout on a 4" × 2" sheet label at 300 dpi, with the color company logo. */
 export async function renderSheetLabel(input: SampleLabelInput): Promise<HTMLCanvasElement> {
   await ensureLabelFonts();
+  if (input.packageLayout) return renderPackageSheet(input);
   return renderLandscapeLabel({ ...input, orientation: "landscape" }, true);
 }
 
@@ -806,12 +808,578 @@ function drawPortraitWithoutQr(ctx: CanvasRenderingContext2D, state: DrawState, 
   });
 }
 
+const PKG_CAPTION = "Scan for specs & submittal";
+
+function pxFromPt(points: number): number {
+  return Math.max(1, Math.round((points * SAMPLE_LABEL_DPI) / 72));
+}
+
+function fontFace(px: number, weight: "bold" | "normal" = "bold"): string {
+  return `${weight} ${px}px ${SANS}`;
+}
+
+/** Word wrap at the spec size. Shrink only when the words would be cut. */
+function fitWords(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+  startPx: number,
+  minPx: number,
+  weight: "bold" | "normal" = "bold",
+): { px: number; lines: string[] } {
+  const clean = text.trim();
+  if (!clean || maxWidth < 4 || maxLines < 1) return { px: startPx, lines: [] };
+  const floor = Math.max(1, Math.min(startPx, minPx));
+  for (let px = startPx; px >= floor; px -= 1) {
+    ctx.font = fontFace(px, weight);
+    const lines = wrapTextLines(clean, maxWidth, maxLines, (value) => measure(ctx, value));
+    const cut = lines.some((line) => line.includes("…"));
+    const drawn = lines.join(" ").replace(/…/g, "").trim();
+    const complete = drawn.split(/\s+/).filter(Boolean).length >= clean.split(/\s+/).filter(Boolean).length;
+    if (!cut && complete) return { px, lines };
+  }
+  ctx.font = fontFace(floor, weight);
+  return { px: floor, lines: wrapTextLines(clean, maxWidth, maxLines, (value) => measure(ctx, value)) };
+}
+
+type PackageField = {
+  label: string;
+  value: string;
+  valuePx: number;
+  maxLines: number;
+  weight: "bold" | "normal";
+  minPx: number;
+};
+
+type LaidField = PackageField & { labelPx: number; lines: string[]; lineH: number; height: number };
+
+function layField(ctx: CanvasRenderingContext2D, field: PackageField, width: number, labelPx: number): LaidField {
+  const fitted = fitWords(ctx, field.value, width, field.maxLines, field.valuePx, field.minPx, field.weight);
+  const lineH = Math.round(fitted.px * 1.12);
+  const lines = fitted.lines;
+  const height = labelPx + 2 + Math.max(1, lines.length) * lineH;
+  return { ...field, valuePx: fitted.px, labelPx, lines, lineH, height: field.value.trim() ? height : labelPx };
+}
+
+function drawLaidField(ctx: CanvasRenderingContext2D, field: LaidField, x: number, y: number): void {
+  ctx.fillStyle = BLACK;
+  ctx.font = fontFace(field.labelPx);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(field.label, x, y);
+  if (!field.lines.length) return;
+  ctx.font = fontFace(field.valuePx, field.weight);
+  drawLines(ctx, field.lines, x, y + field.labelPx + 2, field.lineH, "left");
+}
+
+function packageFields(input: SampleLabelInput, sizes: { color: number; product: number; manufacturer: number }): PackageField[] {
+  const fields = [
+    {
+      label: "COLOR / PATTERN",
+      value: input.color,
+      valuePx: sizes.color,
+      maxLines: 2,
+      weight: "bold",
+      minPx: pxFromPt(11),
+      on: sampleLabelBlockOn(input, "color"),
+    },
+    {
+      label: "PRODUCT",
+      value: input.product,
+      valuePx: sizes.product,
+      maxLines: 2,
+      weight: "bold",
+      minPx: pxFromPt(8),
+      on: sampleLabelBlockOn(input, "product"),
+    },
+    {
+      label: "MANUFACTURER",
+      value: input.manufacturer,
+      valuePx: sizes.manufacturer,
+      maxLines: 2,
+      weight: "normal",
+      minPx: pxFromPt(8),
+      on: sampleLabelBlockOn(input, "manufacturer"),
+    },
+  ]
+    .filter((field) => field.on && field.value.trim())
+    .map(({ on: _on, ...field }) => field);
+  return fields;
+}
+
+function fitFieldStack(
+  ctx: CanvasRenderingContext2D,
+  fields: PackageField[],
+  width: number,
+  maxHeight: number,
+  labelPx: number,
+  gap: number,
+): LaidField[] {
+  let drop = 0;
+  let laid = fields.map((field) => layField(ctx, field, width, labelPx));
+  const heightOf = (rows: LaidField[]) => rows.reduce((sum, row) => sum + row.height, 0) + gap * Math.max(0, rows.length - 1);
+  while (heightOf(laid) > maxHeight && drop < 8) {
+    drop += 1;
+    laid = fields.map((field) =>
+      layField(ctx, { ...field, valuePx: Math.max(field.minPx, field.valuePx - drop) }, width, labelPx),
+    );
+  }
+  return laid;
+}
+
+function drawPackageBand(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  code: string,
+  heading: string,
+  mark: string,
+  codePx: number,
+  markPx: number,
+): void {
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(x, y, width, height);
+  const pad = 10;
+  const headingPx = pxFromPt(7.5);
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = WHITE;
+  const headingText = heading.trim();
+  const markText = mark.trim();
+  let stackW = 0;
+  if (headingText) {
+    ctx.font = fontFace(headingPx);
+    stackW = Math.max(stackW, measure(ctx, headingText));
+  }
+  if (markText) {
+    ctx.font = fontFace(markPx);
+    stackW = Math.max(stackW, measure(ctx, markText));
+  }
+  const stackGap = headingText && markText ? 3 : 0;
+  const stackH = (headingText ? headingPx : 0) + (markText ? markPx : 0) + stackGap;
+  let stackY = y + Math.round((height - stackH) / 2);
+  const stackRight = x + width - pad;
+  if (headingText) {
+    ctx.font = fontFace(headingPx);
+    ctx.fillText(headingText, stackRight, stackY);
+    stackY += headingPx + stackGap;
+  }
+  if (markText) {
+    ctx.font = fontFace(markPx);
+    ctx.fillText(markText, stackRight, stackY);
+  }
+  const codeMax = Math.max(24, width - pad * 2 - (stackW > 0 ? stackW + 12 : 0));
+  const fitted = fitWords(ctx, code, codeMax, 2, codePx, Math.round(codePx * 0.55));
+  if (!fitted.lines.length) return;
+  const lineH = Math.round(fitted.px * 1.05);
+  const blockH = fitted.lines.length * lineH;
+  ctx.font = fontFace(fitted.px);
+  ctx.textAlign = "left";
+  ctx.fillStyle = WHITE;
+  drawLines(ctx, fitted.lines, x + pad, y + Math.round((height - blockH) / 2), lineH, "left");
+}
+
+function drawCaption(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  px: number,
+): number {
+  const fitted = fitWords(ctx, text, width, 3, px, pxFromPt(5));
+  if (!fitted.lines.length) return 0;
+  const lineH = Math.round(fitted.px * 1.15);
+  ctx.fillStyle = BLACK;
+  ctx.font = fontFace(fitted.px);
+  drawLines(ctx, fitted.lines, x + width / 2, y, lineH, "center");
+  return fitted.lines.length * lineH;
+}
+
+async function loadPackageLogo(
+  url: string,
+  maxW: number,
+  maxH: number,
+  color = false,
+): Promise<HTMLCanvasElement | null> {
+  if (!url.trim() || maxW < 2 || maxH < 2) return null;
+  return fittedLogo(url, maxW, maxH, color);
+}
+
+function sheetPxFromPt(points: number): number {
+  return Math.max(1, Math.round((points * SHEET_LABEL_DPI) / 72));
+}
+
+/** Same logo/QR footprint the scaled landscape sheet path used today. */
+function packageSheetMarkSizes(): { columnW: number; pad: number; logoW: number; logoH: number; qrSize: number } {
+  const sheetScale = SHEET_LABEL_PX_H / SAMPLE_LABEL_LANDSCAPE_HEIGHT;
+  const columnW = Math.round(SHEET_LABEL_PX_W * SHEET_LABEL_COLUMN_RATIO);
+  const pad = SHEET_LABEL_COLUMN_PAD;
+  const logoW = columnW - pad - SHEET_LABEL_RULE_PAD;
+  const qrSize = Math.min(Math.round(SAMPLE_LABEL_LANDSCAPE_QR * sheetScale), logoW);
+  const columnH = SHEET_LABEL_PX_H - pad * 2;
+  const logoH = Math.max(1, columnH - 10 - qrSize);
+  return { columnW, pad, logoW, logoH, qrSize };
+}
+
+/**
+ * Avery 5163 package label at full 4" × 2" / 300 dpi.
+ * Same layout as the NIIMBOT landscape package label, with the mockup type sizes
+ * and the existing sheet logo/QR footprint.
+ */
+async function renderPackageSheet(input: SampleLabelInput): Promise<HTMLCanvasElement> {
+  const labelPx = sheetPxFromPt(5.5);
+  const faces = [26, 16, 11, 10, 8, 5.5].map((pt) =>
+    fontFace(sheetPxFromPt(pt), pt === 10 ? "normal" : "bold"),
+  );
+  await Promise.all(faces.map((face) => document.fonts.load(face).catch(() => undefined)));
+  const canvas = document.createElement("canvas");
+  canvas.width = SHEET_LABEL_PX_W;
+  canvas.height = SHEET_LABEL_PX_H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Could not draw sheet label");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.fillStyle = WHITE;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const { columnW, pad, logoW, logoH, qrSize } = packageSheetMarkSizes();
+  const ruleX = columnW;
+  const textX = ruleX + SAMPLE_LABEL_LANDSCAPE_RULE + SHEET_LABEL_RULE_PAD;
+  const textW = canvas.width - pad - textX;
+  const bandH = Math.round((11 / 50.8) * SHEET_LABEL_PX_H);
+  const qrOn = showQr(input);
+  const columnBottom = canvas.height - pad;
+  const logoY = pad;
+  ctx.font = fontFace(labelPx);
+  const captionH = qrOn ? captionBlockHeight(ctx, qrSize, labelPx) : 0;
+  const qrY = qrOn ? columnBottom - (captionH ? 4 + captionH : 0) - qrSize : columnBottom;
+  const safeLogoH = Math.min(logoH, Math.max(1, qrY - 10 - logoY));
+  const logo = await loadPackageLogo(input.logoUrl, logoW, safeLogoH, true);
+  const logoDraw = logo ? containedLogoSize(logo.width, logo.height, logoW, safeLogoH) : null;
+
+  const projectValue = fitWords(ctx, input.project, textW, 2, sheetPxFromPt(8), sheetPxFromPt(7));
+  const projectLine = Math.round(projectValue.px * 1.12);
+  const projectOn = sampleLabelBlockOn(input, "project") && Boolean(input.project.trim());
+  const projectH = projectOn ? labelPx + 2 + Math.max(1, projectValue.lines.length) * projectLine : 0;
+  const projectTop = canvas.height - pad - projectH;
+  const ruleY = projectOn ? projectTop - 10 : canvas.height - pad;
+  const fieldTop = pad + (sampleLabelBlockOn(input, "band") ? bandH + 8 : 0);
+  const fieldRoom = Math.max(48, ruleY - 10 - fieldTop);
+  const fields = fitFieldStack(
+    ctx,
+    packageFields(input, {
+      color: sheetPxFromPt(16),
+      product: sheetPxFromPt(11),
+      manufacturer: sheetPxFromPt(10),
+    }),
+    textW,
+    fieldRoom,
+    labelPx,
+    8,
+  );
+
+  if (logo && logoDraw) {
+    drawContainedLogo(
+      ctx,
+      logo,
+      pad + Math.round((logoW - logoDraw.w) / 2),
+      logoY,
+      logoDraw,
+    );
+  }
+  if (qrOn) {
+    const qrX = pad + Math.round((logoW - qrSize) / 2);
+    drawQr(ctx, input.qrUrl, qrX, qrY, qrSize);
+    if (captionH) drawCaption(ctx, PKG_CAPTION, qrX, qrY + qrSize + 4, qrSize, labelPx);
+  }
+
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(ruleX, pad, SAMPLE_LABEL_LANDSCAPE_RULE, canvas.height - pad * 2);
+
+  if (sampleLabelBlockOn(input, "band")) {
+    drawPackageBand(
+      ctx,
+      textX,
+      pad,
+      textW,
+      bandH,
+      input.itemLabel,
+      bandHeading(input),
+      input.packageMark ?? "",
+      sheetPxFromPt(26),
+      sheetPxFromPt(11),
+    );
+  }
+
+  let y = fieldTop;
+  fields.forEach((field, index) => {
+    if (index > 0) y += 8;
+    drawLaidField(ctx, field, textX, y);
+    y += field.height;
+  });
+
+  if (projectOn) {
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(textX, ruleY, textW, 1);
+    ctx.font = fontFace(labelPx);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("PROJECT", textX, projectTop);
+    ctx.font = fontFace(projectValue.px);
+    drawLines(ctx, projectValue.lines, textX, projectTop + labelPx + 2, projectLine, "left");
+  }
+
+  return canvas;
+}
+
+/** Logo fills the old bordered box. The stroke and the inset padding are gone. */
+function drawLogoBox(
+  ctx: CanvasRenderingContext2D,
+  logo: HTMLCanvasElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const size = containedLogoSize(logo.width, logo.height, width, height);
+  drawContainedLogo(ctx, logo, x + Math.round((width - size.w) / 2), y + Math.round((height - size.h) / 2), size);
+}
+
+function captionBlockHeight(ctx: CanvasRenderingContext2D, width: number, labelPx: number): number {
+  ctx.font = fontFace(labelPx);
+  const lines = wrapTextLines(PKG_CAPTION, width, 3, (value) => measure(ctx, value));
+  if (!lines.length) return 0;
+  return lines.length * Math.round(labelPx * 1.15);
+}
+
+/** Largest square QR that still clears the type above it and the caption under it. */
+function fitPackageQr(
+  ctx: CanvasRenderingContext2D,
+  maxSize: number,
+  topLimit: number,
+  bottom: number,
+  labelPx: number,
+): { size: number; y: number; captionH: number } {
+  const floor = 64;
+  let size = Math.max(floor, Math.floor(maxSize));
+  while (size > floor) {
+    const captionH = captionBlockHeight(ctx, size, labelPx);
+    const blockH = size + (captionH ? 4 + captionH : 0);
+    const y = bottom - blockH;
+    if (y >= topLimit) return { size, y, captionH };
+    size -= 1;
+  }
+  const captionH = captionBlockHeight(ctx, floor, labelPx);
+  const blockH = floor + (captionH ? 4 + captionH : 0);
+  return { size: floor, y: bottom - blockH, captionH };
+}
+
+async function renderPackagePortrait(input: SampleLabelInput): Promise<HTMLCanvasElement> {
+  const labelPx = pxFromPt(5.5);
+  const faces = [32, 15, 12, 11, 10, 8, 7.5, 5.5].map((pt) => fontFace(pxFromPt(pt), pt === 10 ? "normal" : "bold"));
+  await Promise.all(faces.map((face) => document.fonts.load(face).catch(() => undefined)));
+  const canvas = document.createElement("canvas");
+  canvas.width = SAMPLE_LABEL_WIDTH;
+  canvas.height = SAMPLE_LABEL_HEIGHT;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Could not draw sample label");
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = WHITE;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const margin = 10;
+  const bandH = Math.round((16 / 80) * SAMPLE_LABEL_HEIGHT);
+  const bandY = margin;
+  const logoW = Math.round((24 / 50) * SAMPLE_LABEL_WIDTH);
+  const logoH = Math.round((11 / 80) * SAMPLE_LABEL_HEIGHT);
+  const contentW = SAMPLE_LABEL_WIDTH - margin * 2;
+  const logo = await loadPackageLogo(input.logoUrl, logoW, logoH);
+
+  ctx.font = fontFace(labelPx);
+  const projectValue = fitWords(ctx, input.project, contentW, 2, pxFromPt(8), pxFromPt(7));
+  const projectLine = Math.round(projectValue.px * 1.12);
+  const projectOn = sampleLabelBlockOn(input, "project") && Boolean(input.project.trim());
+  const projectH = projectOn ? labelPx + 2 + Math.max(1, projectValue.lines.length) * projectLine : 0;
+  const fieldTop = bandY + bandH + 8;
+  const fields = fitFieldStack(
+    ctx,
+    packageFields(input, { color: pxFromPt(15), product: pxFromPt(11), manufacturer: pxFromPt(10) }),
+    contentW,
+    10000,
+    labelPx,
+    8,
+  );
+
+  if (sampleLabelBlockOn(input, "band")) {
+    drawPackageBand(
+      ctx,
+      margin,
+      bandY,
+      contentW,
+      bandH,
+      input.itemLabel,
+      bandHeading(input),
+      input.packageMark ?? "",
+      pxFromPt(32),
+      pxFromPt(12),
+    );
+  }
+
+  let y = fieldTop;
+  fields.forEach((field, index) => {
+    if (index > 0) y += 8;
+    drawLaidField(ctx, field, margin, y);
+    y += field.height;
+  });
+  if (fields.length) {
+    y += 6;
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(margin, y, contentW, 1);
+    y += 1;
+  }
+
+  const qrOn = showQr(input);
+  const footerX = margin;
+  const bottom = SAMPLE_LABEL_HEIGHT - margin;
+  const projectY = projectOn ? y + 10 : y;
+  if (projectOn) {
+    ctx.fillStyle = BLACK;
+    ctx.font = fontFace(labelPx);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("PROJECT", footerX, projectY);
+    ctx.font = fontFace(projectValue.px);
+    drawLines(ctx, projectValue.lines, footerX, projectY + labelPx + 2, projectLine, "left");
+  }
+
+  const rowTop = (projectOn ? projectY + projectH : y) + 10;
+  let qrFit: { size: number; y: number; captionH: number } | null = null;
+  if (qrOn) {
+    const beside = logo ? footerX + logoW + 8 : footerX;
+    const qrMaxW = SAMPLE_LABEL_WIDTH - margin - beside;
+    qrFit = fitPackageQr(ctx, Math.max(48, qrMaxW), rowTop, bottom, labelPx);
+    const qrX = SAMPLE_LABEL_WIDTH - margin - qrFit.size;
+    drawQr(ctx, input.qrUrl, qrX, qrFit.y, qrFit.size);
+    if (qrFit.captionH) drawCaption(ctx, PKG_CAPTION, qrX, qrFit.y + qrFit.size + 4, qrFit.size, labelPx);
+  }
+  if (logo) {
+    // Sit beside the QR, vertically centered on the code (not the caption).
+    const logoY = qrFit
+      ? Math.round(qrFit.y + (qrFit.size - logoH) / 2)
+      : bottom - logoH;
+    drawLogoBox(ctx, logo, footerX, Math.max(rowTop, Math.min(logoY, bottom - logoH)), logoW, logoH);
+  }
+
+  thresholdCanvas(ctx, canvas.width, canvas.height, 128);
+  return canvas;
+}
+
+async function renderPackageLandscape(input: SampleLabelInput): Promise<HTMLCanvasElement> {
+  const labelPx = pxFromPt(5.5);
+  const faces = [24, 13, 10, 9, 8, 7.5, 5.5].map((pt) => fontFace(pxFromPt(pt), pt === 9 ? "normal" : "bold"));
+  await Promise.all(faces.map((face) => document.fonts.load(face).catch(() => undefined)));
+  const canvas = document.createElement("canvas");
+  canvas.width = SAMPLE_LABEL_LANDSCAPE_WIDTH;
+  canvas.height = SAMPLE_LABEL_LANDSCAPE_HEIGHT;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Could not draw sample label");
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = WHITE;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const margin = 8;
+  const columnW = Math.round((23 / 80) * SAMPLE_LABEL_LANDSCAPE_WIDTH);
+  const ruleX = columnW;
+  const textX = ruleX + SAMPLE_LABEL_LANDSCAPE_RULE + 8;
+  const textW = canvas.width - margin - textX;
+  const bandH = Math.round((11 / 50) * SAMPLE_LABEL_LANDSCAPE_HEIGHT);
+  const logoH = Math.round((11 / 50) * SAMPLE_LABEL_LANDSCAPE_HEIGHT);
+  const logoW = columnW - margin * 2;
+  const logo = await loadPackageLogo(input.logoUrl, logoW, logoH);
+  const qrOn = showQr(input);
+
+  ctx.font = fontFace(labelPx);
+  const projectValue = fitWords(ctx, input.project, textW, 2, pxFromPt(8), pxFromPt(7));
+  const projectLine = Math.round(projectValue.px * 1.12);
+  const projectOn = sampleLabelBlockOn(input, "project") && Boolean(input.project.trim());
+  const projectH = projectOn ? labelPx + 2 + Math.max(1, projectValue.lines.length) * projectLine : 0;
+  const projectTop = canvas.height - margin - projectH;
+  const ruleY = projectOn ? projectTop - 8 : canvas.height - margin;
+  const fieldTop = margin + (sampleLabelBlockOn(input, "band") ? bandH + 6 : 0);
+  const fieldRoom = Math.max(36, ruleY - 8 - fieldTop);
+  const fields = fitFieldStack(
+    ctx,
+    packageFields(input, { color: pxFromPt(13), product: pxFromPt(10), manufacturer: pxFromPt(9) }),
+    textW,
+    fieldRoom,
+    labelPx,
+    5,
+  );
+
+  const columnBottom = canvas.height - margin;
+  const logoY = margin;
+  if (logo) drawLogoBox(ctx, logo, margin, logoY, logoW, logoH);
+  if (qrOn) {
+    const logoBottom = logoY + (logo ? logoH : 0);
+    const qrFit = fitPackageQr(ctx, logoW, logoBottom + 4, columnBottom, labelPx);
+    const qrX = margin + Math.round((logoW - qrFit.size) / 2);
+    drawQr(ctx, input.qrUrl, qrX, qrFit.y, qrFit.size);
+    if (qrFit.captionH) drawCaption(ctx, PKG_CAPTION, qrX, qrFit.y + qrFit.size + 4, qrFit.size, labelPx);
+  }
+
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(ruleX, margin, SAMPLE_LABEL_LANDSCAPE_RULE, canvas.height - margin * 2);
+
+  if (sampleLabelBlockOn(input, "band")) {
+    drawPackageBand(
+      ctx,
+      textX,
+      margin,
+      textW,
+      bandH,
+      input.itemLabel,
+      bandHeading(input),
+      input.packageMark ?? "",
+      pxFromPt(24),
+      pxFromPt(10),
+    );
+  }
+
+  let y = fieldTop;
+  fields.forEach((field, index) => {
+    if (index > 0) y += 5;
+    drawLaidField(ctx, field, textX, y);
+    y += field.height;
+  });
+
+  if (projectOn) {
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(textX, ruleY, textW, 1);
+    ctx.font = fontFace(labelPx);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("PROJECT", textX, projectTop);
+    ctx.font = fontFace(projectValue.px);
+    drawLines(ctx, projectValue.lines, textX, projectTop + labelPx + 2, projectLine, "left");
+  }
+
+  thresholdCanvas(ctx, canvas.width, canvas.height, 128);
+  return canvas;
+}
+
 /**
  * Draw one sample label. Portrait is 384 × 640. Landscape is the 640 × 384 design canvas.
  * Blocks that are toggled off, or have nothing to print, are skipped with no reserved gap.
  */
 export async function renderSampleLabel(input: SampleLabelInput): Promise<HTMLCanvasElement> {
   await ensureLabelFonts();
+  if (input.packageLayout) {
+    return input.orientation === "landscape" ? renderPackageLandscape(input) : renderPackagePortrait(input);
+  }
   if (input.orientation === "landscape") return renderLandscapeLabel(input);
   const canvas = document.createElement("canvas");
   canvas.width = SAMPLE_LABEL_WIDTH;

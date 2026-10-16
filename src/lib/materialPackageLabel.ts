@@ -62,8 +62,9 @@ export function packageLabelInput(args: {
     address: "",
     officeLine: "",
     orientation: args.orientation ?? "portrait",
-    bandText: "MATERIAL",
+    bandText: "",
     packageMark: args.packageMark?.trim() ?? "",
+    packageLayout: true,
     blocks: {
       submittal: false,
       date: false,

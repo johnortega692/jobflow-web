@@ -7,26 +7,15 @@ import {
   packageLabelInput,
   packageLabelMark,
 } from "../../lib/materialPackageLabel";
-import {
-  SAMPLE_LABEL_HEIGHT,
-  SAMPLE_LABEL_LANDSCAPE_HEIGHT,
-  SAMPLE_LABEL_LANDSCAPE_WIDTH,
-  SAMPLE_LABEL_WIDTH,
-  type SampleLabelOrientation,
-} from "../../lib/sampleLabelContent";
+import type { SampleLabelOrientation } from "../../lib/sampleLabelContent";
 import { downloadSampleLabelsPdf, downloadSampleLabelsZip } from "../../lib/sampleLabelExport";
 import type { SampleLabelMedia } from "../../lib/sampleLabelPrefs";
 import { renderSampleLabel, renderSheetLabel } from "../../lib/sampleLabelRender";
 import { niimbotPrintSupported, printNiimbotLabels } from "../../lib/niimbotPrint";
-import { downloadSheetLabelsPdf } from "../../lib/sheetLabelExport";
-import { DEFAULT_SHEET_LABEL_TEMPLATE, layoutSheetPages } from "../../lib/sheetLabelTemplate";
+import { downloadSheetLabelsPdf, printSheetLabelsPdf } from "../../lib/sheetLabelExport";
+import { DEFAULT_SHEET_LABEL_TEMPLATE, layoutSheetPages, type SheetLabelTemplate } from "../../lib/sheetLabelTemplate";
 import type { WcTrackerLineState } from "../../types/fieldTracker";
 import type { ProjectForm } from "../../types/database";
-
-const PORTRAIT_PREVIEW_W = SAMPLE_LABEL_WIDTH / 2;
-const PORTRAIT_PREVIEW_H = SAMPLE_LABEL_HEIGHT / 2;
-const LANDSCAPE_PREVIEW_W = SAMPLE_LABEL_LANDSCAPE_WIDTH / 2;
-const LANDSCAPE_PREVIEW_H = SAMPLE_LABEL_LANDSCAPE_HEIGHT / 2;
 
 type Props = {
   project: ProjectForm;
@@ -34,23 +23,57 @@ type Props = {
   onClose: () => void;
 };
 
-function ZipIcon() {
+function packageDialogHeading(line: WcTrackerLineState): { code: string; detail: string } {
+  const code = line.label.trim();
+  const product = line.product.trim() || line.wallcoveringName.trim();
+  const maker = line.manufacturer.trim();
+  const named =
+    maker && product && !product.toLowerCase().includes(maker.toLowerCase())
+      ? `${maker} ${product}`
+      : product || maker;
+  const detail = [named, line.color.trim()].filter(Boolean).join(" · ") || "Material";
+  return { code, detail };
+}
+
+function sheetMediaLine(template: SheetLabelTemplate): string {
+  const per = template.columns * template.rows;
+  return `Avery 5163 · ${template.labelHeightIn} × ${template.labelWidthIn} in · ${per} per sheet`;
+}
+
+function formatPrintStamp(date: Date): string {
+  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function PortraitIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <circle cx="8.5" cy="9" r="1.4" />
-      <path d="m21 16-4.5-4.5L8 20" />
+    <svg width="11" height="15" viewBox="0 0 11 15" fill="none" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="13" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }
 
-function PdfIcon() {
+function LandscapeIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8z" />
-      <path d="M14 3v5h5" />
-      <path d="M9 13h6" />
-      <path d="M9 17h4" />
+    <svg width="15" height="11" viewBox="0 0 15 11" fill="none" aria-hidden="true">
+      <rect x="1" y="1" width="13" height="9" rx="1.4" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function CautionIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3.5 2.8 19.5h18.4L12 3.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M12 9.5v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="17.2" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+function Chevron({ dir }: { dir: "left" | "right" }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+      <path d={dir === "left" ? "M14.5 6 8.5 12l6 6" : "M9.5 6l6 6-6 6"} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -68,12 +91,15 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
   const [busy, setBusy] = useState<null | "pdf" | "zip" | "test" | "print">(null);
   const [error, setError] = useState<string | null>(null);
   const [printNote, setPrintNote] = useState<string | null>(null);
+  const [printed, setPrinted] = useState<{ count: number; at: Date } | null>(null);
   const canPrintNiimbot = niimbotPrintSupported();
   const jobNumber = wcTrackerJobNumber(project);
   const jobName = wcTrackerJobName(project);
-  const name = line.label.trim() || line.wallcoveringName.trim() || "Material";
+  const heading = packageDialogHeading(line);
+  const name = line.label.trim() || line.wallcoveringName.trim() || heading.detail;
   const sheetMode = media === "sheet";
   const template = DEFAULT_SHEET_LABEL_TEMPLATE;
+  const spotCount = template.columns * template.rows;
 
   const thermalInputs = useMemo(
     () =>
@@ -125,7 +151,9 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
     setPreviewUrl("");
     void renderSampleLabel(input)
       .then((canvas) => {
-        if (!cancel) setPreviewUrl(canvas.toDataURL("image/png"));
+        if (cancel) return;
+        setPreviewUrl(canvas.toDataURL("image/png"));
+        setError(null);
       })
       .catch(() => {
         if (!cancel) setError("Could not draw the label.");
@@ -141,7 +169,9 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
     setSheetUrls([]);
     void Promise.all(sheetInputs.map((input) => renderSheetLabel(input).then((canvas) => canvas.toDataURL("image/png"))))
       .then((urls) => {
-        if (!cancel) setSheetUrls(urls);
+        if (cancel) return;
+        setSheetUrls(urls);
+        setError(null);
       })
       .catch(() => {
         if (!cancel) setError("Could not draw the label.");
@@ -152,6 +182,10 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
   }, [sheetMode, sheetInputs]);
 
   const fileStem = [jobNumber, name].filter(Boolean).join(" ") || "package-label";
+
+  function setCopyCount(next: number) {
+    setCopies(Math.min(99, Math.max(1, Math.floor(next) || 1)));
+  }
 
   async function downloadThermal(kind: "pdf" | "zip") {
     setBusy(kind);
@@ -172,14 +206,20 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
   }
 
   async function printOnNiimbot() {
+    const count = copies;
     setBusy("print");
     setError(null);
     setPrintNote(null);
+    setPrinted(null);
     try {
       await printNiimbotLabels(
         thermalInputs.map((input) => ({ input, copies: 1 })),
-        setPrintNote,
+        (message) => {
+          if (!message.startsWith("Printed ")) setPrintNote(message);
+        },
       );
+      setPrintNote(null);
+      setPrinted({ count, at: new Date() });
     } catch (err) {
       setPrintNote(null);
       setError(err instanceof Error ? err.message : "Could not print on the NIIMBOT.");
@@ -203,244 +243,322 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
     }
   }
 
-  const previewW = orientation === "landscape" ? LANDSCAPE_PREVIEW_W : PORTRAIT_PREVIEW_W;
-  const previewH = orientation === "landscape" ? LANDSCAPE_PREVIEW_H : PORTRAIT_PREVIEW_H;
+  async function printSheet() {
+    const count = copies;
+    setBusy("print");
+    setError(null);
+    setPrintNote(null);
+    setPrinted(null);
+    try {
+      await printSheetLabelsPdf({ inputs: sheetInputs, template, startAt: sheetStart });
+      setPrinted({ count, at: new Date() });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not print the sheet.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const sizeLine = orientation === "landscape" ? "80 × 50 mm" : "50 × 80 mm";
+  const statusText =
+    error ??
+    printNote ??
+    (printed
+      ? `Printed ${printed.count} ${printed.count === 1 ? "label" : "labels"} · ${formatPrintStamp(printed.at)}`
+      : null) ??
+    (!sheetMode && !canPrintNiimbot
+      ? "This browser can't reach the printer. Save the PDF and open it in the NIIMBOT app."
+      : null);
+  const statusClass = error ? " is-error" : printed && !printNote && !busy && !error ? " is-done" : "";
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className={`modal card wc-print-dialog pkg-label-dialog${sheetMode ? " is-sheet" : orientation === "landscape" ? " is-landscape" : " is-portrait"}`}
+        className={`modal card pkg-label-dialog${sheetMode ? " is-sheet" : orientation === "landscape" ? " is-landscape" : " is-portrait"}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pkg-label-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="wc-print-head">
+        <header className="pkg-label-head">
           <div>
             <h3 id="pkg-label-title">Package labels</h3>
-            <p className="wc-print-sub">{name}</p>
+            <p className="pkg-label-sub">
+              {heading.code ? <span className="pkg-label-code">{heading.code}</span> : null}
+              <span className="pkg-label-sub-text">{heading.detail}</span>
+            </p>
           </div>
-          <div className="wc-print-head-tools">
-            <div className="wc-print-segment" role="radiogroup" aria-label="Print on">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={!sheetMode}
-                className={sheetMode ? "" : "is-on"}
-                onClick={() => setMedia("niimbot")}
-              >
-                NIIMBOT B1 · 50 x 80
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={sheetMode}
-                className={sheetMode ? "is-on" : ""}
-                onClick={() => setMedia("sheet")}
-              >
-                Sheet labels · 2&quot; x 4&quot;
-              </button>
-            </div>
-            <button type="button" className="wc-print-close" aria-label="Close" onClick={onClose}>
-              ×
-            </button>
-          </div>
-        </div>
+          <button type="button" className="pkg-label-close" aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        </header>
 
-        <div className="wc-print-body">
-          <div className="wc-print-controls">
-            <label className="pkg-label-copies">
-              Labels
-              <input
-                type="number"
-                min={1}
-                max={99}
-                value={copies}
-                onChange={(event) => {
-                  const next = Number(event.target.value);
-                  setCopies(Number.isFinite(next) ? Math.min(99, Math.max(1, Math.floor(next))) : 1);
-                }}
-              />
-            </label>
+        <div className="pkg-label-body">
+          <div className="pkg-label-side">
+            <section>
+              <p className="pkg-label-kicker">Print to</p>
+              <div className="pkg-label-dests" role="radiogroup" aria-label="Print to">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!sheetMode}
+                  className={`pkg-label-dest${sheetMode ? "" : " is-on"}`}
+                  onClick={() => setMedia("niimbot")}
+                >
+                  <span className={`pkg-label-radio${sheetMode ? "" : " is-on"}`} aria-hidden="true" />
+                  <span>
+                    <strong>NIIMBOT B1</strong>
+                    <em>50 × 80 mm roll</em>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={sheetMode}
+                  className={`pkg-label-dest${sheetMode ? " is-on" : ""}`}
+                  onClick={() => setMedia("sheet")}
+                >
+                  <span className={`pkg-label-radio${sheetMode ? " is-on" : ""}`} aria-hidden="true" />
+                  <span>
+                    <strong>Sheet labels</strong>
+                    <em>{sheetMediaLine(template)}</em>
+                  </span>
+                </button>
+              </div>
+            </section>
+
+            <section>
+              <p className="pkg-label-kicker">Labels</p>
+              <div className="pkg-label-stepper">
+                <button
+                  type="button"
+                  aria-label="Fewer labels"
+                  disabled={busy !== null || copies <= 1}
+                  onClick={() => setCopyCount(copies - 1)}
+                >
+                  −
+                </button>
+                <strong aria-live="polite">{copies}</strong>
+                <button
+                  type="button"
+                  aria-label="More labels"
+                  disabled={busy !== null || copies >= 99}
+                  onClick={() => setCopyCount(copies + 1)}
+                >
+                  +
+                </button>
+              </div>
+            </section>
+
             {sheetMode ? (
-              <p className="wc-print-template-line">
-                Template: {template.name} · {template.columns * template.rows} per Letter sheet
-              </p>
+              <section>
+                <p className="pkg-label-kicker">Start at spot</p>
+                <div
+                  className="pkg-label-spots"
+                  role="group"
+                  aria-label="Start at spot"
+                  style={{ gridTemplateColumns: `repeat(${template.columns}, minmax(0, 1fr))` }}
+                >
+                  {Array.from({ length: spotCount }, (_, index) => {
+                    const spot = index + 1;
+                    const selected = spot === sheetStart;
+                    const used = spot < sheetStart;
+                    return (
+                      <button
+                        key={spot}
+                        type="button"
+                        className={`pkg-label-spot${selected ? " is-on" : used ? " is-used" : ""}`}
+                        aria-pressed={selected}
+                        aria-label={used ? `Spot ${spot}, used. Start here` : `Start at spot ${spot}`}
+                        disabled={busy !== null}
+                        onClick={() => setSheetStart(spot)}
+                      >
+                        {spot}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="pkg-label-hint">Grey spots were used on an earlier print. Click a spot to start there.</p>
+                <p className="pkg-label-caution">
+                  <CautionIcon />
+                  <span>Print at 100% / Actual size. Turn off Fit to page.</span>
+                </p>
+              </section>
             ) : (
-              <div className="wc-print-orient">
-                <p className="wc-print-kicker">Orientation</p>
-                <div className="wc-print-pills" role="radiogroup" aria-label="Orientation">
+              <section>
+                <p className="pkg-label-kicker">Orientation</p>
+                <div className="pkg-label-orient" role="radiogroup" aria-label="Orientation">
                   <button
                     type="button"
                     role="radio"
                     aria-checked={orientation === "portrait"}
                     className={orientation === "portrait" ? "is-on" : ""}
+                    disabled={busy !== null}
                     onClick={() => setOrientation("portrait")}
                   >
-                    <span className="wc-print-shape wc-print-shape-portrait" aria-hidden="true" />
-                    Portrait 50 x 80
+                    <PortraitIcon />
+                    Portrait
                   </button>
                   <button
                     type="button"
                     role="radio"
                     aria-checked={orientation === "landscape"}
                     className={orientation === "landscape" ? "is-on" : ""}
+                    disabled={busy !== null}
                     onClick={() => setOrientation("landscape")}
                   >
-                    <span className="wc-print-shape wc-print-shape-landscape" aria-hidden="true" />
-                    Landscape 80 x 50
+                    <LandscapeIcon />
+                    Landscape
                   </button>
                 </div>
-              </div>
+              </section>
             )}
           </div>
 
-          <aside className="wc-print-preview">
-            {sheetMode ? (
-              <>
-                <div className="wc-print-preview-head">
-                  <p className="wc-print-kicker">
-                    Sheet {sheetPage + 1} of {sheetPages.length}
-                  </p>
-                  {sheetPages.length > 1 && (
-                    <div className="wc-print-nav">
-                      <button
-                        type="button"
-                        disabled={sheetPage <= 0}
-                        onClick={() => setSheetPage((page) => Math.max(0, page - 1))}
-                      >
-                        &lt; Prev
-                      </button>
-                      <button
-                        type="button"
-                        disabled={sheetPage >= sheetPages.length - 1}
-                        onClick={() => setSheetPage((page) => Math.min(sheetPages.length - 1, page + 1))}
-                      >
-                        Next &gt;
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {sheetPage === 0 && <p className="wc-print-hint">Click a spot to start there</p>}
+          <section className="pkg-label-stage" aria-label="Preview">
+            <div className="pkg-label-stage-head">
+              <p className="pkg-label-kicker">Preview</p>
+              <p className="pkg-label-stage-meta">
+                {sheetMode
+                  ? `Starts at spot ${sheetStart} · ${spotsLeft} ${spotsLeft === 1 ? "spot" : "spots"} left`
+                  : `Label ${packageLabelMark(previewIndex + 1, copies)} · ${sizeLine}`}
+              </p>
+            </div>
+            <div className="pkg-label-canvas">
+              {sheetMode ? (
                 <div className="wc-sheet-page" aria-label="Sheet preview">
                   {(sheetPages[sheetPage] ?? []).map((slot) => {
                     const url =
                       slot.kind === "label" && slot.labelIndex !== undefined ? (sheetUrls[slot.labelIndex] ?? "") : "";
-                    const clickable = sheetPage === 0 && slot.kind !== "label";
                     return (
-                      <button
+                      <div
                         key={slot.index}
-                        type="button"
-                        className={`wc-sheet-cell${slot.kind === "used" ? " is-used" : ""}${clickable ? " is-spot" : ""}`}
-                        aria-label={
-                          clickable ? `Start at spot ${slot.index + 1}` : `Label spot ${slot.index + 1}`
-                        }
+                        className={`wc-sheet-cell${slot.kind === "used" ? " is-used" : ""}`}
                         style={{
                           left: `${(slot.xIn / template.pageWidthIn) * 100}%`,
                           top: `${(slot.yIn / template.pageHeightIn) * 100}%`,
                           width: `${(template.labelWidthIn / template.pageWidthIn) * 100}%`,
                           height: `${(template.labelHeightIn / template.pageHeightIn) * 100}%`,
                         }}
-                        onClick={() => {
-                          if (clickable) setSheetStart(slot.index + 1);
-                        }}
                       >
-                        {url ? <img src={url} alt="" /> : slot.kind === "used" ? <span>Used</span> : null}
-                      </button>
+                        {url ? <img src={url} alt="" /> : null}
+                      </div>
                     );
                   })}
                 </div>
-                <p className="wc-print-sheet-caption">
-                  Starts at spot {sheetStart} · {copies} {copies === 1 ? "label" : "labels"} · {spotsLeft}{" "}
-                  {spotsLeft === 1 ? "spot" : "spots"} left on sheet
-                </p>
-              </>
+              ) : previewUrl ? (
+                <img
+                  className="pkg-label-thermal"
+                  src={previewUrl}
+                  alt={`Package label ${packageLabelMark(previewIndex + 1, copies)} for ${heading.detail}`}
+                />
+              ) : (
+                <div className="pkg-label-pending">Rendering…</div>
+              )}
+            </div>
+            {sheetMode ? (
+              <div className="pkg-label-pager">
+                <button
+                  type="button"
+                  aria-label="Previous sheet"
+                  disabled={sheetPage <= 0}
+                  onClick={() => setSheetPage((page) => Math.max(0, page - 1))}
+                >
+                  <Chevron dir="left" />
+                </button>
+                <span>
+                  Sheet {sheetPage + 1} of {sheetPages.length}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next sheet"
+                  disabled={sheetPage >= sheetPages.length - 1}
+                  onClick={() => setSheetPage((page) => Math.min(sheetPages.length - 1, page + 1))}
+                >
+                  <Chevron dir="right" />
+                </button>
+              </div>
             ) : (
-              <>
-                <div className="wc-print-preview-head">
-                  <p className="wc-print-kicker">Preview · {packageLabelMark(previewIndex + 1, copies)}</p>
-                  {copies > 1 && (
-                    <div className="wc-print-nav">
-                      <button
-                        type="button"
-                        disabled={previewIndex <= 0}
-                        onClick={() => setPreviewIndex((index) => Math.max(0, index - 1))}
-                      >
-                        &lt; Prev
-                      </button>
-                      <button
-                        type="button"
-                        disabled={previewIndex >= copies - 1}
-                        onClick={() => setPreviewIndex((index) => Math.min(copies - 1, index + 1))}
-                      >
-                        Next &gt;
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    width={previewW}
-                    height={previewH}
-                    alt={`Package label ${packageLabelMark(previewIndex + 1, copies)} for ${name}`}
-                  />
-                ) : (
-                  <div className="wc-print-preview-empty" style={{ width: previewW, height: previewH }}>
-                    Rendering…
-                  </div>
-                )}
-              </>
+              <div className="pkg-label-pager">
+                <button
+                  type="button"
+                  aria-label="Previous label"
+                  disabled={previewIndex <= 0}
+                  onClick={() => setPreviewIndex((index) => Math.max(0, index - 1))}
+                >
+                  <Chevron dir="left" />
+                </button>
+                <span>
+                  {previewIndex + 1} of {copies}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next label"
+                  disabled={previewIndex >= copies - 1}
+                  onClick={() => setPreviewIndex((index) => Math.min(copies - 1, index + 1))}
+                >
+                  <Chevron dir="right" />
+                </button>
+              </div>
             )}
-          </aside>
+          </section>
         </div>
 
-        {error && <p className="wc-print-warn">{error}</p>}
-
-        <div className="wc-print-footer">
-          <p className="muted small">
-            {sheetMode
-              ? "Print at 100% / Actual size. Turn off Fit to page."
-              : printNote
-                ? printNote
-                : canPrintNiimbot
-                  ? "Prints on a nearby B1. Chrome or Edge."
-                  : "This browser can't reach the printer. Download the PDF and open it in the NIIMBOT app."}
+        <footer className="pkg-label-foot">
+          <p className={`pkg-label-status${statusClass}`} aria-live="polite">
+            {statusText}
           </p>
-          <div className="wc-print-actions">
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy !== null}>
-              Cancel
-            </button>
+          <div className="pkg-label-actions">
             {sheetMode ? (
               <>
+                <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy !== null}>
+                  Cancel
+                </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
                   disabled={busy !== null}
                   onClick={() => void downloadSheet(true)}
                 >
-                  {busy === "test" ? "Preparing test…" : "Print test on plain paper"}
+                  {busy === "test" ? "Preparing…" : "Test on plain paper"}
+                </button>
+                <button
+                  type="button"
+                  className="pkg-label-ghost"
+                  disabled={busy !== null}
+                  onClick={() => void downloadSheet(false)}
+                >
+                  {busy === "pdf" ? "Preparing…" : "Download PDF"}
                 </button>
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={busy !== null}
-                  onClick={() => void downloadSheet(false)}
+                  disabled={busy !== null || copies < 1}
+                  onClick={() => void printSheet()}
                 >
-                  {busy === "pdf" ? "Preparing PDF…" : "Download PDF"}
+                  {busy === "print" ? "Printing…" : `Print ${copies} ${copies === 1 ? "label" : "labels"}`}
                 </button>
               </>
             ) : (
               <>
                 <button
                   type="button"
-                  className="btn btn-secondary wc-print-icon-btn"
+                  className="pkg-label-ghost"
                   disabled={busy !== null}
-                  aria-label={busy === "zip" ? "Preparing PNGs" : "Download PNGs (.zip)"}
-                  title={busy === "zip" ? "Preparing PNGs…" : "Download PNGs (.zip)"}
                   onClick={() => void downloadThermal("zip")}
                 >
-                  <ZipIcon />
+                  {busy === "zip" ? "Saving…" : "Save PNG"}
+                </button>
+                <button
+                  type="button"
+                  className={canPrintNiimbot ? "pkg-label-ghost" : "btn btn-primary"}
+                  disabled={busy !== null}
+                  onClick={() => void downloadThermal("pdf")}
+                >
+                  {busy === "pdf" ? "Saving…" : "Save PDF"}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy !== null}>
+                  Cancel
                 </button>
                 {canPrintNiimbot ? (
                   <button
@@ -449,23 +567,13 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
                     disabled={busy !== null || copies < 1}
                     onClick={() => void printOnNiimbot()}
                   >
-                    {busy === "print" ? "Printing…" : "Print on NIIMBOT"}
+                    {busy === "print" ? "Printing…" : `Print ${copies} ${copies === 1 ? "label" : "labels"}`}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className={`${canPrintNiimbot ? "btn btn-secondary" : "btn btn-primary"} wc-print-icon-btn`}
-                  disabled={busy !== null}
-                  aria-label={busy === "pdf" ? "Preparing PDF" : "Download PDF (one label per page)"}
-                  title={busy === "pdf" ? "Preparing PDF…" : "Download PDF (one label per page)"}
-                  onClick={() => void downloadThermal("pdf")}
-                >
-                  <PdfIcon />
-                </button>
               </>
             )}
           </div>
-        </div>
+        </footer>
       </div>
     </div>
   );

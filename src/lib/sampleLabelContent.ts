@@ -73,6 +73,8 @@ export type SampleLabelInput = {
   bandText?: string;
   /** Package sequence on the right of the black band, e.g. "1 of 4". */
   packageMark?: string;
+  /** Roll package label. Sample labels leave this unset. */
+  packageLayout?: boolean;
 };
 
 export function sampleLabelBlockOn(input: SampleLabelInput, block: SampleLabelBlock): boolean {

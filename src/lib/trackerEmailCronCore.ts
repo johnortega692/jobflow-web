@@ -11,7 +11,12 @@ import {
 } from "./billingDueDigest.js";
 import { sendFollowUpReminder, followUpReminderHasContent } from "./trackerFollowUpReminders.js";
 import type { TrackerEmailCronSlot } from "./trackerEmailSchedule.js";
-import { zonedCalendarDate, zonedWeekdayAndHour, weekdayLabel } from "./trackerEmailSchedule.js";
+import {
+  effectiveScheduleWeekday,
+  zonedCalendarDate,
+  zonedWeekdayAndHour,
+  weekdayLabel,
+} from "./trackerEmailSchedule.js";
 import { sendWeeklyTrackerDigest } from "./trackerWeeklyDigest.js";
 import { sendSiteReadyDigest, siteReadyDigestHasContent } from "./startupSiteReadyDigest.js";
 import {
@@ -196,9 +201,11 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
 
       if (slot === "weekly" && schedule.weekly.enabled) {
         const { weekday } = zonedWeekdayAndHour(new Date(), schedule.timezone);
+        const digestDay = effectiveScheduleWeekday(schedule.weekly.digest_weekday);
+        const wcDigestDay = effectiveScheduleWeekday(schedule.weekly.wallcovering_digest_weekday, digestDay);
         if (schedule.weekly.combined_digest) {
-          if (weekday !== schedule.weekly.digest_weekday) {
-            result.skipped.push(`${label}: combined digest skipped (not ${weekdayLabel(schedule.weekly.digest_weekday)})`);
+          if (weekday !== digestDay) {
+            result.skipped.push(`${label}: combined digest skipped (not ${weekdayLabel(digestDay)})`);
           } else if (!primaryEmail) {
             result.skipped.push(`${label}: combined digest skipped (no primary email)`);
           } else {
@@ -207,9 +214,9 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
           }
         }
         if (schedule.weekly.wallcovering_digest) {
-          if (weekday !== schedule.weekly.wallcovering_digest_weekday) {
+          if (weekday !== wcDigestDay) {
             result.skipped.push(
-              `${label}: wallcovering digest skipped (not ${weekdayLabel(schedule.weekly.wallcovering_digest_weekday)})`,
+              `${label}: wallcovering digest skipped (not ${weekdayLabel(wcDigestDay)})`,
             );
           } else if (!primaryEmail) {
             result.skipped.push(`${label}: wallcovering digest skipped (no primary email)`);
