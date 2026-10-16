@@ -11,7 +11,12 @@ import type { SampleLabelOrientation } from "../../lib/sampleLabelContent";
 import { downloadSampleLabelsPdf, downloadSampleLabelsZip } from "../../lib/sampleLabelExport";
 import type { SampleLabelMedia } from "../../lib/sampleLabelPrefs";
 import { renderSampleLabel, renderSheetLabel } from "../../lib/sampleLabelRender";
-import { niimbotPrintSupported, printNiimbotLabels } from "../../lib/niimbotPrint";
+import {
+  estimateNiimbotPrintProgress,
+  niimbotPrintSupported,
+  printNiimbotLabels,
+  type NiimbotPrintProgress,
+} from "../../lib/niimbotPrint";
 import { downloadSheetLabelsPdf, printSheetLabelsPdf } from "../../lib/sheetLabelExport";
 import { DEFAULT_SHEET_LABEL_TEMPLATE, layoutSheetPages, type SheetLabelTemplate } from "../../lib/sheetLabelTemplate";
 import type { WcTrackerLineState } from "../../types/fieldTracker";
@@ -91,6 +96,7 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
   const [busy, setBusy] = useState<null | "pdf" | "zip" | "test" | "print">(null);
   const [error, setError] = useState<string | null>(null);
   const [printNote, setPrintNote] = useState<string | null>(null);
+  const [printProgress, setPrintProgress] = useState<NiimbotPrintProgress | null>(null);
   const [printed, setPrinted] = useState<{ count: number; at: Date } | null>(null);
   const canPrintNiimbot = niimbotPrintSupported();
   const jobNumber = wcTrackerJobNumber(project);
@@ -210,21 +216,27 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
     setBusy("print");
     setError(null);
     setPrintNote(null);
+    setPrintProgress({ percent: 1, label: "Starting…" });
     setPrinted(null);
     try {
       await printNiimbotLabels(
         thermalInputs.map((input) => ({ input, copies: 1 })),
         (message) => {
+          const next = estimateNiimbotPrintProgress(message, count);
+          setPrintProgress(next);
           if (!message.startsWith("Printed ")) setPrintNote(message);
         },
       );
+      setPrintProgress({ percent: 100, label: "Done" });
       setPrintNote(null);
       setPrinted({ count, at: new Date() });
     } catch (err) {
       setPrintNote(null);
+      setPrintProgress(null);
       setError(err instanceof Error ? err.message : "Could not print on the NIIMBOT.");
     } finally {
       setBusy(null);
+      window.setTimeout(() => setPrintProgress(null), 900);
     }
   }
 
@@ -505,9 +517,28 @@ export function PackageLabelDialog({ project, line, onClose }: Props) {
         </div>
 
         <footer className="pkg-label-foot">
-          <p className={`pkg-label-status${statusClass}`} aria-live="polite">
-            {statusText}
-          </p>
+          {printProgress && (busy === "print" || printProgress.percent >= 100) ? (
+            <div
+              className="pkg-label-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={printProgress.percent}
+              aria-label={printProgress.label}
+            >
+              <div className="pkg-label-progress-meta">
+                <span>{printProgress.label}</span>
+                <span>{printProgress.percent}%</span>
+              </div>
+              <div className="pkg-label-progress-track">
+                <div className="pkg-label-progress-fill" style={{ width: `${printProgress.percent}%` }} />
+              </div>
+            </div>
+          ) : (
+            <p className={`pkg-label-status${statusClass}`} aria-live="polite">
+              {statusText}
+            </p>
+          )}
           <div className="pkg-label-actions">
             {sheetMode ? (
               <>

@@ -122,6 +122,56 @@ async function printPageUrl(url: string): Promise<{ url: string }> {
   }
 }
 
+export type NiimbotPrintProgress = {
+  percent: number;
+  label: string;
+};
+
+/** Map driver status text onto an overall 0–100% print job. */
+export function estimateNiimbotPrintProgress(status: string, totalLabels: number): NiimbotPrintProgress {
+  const total = Math.max(1, Math.floor(totalLabels) || 1);
+  const trimmed = status.trim();
+  if (/^connecting/i.test(trimmed)) return { percent: 3, label: "Connecting…" };
+  if (/^drawing/i.test(trimmed)) return { percent: 10, label: "Drawing labels…" };
+  if (/^printed\b/i.test(trimmed) || /^ok$/i.test(trimmed)) {
+    return { percent: 100, label: /^printed\b/i.test(trimmed) ? trimmed.replace(/\.$/, "") : "Done" };
+  }
+
+  const labeled = trimmed.match(/^label\s+(\d+)\s*\/\s*(\d+)\s*:\s*(.+)$/i);
+  const printingOf = trimmed.match(/^printing\s+(\d+)\s+of\s+(\d+)/i);
+  let index = 1;
+  let count = total;
+  let detail = trimmed;
+  if (labeled) {
+    index = Math.max(1, Number(labeled[1]) || 1);
+    count = Math.max(1, Number(labeled[2]) || total);
+    detail = (labeled[3] ?? "").trim();
+  } else if (printingOf) {
+    index = Math.max(1, Number(printingOf[1]) || 1);
+    count = Math.max(1, Number(printingOf[2]) || total);
+    detail = trimmed;
+  }
+
+  const prepEnd = 12;
+  const slice = (100 - prepEnd) / count;
+  const base = prepEnd + (index - 1) * slice;
+  let within = 0.25;
+  if (/configur/i.test(detail)) within = 0.08;
+  else if (/send/i.test(detail)) within = 0.3;
+  else if (/print/i.test(detail)) {
+    const pct = detail.match(/(\d+)\s*%/);
+    within = pct ? 0.38 + (Math.min(100, Number(pct[1]) || 0) / 100) * 0.48 : 0.55;
+  } else if (/feed/i.test(detail)) within = 0.94;
+  else if (/^ok$/i.test(detail)) within = 1;
+
+  const percent = Math.max(0, Math.min(100, Math.round(base + within * slice)));
+  const label =
+    labeled || printingOf
+      ? `Label ${Math.min(index, count)} of ${count}`
+      : detail.replace(/\.{2,}$/g, "…") || "Printing…";
+  return { percent, label };
+}
+
 /**
  * Send rendered 50×80 labels to a paired B1. Call this directly from the print click
  * so the browser still treats the Bluetooth chooser as a user gesture.
@@ -138,7 +188,7 @@ export async function printNiimbotLabels(
   if (!pending.length) throw new Error("Nothing to print.");
 
   onProgress?.("Connecting…");
-    api.DEBUG = true;
+  api.DEBUG = true;
   api.BUNDLE_MAX = 0;
   api.PAGE_WAIT_MS = 25000;
   api.PAGE_ACK_MS = 15000;
@@ -184,7 +234,14 @@ export async function printNiimbotLabels(
         model,
         size,
         copies: pages[0].copies,
-        onProgress: () => onProgress?.(`Printing 1 of ${total}…`),
+        onProgress: (status) => {
+          const step = status.trim();
+          if (!step || /^ok$/i.test(step)) {
+            onProgress?.(`Printing 1 of ${total}…`);
+            return;
+          }
+          onProgress?.(total > 1 ? `label 1/${total}: ${step}` : `label 1/1: ${step}`);
+        },
       });
     } else {
       const queued = pages.flatMap((page) => Array.from({ length: page.copies }, () => page.url));
