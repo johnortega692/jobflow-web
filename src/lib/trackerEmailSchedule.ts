@@ -87,7 +87,7 @@ export function isWeekendWeekday(weekday: number): boolean {
  * Configured send days that fall on Saturday or Sunday roll to Monday.
  * Daily jobs skip the weekend entirely and pick up again Monday.
  */
-export function effectiveScheduleWeekday(weekday: number, fallback = DEFAULT_DIGEST_WEEKDAY): number {
+export function effectiveScheduleWeekday(weekday: number | undefined, fallback = DEFAULT_DIGEST_WEEKDAY): number {
   const day = normalizeWeekday(weekday, fallback);
   return isWeekendWeekday(day) ? 1 : day;
 }

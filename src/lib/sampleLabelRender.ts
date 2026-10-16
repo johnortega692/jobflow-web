@@ -874,7 +874,7 @@ function drawLaidField(ctx: CanvasRenderingContext2D, field: LaidField, x: numbe
 }
 
 function packageFields(input: SampleLabelInput, sizes: { color: number; product: number; manufacturer: number }): PackageField[] {
-  const fields = [
+  const fields: (PackageField & { on: boolean })[] = [
     {
       label: "COLOR / PATTERN",
       value: input.color,
@@ -902,10 +902,8 @@ function packageFields(input: SampleLabelInput, sizes: { color: number; product:
       minPx: pxFromPt(8),
       on: sampleLabelBlockOn(input, "manufacturer"),
     },
-  ]
-    .filter((field) => field.on && field.value.trim())
-    .map(({ on: _on, ...field }) => field);
-  return fields;
+  ];
+  return fields.filter((field) => field.on && field.value.trim()).map(({ on: _on, ...field }) => field);
 }
 
 function fitFieldStack(
