@@ -138,10 +138,10 @@ export async function printNiimbotLabels(
   if (!pending.length) throw new Error("Nothing to print.");
 
   onProgress?.("Connecting…");
-  api.DEBUG = true;
+    api.DEBUG = true;
   api.BUNDLE_MAX = 0;
   api.PAGE_WAIT_MS = 25000;
-  api.PAGE_ACK_MS = 10000;
+  api.PAGE_ACK_MS = 15000;
   api.COMPLETION_MS = 45000;
   const connected = api.connect(B1_MODEL);
   const urls: string[] = [];

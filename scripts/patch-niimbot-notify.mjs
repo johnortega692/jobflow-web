@@ -5,7 +5,61 @@ const file = path.join("node_modules", "niimbot-web-bluetooth", "src", "niimbot.
 if (!fs.existsSync(file)) process.exit(0);
 
 let src = fs.readFileSync(file, "utf8");
-if (src.includes("batch streams the next page during the print")) process.exit(0);
+
+/** Longer setup/PageStart waits + accept a late matching BLE reply. Idempotent. */
+function hardenPageStart(input) {
+  let next = input;
+  next = next.replaceAll(
+    'requireAccepted("SetDensity", await sendWait(0x21, [density], 0x31, 1000));',
+    'requireAccepted("SetDensity", await sendWait(0x21, [density], 0x31, 4000));',
+  );
+  next = next.replaceAll(
+    'requireAccepted("SetLabelType", await sendWait(0x23, [model.label_type], 0x33, 1000));',
+    'requireAccepted("SetLabelType", await sendWait(0x23, [model.label_type], 0x33, 4000));',
+  );
+  next = next.replaceAll(
+    'requireAccepted("PageStart", await sendWait(0x03, [0x01], 0x04, 1000));',
+    'requireAccepted("PageStart", await sendWait(0x03, [0x01], 0x04, 5000));',
+  );
+  next = next.replace(
+    /requireAccepted\("PrintStart", await sendWait\(0x01, start, 0x02, \d+\)\);\n( {4})logAlways\(`PrintStart pages=/,
+    'requireAccepted("PrintStart", await sendWait(0x01, start, 0x02, 5000));\n$1await sleep(80); /* jobflow-printstart-settle */\n$1logAlways(`PrintStart pages=',
+  );
+  const sendWaitOld = `  async function sendWait(cmd, data, wantResp, timeoutMs) {
+    let entry;
+    const wait = new Promise((resolve) => { entry = registerWait(wantResp, resolve); });
+    await send(cmd, data);
+    const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
+    if (!res) clearWait(entry); // clear on timeout; a late reply still finds nothing to match
+    if (!res) logMsg(\`⚠ no response to \${h2(cmd)} (wanted \${wantResp == null ? "any" : h2(wantResp)}) after \${timeoutMs}ms\`);
+    return res; // { cmd, data } or null
+  }`;
+  const sendWaitNew = `  async function sendWait(cmd, data, wantResp, timeoutMs) {
+    let entry;
+    const wait = new Promise((resolve) => { entry = registerWait(wantResp, resolve); });
+    await send(cmd, data);
+    let res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
+    if (!res) clearWait(entry);
+    // A reply that landed just after the waiter was cleared (or was bundled with an
+    // earlier frame) still counts. Without this, PageStart fails as "got no response"
+    // on slower BLE stacks even though 0x04 is sitting in lastUnsolicited.
+    if (!res && wantResp != null && lastUnsolicited && lastUnsolicited.cmd === wantResp) {
+      res = lastUnsolicited;
+      lastUnsolicited = null;
+      logMsg(\`took late \${h2(wantResp)} from the unsolicited queue after \${timeoutMs}ms\`);
+    }
+    if (!res) logMsg(\`⚠ no response to \${h2(cmd)} (wanted \${wantResp == null ? "any" : h2(wantResp)}) after \${timeoutMs}ms\`);
+    return res; // { cmd, data } or null
+  }`;
+  if (next.includes(sendWaitOld)) next = next.replace(sendWaitOld, sendWaitNew);
+  return next;
+}
+
+if (src.includes("batch streams the next page during the print")) {
+  const hardened = hardenPageStart(src);
+  if (hardened !== src) fs.writeFileSync(file, hardened);
+  process.exit(0);
+}
 
 const notify = `  function onNotify(event) {
     const v = event.target.value; // DataView
@@ -310,13 +364,14 @@ const beginNew = `  // A setup reply is success only when data[0] === 1. Any oth
 
   async function beginJob(model, totalPages, onProgress, density) {
     onProgress && onProgress("configuring…");
-    requireAccepted("SetDensity", await sendWait(0x21, [density], 0x31, 1000));
-    requireAccepted("SetLabelType", await sendWait(0x23, [model.label_type], 0x33, 1000));
+    requireAccepted("SetDensity", await sendWait(0x21, [density], 0x31, 4000));
+    requireAccepted("SetLabelType", await sendWait(0x23, [model.label_type], 0x33, 4000));
     const n = Math.max(1, totalPages | 0);
     const start = isB1(model)
       ? [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0]                          // printStart 7b
       : [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0, model.speed, 0];         // printStart 9b (…, speed, flag)
-    requireAccepted("PrintStart", await sendWait(0x01, start, 0x02, 2000));
+    requireAccepted("PrintStart", await sendWait(0x01, start, 0x02, 5000));
+    await sleep(80); /* jobflow-printstart-settle */
     logAlways(\`PrintStart pages=\${n} labelType=\${model.label_type} task=\${model.task || "?"}\`);
   }`;
 
@@ -329,7 +384,7 @@ const pageOld = `    if (isB1(model)) {
 
 const pageNew = `    logAlways(\`page \${W}×\${H}px copies=\${c}\`);
     if (isB1(model)) {
-      requireAccepted("PageStart", await sendWait(0x03, [0x01], 0x04, 1000));
+      requireAccepted("PageStart", await sendWait(0x03, [0x01], 0x04, 5000));
       requireAccepted("SetPageSize", await sendWait(0x13, [
         (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff, (c >> 8) & 0xff, c & 0xff,
       ], 0x14, 2000));                                                      // SetPageSize 6b (rows, cols, copies)
@@ -754,6 +809,7 @@ const batchLoopNew = `    tlog(\`job started (\${N} pages, next page streams dur
       throw error;
     }`;
 if (src.includes(batchLoopOld)) src = src.replace(batchLoopOld, batchLoopNew);
+src = hardenPageStart(src);
 if (!src.includes("function refused(name, res)") || !src.includes("batch streams the next page during the print") || !src.includes("function noteStatus(") || !src.includes("function niimblueCounts(") || !src.includes("PrintEnd was not sent") || src.includes("_pageSeen == null) return") || src.includes("data[2] = 0;")) {
   console.error("niimbot finish patch did not match the installed driver");
   process.exit(1);
