@@ -110,7 +110,7 @@ export function PaintSheenSelect({
         ]
           .filter(Boolean)
           .join(" ")}
-        title={value || emptyTitle || emptyLabel || undefined}
+        title={value.trim() ? formatSheenSelection(selected) : emptyTitle || emptyLabel || undefined}
         aria-label={ariaLabel}
         aria-haspopup="true"
         aria-expanded={open}

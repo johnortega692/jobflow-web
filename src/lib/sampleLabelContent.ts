@@ -1,7 +1,7 @@
-import { leadSpecSection, normalizeRevisionNumber } from "../types/tradeDocuments";
+import { leadSpecSection } from "../types/tradeDocuments";
 import type { LetterheadSettings } from "../types/letterheadSettings";
 import type { WallcoveringItem, WallcoveringSubmittalData } from "../types/tradeDocuments";
-import { formatSubmittalNumberDisplay } from "./printCore";
+import { formatRevisionTag, formatSubmittalNumberDisplay } from "./printCore";
 import { resolveSampleLabelLogo } from "./sampleLabelLogo";
 
 /** NIIMBOT B1, 50 × 80 mm at 203 dpi. */
@@ -98,9 +98,9 @@ export function resolveSampleLabelQrTarget(input: {
 
 export function formatSampleLabelSubmittal(submittalNumber: number, revisionNumber: number): string {
   const num = formatSubmittalNumberDisplay(submittalNumber);
-  const rev = normalizeRevisionNumber(revisionNumber);
-  if (!num) return `Rev ${rev}`;
-  return `#${num} · Rev ${rev}`;
+  const rev = formatRevisionTag(revisionNumber);
+  if (!num) return rev;
+  return rev ? `#${num} · ${rev}` : `#${num}`;
 }
 
 /** "Office ### · License # ###". Empty parts are omitted. */

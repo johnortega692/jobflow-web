@@ -325,7 +325,7 @@ export function ApprovedBrushoutsPage() {
                   <tr>
                     <th>Approved</th>
                     <th>Label</th>
-                    <th>Floor</th>
+                    <th>Location</th>
                     <th>Color</th>
                     <th>Product</th>
                     <th>Sheen</th>

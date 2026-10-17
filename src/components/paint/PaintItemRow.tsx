@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
-import { FLOOR_ORDER } from "../../lib/printCore";
 import {
   abbreviateVendorKey,
   formatSheenSelection,
@@ -75,13 +74,6 @@ export function PaintItemRow({
   const [lookupMatches, setLookupMatches] = useState<PaintColorMatch[]>([]);
   const productDisplay = item.product ? getProductDisplay(products, item.product) : "";
 
-  const floorOptions = useMemo(() => {
-    const listed = FLOOR_ORDER.filter(Boolean);
-    const current = item.floor.trim();
-    if (current && !listed.includes(current)) return [current, ...listed];
-    return listed;
-  }, [item.floor]);
-
   const runColorLookup = useCallback(() => {
     if (!colors || shouldSkipColorLookup(item.color)) return;
     const q = item.color.trim();
@@ -153,24 +145,19 @@ export function PaintItemRow({
             className={autoLabel ? "readonly" : undefined}
             onChange={(e) => onChange({ label: e.target.value })}
             aria-label={`Label row ${index + 1}`}
+            title={item.label.trim() || undefined}
           />
         </div>
 
         {showFloor && (
           <div className="paint-col paint-col-floor" role="cell">
-            <select
-              className="paint-field-select"
+            <input
               value={item.floor}
+              placeholder="Walls, ceilings…"
               onChange={(e) => onChange({ floor: e.target.value })}
-              aria-label={`Floor row ${index + 1}`}
-            >
-              <option value="">—</option>
-              {floorOptions.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
+              aria-label={`Location row ${index + 1}`}
+              title={item.floor.trim() || undefined}
+            />
           </div>
         )}
 
@@ -182,7 +169,7 @@ export function PaintItemRow({
               onChange={(e) => onChange({ color: e.target.value })}
               onKeyDown={onColorKeyDown}
               aria-label={`Color row ${index + 1}`}
-              title="Type a color number, then Enter, Tab, or search"
+              title={item.color.trim() || "Type a color number, then Enter, Tab, or search"}
             />
             <button
               type="button"
@@ -203,6 +190,7 @@ export function PaintItemRow({
               value={item.previous_color}
               onChange={(e) => onChange({ previous_color: e.target.value })}
               aria-label={`Previous color row ${index + 1}`}
+              title={item.previous_color.trim() || undefined}
             />
           </div>
         )}

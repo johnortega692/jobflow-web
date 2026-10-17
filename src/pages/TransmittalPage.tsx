@@ -689,7 +689,7 @@ export function TransmittalPage() {
                 checked={draft.include_paint_floor}
                 onChange={(e) => patch({ include_paint_floor: e.target.checked })}
               />
-              Floor paint
+              Paint location
             </label>
             <label className="check transmittal-enc-inline-check">
               <input

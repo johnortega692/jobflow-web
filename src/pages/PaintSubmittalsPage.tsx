@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
@@ -21,6 +21,7 @@ import {
 import {
   applyPaintAutoLabels,
   dropPaintPlaceholders,
+  paintColorColumnCh,
   paintItemsReadiness,
   paintRowAutoLabel,
 } from "../lib/paintItemLabels";
@@ -28,6 +29,13 @@ import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
 import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/paintImageImport";
 import { applyTransmittalContractIfDistinct, gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
+import {
+  groupPaintItemsForPackage,
+  paintPackageGaps,
+  paintPackageStatusLine,
+  paintSchedulePackageWarning,
+  productPackagePdfNote,
+} from "../lib/paintPackageLink";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
 import { patchPaintTrackerSubmittalOrdered, reloadProject, resolvePaintTracker, withSyncedPaintVendor } from "../lib/fieldTrackerProject";
 import {
@@ -50,7 +58,9 @@ import {
   defaultPaintSubmittal,
   defaultTransmittal,
   emptyPaintItem,
+  leadSpecSection,
   normalizePaintSubmittal,
+  normalizeSdsPacket,
   paintDualSpecEnabled,
   paintItemSpecScope,
   paintSpecSectionShortLabel,
@@ -228,6 +238,28 @@ export function PaintSubmittalsPage() {
   const secondarySection = draft.spec_sections?.[1] ?? "";
   const leadSection = draft.spec_sections?.[0] ?? draft.spec_section;
   const itemsReadiness = useMemo(() => paintItemsReadiness(draft.items), [draft.items]);
+  const productPacket = useMemo(() => normalizeSdsPacket(tradeData.sds_packet), [tradeData.sds_packet]);
+  const paintLinkGaps = useMemo(() => {
+    const lead = leadSpecSection(draft);
+    const secondary = draft.spec_sections?.[1]?.trim() ?? "";
+    const groups = groupPaintItemsForPackage(draft.items, (item) =>
+      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
+    );
+    return paintPackageGaps(groups, productPacket.sections);
+  }, [draft, productPacket.sections]);
+  const packageStatus = useMemo(() => {
+    const lead = leadSpecSection(draft);
+    const secondary = draft.spec_sections?.[1]?.trim() ?? "";
+    const hasProducts = groupPaintItemsForPackage(draft.items, (item) =>
+      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
+    ).length > 0;
+    return paintPackageStatusLine(
+      paintLinkGaps,
+      productPacket.submittal_number,
+      productPacket.sections.length > 0,
+      hasProducts,
+    );
+  }, [draft, paintLinkGaps, productPacket.sections.length, productPacket.submittal_number]);
 
   const primaryIndexed = useMemo(
     () =>
@@ -321,6 +353,7 @@ export function PaintSubmittalsPage() {
       emptyHint?: string;
     },
   ) {
+    const colorCh = paintColorColumnCh(indexedRows.map(({ item }) => item.color));
     return (
       <div
         className={`paint-items-grid${showPreviousColor ? " paint-items-grid--substitution" : ""}${
@@ -330,6 +363,7 @@ export function PaintSubmittalsPage() {
         }${dragFrom !== null && dragOverScope === options.scope ? " paint-items-grid--scope-dragover" : ""}`}
         role="table"
         aria-label={options.ariaLabel}
+        style={{ "--paint-color-ch": colorCh } as CSSProperties}
         onDragOver={(e: DragEvent) => {
           if (dragFrom === null) return;
           e.preventDefault();
@@ -350,7 +384,7 @@ export function PaintSubmittalsPage() {
         <div className="paint-items-header" role="row">
           <span className="paint-row-handle-spacer" aria-hidden />
           <span className="paint-col-head paint-col-label">Label</span>
-          {options.showFloor && <span className="paint-col-head paint-col-floor">Floor</span>}
+          {options.showFloor && <span className="paint-col-head paint-col-floor">Location</span>}
           <span className="paint-col-head paint-col-color">Color</span>
           {showPreviousColor && <span className="paint-col-head paint-col-prev">Previous</span>}
           <span className="paint-col-head paint-col-product">Product</span>
@@ -441,8 +475,16 @@ export function PaintSubmittalsPage() {
 
   function confirmGapsIfNeeded(): boolean {
     const readiness = paintItemsReadiness(draft.items);
-    if (readiness.complete) return true;
-    return window.confirm(readiness.confirmMessage);
+    const packet = normalizeSdsPacket(tradeData.sds_packet);
+    const packageWarning = paintSchedulePackageWarning(
+      paintLinkGaps,
+      packet.submittal_number,
+      packet.sections.length > 0,
+    );
+    const itemNote = readiness.complete ? "" : readiness.confirmMessage.replace(/\n?Continue\?$/, "");
+    const parts = [itemNote.trim(), packageWarning].filter(Boolean);
+    if (!parts.length) return true;
+    return window.confirm(`${parts.join("\n\n")}\n\nContinue?`);
   }
 
   function onImported(rows: ExtractedPaintRow[]) {
@@ -494,6 +536,7 @@ export function PaintSubmittalsPage() {
         draft,
         branding,
         previouslyOrderedItems,
+        productPacket.sections.length ? productPackagePdfNote(productPacket.submittal_number) : undefined,
       );
       let nextHistory = history;
       if (draftLocked) {
@@ -853,7 +896,7 @@ export function PaintSubmittalsPage() {
                 checked={draft.show_floor === true}
                 onChange={(e) => setDraft({ ...draft, show_floor: e.target.checked })}
               />
-              Show floor
+              Show location
               {secondaryOn ? <span className="muted"> (primary table only)</span> : null}
             </label>
             <label className="check paint-floor-toggle">
@@ -927,7 +970,7 @@ export function PaintSubmittalsPage() {
                   <h4>
                     {secondaryLabel} · {secondarySection}
                   </h4>
-                  <p className="muted small">{secondaryIndexed.length} line(s) · no floor column</p>
+                  <p className="muted small">{secondaryIndexed.length} line(s) · no location column</p>
                 </div>
                 <div className="paint-add-buttons">
                   <button
@@ -956,15 +999,20 @@ export function PaintSubmittalsPage() {
         )}
 
         <div className="row-between paint-items-footer">
-          <p className="muted small paint-items-drag-hint">
-            {secondaryOn
-              ? autoLabel
-                ? "Drag ⠿ to reorder or move between primary / exterior tables · labels follow order"
-                : "Drag ⠿ to reorder or move between primary / exterior tables"
-              : autoLabel
-                ? "Drag ⠿ to reorder · labels follow order"
-                : "Drag ⠿ to reorder"}
-          </p>
+          <div className="paint-items-drag-hint">
+            <p className="muted small">
+              {secondaryOn
+                ? autoLabel
+                  ? "Drag ⠿ to reorder or move between primary / exterior tables · labels follow order"
+                  : "Drag ⠿ to reorder or move between primary / exterior tables"
+                : autoLabel
+                  ? "Drag ⠿ to reorder · labels follow order"
+                  : "Drag ⠿ to reorder"}
+            </p>
+            {packageStatus ? (
+              <p className={`small paint-items-readiness--${packageStatus.tone}`}>{packageStatus.text}</p>
+            ) : null}
+          </div>
           <p
             className={`small paint-items-readiness${
               itemsReadiness.missingColor > 0 ||

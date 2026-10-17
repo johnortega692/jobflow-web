@@ -81,3 +81,9 @@ export function paintItemsReadiness(items: PaintItem[]) {
       .join(" "),
   };
 }
+
+/** Character count for the color column, sized to the longest name in the table. */
+export function paintColorColumnCh(colors: string[]): number {
+  const longest = colors.reduce((max, color) => Math.max(max, color.trim().length), 0);
+  return Math.min(42, Math.max(16, longest + 1));
+}

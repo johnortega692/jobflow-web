@@ -141,7 +141,7 @@ export function SubmittalHistoryModal({
                   <thead>
                     <tr>
                       <th>Label</th>
-                      <th>Floor</th>
+                      <th>Location</th>
                       <th>Prev</th>
                       <th>Color</th>
                       <th>Product</th>

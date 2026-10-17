@@ -7,6 +7,7 @@ import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract
 import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks.js";
 import { normalizeSdsSection as normalizeSdsSectionRow, sortSdsSectionsBySpec } from "../lib/sdsSectionModel.js";
 import { applyPaintAutoLabels, paintItemsSuggestAutoLabel } from "../lib/paintItemLabels.js";
+import { groupPaintItemsForPackage, paintPackageSectionsFromGroups } from "../lib/paintPackageLink.js";
 import { applyFrpAutoLabels, frpItemsSuggestAutoLabel, parseFrpQtyField } from "../lib/frpItemLabels.js";
 import { applyWcAutoLabels, parseWcQtyField, wcItemsHaveFloor, wcItemsSuggestAutoLabel } from "../lib/wcItemLabels.js";
 import { migrateTrackItems, normalizeWcComponents, refreshComponentTags } from "../lib/wcComponents";
@@ -637,31 +638,11 @@ export function normalizeSdsPacket(raw: Partial<SdsPacketData> | undefined): Sds
 export function sdsSectionsFromPaintItems(
   items: PaintItem[],
   defaultSpecSection = "",
+  specForItem?: (item: PaintItem) => string,
 ): SdsSection[] {
-  const seen = new Set<string>();
-  const out: SdsSection[] = [];
-  const defaultSpec = defaultSpecSection.trim();
-  for (const item of items) {
-    if (!item.product.trim() && !item.manufacturer.trim()) continue;
-    const key = [item.manufacturer, item.product, item.sheen].map((s) => s.trim().toLowerCase()).join("|");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const notes: string[] = [];
-    if (item.label.trim()) notes.push(`Label ${item.label.trim()}`);
-    if (item.color.trim()) notes.push(item.color.trim());
-    out.push({
-      ...emptySdsSection(),
-      category: "Paint",
-      spec_section: defaultSpec,
-      manufacturer: item.manufacturer.trim(),
-      product: item.product.trim(),
-      finish_type: item.sheen.trim(),
-      color: item.color.trim(),
-      system_material: "Interior Paint",
-      intended_use: notes.join("; ") || "",
-    });
-  }
-  return out;
+  const fallback = defaultSpecSection.trim();
+  const groups = groupPaintItemsForPackage(items, (item) => specForItem?.(item)?.trim() || fallback);
+  return paintPackageSectionsFromGroups(groups);
 }
 
 export function sdsSectionsFromWallcoveringItems(

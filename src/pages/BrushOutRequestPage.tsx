@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 import { LinkBrushoutPrepModal } from "../components/brushout/LinkBrushoutPrepModal";
 import { OpenBrushoutPrepModal } from "../components/brushout/OpenBrushoutPrepModal";
@@ -20,7 +20,7 @@ import {
   upsertPrepInList,
   type BrushoutPrepDraft,
 } from "../lib/brushoutPrepStorage";
-import { dropPaintPlaceholders } from "../lib/paintItemLabels";
+import { dropPaintPlaceholders, paintColorColumnCh } from "../lib/paintItemLabels";
 import {
   loadPaintColors,
   loadPaintProducts,
@@ -379,11 +379,16 @@ export function BrushOutRequestPage() {
 
         {catalogLoading && <p className="muted small">Loading color catalog…</p>}
 
-        <div className="paint-items-grid" role="table" aria-label="Brush-out paint lines">
+        <div
+          className="paint-items-grid"
+          role="table"
+          aria-label="Brush-out paint lines"
+          style={{ "--paint-color-ch": paintColorColumnCh(draft.items.map((item) => item.color)) } as CSSProperties}
+        >
           <div className="paint-items-header" role="row">
             <span className="paint-row-handle-spacer" aria-hidden />
             <span className="paint-col-head paint-col-label">Label</span>
-            <span className="paint-col-head paint-col-floor">Floor</span>
+            <span className="paint-col-head paint-col-floor">Location</span>
             <span className="paint-col-head paint-col-color">Color</span>
             <span className="paint-col-head paint-col-product">Product</span>
             <span className="paint-col-head paint-col-sheen">Sheen</span>

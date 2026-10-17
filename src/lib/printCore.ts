@@ -59,6 +59,12 @@ export function formatRevisionNumberDisplay(n: number | string | undefined): str
   return String(normalizeRevisionNumber(n));
 }
 
+/** "Rev 1" and later. The original issue (0) has no revision label. */
+export function formatRevisionTag(n: number | string | undefined): string {
+  if (!isSubmittalRevision(n)) return "";
+  return `Rev ${formatRevisionNumberDisplay(n)}`;
+}
+
 export function submittalRevisionNoteHtml(
   revisionNumber: number | string | undefined,
   revisionNote?: string,

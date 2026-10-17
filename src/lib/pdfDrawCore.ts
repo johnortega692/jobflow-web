@@ -53,6 +53,26 @@ export function wrapLines(text: string, font: PDFFont, size: number, maxWidth: n
   return out;
 }
 
+/** Wrap, then hard-break any token that is still wider than the cell. */
+function wrapCellLines(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const wrapped = wrapLines(text, font, size, maxWidth);
+  const lines: string[] = [];
+  for (const line of wrapped.length ? wrapped : [""]) {
+    if (!line || font.widthOfTextAtSize(line, size) <= maxWidth) {
+      lines.push(line);
+      continue;
+    }
+    let rest = line;
+    while (rest) {
+      let end = rest.length;
+      while (end > 1 && font.widthOfTextAtSize(rest.slice(0, end), size) > maxWidth) end -= 1;
+      lines.push(rest.slice(0, end));
+      rest = rest.slice(end);
+    }
+  }
+  return lines.length ? lines : [""];
+}
+
 export async function embedLogoImage(doc: PDFDocument, logoUrl: string): Promise<PDFImage | null> {
   const url = normalizeLogoUrl(logoUrl.trim());
   if (!url) return null;
@@ -226,6 +246,8 @@ export type PdfTableDrawOptions = {
   marginTop?: number;
   /** Extra left inset, in points, for each body row. */
   rowPadLeft?: number[];
+  /** Column indexes whose body text wraps onto extra lines instead of being cut off. */
+  wrapColumns?: number[];
 };
 
 /** Min points for an auto-sized column — keeps a short header from collapsing too narrow. */
@@ -356,43 +378,56 @@ export function drawDataTable(
 
   drawHeader();
 
+  const wrapColumns = new Set(options.wrapColumns ?? []);
+  const lineGap = fontSize + 2;
+
   rows.forEach((row, ri) => {
-    newPageIfNeeded(rowHeight);
+    const extra = options.rowPadLeft?.[ri] ?? 0;
+    const cellLines = row.map((cell, ci) => {
+      const maxW = Math.max(8, colWidths[ci]! - 8 - (ci === 0 ? 0 : extra));
+      if (!wrapColumns.has(ci)) return [truncate(cell, font, fontSize, maxW)];
+      return wrapCellLines(cell, font, fontSize, maxW);
+    });
+    const lineCount = Math.max(1, ...cellLines.map((lines) => lines.length));
+    const thisRowHeight = lineCount === 1 ? rowHeight : lineCount * lineGap + padY * 2;
+    newPageIfNeeded(thisRowHeight);
     if (ri % 2 === 1) {
-      page.drawRectangle({ x: margin, y: y - rowHeight, width: usable, height: rowHeight, color: ROW_ALT });
+      page.drawRectangle({ x: margin, y: y - thisRowHeight, width: usable, height: thisRowHeight, color: ROW_ALT });
     }
     let x = margin;
-    row.forEach((cell, ci) => {
+    row.forEach((_cell, ci) => {
       if (borders === "grid") {
         page.drawRectangle({
           x,
-          y: y - rowHeight,
+          y: y - thisRowHeight,
           width: colWidths[ci]!,
-          height: rowHeight,
+          height: thisRowHeight,
           borderColor: BORDER,
           borderWidth: 0.25,
         });
       }
-      const extra = options.rowPadLeft?.[ri] ?? 0;
-      const drawn = truncate(cell, font, fontSize, Math.max(8, colWidths[ci]! - 8 - extra));
-      page.drawText(drawn, {
-        x: cellTextX(cell, ci, x, colWidths[ci]!, font) + extra,
-        y: y - rowHeight + padY,
-        size: fontSize,
-        font,
-        color: TEXT,
+      const lines = cellLines[ci]!;
+      const textX = wrapColumns.has(ci) ? x + 4 : cellTextX(row[ci] ?? "", ci, x, colWidths[ci]!, font) + extra;
+      lines.forEach((line, lineIndex) => {
+        page.drawText(line, {
+          x: textX,
+          y: y - padY - fontSize - lineIndex * lineGap,
+          size: fontSize,
+          font,
+          color: TEXT,
+        });
       });
       x += colWidths[ci]!;
     });
     if (borders === "rows") {
       page.drawLine({
-        start: { x: margin, y: y - rowHeight },
-        end: { x: margin + usable, y: y - rowHeight },
+        start: { x: margin, y: y - thisRowHeight },
+        end: { x: margin + usable, y: y - thisRowHeight },
         thickness: 0.4,
         color: BORDER,
       });
     }
-    y -= rowHeight;
+    y -= thisRowHeight;
   });
 
   return { doc, page, y: y - 8, font, bold };

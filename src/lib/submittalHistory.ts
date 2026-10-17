@@ -178,6 +178,7 @@ export function formatSubmittalHistoryLabel(entry: SubmittalHistoryEntry): strin
   const normalized = normalizeHistoryEntry(entry);
   const num = formatSubmittalNumLabel(normalized.submittal_number);
   const rev = normalized.revision_number ?? 0;
+  const revPart = rev > 0 ? ` Rev ${rev}` : "";
   const dateStr = normalized.date ? formatSubmittalDisplayDate(normalized.date) : "Unknown date";
   const count = normalized.items?.length ?? 0;
   const type = normalized.submittal_type ? TYPE_LABELS[normalized.submittal_type] ?? normalized.submittal_type : "";
@@ -189,7 +190,7 @@ export function formatSubmittalHistoryLabel(entry: SubmittalHistoryEntry): strin
     ? ` · ${normalized.issue_status.replace(/_/g, " ")}`
     : "";
   const notePart = normalized.revision_note ? " · note" : "";
-  return `${num} Rev ${rev} — ${dateStr} (${count} items)${pkgPart}${typePart}${scopePart}${statusPart}${notePart}`;
+  return `${num}${revPart} — ${dateStr} (${count} items)${pkgPart}${typePart}${scopePart}${statusPart}${notePart}`;
 }
 
 function formatSubmittalNumLabel(n: number): string {

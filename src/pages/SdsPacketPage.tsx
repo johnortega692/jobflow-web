@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
+import { ImportPaintPackageModal } from "../components/sds/ImportPaintPackageModal";
 import { SdsSectionEditorModal } from "../components/sds/SdsSectionEditorModal";
 import { SdsSectionListRow } from "../components/sds/SdsSectionListRow";
 import { DateInput } from "../components/DateInput";
@@ -14,6 +15,15 @@ import {
 } from "../lib/jobInfo";
 import { buildSdsPacketPdf, downloadPdfBytes, type BuildProgress } from "../lib/sdsPacketBuild";
 import { evaluatePacketReadiness } from "../lib/sdsPacketRequirements";
+import {
+  applyPaintPackageChoices,
+  colorScheduleCoverValue,
+  groupPaintItemsForPackage,
+  packageScheduleWarning,
+  paintPackageGaps,
+  paintPackageImportSummary,
+  type PaintPackageGroup,
+} from "../lib/paintPackageLink";
 import {
   appendSdsPacketSubmittalRow,
   queueSdsForTransmittal,
@@ -34,7 +44,6 @@ import {
   normalizeWallcoveringSubmittal,
   paintItemSpecScope,
   sdsPacketOutputName,
-  sdsSectionsFromPaintItems,
   sdsSectionsFromWallcoveringItems,
   type SdsSection,
   type ProjectTradeData,
@@ -58,6 +67,7 @@ export function SdsPacketPage() {
   const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(null);
+  const [paintImportGroups, setPaintImportGroups] = useState<PaintPackageGroup[] | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [lastSpecSection, setLastSpecSection] = useState("");
@@ -78,6 +88,26 @@ export function SdsPacketPage() {
     () => evaluatePacketReadiness(draft.sections, draft.packet_type),
     [draft.sections, draft.packet_type],
   );
+
+  const paintSubmittal = useMemo(
+    () => normalizePaintSubmittal(tradeData.paint_submittal),
+    [tradeData.paint_submittal],
+  );
+
+  const paintLinkGaps = useMemo(() => {
+    const lead = leadSpecSection(paintSubmittal);
+    const secondary = paintSubmittal.spec_sections?.[1]?.trim() ?? "";
+    const groups = groupPaintItemsForPackage(paintSubmittal.items, (item) =>
+      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
+    );
+    return paintPackageGaps(groups, draft.sections);
+  }, [paintSubmittal, draft.sections]);
+
+  const colorScheduleLabel = useMemo(() => {
+    const hasProduct = paintSubmittal.items.some((item) => item.product.trim() || item.manufacturer.trim());
+    if (!hasProduct) return "";
+    return colorScheduleCoverValue(paintSubmittal.submittal_number, paintSubmittal.revision_number);
+  }, [paintSubmittal]);
 
   function replaceSection(section: SdsSection) {
     if (section.spec_section.trim()) setLastSpecSection(section.spec_section.trim());
@@ -139,34 +169,42 @@ export function SdsPacketPage() {
     setDraft((d) => ({ ...d, cover_purpose: defaultCoverPurpose(d.packet_type) }));
   }
 
-  function importFromPaint() {
+  function paintScheduleGroups(): PaintPackageGroup[] {
     const paint = normalizePaintSubmittal(tradeData.paint_submittal);
-    if (!paint.items.length) {
-      setError("Save paint submittal line items first, then import.");
-      return;
-    }
     const lead = leadSpecSection(paint);
     const secondary = paint.spec_sections?.[1]?.trim() ?? "";
-    const imported = paint.items.flatMap((item) => {
-      const scopeSpec =
-        paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead;
-      return sdsSectionsFromPaintItems([item], scopeSpec);
-    });
-    // Dedupe again across scopes (helper already dedupes within one call)
-    const seen = new Set<string>();
-    const unique = imported.filter((row) => {
-      const key = [row.manufacturer, row.product, row.finish_type, row.spec_section]
-        .map((s) => s.trim().toLowerCase())
-        .join("|");
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    if (!unique.length) {
-      setError("No products found to import from paint.");
+    return groupPaintItemsForPackage(paint.items, (item) =>
+      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
+    );
+  }
+
+  function applyPaintImport(groups: PaintPackageGroup[], targets: Record<string, string | null>) {
+    const merged = applyPaintPackageChoices(draft.sections, groups, targets);
+    setDraft((d) => ({
+      ...d,
+      sections: sortSdsSectionsBySpec(merged.sections),
+      ...(showContractSwitch ? { contract: "paint" as const } : {}),
+    }));
+    setPaintImportGroups(null);
+    setError(null);
+    setSuccess(`${paintPackageImportSummary(merged.added, merged.updated)} Save to keep it.`);
+  }
+
+  function importFromPaint() {
+    const groups = paintScheduleGroups();
+    if (!groups.length) {
+      setError("No products found on the color schedule.");
       return;
     }
-    mergeImportedSections(unique, "paint");
+    if (!draft.sections.length) {
+      applyPaintImport(
+        groups,
+        Object.fromEntries(groups.map((group) => [group.key, null])),
+      );
+      return;
+    }
+    setPaintImportGroups(groups);
+    setError(null);
   }
 
   function importFromWallcovering() {
@@ -219,7 +257,15 @@ export function SdsPacketPage() {
 
   async function onBuild() {
     if (!draft.sections.length) return;
-    if (readiness.gaps.length && !window.confirm(readiness.confirmMessage)) {
+    const scheduleWarning = packageScheduleWarning(
+      {
+        scheduleOnly: paintLinkGaps.scheduleOnly,
+        packageOnly: colorScheduleLabel ? paintLinkGaps.packageOnly : [],
+      },
+      paintSubmittal.submittal_number,
+    );
+    const confirmParts = [scheduleWarning, readiness.gaps.length ? readiness.confirmMessage : ""].filter(Boolean);
+    if (confirmParts.length && !window.confirm(confirmParts.join("\n\n"))) {
       return;
     }
 
@@ -242,6 +288,7 @@ export function SdsPacketPage() {
         draft,
         branding,
         setBuildProgress,
+        colorScheduleLabel ? { colorSchedule: colorScheduleLabel } : undefined,
       );
       downloadPdfBytes(bytes, outputName);
 
@@ -482,6 +529,28 @@ export function SdsPacketPage() {
         <div className="sds-sections-hint">
           <span className="muted small">Drag ⋮⋮ to reorder</span>
         </div>
+        {colorScheduleLabel ? (
+          <p
+            className={`small ${
+              paintLinkGaps.scheduleOnly.length || paintLinkGaps.packageOnly.length
+                ? "paint-items-readiness--warn"
+                : "paint-items-readiness--ok"
+            }`}
+          >
+            {paintLinkGaps.scheduleOnly.length || paintLinkGaps.packageOnly.length
+              ? [
+                  paintLinkGaps.scheduleOnly.length
+                    ? `Missing from this package: ${paintLinkGaps.scheduleOnly.join(", ")}`
+                    : "",
+                  paintLinkGaps.packageOnly.length
+                    ? `Not on the color schedule: ${paintLinkGaps.packageOnly.join(", ")}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : `${colorScheduleLabel} matches this package.`}
+          </p>
+        ) : null}
         <div className="sds-sections-toolbar row-gap wrap">
           <button type="button" className="btn btn-success btn-small" onClick={openAddSection}>
             + Add Section
@@ -539,6 +608,15 @@ export function SdsPacketPage() {
           </ul>
         )}
       </section>
+
+      {paintImportGroups ? (
+        <ImportPaintPackageModal
+          groups={paintImportGroups}
+          sections={draft.sections}
+          onConfirm={(targets) => applyPaintImport(paintImportGroups, targets)}
+          onClose={() => setPaintImportGroups(null)}
+        />
+      ) : null}
 
       {editor?.mode === "add" && (
         <SdsSectionEditorModal

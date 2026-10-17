@@ -1,6 +1,5 @@
 import {
   esc,
-  groupByFloor,
   logoBlock,
   submittalRevisionNoteHtml,
   submittalSubjectSpecBannerHtml,
@@ -73,7 +72,7 @@ ${SUBMITTAL_SIGNATURE_FOOTER_CSS}
 .floor-section-title { font-weight: bold; font-size: 11pt; margin: 18px 0 8px; color: #333; }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 table th { background: #333; color: #fff; padding: 6px 10px; text-align: left; font-size: 10pt; }
-table td { padding: 6px 10px; border: 1px solid #ddd; font-size: 10pt; vertical-align: top; }
+table td { padding: 6px 10px; border: 1px solid #ddd; font-size: 10pt; vertical-align: top; overflow-wrap: break-word; word-wrap: break-word; }
 table tr:nth-child(even) { background: #f9f9f9; }
 table tr { page-break-inside: avoid; break-inside: avoid; }
 
@@ -93,15 +92,22 @@ table tr { page-break-inside: avoid; break-inside: avoid; }
 
 type ProjectInfo = ProjectPrintInfo;
 
-function paintTableRows(items: PaintItem[], isSub: boolean, previousItems: PaintItem[]): string {
+function paintTableRows(
+  items: PaintItem[],
+  isSub: boolean,
+  previousItems: PaintItem[],
+  showLocation: boolean,
+): string {
   const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
   return items
     .map((item, i) => {
       const displayColor = item.color.trim();
+      const locationCell = showLocation ? `<td>${esc(item.floor)}</td>` : "";
       if (isSub) {
         return `<tr>
           <td>${i + 1}</td>
           <td>${esc(item.label)}</td>
+          ${locationCell}
           <td>${esc(item.previous_color)}</td>
           <td><strong>${esc(displayColor)}</strong></td>
           <td>${esc(item.product)}</td>
@@ -117,85 +123,113 @@ function paintTableRows(items: PaintItem[], isSub: boolean, previousItems: Paint
             : "";
       return `<tr>
         <td>${i + 1}</td>
+        <td>${esc(item.label)}</td>
+        ${locationCell}
         <td><strong>${esc(displayColor)}</strong></td>
         <td>${esc(item.product)}</td>
         <td>${esc(item.sheen)}</td>
-        <td>${esc(item.label)}</td>
         ${changeCell}
       </tr>`;
     })
     .join("");
 }
 
-function paintTableHead(isSub: boolean, markRevision: boolean): string {
+function paintTableHead(isSub: boolean, markRevision: boolean, showLocation: boolean): string {
+  const locationHead = showLocation ? `<th>Location</th>` : "";
   if (isSub) {
     return `<tr>
       <th style="width:5%">#</th>
-      <th style="width:10%">Label</th>
-      <th style="width:22%">Previous Color</th>
-      <th style="width:22%">New Color</th>
-      <th style="width:22%">Product</th>
-      <th style="width:19%">Sheen</th>
+      <th>Label</th>
+      ${locationHead}
+      <th>Previous Color</th>
+      <th>New Color</th>
+      <th>Product</th>
+      <th>Sheen</th>
     </tr>`;
   }
   if (markRevision) {
     return `<tr>
       <th style="width:5%">#</th>
-      <th style="width:22%">Color</th>
-      <th style="width:22%">Product</th>
-      <th style="width:18%">Sheen</th>
-      <th style="width:15%">Label</th>
-      <th style="width:18%">Status</th>
+      <th>Label</th>
+      ${locationHead}
+      <th>Color</th>
+      <th>Product</th>
+      <th>Sheen</th>
+      <th>Status</th>
     </tr>`;
   }
   return `<tr>
     <th style="width:5%">#</th>
-    <th style="width:25%">Color</th>
-    <th style="width:25%">Product</th>
-    <th style="width:25%">Sheen</th>
-    <th style="width:20%">Label</th>
+    <th>Label</th>
+    ${locationHead}
+    <th>Color</th>
+    <th>Product</th>
+    <th>Sheen</th>
   </tr>`;
 }
 
-function paintItemRowsForPdf(items: PaintItem[], isSub: boolean, previousItems: PaintItem[]): string[][] {
+function paintItemRowsForPdf(
+  items: PaintItem[],
+  isSub: boolean,
+  previousItems: PaintItem[],
+  showLocation: boolean,
+): string[][] {
   const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
   return items.map((item, i) => {
     const displayColor = item.color.trim();
+    const location = showLocation ? [item.floor.trim()] : [];
     if (isSub) {
       return [
         String(i + 1),
         item.label.trim(),
+        ...location,
         item.previous_color.trim(),
         displayColor,
         item.product.trim(),
         item.sheen.trim(),
       ];
     }
-    const row = [String(i + 1), displayColor, item.product.trim(), item.sheen.trim(), item.label.trim()];
+    const row = [
+      String(i + 1),
+      item.label.trim(),
+      ...location,
+      displayColor,
+      item.product.trim(),
+      item.sheen.trim(),
+    ];
     if (markRevision) row.push(paintRevisionChangeLabel(item, previousItems) ?? "");
     return row;
   });
 }
 
+const PAINT_WRAP_HEADERS = new Set(["Location", "Color", "Product", "Sheen", "Previous Color", "New Color"]);
+
 function paintSectionColumns(
   isSub: boolean,
   markRevision: boolean,
-): Pick<SubmittalPdfFloorSection, "columns" | "colWeights"> {
-  if (isSub) {
-    return {
-      columns: ["#", "Label", "Previous Color", "New Color", "Product", "Sheen"],
-      colWeights: "auto",
-    };
-  }
-  if (markRevision) {
-    return {
-      columns: ["#", "Color", "Product", "Sheen", "Label", "Status"],
-      colWeights: "auto",
-    };
-  }
+  showLocation: boolean,
+): Pick<SubmittalPdfFloorSection, "columns" | "colWeights" | "wrapColumns"> {
+  const location = showLocation ? ["Location"] : [];
+  const columns = isSub
+    ? ["#", "Label", ...location, "Previous Color", "New Color", "Product", "Sheen"]
+    : markRevision
+      ? ["#", "Label", ...location, "Color", "Product", "Sheen", "Status"]
+      : ["#", "Label", ...location, "Color", "Product", "Sheen"];
+  const colWeights = isSub
+    ? showLocation
+      ? [0.05, 0.08, 0.2, 0.16, 0.18, 0.22, 0.11]
+      : [0.06, 0.1, 0.22, 0.24, 0.26, 0.12]
+    : markRevision
+      ? showLocation
+        ? [0.05, 0.08, 0.2, 0.22, 0.18, 0.1, 0.17]
+        : [0.06, 0.1, 0.28, 0.24, 0.12, 0.2]
+      : showLocation
+        ? [0.06, 0.1, 0.19, 0.28, 0.25, 0.12]
+        : [0.07, 0.12, 0.34, 0.3, 0.17];
   return {
-    columns: ["#", "Color", "Product", "Sheen", "Label"],
-    colWeights: "auto",
+    columns,
+    colWeights,
+    wrapColumns: columns.flatMap((name, index) => (PAINT_WRAP_HEADERS.has(name) ? [index] : [])),
   };
 }
 
@@ -205,7 +239,8 @@ export function buildPaintSubmittalSections(
 ): SubmittalPdfFloorSection[] {
   const isSub = data.submittal_type === "substitution";
   const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
-  const cols = paintSectionColumns(isSub, markRevision);
+  const showLocation = data.show_floor === true;
+  const cols = paintSectionColumns(isSub, markRevision, showLocation);
   const items = data.items.filter((i) => i.color.trim() || i.label.trim());
   const secondaryOn = paintSecondarySpecEnabled(data);
   const primaryItems = secondaryOn
@@ -215,25 +250,21 @@ export function buildPaintSubmittalSections(
     ? items.filter((i) => paintItemSpecScope(i) === "secondary")
     : [];
 
-  const primaryGroups =
-    data.show_floor === true
-      ? groupByFloor(primaryItems)
-      : ([["", primaryItems]] as [string, PaintItem[]][]);
-
-  const sections: SubmittalPdfFloorSection[] = primaryGroups
-    .filter(([, floorItems]) => floorItems.length > 0)
-    .map(([floor, floorItems]) => ({
-      floorLabel: data.show_floor === true && floor ? floor : undefined,
+  const sections: SubmittalPdfFloorSection[] = [];
+  if (primaryItems.length) {
+    sections.push({
       ...cols,
-      rows: paintItemRowsForPdf(floorItems, isSub, previousItems),
-    }));
+      rows: paintItemRowsForPdf(primaryItems, isSub, previousItems, showLocation),
+    });
+  }
 
   if (secondaryItems.length) {
+    const secondaryCols = paintSectionColumns(isSub, markRevision, false);
     sections.push({
       bannerSubject: paintSecondarySpecLabel(data),
       bannerSpec: data.spec_section_secondary,
-      ...cols,
-      rows: paintItemRowsForPdf(secondaryItems, isSub, previousItems),
+      ...secondaryCols,
+      rows: paintItemRowsForPdf(secondaryItems, isSub, previousItems, false),
     });
   }
 
@@ -245,6 +276,7 @@ export async function downloadPaintSubmittal(
   data: PaintSubmittalData,
   branding: PrintBranding,
   previousItems: PaintItem[] = [],
+  relatedNote?: string,
 ): Promise<void> {
   const filename = paintSubmittalFilename(
     project.job_name,
@@ -264,6 +296,7 @@ export async function downloadPaintSubmittal(
     revisionNumber: data.revision_number,
     revisionNote: data.revision_note,
     submittalType: data.submittal_type,
+    relatedNote,
     sections: buildPaintSubmittalSections(data, previousItems),
   });
 }
@@ -287,28 +320,16 @@ export function buildPaintSubmittalHtml(
     ? items.filter((i) => paintItemSpecScope(i) === "secondary")
     : [];
 
-  const primaryGroups =
-    data.show_floor === true
-      ? groupByFloor(primaryItems)
-      : ([["", primaryItems]] as [string, PaintItem[]][]);
-
-  const primaryTables =
-    primaryGroups.length === 0 || primaryItems.length === 0
-      ? ""
-      : primaryGroups
-          .filter(([, floorItems]) => floorItems.length > 0)
-          .map(
-            ([floor, floorItems]) => `
-      ${data.show_floor === true && floor ? `<div class="floor-section-title">${esc(floor.toUpperCase())}</div>` : ""}
-      <table><thead>${paintTableHead(isSub, markRevision)}</thead><tbody>${paintTableRows(floorItems, isSub, previousItems)}</tbody></table>`,
-          )
-          .join("");
+  const showLocation = data.show_floor === true;
+  const primaryTables = primaryItems.length
+    ? `<table><thead>${paintTableHead(isSub, markRevision, showLocation)}</thead><tbody>${paintTableRows(primaryItems, isSub, previousItems, showLocation)}</tbody></table>`
+    : "";
 
   const secondaryTables =
     secondaryItems.length === 0
       ? ""
       : `${submittalSubjectSpecBannerHtml(paintSecondarySpecLabel(data), data.spec_section_secondary ?? "")}
-      <table><thead>${paintTableHead(isSub, markRevision)}</thead><tbody>${paintTableRows(secondaryItems, isSub, previousItems)}</tbody></table>`;
+      <table><thead>${paintTableHead(isSub, markRevision, false)}</thead><tbody>${paintTableRows(secondaryItems, isSub, previousItems, false)}</tbody></table>`;
 
   const bodyTables =
     !primaryTables && !secondaryTables

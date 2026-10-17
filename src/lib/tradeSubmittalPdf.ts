@@ -39,6 +39,8 @@ export type SubmittalPdfFloorSection = {
   rows: string[][];
   /** Extra left inset, in points, for each body row. */
   rowPadLeft?: number[];
+  /** Column indexes whose text wraps instead of being cut off. */
+  wrapColumns?: number[];
 };
 
 export type TradeSubmittalPdfOptions = {
@@ -52,6 +54,8 @@ export type TradeSubmittalPdfOptions = {
   revisionNumber?: number | string;
   revisionNote?: string;
   submittalType?: string;
+  /** Cross-reference drawn under the subject, such as the product-package number. */
+  relatedNote?: string;
   sections: SubmittalPdfFloorSection[];
 };
 
@@ -68,6 +72,7 @@ export async function buildTradeSubmittalPdfBytes(
     revisionNumber,
     revisionNote,
     submittalType,
+    relatedNote,
     sections,
   } = options;
   const doc = await PDFDocument.create();
@@ -173,6 +178,11 @@ export async function buildTradeSubmittalPdfBytes(
 
   y -= 10;
   y = drawSubjectSpecBanner(page, y, contentWidth, subject, specSection, font, bold);
+  const related = relatedNote?.trim();
+  if (related) {
+    y -= 2;
+    y = drawWrappedText(page, related, PDF_MARGIN_X, y, contentWidth, font, 9) - 6;
+  }
 
   let state = { doc, page, y, font, bold };
   if (!sections.length || sections.every((s) => !s.rows.length)) {
@@ -217,7 +227,7 @@ export async function buildTradeSubmittalPdfBytes(
         section.rows,
         9,
         PDF_MARGIN_X,
-        { rowPadLeft: section.rowPadLeft },
+        { rowPadLeft: section.rowPadLeft, wrapColumns: section.wrapColumns },
       );
     }
   }

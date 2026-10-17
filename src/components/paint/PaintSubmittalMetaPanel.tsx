@@ -34,7 +34,8 @@ type Props = {
 };
 
 function formatSubmittalIdentity(submittalNumber: number, revisionNumber: number): string {
-  return `Submittal #${String(submittalNumber).padStart(3, "0")} · Rev ${revisionNumber}`;
+  const number = `Submittal #${String(submittalNumber).padStart(3, "0")}`;
+  return revisionNumber > 0 ? `${number} · Rev ${revisionNumber}` : number;
 }
 
 export function PaintSubmittalMetaPanel({
@@ -71,7 +72,9 @@ export function PaintSubmittalMetaPanel({
                   onChange={(e) => onSubmittalNumberChange(Number(e.target.value) || 1)}
                 />
               </label>
-              <span className="paint-submittal-meta-rev-label">· Rev {draft.revision_number}</span>
+              {draft.revision_number > 0 ? (
+                <span className="paint-submittal-meta-rev-label">· Rev {draft.revision_number}</span>
+              ) : null}
             </div>
           )}
 

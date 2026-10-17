@@ -1,4 +1,5 @@
-import { PDFDocument, PDFImage, PDFPage, RGB, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFImage, PDFPage, RGB, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { wrapLines } from "./pdfDrawCore";
 import { setPdfOutlines, type PdfOutlineItem } from "./pdfOutlines";
 import { addInternalPageLink } from "./pdfPageLinks";
 import { companyLetterheadLine, type PrintBranding } from "./printCore";
@@ -190,6 +191,27 @@ function drawPageFooter(page: PDFPage, ctx: BuildContext, branding: PrintBrandin
   page.drawText(parts, { x: (w - tw) / 2, y: 34, size: 8, font: ctx.font, color: rgb(0.45, 0.45, 0.45) });
 }
 
+function wrapCellLines(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const source = text.trim();
+  if (!source || source === "—") return ["—"];
+  const wrapped = wrapLines(source, font, size, maxWidth);
+  const lines: string[] = [];
+  for (const line of wrapped) {
+    if (font.widthOfTextAtSize(line, size) <= maxWidth) {
+      lines.push(line);
+      continue;
+    }
+    let rest = line;
+    while (rest) {
+      let end = rest.length;
+      while (end > 1 && font.widthOfTextAtSize(rest.slice(0, end), size) > maxWidth) end -= 1;
+      lines.push(rest.slice(0, end));
+      rest = rest.slice(end);
+    }
+  }
+  return lines.length ? lines : ["—"];
+}
+
 function truncateTextToWidth(
   text: string,
   maxWidth: number,
@@ -330,6 +352,7 @@ async function addCoverPage(
   packet: SdsPacketData,
   branding: PrintBranding,
   ctx: BuildContext,
+  colorSchedule?: string,
 ) {
   const page = ctx.doc.addPage(LETTER);
   const w = LETTER[0];
@@ -366,6 +389,9 @@ async function addCoverPage(
   const coverSpecs = sdsPacketSpecSectionsLabel(packet.sections);
   if (coverSpecs) {
     coverRows.push([coverSpecs.includes(";") ? "Spec Sections" : "Spec Section", coverSpecs]);
+  }
+  if (colorSchedule?.trim()) {
+    coverRows.push(["Color schedule", colorSchedule.trim()]);
   }
   coverRows.push(
     ["Products Included", String(packetProductCount(packet.sections))],
@@ -496,7 +522,7 @@ function productSummaryColumns(sections: SdsSection[]): ProductSummaryColumn[] {
   if (showSpec) {
     candidates.push({
       header: "Spec",
-      weight: 0.1,
+      weight: 0.13,
       optional: false,
       cell: (section) => summaryCell(section.spec_section),
     });
@@ -522,13 +548,13 @@ function productSummaryColumns(sections: SdsSection[]): ProductSummaryColumn[] {
     },
     {
       header: "Color / Pattern / Finish",
-      weight: showSpec ? 0.1 : 0.11,
+      weight: showSpec ? 0.15 : 0.2,
       optional: true,
       cell: (section) => summaryCell(section.color),
     },
     {
       header: "Notes",
-      weight: showSpec ? 0.22 : 0.29,
+      weight: showSpec ? 0.14 : 0.2,
       optional: true,
       cell: (section) => summaryCell(notesFromAttachments(section)),
     },
@@ -569,17 +595,35 @@ function addMaterialSummaryPage(
   const cellSize = 6.5;
   const cellPad = 4;
 
+  const headerLineHeight = headerSize + 2;
+  const headerLines = cols.map((col, i) =>
+    col.header === "#"
+      ? [col.header]
+      : wrapCellLines(col.header, bold, headerSize, Math.max(8, widths[i]! - cellPad)),
+  );
+  const headerLineCount = Math.max(1, ...headerLines.map((lines) => lines.length));
+  const headerH = 14 + (headerLineCount - 1) * headerLineHeight;
+  const headerBottom = y - 2 - (headerLineCount - 1) * headerLineHeight;
+
   let x = tableLeft;
   for (let i = 0; i < cols.length; i++) {
-    page.drawRectangle({ x, y: y - 2, width: widths[i]!, height: 14, color: rgb(0.2, 0.2, 0.2) });
-    const header = truncateTextToWidth(cols[i]!.header, widths[i]! - cellPad, bold, headerSize);
-    page.drawText(header, { x: x + 2, y, size: headerSize, font: bold, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x, y: headerBottom, width: widths[i]!, height: headerH, color: rgb(0.2, 0.2, 0.2) });
+    headerLines[i]!.forEach((line, lineIndex) => {
+      page.drawText(line, {
+        x: x + 2,
+        y: y - lineIndex * headerLineHeight,
+        size: headerSize,
+        font: bold,
+        color: rgb(1, 1, 1),
+      });
+    });
     x += widths[i]!;
   }
-  y -= 16;
+  y = headerBottom - 14;
 
   let rowNum = 0;
   let lastBand: string | null = null;
+  const lineHeight = cellSize + 2;
 
   for (const section of ordered) {
     const band = cols.some((col) => col.header === "Spec")
@@ -609,8 +653,15 @@ function addMaterialSummaryPage(
 
     rowNum += 1;
     const row = cols.map((col) => col.cell(section, rowNum) || "—");
-    const rowBottom = y - 12;
-    const rowTop = rowBottom + 14;
+    const wrapped = row.map((text, i) => {
+      if (cols[i]!.header === "#") return [text];
+      const source = cols[i]!.header === "Spec" ? text.replace(/\s+-\s+/g, "\n") : text;
+      return wrapCellLines(source, font, cellSize, Math.max(8, widths[i]! - cellPad));
+    });
+    const lineCount = Math.max(1, ...wrapped.map((lines) => lines.length));
+    const rowH = Math.max(14, lineCount * lineHeight + 4);
+    const rowBottom = y + 2 - rowH;
+    const rowTop = rowBottom + rowH;
     rowRects.push([tableLeft, rowBottom, tableRight, rowTop]);
 
     x = tableLeft;
@@ -620,16 +671,24 @@ function addMaterialSummaryPage(
         x,
         y: rowBottom,
         width: widths[i]!,
-        height: 14,
+        height: rowH,
         color: fill,
         borderColor: rgb(0.85, 0.85, 0.85),
         borderWidth: 0.5,
       });
-      const cell = truncateTextToWidth(row[i]!, widths[i]! - cellPad, font, cellSize);
-      page.drawText(cell, { x: x + 2, y: y - 10, size: cellSize, font, color: rgb(0, 0, 0) });
+      const lines = wrapped[i]!;
+      lines.forEach((line, lineIndex) => {
+        page.drawText(line, {
+          x: x + 2,
+          y: rowTop - 3 - cellSize - lineIndex * lineHeight,
+          size: cellSize,
+          font,
+          color: rgb(0, 0, 0),
+        });
+      });
       x += widths[i]!;
     }
-    y -= 14;
+    y = rowBottom - 2;
   }
 
   drawPageFooter(page, ctx, branding, packet.preparer);
@@ -1033,6 +1092,7 @@ export async function buildSdsPacketPdf(
   packet: SdsPacketData,
   branding: PrintBranding,
   onProgress?: (p: BuildProgress) => void,
+  extras?: { colorSchedule?: string },
 ): Promise<Uint8Array> {
   if (!packet.sections.length) {
     throw new Error("Add at least one section before building the packet.");
@@ -1082,7 +1142,7 @@ export async function buildSdsPacketPdf(
 
   if (packet.include_cover) {
     tick("Cover page");
-    await addCoverPage(project, packet, branding, ctx);
+    await addCoverPage(project, packet, branding, ctx, extras?.colorSchedule);
     outlines.push({ title: "Cover", to: pageCount() - 1 });
   }
 
