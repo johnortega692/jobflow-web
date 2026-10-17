@@ -1,6 +1,7 @@
 import type { Database, Json } from "./database.generated.js";
 export type { Database, Json };
 import type { JobInfoData } from "./jobInfo.js";
+import { gcCompanyName } from "../lib/gcCompanyName.js";
 import { normalizeJobInfo, normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo.js";
 import { normalizeRfiImpactFields } from "../lib/rfiFormLabels.js";
 
@@ -124,7 +125,7 @@ export function normalizeRfiFormData(raw: unknown): RfiFormData {
     ...base,
     rfi_date: typeof o.rfi_date === "string" ? o.rfi_date : base.rfi_date,
     due_date: typeof o.due_date === "string" ? o.due_date : base.due_date,
-    to_name: typeof o.to_name === "string" ? o.to_name : base.to_name,
+    to_name: gcCompanyName(typeof o.to_name === "string" ? o.to_name : base.to_name),
     attn_name: typeof o.attn_name === "string" ? o.attn_name : base.attn_name,
     from_name: typeof o.from_name === "string" ? o.from_name : base.from_name,
     spec_ref: typeof o.spec_ref === "string" ? o.spec_ref : base.spec_ref,
@@ -206,7 +207,7 @@ export function normalizeProject(row: Project): ProjectForm {
     ...row,
     job_address: row.job_address ?? "",
     job_address2: row.job_address2 ?? "",
-    contractor: row.contractor ?? "",
+    contractor: gcCompanyName(row.contractor ?? ""),
     architect: row.architect ?? "",
     owner: row.owner ?? "",
     jobInfo: normalizeJobInfo(dataBlob.job_info, row),

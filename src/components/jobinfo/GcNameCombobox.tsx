@@ -33,6 +33,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { gcCompanyName } from "../../lib/gcCompanyName";
 import type { GcEntry } from "../../types/contactDirectory";
 
 type Props = {
@@ -102,7 +103,11 @@ export function GcNameCombobox({
     () => (query ? saved.filter((entry) => entry.name.toLowerCase().includes(query)) : saved),
     [saved, query],
   );
-  const exact = saved.some((entry) => entry.name.trim().toLowerCase() === query && query !== "");
+  const exact = saved.some((entry) => {
+    if (!query) return false;
+    const full = entry.name.trim().toLowerCase();
+    return full === query || gcCompanyName(entry.name).toLowerCase() === query;
+  });
 
   useEffect(() => {
     setActiveIndex(options.length === 0 ? -1 : 0);

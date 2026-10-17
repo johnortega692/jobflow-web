@@ -1,4 +1,5 @@
 import type { ProjectForm } from "../types/database.js";
+import { gcCompanyName } from "./gcCompanyName.js";
 import { collectProjectIcbiStaffCc, formatGcSuperFieldDisplay, gcSuperintendentContact, jobFullAddressOneLine, projectHasWallcovering } from "./jobInfo.js";
 import {
   buildFieldPaintRow,
@@ -184,7 +185,7 @@ function pushWcFollowUp(
     wcLabel: row.label,
     status: wcStatusLabel(wcFieldStatus(row.line)),
     address: jobFullAddressOneLine(project, j),
-    gcName: project.contractor.trim(),
+    gcName: gcCompanyName(project.contractor),
     gcSuper: formatGcSuperFieldDisplay(gcSuperintendentContact(j)),
     followUpDate: formatDisplayDate(dateValue),
     daysOverdue: kind === "overdue" ? -until : undefined,

@@ -5,6 +5,7 @@ import {
   mergeActiveTransmittalNumber,
 } from "./transmittalPerContract.js";
 import type { TransmittalData } from "../types/tradeDocuments.js";
+import { gcCompanyName } from "./gcCompanyName.js";
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -620,11 +621,11 @@ export function applyJobInfoToTransmittal(
   contractor: string,
   info: JobInfoData,
 ): TransmittalData {
-  const gcName = contractor.trim();
+  const gcName = gcCompanyName(contractor);
   return {
     ...data,
     to_name: data.to_name.trim() || info.gc_pm.trim(),
-    gc_name: data.gc_name.trim() || gcName,
+    gc_name: gcCompanyName(data.gc_name) || gcName,
     to_address: data.to_address.trim() || info.gc_address.trim(),
     to_phone: data.to_phone.trim() || info.gc_office_phone.trim(),
   };
@@ -636,7 +637,7 @@ function gcSuperNameForForms(info: JobInfoData): string {
 
 /** Pre-fill empty RFI header fields from Job setup → GC Info. */
 export function applyJobInfoToRfi(form: RfiFormData, contractor: string, info: JobInfoData): RfiFormData {
-  const gcName = contractor.trim();
+  const gcName = gcCompanyName(contractor);
   const gcPm = info.gc_pm.trim();
   const gcSuper = gcSuperNameForForms(info);
   return {

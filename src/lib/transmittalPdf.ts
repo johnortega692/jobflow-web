@@ -1,5 +1,6 @@
 import { PDFDocument, type PDFFont } from "pdf-lib";
 import { downloadPdfBytes } from "./pdfDownload";
+import { gcCompanyName } from "./gcCompanyName";
 import {
   createLetterPdfFonts,
   drawCheckbox,
@@ -123,7 +124,7 @@ export async function buildTransmittalPdfBytes(
   });
   y -= 12;
 
-  const toBlock = [data.to_name, data.gc_name, data.to_address].filter((p) => p.trim()).join("\n");
+  const toBlock = [data.to_name, gcCompanyName(data.gc_name), data.to_address].filter((p) => p.trim()).join("\n");
   const fromBlock = data.from_block.trim() || branding.fromBlock;
   const fromPhone = data.from_phone.trim() || branding.fromPhone;
   const half = contentWidth / 2 - 8;

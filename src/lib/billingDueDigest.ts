@@ -6,6 +6,7 @@ import {
   jobFullAddressOneLine,
   normalizeBillingDueDay,
 } from "./jobInfo.js";
+import { gcCompanyName } from "./gcCompanyName.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import { type TrackerNotificationBranding } from "./trackerNotificationEmail.js";
 import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js";
@@ -143,7 +144,7 @@ export function collectBillingDueAlerts(
       jobNumber: project.job_number.trim(),
       jobName: project.job_name.trim(),
       address: jobFullAddressOneLine(project, project.jobInfo),
-      contractor: project.contractor.trim(),
+      contractor: gcCompanyName(project.contractor),
       billingDueDay: day,
       billingDueLabel: label,
       dueDateDisplay: formatDueDateLong(dueDate),

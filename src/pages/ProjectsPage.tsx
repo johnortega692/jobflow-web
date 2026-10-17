@@ -11,6 +11,7 @@ import { SubmittalStagePill } from "../components/projects/SubmittalStagePill";
 import { StaffContactSelect } from "../components/projects/StaffContactSelect";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
+import { gcCompanyName } from "../lib/gcCompanyName";
 import { defaultJobInfo } from "../types/jobInfo";
 import { defaultProjectBilling } from "../types/projectBilling";
 import { loadFieldToolsStaffForJobflow } from "../lib/fieldToolsStaff";
@@ -597,8 +598,8 @@ export function ProjectsPage() {
                           <td>{p.job_number}</td>
                             <td className="projects-table-name" title={p.job_name ?? undefined}>
                               <div className="projects-table-job-name">{p.job_name || "Untitled job"}</div>
-                              {p.contractor?.trim() ? (
-                                <div className="projects-table-gc muted small">{p.contractor.trim()}</div>
+                              {gcCompanyName(p.contractor ?? "") ? (
+                                <div className="projects-table-gc muted small">{gcCompanyName(p.contractor ?? "")}</div>
                               ) : null}
                             </td>
                             <td>

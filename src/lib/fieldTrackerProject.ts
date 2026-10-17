@@ -3,6 +3,7 @@ import { formatGcSuperFieldDisplay, gcSuperintendentContact, icbiProjectManager,
 import { paintFieldStatus, wcFieldStatus, type PaintFieldStatus, type WcFieldStatus } from "./fieldTrackerStatus.js";
 import { normalizePaintVendor } from "./paintTrackerSync.js";
 import { resolveDisplayCompanyName } from "./displayCompanyName.js";
+import { gcCompanyName } from "./gcCompanyName.js";
 import { loadOrgSettingsBlob } from "./orgSettings.js";
 import { commitProjectUpdate } from "./projectActivity.js";
 import { supabase } from "./supabase.js";
@@ -483,7 +484,7 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
     jobNumber: project.job_number.trim(),
     jobName: project.job_name.trim(),
     jobAddress: jobFullAddressOneLine(project, j),
-    gcName: project.contractor.trim(),
+    gcName: gcCompanyName(project.contractor),
     gcSuper: formatGcSuperFieldDisplay(gcSuper),
     gcSuperName: gcSuper.name,
     gcSuperPhone: gcSuper.phone,
@@ -510,7 +511,7 @@ export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
     lineId: line.id,
     jobNumber,
     jobName,
-    gcName: project.contractor.trim(),
+    gcName: gcCompanyName(project.contractor),
     pm: icbiProjectManager(j),
     wallcoveringName: line.wallcoveringName,
     label: line.label,

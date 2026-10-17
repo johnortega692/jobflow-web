@@ -4,6 +4,7 @@ import { GcNameCombobox } from "./GcNameCombobox";
 import { EmailAddressWarning } from "../EmailAddressWarning";
 import { useAuth } from "../../contexts/AuthContext";
 import { loadContactDirectory, lookupGeneralContractor } from "../../lib/contactDirectory";
+import { gcCompanyName } from "../../lib/gcCompanyName";
 import { supabase } from "../../lib/supabase";
 import { jobCityZipCountyLine, normalizeJobInfo, parseProjectDataBlob, seedJobInfoTeamFromTracker, syncLegacyFieldOrderFields } from "../../lib/jobInfo";
 import { applyProposalImportPatch, importJobInfoFromProposalPdf } from "../../lib/proposalPdfImport";
@@ -308,7 +309,7 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
     }
     setProject((p) => ({
       ...p,
-      contractor: hit.name,
+      contractor: gcCompanyName(hit.name),
       jobInfo: patchJobInfo(p.jobInfo, {
         gc_address: hit.address,
         ...(hit.office_phone.trim() ? { gc_office_phone: hit.office_phone } : {}),

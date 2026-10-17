@@ -1,4 +1,5 @@
 import { projectStartDaysUntil, type ProjectListSummary, type ProjectsListStageFilter } from "./projectListSummary";
+import { gcCompanyName } from "./gcCompanyName";
 import type { Project } from "../types/database";
 
 export type ProjectsListStatusId = Exclude<ProjectsListStageFilter, "all">;
@@ -222,8 +223,8 @@ export function projectMatchesListFilters(
   if (!filters.includeClosed && ctx.doneIds.has(project.id)) return false;
   if (!matchesSearch(project, ctx.search)) return false;
   if (filters.gcs.length) {
-    const name = (project.contractor ?? "").trim();
-    if (!filters.gcs.includes(name)) return false;
+    const name = gcCompanyName(project.contractor ?? "");
+    if (!filters.gcs.some((gc) => gcCompanyName(gc) === name)) return false;
   }
   if (filters.brushouts === "added" && !ctx.brushoutsAdded.has(project.id)) return false;
   if (filters.brushouts === "not_added" && ctx.brushoutsAdded.has(project.id)) return false;
@@ -266,7 +267,7 @@ export function generalContractorOptions(
 ): { name: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const project of projects) {
-    const name = (project.contractor ?? "").trim();
+    const name = gcCompanyName(project.contractor ?? "");
     if (!name) continue;
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }

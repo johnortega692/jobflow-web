@@ -1,3 +1,4 @@
+import { gcCompanyName } from "./gcCompanyName";
 import { formatJobDateLabel } from "./manpowerCalendar";
 import { toIsoDateValue } from "./dateInputUtils";
 import { normalizeProject, type Project } from "../types/database";
@@ -410,8 +411,8 @@ export function compareProjectsForListSort(
   }
 
   if (sort === "gc") {
-    const ga = (a.contractor ?? "").trim();
-    const gb = (b.contractor ?? "").trim();
+    const ga = gcCompanyName(a.contractor ?? "");
+    const gb = gcCompanyName(b.contractor ?? "");
     if (!ga && !gb) return compareName(a, b);
     if (!ga) return 1;
     if (!gb) return -1;

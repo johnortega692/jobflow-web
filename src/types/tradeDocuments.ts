@@ -2,6 +2,7 @@ import type { Json } from "./database.js";
 import type { BudgetMakerData } from "./budgetMaker.js";
 import type { PaintTrackerState, WcTrackerLineState, WcTrackerState } from "./fieldTracker.js";
 import { formatSubmittalDisplayDate } from "../lib/dateInputUtils.js";
+import { gcCompanyName } from "../lib/gcCompanyName.js";
 import { normalizeTransmittalContract, type TransmittalContract } from "../lib/jobInfo.js";
 import { normalizeTransmittalNumbersOnRead } from "../lib/transmittalPerContract.js";
 import { DEFAULT_TRANSMITTAL_REMARK } from "../lib/transmittalRemarks.js";
@@ -1148,6 +1149,7 @@ export function normalizeTransmittal(raw: Partial<TransmittalData> | null | unde
     transmittal_number,
     transmittal_numbers,
     subject: raw.subject?.trim() ?? base.subject,
+    gc_name: gcCompanyName(raw.gc_name ?? ""),
     enclosures: (raw.enclosures?.length ? raw.enclosures : base.enclosures).map(normalizeEnclosure),
     pending_submittal_queue: (raw.pending_submittal_queue ?? []).map(normalizePendingItem),
     paint_submittal_nums: [...(raw.paint_submittal_nums ?? [])],

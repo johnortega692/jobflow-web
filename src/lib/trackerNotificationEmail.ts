@@ -2,6 +2,7 @@ import type { ProjectForm } from "../types/database.js";
 import type { PaintTrackerState } from "../types/fieldTracker.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import { JOBFLOW_SCHEDULE_FROM_NAME } from "./jobflowScheduleFrom.js";
+import { gcCompanyName } from "./gcCompanyName.js";
 import { formatGcSuperFieldDisplay, gcSuperintendentContact, projectTeamName } from "./jobInfo.js";
 import { createBrowserScheduleEmailPoster } from "./scheduleEmailSend.js";
 
@@ -68,7 +69,7 @@ export function projectToPaintNotificationJobData(
     jobNumber: project.job_number.trim(),
     jobName: project.job_name.trim(),
     address,
-    gcName: project.contractor.trim(),
+    gcName: gcCompanyName(project.contractor),
     gcSuper: formatGcSuperFieldDisplay(gcSuper) || gcSuper.name,
     startDate: j.start_date.trim(),
     paintVendor: tracker.paintVendor,

@@ -6,6 +6,7 @@ import {
   transmittalPrintInfo,
   type TransmittalContract,
 } from "./jobInfo";
+import { gcCompanyName } from "./gcCompanyName";
 import type { ProjectForm } from "../types/database";
 import type { JobInfoData } from "../types/jobInfo";
 
@@ -154,7 +155,7 @@ export function resolveExcelFieldValue(
     case "job_street_only":
       return project.job_address.trim();
     case "gc":
-      return project.contractor.trim();
+      return gcCompanyName(project.contractor);
     case "architect":
       return project.architect.trim();
     case "owner_name":

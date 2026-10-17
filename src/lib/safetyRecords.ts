@@ -1,3 +1,4 @@
+import { gcCompanyName } from "./gcCompanyName";
 import { supabase } from "./supabase";
 
 export type InspectionItem = {
@@ -146,7 +147,7 @@ export async function loadFieldReports(projectId: string): Promise<{
     id: row.id,
     reportDate: row.report_date,
     superintendent: row.superintendent.trim(),
-    contractor: row.contractor.trim(),
+    contractor: gcCompanyName(row.contractor),
     location: row.location.trim(),
     weather: {
       conditions: row.weather?.conditions ?? "",

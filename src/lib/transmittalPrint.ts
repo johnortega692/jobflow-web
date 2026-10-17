@@ -1,3 +1,4 @@
+import { gcCompanyName } from "./gcCompanyName";
 import { esc, logoBlock, pdfSignerDisplayName, type PrintBranding } from "./printCore";
 import { pdfTitleFromFilename, transmittalFilename } from "./pdfFilenames";
 import { downloadPdfBytes } from "./pdfDownload";
@@ -222,7 +223,7 @@ export function buildTransmittalHtml(
   branding: PrintBranding,
   saveFilename?: string,
 ): string {
-  const toBlock = [data.to_name, data.gc_name, data.to_address].filter((p) => p.trim()).join("\n");
+  const toBlock = [data.to_name, gcCompanyName(data.gc_name), data.to_address].filter((p) => p.trim()).join("\n");
   const fromBlock = data.from_block.trim() || branding.fromBlock;
   const fromPhone = data.from_phone.trim() || branding.fromPhone;
   const signer = data.signer_name.trim() || (branding.pdfShow.signer_name ? branding.signerName : "");
