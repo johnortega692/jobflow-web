@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
+import { SubmittalsHubTabs } from "../components/submittals/SubmittalsHubTabs";
 import { ImportApprovedBrushoutsModal } from "../components/paint/ImportApprovedBrushoutsModal";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -8,14 +9,11 @@ import {
   mergePaintItemsIntoBrushoutRows,
   saveProjectBrushouts,
   type ApprovedBrushoutDraft,
+  type ApprovedBrushoutRow,
 } from "../lib/approvedBrushouts";
-import { commitProjectUpdate } from "../lib/projectActivity";
-import { parseProjectDataBlob } from "../lib/jobInfo";
-import { markPaintTrackerApproved, applyApprovedPaintVendor } from "../lib/fieldTrackerProject";
+import { applyApprovedPaintVendor } from "../lib/fieldTrackerProject";
 import { PAINT_VENDOR_OPTIONS } from "../lib/googleSheetsConfig";
 import { normalizePaintVendor } from "../lib/paintTrackerSync";
-import { parseStartupChecklist, type StartupChecklistState } from "../lib/projectStartupChecklist";
-import { supabase } from "../lib/supabase";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import type { ProjectForm } from "../types/database";
 import { normalizePaintSubmittal, type PaintItem } from "../types/tradeDocuments";
@@ -37,6 +35,42 @@ function emptyRow(sortOrder: number): ApprovedBrushoutDraft {
   };
 }
 
+function lineSignature(rows: ApprovedBrushoutDraft[]): string {
+  return JSON.stringify(
+    rows.map((row) => ({
+      id: row.id ?? "",
+      label: row.label,
+      floor: row.floor,
+      manufacturer: row.manufacturer,
+      color: row.color,
+      product: row.product,
+      sheen: row.sheen,
+      display_line: row.display_line,
+      approved: row.approved,
+      sort_order: row.sort_order,
+    })),
+  );
+}
+
+function latestSavedAt(rows: ApprovedBrushoutRow[]): string | null {
+  const times = rows
+    .map((row) => (row as ApprovedBrushoutRow & { updated_at?: string }).updated_at)
+    .filter((value): value is string => Boolean(value));
+  if (!times.length) return null;
+  return times.sort().at(-1) ?? null;
+}
+
+function formatSavedTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function ApprovedBrushoutsPage() {
   const { project, projectId } = useOutletContext<Ctx>();
   const { user } = useAuth();
@@ -48,8 +82,10 @@ export function ApprovedBrushoutsPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [checklistMarked, setChecklistMarked] = useState(false);
   const [savedApprovedCount, setSavedApprovedCount] = useState(0);
+  const [savedSignature, setSavedSignature] = useState(() => lineSignature([]));
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const approveHeaderRef = useRef<HTMLInputElement>(null);
 
   const approverName = user?.email?.split("@")[0] ?? "PM";
   const paintSubmittal = useMemo(
@@ -66,41 +102,27 @@ export function ApprovedBrushoutsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [{ data: brushoutData }, { data: projectData }] = await Promise.all([
-        listProjectBrushouts(projectId).then((rows) => ({ data: rows })),
-        supabase.from("projects").select("data").eq("id", projectId).single(),
-      ]);
-
-      const data = brushoutData;
-      if (projectData?.data) {
-        const blob = parseProjectDataBlob(projectData.data);
-        const checklist = parseStartupChecklist(blob.startup_checklist);
-        setChecklistMarked(checklist.brushouts_ordered);
-      }
-
-      if (data.length) {
-        setRows(
-          data.map((r) => ({
-            id: r.id,
-            paint_vendor: r.paint_vendor,
-            label: r.label,
-            floor: r.floor,
-            manufacturer: r.manufacturer,
-            color: r.color,
-            product: r.product,
-            sheen: r.sheen,
-            display_line: r.display_line,
-            approved: r.approved,
-            sort_order: r.sort_order,
-          })),
-        );
-        setPaintVendor(normalizePaintVendor(data[0]?.paint_vendor ?? ""));
-        setSavedApprovedCount(data.filter((r) => r.approved).length);
-      } else {
-        setPaintVendor(normalizePaintVendor(paintSubmittal.paint_vendor ?? ""));
-        setRows([]);
-        setSavedApprovedCount(0);
-      }
+      const data = await listProjectBrushouts(projectId);
+      const nextRows: ApprovedBrushoutDraft[] = data.map((r) => ({
+        id: r.id,
+        paint_vendor: r.paint_vendor,
+        label: r.label,
+        floor: r.floor,
+        manufacturer: r.manufacturer,
+        color: r.color,
+        product: r.product,
+        sheen: r.sheen,
+        display_line: r.display_line,
+        approved: r.approved,
+        sort_order: r.sort_order,
+      }));
+      setRows(nextRows);
+      setSavedSignature(lineSignature(nextRows));
+      setLastSavedAt(latestSavedAt(data));
+      setPaintVendor(
+        normalizePaintVendor(data[0]?.paint_vendor ?? paintSubmittal.paint_vendor ?? ""),
+      );
+      setSavedApprovedCount(data.filter((r) => r.approved).length);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -191,102 +213,58 @@ export function ApprovedBrushoutsPage() {
     }
   }
 
-  async function markStartupChecklistComplete() {
-    setBusy(true);
-    setError(null);
-    try {
-      const { data, error: fetchErr } = await supabase
-        .from("projects")
-        .select("data")
-        .eq("id", projectId)
-        .single();
-      if (fetchErr) throw new Error(fetchErr.message);
+  const dirty = lineSignature(rows) !== savedSignature;
+  const allApproved = rows.length > 0 && approvedCount === rows.length;
+  const someApproved = approvedCount > 0 && !allApproved;
+  const savedTime = lastSavedAt ? formatSavedTime(lastSavedAt) : "";
 
-      const blob = parseProjectDataBlob(data?.data);
-      const checklist = parseStartupChecklist(blob.startup_checklist);
-      const next: StartupChecklistState = { ...checklist, brushouts_ordered: true };
-      const err = await commitProjectUpdate({
-        projectId,
-        mergeData: { startup_checklist: next },
-        activity: {
-          action: "startup_checklist_updated",
-          summary: "Startup checklist — brush-outs marked complete",
-        },
-      });
-      if (err) throw new Error(err);
-      const trackerErr = await markPaintTrackerApproved(
-        projectId,
-        "Paint tracker marked Approved from approved brush-outs",
-      );
-      if (trackerErr) throw new Error(trackerErr);
-      setChecklistMarked(true);
-      setStatus((prev) =>
-        prev
-          ? `${prev} System setup · Brush outs marked complete. Paint tracker Approved.`
-          : "System setup · Brush outs marked complete. Paint tracker Approved.",
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update startup checklist");
-    } finally {
-      setBusy(false);
-    }
-  }
+  useEffect(() => {
+    if (approveHeaderRef.current) approveHeaderRef.current.indeterminate = someApproved;
+  }, [someApproved, rows.length]);
 
   return (
-    <div className="stack">
-      <div className="row-between wrap gap">
-        <div>
+    <div className="submittals-hub stack">
+      <SubmittalsHubTabs badgeCount={loading ? undefined : savedApprovedCount} />
+      <div className="brushout-page-heading">
+        <div className="brushout-page-title-row">
           <h2 className="page-title">Approved brush-outs</h2>
-          <p className="muted small">
-            Job {project.job_number}
-            {project.job_name ? ` — ${project.job_name}` : ""}. Import from the paint tab or saved submittal history,
-            check <strong>Approved</strong> on the ones ready for field use, then save.
-          </p>
+          {!loading ? (
+            <p className={`brushout-save-pill${dirty ? " is-dirty" : " is-saved"}`}>
+              <span className="brushout-save-pill-mark" aria-hidden="true">
+                {dirty ? (
+                  <span className="brushout-save-pill-dot" />
+                ) : (
+                  <svg viewBox="0 0 16 16" width="13" height="13">
+                    <path
+                      d="M3.5 8.4 6.4 11.3 12.5 4.7"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </span>
+              {dirty
+                ? `Unsaved changes · ${approvedCount} of ${rows.length} approved · Field Tools still shows ${savedApprovedCount}`
+                : `Saved · ${approvedCount} of ${rows.length} approved · synced to Field Tools${savedTime ? ` · ${savedTime}` : ""}`}
+            </p>
+          ) : null}
         </div>
-        <Link className="btn ghost" to={`/projects/${projectId}/submittals/paint`}>
-          ← Paint submittal
-        </Link>
+        <p className="muted small">
+          Job {project.job_number}
+          {project.job_name ? ` — ${project.job_name}` : ""} · Checked lines go to Field Tools.
+        </p>
       </div>
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && !error && <div className="banner banner-ok">{status}</div>}
 
-      {savedApprovedCount > 0 && (
-        <section className="card stack gap-xs">
-          <p className="muted small" style={{ margin: 0 }}>
-            System setup — <strong>Brush outs</strong>:{" "}
-            {checklistMarked ? (
-              <>marked complete ({savedApprovedCount} color{savedApprovedCount === 1 ? "" : "s"} in Field Tools)</>
-            ) : (
-              <>not checked yet ({savedApprovedCount} saved for Field Tools)</>
-            )}
-          </p>
-          {!checklistMarked && (
-            <>
-              <p className="muted small" style={{ margin: 0 }}>
-                Mark complete when this wave is ready for field. You can approve more colors later (e.g. a revised
-                PT-03) without unchecking the step. This also marks Material Tracker → Paint → Approved. Project
-                startup “Submit brushouts” is driven by Material Tracker → Submitted for Approval.
-              </p>
-              <div>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={busy || loading}
-                  onClick={() => void markStartupChecklistComplete()}
-                >
-                  Mark system setup complete
-                </button>
-              </div>
-            </>
-          )}
-        </section>
-      )}
-
       <section className="card stack">
         <div className="row-between wrap gap">
           <label className="stack gap-xs" style={{ minWidth: 220 }}>
-            <span className="label">Paint vendor</span>
+            <span className="label">Paint vendor · job-wide, also sets Material Tracker</span>
             <select
               className="input"
               value={normalizePaintVendor(paintVendor)}
@@ -299,7 +277,6 @@ export function ApprovedBrushoutsPage() {
                 </option>
               ))}
             </select>
-            <span className="muted small">This sets the vendor for the job. Material Tracker follows it.</span>
           </label>
           <div className="row-gap wrap">
             <button
@@ -318,13 +295,12 @@ export function ApprovedBrushoutsPage() {
             >
               + Add line
             </button>
-            <button type="button" className="btn ghost" onClick={() => approveAll(true)} disabled={busy || !rows.length}>
-              Approve all
-            </button>
-            <button type="button" className="btn ghost" onClick={() => approveAll(false)} disabled={busy || !rows.length}>
-              Clear approvals
-            </button>
-            <button type="button" className="btn btn-primary" onClick={() => void onSave()} disabled={busy || loading}>
+            <button
+              type="button"
+              className={`btn${dirty ? " btn-primary" : " btn-secondary"}`}
+              onClick={() => void onSave()}
+              disabled={busy || loading}
+            >
               {busy ? "Saving…" : "Save approved"}
             </button>
           </div>
@@ -338,85 +314,94 @@ export function ApprovedBrushoutsPage() {
             manually.
           </p>
         ) : (
-          <>
-            <p className="muted small">
-              {approvedCount} of {rows.length} line{rows.length === 1 ? "" : "s"} marked approved
-              {approvedCount ? " (not saved until you click Save approved)" : ""}.
-            </p>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Approved</th>
-                    <th>Label</th>
-                    <th>Location</th>
-                    <th>Color</th>
-                    <th>Product</th>
-                    <th>Sheen</th>
-                    <th>Field display</th>
-                    <th />
+          <div className="table-wrap">
+            <table className="data-table brushout-lines-table">
+              <thead>
+                <tr>
+                  <th className="brushout-col-approved">
+                    <input
+                      ref={approveHeaderRef}
+                      type="checkbox"
+                      checked={allApproved}
+                      disabled={!rows.length || busy}
+                      aria-label="Approve all lines"
+                      onChange={() => approveAll(!allApproved)}
+                    />
+                  </th>
+                  <th className="brushout-col-label">Label</th>
+                  <th className="brushout-col-location">Location</th>
+                  <th className="brushout-col-color">Color</th>
+                  <th className="brushout-col-product">Product</th>
+                  <th className="brushout-col-sheen">Sheen</th>
+                  <th className="brushout-col-field">Field display</th>
+                  <th className="brushout-col-remove" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={row.id ?? `new-${index}`}>
+                    <td className="brushout-col-approved">
+                      <input
+                        type="checkbox"
+                        checked={row.approved}
+                        onChange={(e) => updateRow(index, { approved: e.target.checked })}
+                        aria-label={`Approved ${row.label || index + 1}`}
+                      />
+                    </td>
+                    <td className="brushout-col-label">
+                      <input
+                        className="input"
+                        value={row.label}
+                        title={row.label || undefined}
+                        onChange={(e) => updateRow(index, { label: e.target.value })}
+                      />
+                    </td>
+                    <td className="brushout-col-location">
+                      <input
+                        className="input"
+                        value={row.floor}
+                        placeholder="e.g. Ext walls, trim"
+                        onChange={(e) => updateRow(index, { floor: e.target.value })}
+                      />
+                    </td>
+                    <td className="brushout-col-color">
+                      <input
+                        className="input"
+                        value={row.color}
+                        title={row.color || undefined}
+                        onChange={(e) => updateRow(index, { color: e.target.value })}
+                      />
+                    </td>
+                    <td className="brushout-col-product">
+                      <input
+                        className="input"
+                        value={row.product}
+                        onChange={(e) => updateRow(index, { product: e.target.value })}
+                      />
+                    </td>
+                    <td className="brushout-col-sheen">
+                      <input
+                        className="input"
+                        value={row.sheen}
+                        title={row.sheen || undefined}
+                        onChange={(e) => updateRow(index, { sheen: e.target.value })}
+                      />
+                    </td>
+                    <td className="brushout-col-field">
+                      <span className="brushout-field-chip" title={row.display_line || undefined}>
+                        {row.display_line || "—"}
+                      </span>
+                    </td>
+                    <td className="brushout-col-remove">
+                      <button type="button" className="btn ghost btn-sm" onClick={() => removeRow(index)}>
+                        ×
+                      </button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, index) => (
-                    <tr key={row.id ?? `new-${index}`}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={row.approved}
-                          onChange={(e) => updateRow(index, { approved: e.target.checked })}
-                          aria-label={`Approved ${row.label || index + 1}`}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="input"
-                          value={row.label}
-                          onChange={(e) => updateRow(index, { label: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="input"
-                          value={row.floor}
-                          onChange={(e) => updateRow(index, { floor: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="input"
-                          value={row.color}
-                          onChange={(e) => updateRow(index, { color: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="input"
-                          value={row.product}
-                          onChange={(e) => updateRow(index, { product: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="input"
-                          value={row.sheen}
-                          onChange={(e) => updateRow(index, { sheen: e.target.value })}
-                        />
-                      </td>
-                      <td>
-                        <span className="muted small">{row.display_line || "—"}</span>
-                      </td>
-                      <td>
-                        <button type="button" className="btn ghost btn-sm" onClick={() => removeRow(index)}>
-                          ×
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

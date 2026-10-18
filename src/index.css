@@ -8921,6 +8921,34 @@ tr.budget-hours-pdf-hidden td {
   color: var(--primary);
 }
 
+.brushout-status-pill--import-new {
+  background: color-mix(in srgb, #2d8a4e 18%, transparent);
+  color: #2d8a4e;
+}
+
+.brushout-status-pill--added {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+}
+
+.brushouts-send-row.is-added {
+  color: var(--muted);
+}
+
+.brushouts-send-row.is-added .brushouts-send-color {
+  color: var(--muted);
+}
+
+.brushouts-import-empty {
+  padding: 1.75rem 1rem;
+  text-align: center;
+}
+
+.brushouts-import-empty-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
 .brushout-status-pill--on-sheet {
   background: color-mix(in srgb, #2d8a4e 18%, transparent);
   color: #2d8a4e;
@@ -8934,6 +8962,134 @@ tr.budget-hours-pdf-hidden td {
 .brushout-status-pill--pending {
   background: var(--surface-muted, #eee);
   color: var(--muted);
+}
+
+.brushout-page-heading {
+  width: 100%;
+  min-width: 0;
+}
+
+.brushout-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brushout-page-title-row .page-title {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.brushout-save-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.brushout-save-pill-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.brushout-save-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.brushout-save-pill.is-saved {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.brushout-save-pill.is-dirty {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+
+.brushout-lines-table {
+  display: grid;
+  grid-template-columns: 36px 110px minmax(0, 1.2fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.4fr) 40px;
+  width: 100%;
+}
+
+.brushout-lines-table thead,
+.brushout-lines-table tbody,
+.brushout-lines-table tr {
+  display: contents;
+}
+
+.brushout-lines-table.data-table th,
+.brushout-lines-table.data-table td {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.brushout-lines-table td .input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.brushout-lines-table input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.brushout-col-approved,
+.brushout-col-remove {
+  justify-content: center;
+}
+
+.brushout-col-label {
+  justify-content: center;
+  text-align: center;
+}
+
+.brushout-col-label input,
+.brushout-col-color input,
+.brushout-col-sheen input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brushout-col-label input {
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.brushout-field-chip {
+  display: block;
+  align-self: center;
+  flex: 1 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .btn-icon {
@@ -12714,6 +12870,30 @@ tr.budget-hours-pdf-hidden td {
 .submittals-hub-tabs .job-tracker-tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.submittals-hub-tabs-rule {
+  width: 1px;
+  height: 16px;
+  margin: 0 24px;
+  align-self: center;
+  background: var(--border);
+}
+
+.submittals-hub-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 a.job-tracker-tab {

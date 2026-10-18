@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { brushoutColorLine, brushoutMergeKey, normalizeFloorForBrushout } from "./paintBrushouts";
+import { brushoutColorLine, normalizeFloorForBrushout } from "./paintBrushouts";
 import { formatSubmittalHistoryLabel, historyEntryKey } from "./submittalHistory";
 import type { PaintItem, PaintSubmittalData, SubmittalHistoryEntry } from "../types/tradeDocuments";
 
@@ -36,18 +36,31 @@ export function brushoutDraftKey(row: { label: string; floor: string; color?: st
 
 export type BrushoutImportLineStatus = "new" | "on_list" | "revised";
 
+/** Label match against the brush-out list: same color, different color, or not on the list. */
+export function brushoutImportLineDetail(
+  item: PaintItem,
+  existing: ApprovedBrushoutDraft[],
+): { status: BrushoutImportLineStatus; previousColor: string } {
+  const line = brushoutColorLine(item);
+  if (!line) return { status: "new", previousColor: "" };
+
+  const label = item.label.trim().toLowerCase();
+  const color = item.color.trim().toLowerCase();
+  const sameLabel = label
+    ? existing.filter((row) => row.label.trim().toLowerCase() === label)
+    : [];
+
+  if (!sameLabel.length) return { status: "new", previousColor: "" };
+  const sameColor = sameLabel.find((row) => row.color.trim().toLowerCase() === color);
+  if (sameColor) return { status: "on_list", previousColor: sameColor.color.trim() };
+  return { status: "revised", previousColor: sameLabel[0]?.color.trim() ?? "" };
+}
+
 export function brushoutImportLineStatus(
   item: PaintItem,
   existing: ApprovedBrushoutDraft[],
 ): BrushoutImportLineStatus {
-  const key = brushoutMergeKey(item);
-  const line = brushoutColorLine(item);
-  if (!key || !line) return "new";
-
-  const match = existing.find((row) => brushoutDraftKey(row) === key);
-  if (!match) return "new";
-  if (match.display_line.trim() === line.trim() || match.color.trim() === item.color.trim()) return "on_list";
-  return "revised";
+  return brushoutImportLineDetail(item, existing).status;
 }
 
 export function defaultApprovedBrushoutImportSelection(
@@ -140,12 +153,17 @@ export function mergePaintItemsIntoBrushoutRows(
 
   for (const item of selectedItems) {
     const draft = paintItemToBrushoutDraft(item, next.length, paintVendor);
+    const label = draft.label.trim().toLowerCase();
     const key = brushoutDraftKey(draft);
-    if (key && indexByKey.has(key)) {
-      const index = indexByKey.get(key)!;
+    const index = label
+      ? next.findIndex((row) => row.label.trim().toLowerCase() === label)
+      : key
+        ? (indexByKey.get(key) ?? -1)
+        : -1;
+    if (index >= 0) {
       const prev = next[index]!;
       const sameColor =
-        prev.color.trim() === draft.color.trim() &&
+        prev.color.trim().toLowerCase() === draft.color.trim().toLowerCase() &&
         prev.display_line.trim() === draft.display_line.trim();
       next[index] = {
         ...prev,
@@ -154,6 +172,8 @@ export function mergePaintItemsIntoBrushoutRows(
         approved: sameColor ? prev.approved : false,
         sort_order: prev.sort_order,
       };
+      const nextKey = brushoutDraftKey(next[index]!);
+      if (nextKey) indexByKey.set(nextKey, index);
       continue;
     }
     next.push({ ...draft, sort_order: next.length, approved: false });

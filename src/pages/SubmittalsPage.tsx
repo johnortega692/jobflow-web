@@ -218,12 +218,6 @@ export function SubmittalsPage() {
 
       <ContractListFilter project={project} value={viewContract} onChange={setViewContract} />
 
-      <p className="muted small">
-        Log rows are added when you build PDFs (submittal packages, paint, wallcovering, FRP).
-        Generate
-        Transmittal stamps SUBMIT + Trans # on rows you include. Edit manually anytime.
-      </p>
-
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
 

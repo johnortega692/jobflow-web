@@ -53,11 +53,25 @@ function headerLine(packet: SdsPacketData): string {
   return packetHeaderLine(packet.packet_type, packet.cover_title);
 }
 
+const STAMP_RED = rgb(0.75, 0.08, 0.1);
+
 function sectionTitle(section: SdsSection): string {
   const product = section.product.trim() || "—";
   const finish = section.finish_type.trim() || "—";
   if (product !== "—" && finish !== "—") return `${product} – ${finish}`;
   return product !== "—" ? product : "Section";
+}
+
+function fitStampLines(text: string, font: PDFFont, size: number, maxWidth: number, maxLines: number): string[] {
+  const lines = wrapLines(text, font, size, maxWidth);
+  if (lines.length <= maxLines) return lines;
+  const kept = lines.slice(0, maxLines);
+  let last = kept[maxLines - 1] ?? "";
+  while (last && font.widthOfTextAtSize(`${last}…`, size) > maxWidth) {
+    last = last.slice(0, -1).trimEnd();
+  }
+  kept[maxLines - 1] = last ? `${last}…` : "…";
+  return kept;
 }
 
 async function embedLogo(doc: PDFDocument, logoUrl: string): Promise<PDFImage | null> {
@@ -904,9 +918,29 @@ async function appendPdfWithStamp(
     ctx.doc.addPage(page);
     if (includeStamp) {
       const { width, height } = page.getSize();
-      const bannerHeight = 14;
-      page.drawRectangle({ x: 0, y: height - bannerHeight, width, height: bannerHeight, color: rgb(0.95, 0.95, 0.95) });
-      page.drawText(stamp, { x: 8, y: height - 11, size: 8, font: ctx.bold, color: rgb(0.15, 0.15, 0.15) });
+      const size = 8;
+      const maxWidth = width - 16;
+      const lines = fitStampLines(stamp, ctx.bold, size, maxWidth, 2);
+      const bannerHeight = lines.length > 1 ? 26 : 16;
+      const border = 1.25;
+      page.drawRectangle({
+        x: border / 2,
+        y: height - bannerHeight,
+        width: width - border,
+        height: bannerHeight - border / 2,
+        color: rgb(1, 1, 1),
+        borderColor: STAMP_RED,
+        borderWidth: border,
+      });
+      lines.forEach((line, index) => {
+        page.drawText(line, {
+          x: 8,
+          y: height - 11 - index * 10,
+          size,
+          font: ctx.bold,
+          color: STAMP_RED,
+        });
+      });
     }
   }
 }

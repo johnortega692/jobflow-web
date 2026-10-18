@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { AtticStockOrderModal } from "../components/paint/AtticStockOrderModal";
@@ -815,9 +815,6 @@ export function PaintSubmittalsPage() {
           <button type="button" className="btn btn-secondary" onClick={() => setAtticOpen(true)}>
             Attic stock
           </button>
-          <Link className="btn btn-secondary" to={`/projects/${projectId}/approved-brushouts`}>
-            Approved
-          </Link>
         </div>
 
         <div className="paint-toolbar-end">

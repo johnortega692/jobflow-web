@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { brushoutColorLine } from "../../lib/paintBrushouts";
 import {
-  brushoutImportLineStatus,
+  brushoutImportLineDetail,
   defaultApprovedBrushoutImportSelection,
   pickDefaultBrushoutImportSourceId,
   type ApprovedBrushoutDraft,
@@ -18,16 +18,16 @@ type Props = {
   onClose: () => void;
 };
 
-const IMPORT_STATUS_LABEL: Record<BrushoutImportLineStatus, string> = {
-  new: "New",
-  on_list: "On list",
-  revised: "Revised",
-};
-
 function statusClass(status: BrushoutImportLineStatus): string {
-  if (status === "on_list") return "brushout-status-pill brushout-status-pill--on-sheet";
+  if (status === "on_list") return "brushout-status-pill brushout-status-pill--added";
   if (status === "revised") return "brushout-status-pill brushout-status-pill--revised";
-  return "brushout-status-pill brushout-status-pill--new";
+  return "brushout-status-pill brushout-status-pill--import-new";
+}
+
+function statusLabel(status: BrushoutImportLineStatus, previousColor: string): string {
+  if (status === "on_list") return "Already added";
+  if (status === "revised") return previousColor ? `Revised · was ${previousColor}` : "Revised";
+  return "New";
 }
 
 export function ImportApprovedBrushoutsModal({
@@ -43,16 +43,24 @@ export function ImportApprovedBrushoutsModal({
 
   const rows = useMemo(
     () =>
-      items.map((item, index) => ({
-        index,
-        item,
-        line: brushoutColorLine(item),
-        status: brushoutImportLineStatus(item, existingRows),
-      })),
+      items.map((item, index) => {
+        const detail = brushoutImportLineDetail(item, existingRows);
+        return {
+          index,
+          item,
+          line: brushoutColorLine(item),
+          status: detail.status,
+          previousColor: detail.previousColor,
+        };
+      }),
     [items, existingRows],
   );
 
   const colorRows = rows.filter((r) => r.line);
+  const newCount = colorRows.filter((r) => r.status === "new").length;
+  const revisedCount = colorRows.filter((r) => r.status === "revised").length;
+  const availableCount = newCount + revisedCount;
+  const allAlreadyAdded = colorRows.length > 0 && availableCount === 0;
 
   const [selected, setSelected] = useState<Set<number>>(() =>
     defaultApprovedBrushoutImportSelection(items, existingRows),
@@ -64,6 +72,8 @@ export function ImportApprovedBrushoutsModal({
   }, [sourceId, sources, existingRows]);
 
   function toggle(index: number) {
+    const row = colorRows.find((r) => r.index === index);
+    if (!row || row.status === "on_list") return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
@@ -72,9 +82,9 @@ export function ImportApprovedBrushoutsModal({
     });
   }
 
-  function selectPreset(mode: "new" | "revised" | "all") {
-    if (mode === "all") {
-      setSelected(new Set(colorRows.map((r) => r.index)));
+  function selectPreset(mode: "new" | "revised" | "available") {
+    if (mode === "available") {
+      setSelected(new Set(colorRows.filter((r) => r.status !== "on_list").map((r) => r.index)));
       return;
     }
     if (mode === "revised") {
@@ -84,7 +94,7 @@ export function ImportApprovedBrushoutsModal({
     setSelected(new Set(colorRows.filter((r) => r.status === "new").map((r) => r.index)));
   }
 
-  const selectedCount = colorRows.filter((r) => selected.has(r.index)).length;
+  const selectedCount = colorRows.filter((r) => r.status !== "on_list" && selected.has(r.index)).length;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -122,55 +132,99 @@ export function ImportApprovedBrushoutsModal({
           </p>
         ) : null}
 
-        <div className="row-gap wrap brushouts-send-presets">
-          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => selectPreset("new")}>
-            New only
-          </button>
-          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => selectPreset("revised")}>
-            Revised only
-          </button>
-          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => selectPreset("all")}>
-            Select all
-          </button>
-        </div>
+        {allAlreadyAdded ? (
+          <div className="brushouts-import-empty">
+            <p className="brushouts-import-empty-title">
+              All {colorRows.length} colors are already on the list
+            </p>
+            <p className="muted small">
+              Pick an earlier revision above to pull colors that were dropped or changed.
+            </p>
+          </div>
+        ) : (
+          <>
+            {colorRows.length > 0 ? (
+              <div className="row-gap wrap brushouts-send-presets">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy || newCount === 0}
+                  onClick={() => selectPreset("new")}
+                >
+                  New only ({newCount})
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy || revisedCount === 0}
+                  onClick={() => selectPreset("revised")}
+                >
+                  Revised only ({revisedCount})
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy || availableCount === 0}
+                  onClick={() => selectPreset("available")}
+                >
+                  Select all available
+                </button>
+              </div>
+            ) : null}
 
-        <div className="brushouts-send-list" role="list">
-          {!sources.length ? (
-            <p className="muted small">No paint colors found on the paint tab or in submittal history.</p>
-          ) : colorRows.length === 0 ? (
-            <p className="muted small">This package has no lines with colors.</p>
-          ) : (
-            colorRows.map(({ index, line, status }) => (
-              <label key={`${sourceId}-${index}`} className="brushouts-send-row check" role="listitem">
-                <input
-                  type="checkbox"
-                  checked={selected.has(index)}
-                  disabled={busy}
-                  onChange={() => toggle(index)}
-                />
-                <span className="brushouts-send-row-main">
-                  <span className="brushouts-send-color">{line}</span>
-                </span>
-                <span className={statusClass(status)}>{IMPORT_STATUS_LABEL[status]}</span>
-              </label>
-            ))
-          )}
-        </div>
+            <div className="brushouts-send-list" role="list">
+              {!sources.length ? (
+                <p className="muted small">No paint colors found on the paint tab or in submittal history.</p>
+              ) : colorRows.length === 0 ? (
+                <p className="muted small">This package has no lines with colors.</p>
+              ) : (
+                colorRows.map(({ index, line, status, previousColor }) => (
+                  <label
+                    key={`${sourceId}-${index}`}
+                    className={`brushouts-send-row check${status === "on_list" ? " is-added" : ""}`}
+                    role="listitem"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={status === "on_list" || selected.has(index)}
+                      disabled={busy || status === "on_list"}
+                      onChange={() => toggle(index)}
+                    />
+                    <span className="brushouts-send-row-main">
+                      <span className="brushouts-send-color">{line}</span>
+                    </span>
+                    <span className={statusClass(status)}>{statusLabel(status, previousColor)}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </>
+        )}
 
         <div className="row-gap wrap">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy || selectedCount === 0}
-            onClick={() =>
-              onConfirm(colorRows.filter((r) => selected.has(r.index)).map((r) => r.item))
-            }
-          >
-            {busy ? "Adding…" : `Add ${selectedCount} to list`}
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
-            Cancel
-          </button>
+          {allAlreadyAdded ? (
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={onClose}>
+              Close
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy || selectedCount === 0}
+                onClick={() =>
+                  onConfirm(
+                    colorRows.filter((r) => r.status !== "on_list" && selected.has(r.index)).map((r) => r.item),
+                  )
+                }
+              >
+                {busy ? "Adding…" : `Add ${selectedCount} to list`}
+              </button>
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
+                Cancel
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
