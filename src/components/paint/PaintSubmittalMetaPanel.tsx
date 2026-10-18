@@ -2,34 +2,26 @@ import { DateInput } from "../DateInput";
 import { RevisionNoteField } from "../submittals/RevisionNoteField";
 import { SpecSectionsChipField } from "../submittals/SpecSectionsChipField";
 import { SubmittalIssueStatusPill } from "../submittals/SubmittalIssueStatusPill";
-import { SubmittalPackageTypeSelect } from "../submittals/SubmittalPackageTypeSelect";
 import {
   addPaintSpecSection,
   MAX_PAINT_SPEC_SECTIONS,
   PAINT_SUBMITTAL_TYPES,
-  PAINT_VENDOR_OPTIONS,
   removePaintSpecSection,
   type PaintSubmittalData,
   type SubmittalIssueStatus,
-  type SubmittalPackageCategory,
   type TradeSubmittalType,
 } from "../../types/tradeDocuments";
-
-type PackageOption = { id: SubmittalPackageCategory; label: string };
 
 type Props = {
   draft: PaintSubmittalData;
   draftLocked: boolean;
-  packageTypeOptions: PackageOption[];
   onSubmittalNumberChange: (value: number) => void;
   onIssueStatusChange: (value: SubmittalIssueStatus) => void;
   onDateChange: (value: string) => void;
-  onPackageTypeChange: (value: SubmittalPackageCategory) => void;
   onTypeChange: (value: TradeSubmittalType) => void;
   onSubjectChange: (value: string) => void;
   onSpecSectionsChange: (updater: (d: PaintSubmittalData) => PaintSubmittalData) => void;
   onRevisionNoteChange: (value: string) => void;
-  onPaintVendorChange: (value: string) => void;
   onCreateNextRevision?: () => void;
 };
 
@@ -41,16 +33,13 @@ function formatSubmittalIdentity(submittalNumber: number, revisionNumber: number
 export function PaintSubmittalMetaPanel({
   draft,
   draftLocked,
-  packageTypeOptions,
   onSubmittalNumberChange,
   onIssueStatusChange,
   onDateChange,
-  onPackageTypeChange,
   onTypeChange,
   onSubjectChange,
   onSpecSectionsChange,
   onRevisionNoteChange,
-  onPaintVendorChange,
   onCreateNextRevision,
 }: Props) {
   return (
@@ -108,23 +97,7 @@ export function PaintSubmittalMetaPanel({
         )}
       </div>
 
-      <div className="grid-3 paint-submittal-meta-fields-row">
-        <label>
-          Paint vendor
-          <select value={draft.paint_vendor ?? "PPG"} onChange={(e) => onPaintVendorChange(e.target.value)}>
-            {PAINT_VENDOR_OPTIONS.map((vendor) => (
-              <option key={vendor} value={vendor}>
-                {vendor}
-              </option>
-            ))}
-          </select>
-        </label>
-        <SubmittalPackageTypeSelect
-          value={draft.package_type}
-          options={packageTypeOptions}
-          disabled={draftLocked}
-          onChange={onPackageTypeChange}
-        />
+      <div className="paint-submittal-meta-fields-row paint-submittal-meta-type-subject-row">
         <label>
           Type
           <select
@@ -138,29 +111,27 @@ export function PaintSubmittalMetaPanel({
             ))}
           </select>
         </label>
-      </div>
-
-      <div className="paint-submittal-meta-spec-subject-row">
-        <SpecSectionsChipField
-          selected={draft.spec_sections ?? []}
-          disabled={draftLocked}
-          maxSections={MAX_PAINT_SPEC_SECTIONS}
-          onAdd={(section) => onSpecSectionsChange((d) => addPaintSpecSection(d, section))}
-          onRemove={(index) =>
-            onSpecSectionsChange((d) => {
-              const first = removePaintSpecSection(d, index);
-              if (first.ok) return first.draft;
-              if (!window.confirm(first.message)) return d;
-              const second = removePaintSpecSection(d, index, { confirmed: true });
-              return second.ok ? second.draft : d;
-            })
-          }
-        />
         <label className="paint-submittal-meta-subject-field">
           Subject
           <input value={draft.subject} onChange={(e) => onSubjectChange(e.target.value)} />
         </label>
       </div>
+
+      <SpecSectionsChipField
+        selected={draft.spec_sections ?? []}
+        disabled={draftLocked}
+        maxSections={MAX_PAINT_SPEC_SECTIONS}
+        onAdd={(section) => onSpecSectionsChange((d) => addPaintSpecSection(d, section))}
+        onRemove={(index) =>
+          onSpecSectionsChange((d) => {
+            const first = removePaintSpecSection(d, index);
+            if (first.ok) return first.draft;
+            if (!window.confirm(first.message)) return d;
+            const second = removePaintSpecSection(d, index, { confirmed: true });
+            return second.ok ? second.draft : d;
+          })
+        }
+      />
 
       <RevisionNoteField
         revisionNumber={draft.revision_number}

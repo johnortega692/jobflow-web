@@ -1,10 +1,6 @@
 import type { DragEvent } from "react";
 import type { SdsPacketType } from "../../lib/sdsPacketPresets";
-import {
-  sectionAttachmentBadges,
-  sectionSummarySubline,
-} from "../../lib/sdsPacketRequirements";
-import { sdsNotesPreview, sdsSectionNotes } from "../../lib/sdsSectionDisplay";
+import { sectionAttachmentBadges } from "../../lib/sdsPacketRequirements";
 import type { SdsSection } from "../../types/tradeDocuments";
 
 type Props = {
@@ -21,6 +17,22 @@ type Props = {
   onEdit: () => void;
   onRemove: () => void;
 };
+
+function colorPieces(color: string): { tag: string; location: string }[] {
+  return color
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const splitAt = part.indexOf("—");
+      if (splitAt === -1) return { tag: part, location: "" };
+      return {
+        tag: part.slice(0, splitAt).trim(),
+        location: part.slice(splitAt + 1).trim(),
+      };
+    })
+    .filter((piece) => piece.tag || piece.location);
+}
 
 export function SdsSectionListRow({
   section,
@@ -40,8 +52,13 @@ export function SdsSectionListRow({
   const title =
     [section.manufacturer.trim(), section.product.trim()].filter(Boolean).join(" · ") ||
     "Untitled section";
-  const subline = sectionSummarySubline(section);
-  const notes = sdsNotesPreview(sdsSectionNotes(section), 72);
+  const pieces = colorPieces(section.color);
+  const locations = [...new Set(pieces.map((piece) => piece.location).filter(Boolean))];
+  const detail = [section.finish_type.trim(), section.system_material.trim(), ...locations]
+    .filter(Boolean)
+    .join(" · ");
+  const colorTags = pieces.map((piece) => piece.tag).filter(Boolean);
+  const spec = section.spec_section.trim();
 
   return (
     <li
@@ -71,19 +88,19 @@ export function SdsSectionListRow({
 
       <div className="sds-section-row-body" onDoubleClick={onEdit}>
         <div className="sds-section-row-top">
-          <span className="sds-section-row-num muted small">{index + 1}</span>
-          {section.spec_section.trim() ? (
-            <span className="sds-section-row-spec muted small">{section.spec_section.trim()}</span>
-          ) : null}
+          {spec ? <span className="sds-section-row-spec">{spec}</span> : null}
           <strong className="sds-section-row-title">{title}</strong>
         </div>
-        {(subline || notes) && (
-          <p className="sds-section-row-sub muted small">
-            {subline}
-            {subline && notes ? " · " : ""}
-            {notes}
-          </p>
-        )}
+        {detail ? <p className="sds-section-row-sub muted small">{detail}</p> : null}
+        {colorTags.length > 0 ? (
+          <div className="sds-section-colors">
+            {colorTags.map((tag, tagIndex) => (
+              <span key={`${tag}-${tagIndex}`} className="sds-section-color-tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
         {badges.length > 0 && (
           <div className="sds-section-row-badges" aria-label="Attachments">
             {badges.map((badge) => (
@@ -100,11 +117,26 @@ export function SdsSectionListRow({
       </div>
 
       <div className="sds-section-row-actions">
-        <button type="button" className="btn btn-secondary btn-small" onClick={onEdit}>
-          Edit
+        <button type="button" className="sds-section-icon-btn" title="Edit" aria-label="Edit section" onClick={onEdit}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
         </button>
-        <button type="button" className="btn btn-ghost btn-small" onClick={onRemove}>
-          Remove
+        <button
+          type="button"
+          className="sds-section-icon-btn sds-section-icon-btn--danger"
+          title="Remove"
+          aria-label="Remove section"
+          onClick={onRemove}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+          </svg>
         </button>
       </div>
     </li>

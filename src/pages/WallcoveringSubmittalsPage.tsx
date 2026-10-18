@@ -22,8 +22,6 @@ import {
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
-import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
-import { queuePendingItem } from "../lib/transmittalHelpers";
 import { updateWcTrackerFromSubmittalItems, syncWcSubmittalOrdered } from "../lib/fieldTrackerProject";
 import { defaultGotTrackComponent, normalizeWcComponents, refreshComponentTags } from "../lib/wcComponents";
 import {
@@ -40,7 +38,6 @@ import {
   wcRowAutoLabel,
 } from "../lib/wcItemLabels";
 import {
-  applyTransmittalContractIfDistinct,
   icbiProjectManager,
   jobArchitectAddressOneLine,
   jobFullAddressOneLine,
@@ -55,15 +52,13 @@ import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext"
 import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
-  defaultTransmittal,
   defaultWallcoveringSubmittal,
   emptyWallcoveringItem,
   normalizeWallcoveringSubmittal,
   paintSpecSectionShortLabel,
-  WALLCOVERING_PACKAGE_TYPE_OPTIONS,
   wcDualSpecEnabled,
   wcItemSpecScope,
-  wcSubjectForPackage,
+  wcSubjectForType,
   withWcSpecSections,
   type PaintItemSpecScope,
   type SubmittalHistoryEntry,
@@ -259,8 +254,9 @@ export function WallcoveringSubmittalsPage() {
   function setType(t: TradeSubmittalType) {
     updateDraft((d) => ({
       ...d,
+      package_type: "Wallcovering Samples" as const,
       submittal_type: t,
-      subject: wcSubjectForPackage(d.package_type, t),
+      subject: wcSubjectForType(t),
     }));
   }
 
@@ -545,10 +541,9 @@ export function WallcoveringSubmittalsPage() {
         );
       }
       await persist(draft, nextHistory);
-      let logRowId = "";
       try {
         const parsed = parseSpecSectionForLog(draft.spec_section);
-        const row = await recordPdfLogRow(projectId, {
+        await recordPdfLogRow(projectId, {
           submittal_type: draft.package_type,
           scope: "Wallcovering",
           spec: parsed.spec || "096000",
@@ -557,31 +552,9 @@ export function WallcoveringSubmittalsPage() {
           trade_submittal_number: String(draft.submittal_number),
           status: "Ready",
         });
-        logRowId = row.id;
       } catch {
         /* log row optional */
       }
-      const autoOn = await loadTransmittalContentAutoOn();
-      let transmittal = queuePendingItem(
-        tradeData.transmittal ?? defaultTransmittal(),
-        {
-          submittal_type: draft.package_type,
-          scope: "Wallcovering",
-          source: "wallcovering_submittal",
-          trade_submittal_number: String(draft.submittal_number),
-          log_row_id: logRowId,
-          spec_section: draft.spec_section,
-          section: draft.spec_section,
-        },
-        autoOn,
-      );
-      transmittal = applyTransmittalContractIfDistinct(project, transmittal, "wallcovering");
-      await save({
-        ...tradeData,
-        wallcovering_submittal: draft,
-        wallcovering_submittal_history: nextHistory,
-        transmittal,
-      });
       setStatus(
         draftLocked
           ? `Submittal #${String(draft.submittal_number).padStart(3, "0")} Rev ${draft.revision_number} PDF downloaded.`
@@ -712,7 +685,8 @@ export function WallcoveringSubmittalsPage() {
     const nextBase = {
       ...createNewSubmittalPackageDraft(draft, nextHistory),
       submittal_type: "new" as const,
-      subject: wcSubjectForPackage(draft.package_type, "new"),
+      package_type: "Wallcovering Samples" as const,
+      subject: wcSubjectForType("new"),
       auto_label: true,
       items: applyWcAutoLabels([emptyWallcoveringItem()]),
       got_track: false,
@@ -1010,17 +984,9 @@ export function WallcoveringSubmittalsPage() {
       <WallcoveringSubmittalMetaPanel
         draft={draft}
         draftLocked={draftLocked}
-        packageTypeOptions={WALLCOVERING_PACKAGE_TYPE_OPTIONS}
         onSubmittalNumberChange={(submittal_number) => setDraft({ ...draft, submittal_number })}
         onIssueStatusChange={(issue_status) => setDraft({ ...draft, issue_status })}
         onDateChange={(date) => setDraft({ ...draft, date })}
-        onPackageTypeChange={(package_type) =>
-          updateDraft((d) => ({
-            ...d,
-            package_type,
-            subject: wcSubjectForPackage(package_type, d.submittal_type),
-          }))
-        }
         onTypeChange={setType}
         onSubjectChange={(subject) => setDraft({ ...draft, subject })}
         onSpecSectionsChange={updateDraft}

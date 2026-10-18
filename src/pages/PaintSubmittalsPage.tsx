@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Link, useOutletContext } from "react-router-dom";
 import { StartRevisionFromHistoryModal } from "../components/submittals/StartRevisionFromHistoryModal";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
+import { AtticStockOrderModal } from "../components/paint/AtticStockOrderModal";
 import { EmailVendorModal } from "../components/paint/EmailVendorModal";
 import { ImportBrushoutPrepModal } from "../components/paint/ImportBrushoutPrepModal";
 import { PaintBulkAddModal } from "../components/paint/PaintBulkAddModal";
@@ -27,17 +28,17 @@ import {
 } from "../lib/paintItemLabels";
 import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
 import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/paintImageImport";
-import { applyTransmittalContractIfDistinct, gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
+import { gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import {
   groupPaintItemsForPackage,
   paintPackageGaps,
-  paintPackageStatusLine,
   paintSchedulePackageWarning,
   productPackagePdfNote,
 } from "../lib/paintPackageLink";
+import { formatSubmittalNumberDisplay } from "../lib/printCore";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
-import { patchPaintTrackerSubmittalOrdered, reloadProject, resolvePaintTracker, withSyncedPaintVendor } from "../lib/fieldTrackerProject";
+import { patchPaintTrackerSubmittalOrdered, paintVendorSnapshot, reloadProject, resolvePaintTracker } from "../lib/fieldTrackerProject";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
@@ -47,8 +48,6 @@ import {
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
-import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
-import { queuePendingItem } from "../lib/transmittalHelpers";
 import { listOpenBrushoutPreps, loadPaintUserSettings } from "../lib/paintUserSettings";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
@@ -56,7 +55,6 @@ import { useUnsavedNavigationGuard } from "../contexts/UnsavedNavigationContext"
 import type { ProjectForm } from "../types/database";
 import {
   defaultPaintSubmittal,
-  defaultTransmittal,
   emptyPaintItem,
   leadSpecSection,
   normalizePaintSubmittal,
@@ -64,8 +62,7 @@ import {
   paintDualSpecEnabled,
   paintItemSpecScope,
   paintSpecSectionShortLabel,
-  PAINT_PACKAGE_TYPE_OPTIONS,
-  paintSubjectForPackage,
+  paintSubjectForType,
   withPaintSpecSections,
   type BrushoutPrepLink,
   type PaintItem,
@@ -87,7 +84,7 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
 
 export function PaintSubmittalsPage() {
   const { user } = useAuth();
-  const { branding } = useLetterhead();
+  const { branding, profile } = useLetterhead();
   const { project, projectId, setProject } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
   const [draft, setDraft] = useState<PaintSubmittalData>(defaultPaintSubmittal());
@@ -100,14 +97,18 @@ export function PaintSubmittalsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [startRevisionOpen, setStartRevisionOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [atticOpen, setAtticOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState<PaintSubmittalData | null>(null);
   const [prepOpen, setPrepOpen] = useState(false);
   const [toolbarMenu, setToolbarMenu] = useState<"new" | "help" | null>(null);
+  const [itemsMenu, setItemsMenu] = useState<"add" | "more" | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const itemsActionsRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dragOverScope, setDragOverScope] = useState<PaintItemSpecScope | null>(null);
+  const [clearItemsConfirm, setClearItemsConfirm] = useState(false);
   const [userSettings, setUserSettings] = useState<Awaited<ReturnType<typeof loadPaintUserSettings>> | null>(
     null,
   );
@@ -117,13 +118,16 @@ export function PaintSubmittalsPage() {
 
   const persist = useCallback(
     async (nextDraft: PaintSubmittalData, nextHistory = history) => {
-      const syncedTrade = withSyncedPaintVendor(tradeData, nextDraft);
+      const snapshot = await paintVendorSnapshot(projectId);
+      const paint_vendor = snapshot?.paint_vendor ?? nextDraft.paint_vendor;
       const ok = await save({
-        ...syncedTrade,
+        ...tradeData,
+        ...(snapshot ? { paint_tracker: snapshot.paint_tracker } : {}),
+        paint_submittal: { ...nextDraft, paint_vendor },
         paint_submittal_history: nextHistory,
       });
       if (ok) {
-        const nextSubmittal = syncedTrade.paint_submittal!;
+        const nextSubmittal = { ...nextDraft, paint_vendor };
         setDraft(nextSubmittal);
         setHistory(nextHistory);
         syncBaseline({ draft: nextSubmittal, history: nextHistory });
@@ -183,6 +187,29 @@ export function PaintSubmittalsPage() {
       document.removeEventListener("keydown", onKey);
     };
   }, [toolbarMenu]);
+
+  useEffect(() => {
+    if (!itemsMenu) return;
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const anchors = itemsActionsRef.current?.querySelectorAll(".paint-items-menu-anchor");
+      if (!anchors) return;
+      for (const anchor of anchors) {
+        if (anchor.contains(target)) return;
+      }
+      setItemsMenu(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setItemsMenu(null);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [itemsMenu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -247,19 +274,22 @@ export function PaintSubmittalsPage() {
     );
     return paintPackageGaps(groups, productPacket.sections);
   }, [draft, productPacket.sections]);
-  const packageStatus = useMemo(() => {
-    const lead = leadSpecSection(draft);
-    const secondary = draft.spec_sections?.[1]?.trim() ?? "";
-    const hasProducts = groupPaintItemsForPackage(draft.items, (item) =>
-      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
-    ).length > 0;
-    return paintPackageStatusLine(
-      paintLinkGaps,
-      productPacket.submittal_number,
-      productPacket.sections.length > 0,
-      hasProducts,
-    );
-  }, [draft, paintLinkGaps, productPacket.sections.length, productPacket.submittal_number]);
+  const itemsStatus = useMemo(() => {
+    const packageNumber = formatSubmittalNumberDisplay(productPacket.submittal_number);
+    const missingFromPackage = paintLinkGaps.scheduleOnly.length;
+    if (itemsReadiness.missingColor > 0) {
+      const n = itemsReadiness.missingColor;
+      return { tone: "warn" as const, text: `${n} missing color${n === 1 ? "" : "s"}` };
+    }
+    if (missingFromPackage > 0) {
+      return {
+        tone: "warn" as const,
+        text: `${missingFromPackage} not in Package #${packageNumber}`,
+        title: "Add these to a package from the Package tab",
+      };
+    }
+    return { tone: "ok" as const, text: `Complete · all in Package #${packageNumber}` };
+  }, [itemsReadiness.missingColor, paintLinkGaps.scheduleOnly.length, productPacket.submittal_number]);
 
   const primaryIndexed = useMemo(
     () =>
@@ -290,8 +320,9 @@ export function PaintSubmittalsPage() {
   function setType(t: TradeSubmittalType) {
     updateDraft((d) => ({
       ...d,
+      package_type: "Paint Brush-Outs / Color Samples" as const,
       submittal_type: t,
-      subject: paintSubjectForPackage(d.package_type, t),
+      subject: paintSubjectForType(t),
     }));
   }
 
@@ -303,6 +334,15 @@ export function PaintSubmittalsPage() {
       if (enabled) row.label = paintRowAutoLabel(d.items.length);
       return { ...d, items: [...d.items, row] };
     });
+  }
+
+  function clearPaintItems() {
+    updateDraft((d) => ({
+      ...d,
+      items: withMaybeAutoLabels([emptyPaintItem()], d.auto_label !== false),
+    }));
+    setClearItemsConfirm(false);
+    setStatus("Cleared paint items. Save to keep changes.");
   }
 
   function clearDragState() {
@@ -385,7 +425,20 @@ export function PaintSubmittalsPage() {
           <span className="paint-row-handle-spacer" aria-hidden />
           <span className="paint-col-head paint-col-label">Label</span>
           {options.showFloor && <span className="paint-col-head paint-col-floor">Location</span>}
-          <span className="paint-col-head paint-col-color">Color</span>
+          <span className="paint-col-head paint-col-color paint-col-color-head">
+            Color
+            <span
+              className="paint-col-info"
+              title="Type a name or number (SW7004 or 7004), then Enter, Tab, or search"
+              aria-label="Type a name or number (SW7004 or 7004), then Enter, Tab, or search"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v6" />
+                <path d="M12 8h.01" />
+              </svg>
+            </span>
+          </span>
           {showPreviousColor && <span className="paint-col-head paint-col-prev">Previous</span>}
           <span className="paint-col-head paint-col-product">Product</span>
           <span className="paint-col-head paint-col-sheen">Sheen</span>
@@ -559,10 +612,9 @@ export function PaintSubmittalsPage() {
         );
       }
       await persist(draft, nextHistory);
-      let logRowId = "";
       try {
         const parsed = parseSpecSectionForLog(draft.spec_section);
-        const row = await recordPdfLogRow(projectId, {
+        await recordPdfLogRow(projectId, {
           submittal_type: draft.package_type,
           scope: "Paint",
           spec: parsed.spec || "099000",
@@ -571,31 +623,9 @@ export function PaintSubmittalsPage() {
           trade_submittal_number: String(draft.submittal_number),
           status: "Ready",
         });
-        logRowId = row.id;
       } catch {
         /* log row optional */
       }
-      const autoOn = await loadTransmittalContentAutoOn(user?.id);
-      let transmittal = queuePendingItem(
-        tradeData.transmittal ?? defaultTransmittal(),
-        {
-          submittal_type: draft.package_type,
-          scope: "Paint",
-          source: "paint_submittal",
-          trade_submittal_number: String(draft.submittal_number),
-          log_row_id: logRowId,
-          spec_section: draft.spec_section,
-          spec: "",
-          section: draft.spec_section,
-        },
-        autoOn,
-      );
-      transmittal = applyTransmittalContractIfDistinct(project, transmittal, "paint");
-      await save({
-        ...withSyncedPaintVendor(tradeData, draft),
-        paint_submittal_history: nextHistory,
-        transmittal,
-      });
       setStatus(
         draftLocked
           ? `Submittal #${String(draft.submittal_number).padStart(3, "0")} Rev ${draft.revision_number} PDF downloaded.`
@@ -652,7 +682,8 @@ export function PaintSubmittalsPage() {
     const nextBase = {
       ...createNewSubmittalPackageDraft(draft, history),
       submittal_type: "new" as const,
-      subject: paintSubjectForPackage(draft.package_type, "new"),
+      package_type: "Paint Brush-Outs / Color Samples" as const,
+      subject: paintSubjectForType("new"),
       auto_label: false,
       items: withMaybeAutoLabels([emptyPaintItem()], false),
     };
@@ -715,6 +746,17 @@ export function PaintSubmittalsPage() {
               <button
                 type="button"
                 role="menuitem"
+                title="Copy paint lines from a saved brush-out request into this submittal"
+                onClick={() => {
+                  setToolbarMenu(null);
+                  setPrepOpen(true);
+                }}
+              >
+                Import request
+              </button>
+              <button
+                type="button"
+                role="menuitem"
                 onClick={() => {
                   setToolbarMenu(null);
                   setStartRevisionOpen(true);
@@ -770,12 +812,12 @@ export function PaintSubmittalsPage() {
               Ordered
             </button>
           </div>
+          <button type="button" className="btn btn-secondary" onClick={() => setAtticOpen(true)}>
+            Attic stock
+          </button>
           <Link className="btn btn-secondary" to={`/projects/${projectId}/approved-brushouts`}>
             Approved
           </Link>
-          <button type="button" className="btn btn-secondary" onClick={() => setPrepOpen(true)}>
-            Import request
-          </button>
         </div>
 
         <div className="paint-toolbar-end">
@@ -859,78 +901,201 @@ export function PaintSubmittalsPage() {
       <PaintSubmittalMetaPanel
         draft={draft}
         draftLocked={draftLocked}
-        packageTypeOptions={PAINT_PACKAGE_TYPE_OPTIONS}
         onSubmittalNumberChange={(submittal_number) => setDraft({ ...draft, submittal_number })}
         onIssueStatusChange={(issue_status) => setDraft({ ...draft, issue_status })}
         onDateChange={(date) => setDraft({ ...draft, date })}
-        onPackageTypeChange={(package_type) =>
-          updateDraft((d) => ({
-            ...d,
-            package_type,
-            subject: paintSubjectForPackage(package_type, d.submittal_type),
-          }))
-        }
         onTypeChange={setType}
         onSubjectChange={(subject) => setDraft({ ...draft, subject })}
         onSpecSectionsChange={updateDraft}
         onRevisionNoteChange={(revision_note) => setDraft({ ...draft, revision_note })}
-        onPaintVendorChange={(paint_vendor) => setDraft({ ...draft, paint_vendor })}
         onCreateNextRevision={draftLocked ? onCreateRevision : undefined}
       />
 
-      <PaintImageImport onImported={onImported} layout="row" />
-
-      <section className="card stack paint-items-section">
+      <PaintImageImport onImported={onImported}>
+        {(zone) => (
+      <section
+        className={`card stack paint-items-section${zone.dragOver ? " paint-items-section--drop" : ""}`}
+        onDragOver={zone.onDragOver}
+        onDragLeave={zone.onDragLeave}
+        onDrop={zone.onDrop}
+      >
         <div className="row-between paint-items-toolbar">
-          <div>
+          <div className="paint-items-title">
             <h3>Paint items ({draft.items.length})</h3>
-            <p className="muted small paint-lookup-hint">
-              Search by color name or number (e.g. <code>SW7004</code> or <code>7004</code>). Press{" "}
-              <kbd>Enter</kbd>, <kbd>Tab</kbd>, or the search button.
+            <p
+              className={`paint-items-status paint-items-status--${itemsStatus.tone}`}
+              title={"title" in itemsStatus ? itemsStatus.title : undefined}
+            >
+              {itemsStatus.tone === "ok" ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="m8 12 2.5 2.5L16 9" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                  <path d="M12 9v4" />
+                  <path d="M12 17h.01" />
+                  <path d="M10.3 4.8 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.8a2 2 0 0 0-3.4 0z" />
+                </svg>
+              )}
+              {itemsStatus.text}
             </p>
           </div>
-          <div className="paint-items-toolbar-actions">
-            <label className="check paint-floor-toggle">
-              <input
-                type="checkbox"
-                checked={draft.show_floor === true}
-                onChange={(e) => setDraft({ ...draft, show_floor: e.target.checked })}
-              />
-              Show location
-              {secondaryOn ? <span className="muted"> (primary table only)</span> : null}
-            </label>
-            <label className="check paint-floor-toggle">
-              <input
-                type="checkbox"
-                checked={autoLabel}
-                onChange={(e) => {
-                  const enabled = e.target.checked;
-                  updateDraft((d) => ({
-                    ...d,
-                    auto_label: enabled,
-                    items: enabled ? applyPaintAutoLabels(d.items) : d.items,
-                  }));
-                }}
-              />
-              Auto-label by order
-            </label>
+          <div className="paint-items-toolbar-actions" ref={itemsActionsRef}>
+            <button
+              type="button"
+              className={`paint-toggle-btn${draft.show_floor === true ? " is-on" : ""}`}
+              aria-pressed={draft.show_floor === true}
+              title={secondaryOn ? "Location column on the primary table" : "Show the location column"}
+              onClick={() => setDraft({ ...draft, show_floor: draft.show_floor !== true })}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
+              Location
+            </button>
+            <button
+              type="button"
+              className={`paint-toggle-btn${autoLabel ? " is-on" : ""}`}
+              aria-pressed={autoLabel}
+              title="Label rows in order"
+              onClick={() => {
+                const enabled = !autoLabel;
+                updateDraft((d) => ({
+                  ...d,
+                  auto_label: enabled,
+                  items: enabled ? applyPaintAutoLabels(d.items) : d.items,
+                }));
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M8 6h13M8 12h13M8 18h13" />
+                <path d="M3 6h.01M3 12h.01M3 18h.01" />
+              </svg>
+              Auto-label
+            </button>
+            <span className="paint-items-actions-rule" aria-hidden />
+            <button
+              type="button"
+              className="btn btn-secondary paint-items-action-btn paint-import-schedule-btn"
+              title={zone.error ?? "Paste (Ctrl+V), drop an image, or choose a file"}
+              onClick={() => (zone.importing ? zone.cancelImport() : zone.openFilePicker())}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M4 8V5h4" />
+                <path d="M16 5h4v3" />
+                <path d="M20 16v3h-4" />
+                <path d="M8 19H4v-3" />
+                <path d="M7 12h10" />
+              </svg>
+              {zone.importing ? "Reading…" : "Import schedule"}
+            </button>
             {!secondaryOn && (
-              <div className="paint-add-buttons">
-                <button type="button" className="btn btn-primary btn-small" onClick={() => addPaintRow("primary")}>
-                  + Add row
+              <div className="paint-items-menu-anchor paint-split-btn">
+                <button
+                  type="button"
+                  className="btn btn-secondary paint-items-action-btn paint-split-btn-main"
+                  onClick={() => addPaintRow("primary")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Add row
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary btn-small"
-                  disabled={catalogLoading}
-                  onClick={() => setBulkOpen(true)}
+                  className="btn btn-secondary paint-items-action-btn paint-split-btn-caret"
+                  aria-label="Add row options"
+                  aria-haspopup="menu"
+                  aria-expanded={itemsMenu === "add"}
+                  onClick={() => setItemsMenu((open) => (open === "add" ? null : "add"))}
                 >
-                  Add multiple…
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
                 </button>
+                {itemsMenu === "add" ? (
+                  <div className="paint-items-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setItemsMenu(null);
+                        addPaintRow("primary");
+                      }}
+                    >
+                      Add row
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={catalogLoading}
+                      onClick={() => {
+                        setItemsMenu(null);
+                        setBulkOpen(true);
+                      }}
+                    >
+                      Add multiple…
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
+            <div className="paint-items-menu-anchor">
+              <button
+                type="button"
+                className="btn btn-secondary paint-items-action-btn paint-items-more-btn"
+                aria-label="More"
+                aria-haspopup="menu"
+                aria-expanded={itemsMenu === "more"}
+                onClick={() => setItemsMenu((open) => (open === "more" ? null : "more"))}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <circle cx="5" cy="12" r="1.6" />
+                  <circle cx="12" cy="12" r="1.6" />
+                  <circle cx="19" cy="12" r="1.6" />
+                </svg>
+              </button>
+              {itemsMenu === "more" ? (
+                <div className="paint-items-menu paint-items-menu--end" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="paint-items-menu-danger"
+                    disabled={!dropPaintPlaceholders(draft.items).length}
+                    onClick={() => {
+                      setItemsMenu(null);
+                      setClearItemsConfirm(true);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6M14 11v6" />
+                    </svg>
+                    Clear all rows
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
+
+        {clearItemsConfirm ? (
+          <div className="sds-clear-confirm" role="alert">
+            <span>
+              Remove all {dropPaintPlaceholders(draft.items).length} paint items?
+            </span>
+            <button type="button" className="btn btn-ghost btn-small" onClick={() => setClearItemsConfirm(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-small sds-clear-confirm-go" onClick={clearPaintItems}>
+              Clear all
+            </button>
+          </div>
+        ) : null}
 
         {catalogLoading && <p className="muted small">Loading color catalog…</p>}
 
@@ -998,36 +1163,9 @@ export function PaintSubmittalsPage() {
           })
         )}
 
-        <div className="row-between paint-items-footer">
-          <div className="paint-items-drag-hint">
-            <p className="muted small">
-              {secondaryOn
-                ? autoLabel
-                  ? "Drag ⠿ to reorder or move between primary / exterior tables · labels follow order"
-                  : "Drag ⠿ to reorder or move between primary / exterior tables"
-                : autoLabel
-                  ? "Drag ⠿ to reorder · labels follow order"
-                  : "Drag ⠿ to reorder"}
-            </p>
-            {packageStatus ? (
-              <p className={`small paint-items-readiness--${packageStatus.tone}`}>{packageStatus.text}</p>
-            ) : null}
-          </div>
-          <p
-            className={`small paint-items-readiness${
-              itemsReadiness.missingColor > 0 ||
-              itemsReadiness.missingSheen > 0 ||
-              itemsReadiness.missingProduct > 0
-                ? " paint-items-readiness--warn"
-                : itemsReadiness.count > 0
-                  ? " paint-items-readiness--ok"
-                  : ""
-            }`}
-          >
-            {itemsReadiness.summaryLine}
-          </p>
-        </div>
       </section>
+        )}
+      </PaintImageImport>
 
       {bulkOpen && (
         <PaintBulkAddModal
@@ -1075,6 +1213,26 @@ export function PaintSubmittalsPage() {
               `Editing Submittal #${String(revisedDraft.submittal_number).padStart(3, "0")} Rev ${revisedDraft.revision_number} (draft). Save or issue when ready.`,
             );
           }}
+        />
+      )}
+
+      {atticOpen && userSettings && (
+        <AtticStockOrderModal
+          projectId={projectId}
+          jobNumber={project.job_number}
+          jobName={project.job_name}
+          items={draft.items}
+          vendors={userSettings.vendors}
+          signature={userSettings.signature}
+          logoUrl={branding.logoUrl}
+          composeEmailMethod={userSettings.compose_email_method}
+          createdBy={user?.id}
+          createdByName={profile.name}
+          onOrdered={(message) => {
+            setStatus(message);
+            setError(null);
+          }}
+          onClose={() => setAtticOpen(false)}
         />
       )}
 

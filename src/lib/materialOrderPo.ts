@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-export type MaterialOrderPoScope = "wallcovering" | "frp" | "fwp";
+export type MaterialOrderPoScope = "wallcovering" | "frp" | "fwp" | "paint";
 
 function normalizeJobCode(jobNumber: string): string {
   const trimmed = jobNumber.trim();
@@ -233,5 +233,7 @@ export function materialOrderScopeLabel(scope: MaterialOrderPoScope): string {
       return "FRP";
     case "fwp":
       return "FWP";
+    case "paint":
+      return "Paint";
   }
 }

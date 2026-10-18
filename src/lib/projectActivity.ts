@@ -145,6 +145,7 @@ const TRADE_DATA_ACTIVITY_PRIORITY: (keyof ProjectTradeData)[] = [
   "transmittal",
   "transmittal_history",
   "sds_packet",
+  "sds_packet_history",
   "budget_maker",
   "paint_submittal_history",
   "wallcovering_submittal_history",
@@ -168,6 +169,7 @@ const TRADE_DATA_ACTIVITY: Record<
   transmittal: { action: "transmittal_saved", summary: "Transmittal saved" },
   transmittal_history: { action: "transmittal_saved", summary: "Transmittal history updated" },
   sds_packet: { action: "sds_packet_saved", summary: "SDS packet saved" },
+  sds_packet_history: { action: "sds_packet_saved", summary: "Product package history updated" },
   budget_maker: { action: "budget_saved", summary: "Budget saved" },
   paint_submittal_history: {
     action: "paint_submittal_saved",

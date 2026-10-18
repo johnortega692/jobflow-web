@@ -3,6 +3,8 @@ export type TransmittalRemarkTemplate = {
   label: string;
   text: string;
   group: string;
+  /** Subject line written when this template is inserted. Defaults to `label`. */
+  subject?: string;
 };
 
 /** Default for new transmittals — paint-focused wording. */
@@ -98,12 +100,14 @@ export const TRANSMITTAL_REMARK_TEMPLATES: TransmittalRemarkTemplate[] = [
     id: "simple-professional",
     group: "General",
     label: "Simple Professional Version",
+    subject: "Submittals",
     text: "Please review the attached documents and advise if additional information is required.",
   },
   {
     id: "paint-default",
     group: "Paint division",
     label: "Paint — SDS/TDS & product data (recommended default)",
+    subject: "Paint product data",
     text: DEFAULT_TRANSMITTAL_REMARK,
   },
   {
@@ -123,6 +127,13 @@ export const TRANSMITTAL_REMARK_TEMPLATES: TransmittalRemarkTemplate[] = [
     group: "Paint division",
     label: "Color Selection",
     text: "Color and finish information submitted for review and confirmation prior to material ordering.",
+  },
+  {
+    id: "paint-color-and-product-data",
+    group: "Paint division",
+    label: "Product data & samples",
+    subject: "Product Data and Samples",
+    text: "Product data and samples for interior painting are submitted for review and approval. Product data sheets are enclosed. Color samples are identified on the color schedule.",
   },
   {
     id: "substitution",
@@ -147,4 +158,9 @@ export function remarkTemplateGroups(): { group: string; templates: TransmittalR
 
 export function remarkTextById(id: string): string | undefined {
   return TRANSMITTAL_REMARK_TEMPLATES.find((t) => t.id === id)?.text;
+}
+
+/** Subject the To card and history should show after this template is inserted. */
+export function remarkTemplateSubject(template: TransmittalRemarkTemplate): string {
+  return template.subject?.trim() || template.label;
 }

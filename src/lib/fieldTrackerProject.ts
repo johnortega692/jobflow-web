@@ -46,6 +46,32 @@ export function withSyncedPaintVendor(trade: ProjectTradeData, submittal: PaintS
   };
 }
 
+/** Approved brush-outs is the only place the job paint vendor is chosen. */
+export async function applyApprovedPaintVendor(projectId: string, paintVendor: string): Promise<string | null> {
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const submittal = normalizePaintSubmittal(trade.paint_submittal);
+  const next = withSyncedPaintVendor(trade, { ...submittal, paint_vendor: paintVendor });
+  return patchProjectData(
+    projectId,
+    { paint_submittal: next.paint_submittal, paint_tracker: next.paint_tracker },
+    { action: "paint_tracker_saved", summary: `Paint vendor set to ${next.paint_tracker?.paintVendor ?? paintVendor}` },
+  );
+}
+
+/** Vendor and tracker as stored, so a paint-tab save does not overwrite the approved vendor. */
+export async function paintVendorSnapshot(projectId: string): Promise<{
+  paint_vendor: string;
+  paint_tracker: PaintTrackerState;
+} | null> {
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error || data == null) return null;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const paint_tracker = resolvePaintTracker(trade);
+  return { paint_vendor: paint_tracker.paintVendor, paint_tracker };
+}
+
 export type FieldPaintRow = {
   projectId: string;
   jobNumber: string;
@@ -676,32 +702,37 @@ export async function savePaintTrackerState(
   const { data, error } = await loadProjectDataForField(projectId);
   if (error) return error;
   const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
-  const vendor = normalizePaintVendor(tracker.paintVendor);
-  const normalizedTracker = normalizePaintTrackerState({ ...tracker, paintVendor: vendor });
   const paintSubmittal = normalizePaintSubmittal(trade.paint_submittal);
-  const vendorChanged = normalizePaintVendor(paintSubmittal.paint_vendor ?? "") !== vendor;
+  const vendor = normalizePaintVendor(paintSubmittal.paint_vendor?.trim() || tracker.paintVendor);
+  const normalizedTracker = normalizePaintTrackerState({ ...tracker, paintVendor: vendor });
   const orderedChanged = Boolean(paintSubmittal.submittal_ordered) !== tracker.submittalOrdered;
   const mergeData: Record<string, unknown> = { paint_tracker: normalizedTracker };
-  if (vendorChanged || orderedChanged) {
+  if (orderedChanged) {
     mergeData.paint_submittal = {
       ...paintSubmittal,
-      ...(vendorChanged ? { paint_vendor: vendor } : {}),
-      ...(orderedChanged ? { submittal_ordered: tracker.submittalOrdered } : {}),
+      paint_vendor: vendor,
+      submittal_ordered: tracker.submittalOrdered,
     };
   }
   return patchProjectData(projectId, mergeData, { action: "paint_tracker_saved", summary });
 }
 
-/** Keep paint tab Ordered checkbox and paint_tracker in one write. */
+/** Keep paint tab Ordered and paint_tracker in one write. Turning Ordered on copies the submittal paint vendor onto the tracker. */
 export async function syncPaintSubmittalOrdered(
   projectId: string,
   submittalOrdered: boolean,
+  paintVendor?: string,
 ): Promise<string | null> {
   const { data, error } = await loadProjectDataForField(projectId);
   if (error) return error;
   const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
   const tracker = { ...resolvePaintTracker(trade), submittalOrdered };
   const paintSubmittal = { ...normalizePaintSubmittal(trade.paint_submittal), submittal_ordered: submittalOrdered };
+  if (submittalOrdered) {
+    const vendor = normalizePaintVendor(paintVendor?.trim() || paintSubmittal.paint_vendor || tracker.paintVendor);
+    tracker.paintVendor = vendor;
+    paintSubmittal.paint_vendor = vendor;
+  }
   return patchProjectData(
     projectId,
     { paint_tracker: tracker, paint_submittal: paintSubmittal },
@@ -716,8 +747,9 @@ export async function syncPaintSubmittalOrdered(
 export async function patchPaintTrackerSubmittalOrdered(
   projectId: string,
   submittalOrdered: boolean,
+  paintVendor?: string,
 ): Promise<string | null> {
-  return syncPaintSubmittalOrdered(projectId, submittalOrdered);
+  return syncPaintSubmittalOrdered(projectId, submittalOrdered, paintVendor);
 }
 
 export async function saveProjectStartDate(projectId: string, startDate: string): Promise<string | null> {

@@ -17,7 +17,6 @@ import {
 } from "../lib/frpItemLabels";
 import { downloadFrpSubmittal } from "../lib/frpSubmittalPrint";
 import {
-  applyTransmittalContractIfDistinct,
   frpJobLabel,
   frpJobName,
   frpJobNumber,
@@ -37,8 +36,6 @@ import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
-import { loadTransmittalContentAutoOn } from "../lib/transmittalCategories";
-import { queuePendingItem } from "../lib/transmittalHelpers";
 import { orderedFrpItems } from "../lib/wcSampleOrderEmail";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import { useTradeDraftDirty } from "../lib/useTradeDraftDirty";
@@ -47,7 +44,6 @@ import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
   defaultFrpSubmittal,
-  defaultTransmittal,
   emptyFrpItem,
   FRP_PACKAGE_TYPE_OPTIONS,
   frpSubjectForPackage,
@@ -291,10 +287,9 @@ export function FrpSubmittalsPage() {
         );
       }
       await persist(draft, nextHistory);
-      let logRowId = "";
       try {
         const parsed = parseSpecSectionForLog(draft.spec_section);
-        const row = await recordPdfLogRow(projectId, {
+        await recordPdfLogRow(projectId, {
           submittal_type: draft.package_type,
           scope: "FRP",
           spec: parsed.spec || "066000",
@@ -303,31 +298,9 @@ export function FrpSubmittalsPage() {
           trade_submittal_number: String(draft.submittal_number),
           status: "Ready",
         });
-        logRowId = row.id;
       } catch {
         /* optional */
       }
-      const autoOn = await loadTransmittalContentAutoOn();
-      let transmittal = queuePendingItem(
-        tradeData.transmittal ?? defaultTransmittal(),
-        {
-          submittal_type: draft.package_type,
-          scope: "FRP",
-          source: "frp_submittal",
-          trade_submittal_number: String(draft.submittal_number),
-          log_row_id: logRowId,
-          spec_section: draft.spec_section,
-          section: draft.spec_section,
-        },
-        autoOn,
-      );
-      transmittal = applyTransmittalContractIfDistinct(project, transmittal, "frp");
-      await save({
-        ...tradeData,
-        frp_submittal: draft,
-        frp_submittal_history: nextHistory,
-        transmittal,
-      });
       setStatus(
         draftLocked
           ? `Submittal #${String(draft.submittal_number).padStart(3, "0")} Rev ${draft.revision_number} PDF downloaded.`

@@ -9,7 +9,7 @@ import {
   resolvePaintTracker,
   savePaintTrackerState,
 } from "../../lib/fieldTrackerProject";
-import { PAINT_VENDOR_OPTIONS } from "../../lib/googleSheetsConfig";
+import { normalizePaintVendor } from "../../lib/paintTrackerSync";
 import { paintTrackerJobLabel, resolveProjectPaintNotificationRecipients } from "../../lib/jobInfo";
 import { JOBFLOW_SCHEDULE_FROM_NAME } from "../../lib/jobflowScheduleFrom";
 import { loadPaintUserSettings } from "../../lib/paintUserSettings";
@@ -24,7 +24,6 @@ import {
 } from "../../lib/paintTrackerRevision";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
 import type { PaintTrackerState } from "../../types/fieldTracker";
-import type { PaintVendorLabel } from "../../lib/googleSheetsConfig";
 import type { ProjectForm, Json } from "../../types/database";
 
 type Props = {
@@ -312,6 +311,17 @@ export function PaintTrackerStatusSection({
     };
   }, [flushSave]);
 
+  function toggleSubmittalOrdered() {
+    if (!tracker) return;
+    if (tracker.submittalOrdered) {
+      patchTracker({ submittalOrdered: false });
+      return;
+    }
+    const trade = parseProjectTradeData(project.data as Json);
+    const vendor = normalizePaintVendor(trade.paint_submittal?.paint_vendor ?? tracker.paintVendor);
+    patchTracker({ submittalOrdered: true, paintVendor: vendor });
+  }
+
   function patchTracker(patch: Partial<PaintTrackerState>) {
     const lastSaved = lastSavedRef.current ?? resolvedTracker;
     const hasRevisionPatch = "revisionNotes" in patch || "revision" in patch;
@@ -406,7 +416,7 @@ export function PaintTrackerStatusSection({
                   }))}
                   onSelect={(key) => {
                     if (key === "ordered") {
-                      patchTracker({ submittalOrdered: !tracker.submittalOrdered });
+                      toggleSubmittalOrdered();
                     } else if (key === "submitted") {
                       patchTracker(
                         tracker.submittedForApproval
@@ -426,17 +436,8 @@ export function PaintTrackerStatusSection({
         <div className="grid-2">
           <label>
             Paint vendor
-            <select
-              value={tracker.paintVendor}
-              disabled={saving}
-              onChange={(e) => patchTracker({ paintVendor: e.target.value as PaintVendorLabel })}
-            >
-              {PAINT_VENDOR_OPTIONS.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
+            <input value={tracker.paintVendor} readOnly tabIndex={-1} />
+            <span className="paint-editor-followup-caption">Set on Approved brush-outs</span>
           </label>
           <label>
             Follow up
@@ -531,17 +532,8 @@ export function PaintTrackerStatusSection({
         <div className="grid-2">
           <label>
             Paint vendor
-            <select
-              value={tracker.paintVendor}
-              disabled={saving}
-              onChange={(e) => patchTracker({ paintVendor: e.target.value as PaintVendorLabel })}
-            >
-              {PAINT_VENDOR_OPTIONS.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
+            <input value={tracker.paintVendor} readOnly tabIndex={-1} />
+            <span className="paint-editor-followup-caption">Set on Approved brush-outs</span>
           </label>
           <label>
             Follow up
@@ -616,7 +608,7 @@ export function PaintTrackerStatusSection({
                 }))}
                 onSelect={(key) => {
                   if (key === "ordered") {
-                    patchTracker({ submittalOrdered: !tracker.submittalOrdered });
+                    toggleSubmittalOrdered();
                   } else if (key === "submitted") {
                     patchTracker(
                       tracker.submittedForApproval

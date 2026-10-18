@@ -219,6 +219,13 @@ function sanitizeCompanyFilenamePart(value: string): string {
     .trim();
 }
 
+/** `1151 - Crusoe 2nd Floor` — job number, then job name, when each is present. */
+export function companyJobFilenamePrefix(jobNumber: string, jobName: string): string {
+  const jobNo = sanitizeCompanyFilenamePart(jobNumber);
+  const jobNm = sanitizeCompanyFilenamePart(jobName);
+  return [jobNo, jobNm].filter(Boolean).join(" - ");
+}
+
 /**
  * Company format: `{Submittal #} - {Spec Section #} - {Spec Name}.pdf`
  * e.g. `003 - 09 91 23 - Interior Painting.pdf`
@@ -262,9 +269,7 @@ export function sdsPacketFilename(
   const specForName =
     unique.length === 1 ? unique[0]! : unique.length === 0 ? (packet.spec_section?.trim() ?? "") : "";
   const base = companySpecSubmittalFilename(packet.submittal_number, specForName);
-  const jobNo = sanitizeCompanyFilenamePart(jobNumber);
-  const jobNm = sanitizeCompanyFilenamePart(jobName);
-  const prefix = [jobNo, jobNm].filter(Boolean).join(" - ");
+  const prefix = companyJobFilenamePrefix(jobNumber, jobName);
   return `${IRONWOOD_SHORT_COMPANY_NAME} - ${prefix ? `${prefix} - ${base}` : base}`;
 }
 

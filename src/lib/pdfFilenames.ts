@@ -1,4 +1,4 @@
-import { companySpecSubmittalFilename, sanitizeFilenamePart } from "./sdsPacketPresets.js";
+import { companyJobFilenamePrefix, companySpecSubmittalFilename, sanitizeFilenamePart } from "./sdsPacketPresets.js";
 import { normalizeTransmittalNumber } from "./transmittalNumber.js";
 import { IRONWOOD_SHORT_COMPANY_NAME } from "./displayCompanyName.js";
 import type { TradeSubmittalType } from "../types/tradeDocuments.js";
@@ -21,31 +21,35 @@ export function transmittalFilename(
   jobNumber: string,
   transmittalNumber: string | number | null | undefined,
 ): string {
-  const projectPart = projectFilenamePart(jobName, jobNumber);
+  const projectPart = companyJobFilenamePrefix(jobNumber, jobName) || "Project";
   const numPart = sanitizeFilenamePart(normalizeTransmittalNumber(transmittalNumber));
-  return `${projectPart}_Transmittal_${numPart}.pdf`;
+  return `${projectPart} - Transmittal ${numPart}.pdf`;
 }
 
-/** Company format: `ICBI - 003 - 09 91 23 - Interior Painting.pdf` */
+/** Company format: `ICBI - 1151 - Crusoe 2nd Floor - 003 - 09 91 23 - Interior Painting.pdf` */
 export function paintSubmittalFilename(
-  _jobName: string,
-  _jobNumber: string,
+  jobName: string,
+  jobNumber: string,
   submittalNumber: number,
   _submittalType: TradeSubmittalType,
   specSection?: string,
 ): string {
-  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "")}`;
+  const base = companySpecSubmittalFilename(submittalNumber, specSection ?? "");
+  const prefix = companyJobFilenamePrefix(jobNumber, jobName);
+  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${prefix ? `${prefix} - ${base}` : base}`;
 }
 
-/** Company format: `ICBI - 002 - 09 72 00 - Wall Coverings.pdf` */
+/** Company format: `ICBI - 1151 - Crusoe 2nd Floor - 002 - 09 72 00 - Wall Coverings.pdf` */
 export function wallcoveringSubmittalFilename(
-  _jobName: string,
-  _jobNumber: string,
+  jobName: string,
+  jobNumber: string,
   submittalNumber: number,
   _submittalType: TradeSubmittalType,
   specSection?: string,
 ): string {
-  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "")}`;
+  const base = companySpecSubmittalFilename(submittalNumber, specSection ?? "");
+  const prefix = companyJobFilenamePrefix(jobNumber, jobName);
+  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${prefix ? `${prefix} - ${base}` : base}`;
 }
 
 const RFI_SUBJECT_MAX = 50;

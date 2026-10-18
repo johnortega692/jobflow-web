@@ -29,7 +29,25 @@ export function buildTransmittalHistoryEntry(
     frp_submittal_nums: [...transmittal.frp_submittal_nums],
     enclosure_count,
     missing_warnings: [...pdfResult.missing],
+    downloaded: true,
     snapshot: structuredClone(transmittal),
+  };
+}
+
+/** File the working transmittal so New transmittal can reopen it. */
+export function archiveWorkingTransmittal(
+  transmittal: TransmittalData,
+  jobNumber: string,
+  jobName: string,
+): TransmittalHistoryEntry {
+  return {
+    ...buildTransmittalHistoryEntry(transmittal, jobNumber, jobName, {
+      bytes: new Uint8Array(),
+      combined: false,
+      appendedSheets: 0,
+      missing: [],
+    }),
+    downloaded: false,
   };
 }
 
@@ -67,7 +85,8 @@ export function formatTransmittalHistoryLabel(
   }
   const sheetPart = sheets.length ? ` · ${sheets.join(", ")}` : "";
   const combinedPart = entry.combined ? " · Combined PDF" : "";
-  return `${contractPart}${entry.transmittal_number} · ${when}${sheetPart}${combinedPart}`;
+  const savedPart = entry.downloaded === false ? " · Saved" : "";
+  return `${contractPart}${entry.transmittal_number} · ${when}${sheetPart}${combinedPart}${savedPart}`;
 }
 
 export function formatTransmittalHistoryDetail(

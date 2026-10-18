@@ -1,6 +1,6 @@
 import type { TransmittalContract } from "./jobInfo.js";
-import { normalizeTransmittalNumber } from "./transmittalNumber.js";
-import type { TransmittalData } from "../types/tradeDocuments.js";
+import { nextTransmittalNumber, normalizeTransmittalNumber } from "./transmittalNumber.js";
+import { emptyEnclosure, type TransmittalData } from "../types/tradeDocuments.js";
 
 const CONTRACT_KEYS: TransmittalContract[] = ["paint", "wallcovering", "frp", "track"];
 
@@ -71,6 +71,23 @@ export function applyTransmittalContractNumber(
     ...draft,
     contract,
     transmittal_number: resolveTransmittalNumberForContract(draft, contract),
+  };
+}
+
+/** Next transmittal number for this contract, with a clear enclosure list. Recipient and cover setup stay. */
+export function startNewTransmittal(current: TransmittalData): TransmittalData {
+  const bumped = bumpTransmittalNumberForContract(current, nextTransmittalNumber(current.transmittal_number));
+  return {
+    ...bumped,
+    date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+    enclosures: [emptyEnclosure()],
+    include_paint_sheet: false,
+    include_wc_sheet: false,
+    include_frp_sheet: false,
+    paint_submittal_nums: [],
+    wc_submittal_nums: [],
+    frp_submittal_nums: [],
+    combine_enclosures: false,
   };
 }
 

@@ -6,8 +6,6 @@ import { exportSubmittalLogExcel } from "../lib/submittalLogExport";
 import {
   buildRevisionRow,
   filterSubmittalLogByContract,
-  rowEnclosureDescription,
-  scopeToContract,
   suggestNextLineNumber,
 } from "../lib/submittalLogHelpers";
 import {
@@ -17,21 +15,12 @@ import {
   markRowsSubmitted,
   updateSubmittalLogRow,
 } from "../lib/submittalLogService";
-import { useProjectTradeData } from "../lib/useProjectTradeData";
 import {
-  applyInferredContentFlags,
-  inferContentKeysFromText,
-  loadTransmittalContentAutoOn,
-} from "../lib/transmittalCategories";
-import {
-  applyTransmittalContractIfDistinct,
   hasTransmittalContractSwitch,
   transmittalPrintInfo,
   TRANSMITTAL_CONTRACT_LABELS,
-  type TransmittalContract,
 } from "../lib/jobInfo";
 import type { ProjectForm } from "../types/database";
-import { defaultTransmittal, emptyEnclosure } from "../types/tradeDocuments";
 import { emptySubmittalLogRow, type SubmittalLogRow } from "../types/submittalLog";
 
 type Ctx = { project: ProjectForm; projectId: string };
@@ -44,7 +33,6 @@ type EditorState =
 
 export function SubmittalsPage() {
   const { project, projectId } = useOutletContext<Ctx>();
-  const { tradeData, save } = useProjectTradeData(projectId);
   const [rows, setRows] = useState<SubmittalLogRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -144,51 +132,6 @@ export function SubmittalsPage() {
     await reload();
   }
 
-  async function onAddToTransmittal() {
-    if (!selectedRows.length) {
-      setError("Select one or more rows to add to transmittal.");
-      return;
-    }
-    const transmittal = tradeData.transmittal ?? defaultTransmittal();
-    const existing = transmittal.enclosures.filter((e) => e.description.trim());
-    const additions = selectedRows.map((row) => ({
-      ...emptyEnclosure(),
-      description: rowEnclosureDescription(row),
-      included: true,
-      copies: "1",
-      log_row_id: row.id,
-    }));
-    let nextTransmittal = {
-      ...transmittal,
-      enclosures: [...existing, ...additions],
-    };
-    const inferred: ReturnType<typeof inferContentKeysFromText> = [];
-    for (const row of selectedRows) {
-      inferred.push(...inferContentKeysFromText(`${row.submittal_type} ${row.notes ?? ""}`));
-    }
-    const autoOn = await loadTransmittalContentAutoOn();
-    nextTransmittal = applyInferredContentFlags(nextTransmittal, inferred, autoOn);
-    const inferredContracts = new Set(
-      selectedRows
-        .map((row) => scopeToContract(row.scope))
-        .filter((c): c is TransmittalContract => c != null),
-    );
-    if (inferredContracts.size === 1) {
-      const [contract] = [...inferredContracts];
-      if (contract) {
-        nextTransmittal = applyTransmittalContractIfDistinct(project, nextTransmittal, contract);
-      }
-    }
-    const ok = await save({
-      ...tradeData,
-      transmittal: nextTransmittal,
-    });
-    if (ok) {
-      setStatus(`Added ${selectedRows.length} enclosure line(s) to Transmittal tab.`);
-      setError(null);
-    }
-  }
-
   function onExport() {
     const printContract = viewContract === "all" ? "paint" : viewContract;
     const printInfo = transmittalPrintInfo(project, printContract);
@@ -266,14 +209,6 @@ export function SubmittalsPage() {
           }}
         >
           Create Revision
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={!selectedRows.length}
-          onClick={() => void onAddToTransmittal()}
-        >
-          Add to Transmittal
         </button>
         <span className="submittal-log-toolbar-spacer" aria-hidden />
         <button type="button" className="btn btn-success" onClick={onExport}>

@@ -1,6 +1,6 @@
 import { logSubmittalTypeForPacket } from "./sdsPacketPresets";
 import { parseSpecSectionForLog, sdsSubmittalDescription } from "./submittalLogHelpers";
-import { recordPdfLogRow } from "./submittalLogService";
+import { loadSubmittalLogRows, recordPdfLogRow } from "./submittalLogService";
 import { loadTransmittalContentAutoOn } from "./transmittalCategories";
 import { queuePendingItem } from "./transmittalHelpers";
 import {
@@ -19,22 +19,31 @@ function packetSpecForLogParse(packet: SdsPacketData): string {
   return sdsPacketFilenameSpecSection(packet.sections);
 }
 
+const SDS_LOG_SCOPE = "Product Data";
+
 export async function appendSdsPacketSubmittalRow(
   projectId: string,
   packet: SdsPacketData,
-): Promise<{ line_number: string; id: string } | null> {
+): Promise<{ line_number: string; id: string; created: boolean } | null> {
   const label = packetSpecForIntegrations(packet);
   const parseSource = packetSpecForLogParse(packet);
   const { spec, section } = parseSpecSectionForLog(parseSource);
+  const tradeNumber = String(packet.submittal_number);
+  const existing = await loadSubmittalLogRows(projectId);
+  const already = existing.some(
+    (row) =>
+      row.trade_submittal_number.trim() === tradeNumber && row.scope === SDS_LOG_SCOPE && !row.revises_line,
+  );
   const row = await recordPdfLogRow(projectId, {
     submittal_type: logSubmittalTypeForPacket(packet.packet_type),
-    scope: "",
+    scope: SDS_LOG_SCOPE,
     spec,
     section: section || label,
     notes: sdsSubmittalDescription(label, packet.packet_type),
+    trade_submittal_number: tradeNumber,
     status: "Ready",
   });
-  return { line_number: row.line_number, id: row.id };
+  return { line_number: row.line_number, id: row.id, created: !already };
 }
 
 export async function queueSdsForTransmittal(
@@ -61,6 +70,7 @@ export async function queueSdsForTransmittal(
       linked_files: outputFilename ? [outputFilename] : [],
       notes: sdsSubmittalDescription(label, packet.packet_type),
       source: "sds_packet",
+      trade_submittal_number: String(packet.submittal_number),
       log_row_id: logRowId ?? "",
     },
     autoOn,

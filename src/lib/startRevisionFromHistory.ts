@@ -1,7 +1,5 @@
 import {
-  defaultPackageForScope,
   formatToday,
-  normalizePackageCategory,
   paintSubjectForPackage,
   wcSubjectForPackage,
   emptyPaintItem,
@@ -50,11 +48,6 @@ export function buildRevisionDraftFromHistory(
   const draftForRev =
     currentDraft?.submittal_number === submittal_number ? currentDraft : undefined;
   const revision_number = nextRevisionNumber(history, submittal_number, draftForRev);
-  const package_type = normalizePackageCategory(
-    entry.package_type,
-    defaultPackageForScope(scope),
-    scope,
-  );
   const note = revisionNote.trim() || undefined;
 
   if (scope === "paint") {
@@ -68,9 +61,9 @@ export function buildRevisionDraftFromHistory(
         submittal_number,
         revision_number,
         issue_status: "draft",
-        package_type,
+        package_type: "Paint Brush-Outs / Color Samples",
         submittal_type: submittalType,
-        subject: paintSubjectForPackage(package_type, submittalType),
+        subject: paintSubjectForPackage("Paint Brush-Outs / Color Samples", submittalType),
         spec_section: entry.spec_section?.trim() || "09 91 23 - Interior Painting",
         spec_section_secondary: entry.spec_section_secondary?.trim() || undefined,
         spec_section_secondary_label: entry.spec_section_secondary_label?.trim() || undefined,
@@ -91,9 +84,9 @@ export function buildRevisionDraftFromHistory(
       submittal_number,
       revision_number,
       issue_status: "draft",
-      package_type,
+      package_type: "Wallcovering Samples",
       submittal_type: submittalType,
-      subject: wcSubjectForPackage(package_type, submittalType),
+      subject: wcSubjectForPackage("Wallcovering Samples", submittalType),
       spec_section: entry.spec_section?.trim() || "09 72 00 - Wall Coverings",
       date: formatToday(),
       items: items.length ? items : [emptyWallcoveringItem()],

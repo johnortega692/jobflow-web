@@ -17,6 +17,27 @@ export type PaintVendor = {
 export type AtticStockPaintItem = PaintItem & { qty: string };
 export type AtticStockCustomItem = { description: string; qty: string };
 
+/** One attic-stock line per product, sheen, and color. Marks on the same coating are combined. */
+export function atticStockLinesFromSchedule(items: PaintItem[]): AtticStockPaintItem[] {
+  const grouped = new Map<string, AtticStockPaintItem>();
+  for (const item of items) {
+    const color = item.color.trim();
+    const product = item.product.trim();
+    if (!color && !product) continue;
+    const key = [item.manufacturer, product, item.sheen, color].map((part) => part.trim().toLowerCase()).join("|");
+    const mark = item.label.trim();
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...item, color, product, qty: "1 gal", label: mark });
+      continue;
+    }
+    if (!mark) continue;
+    const marks = existing.label.split(", ").map((part) => part.trim()).filter(Boolean);
+    if (!marks.includes(mark)) existing.label = [...marks, mark].join(", ");
+  }
+  return [...grouped.values()];
+}
+
 let vendorsCache: PaintVendor[] | null = null;
 
 export async function loadDefaultPaintVendorsFromJson(): Promise<PaintVendor[]> {
@@ -62,8 +83,10 @@ function groupByFloor(items: PaintItem[]): [string, PaintItem[]][] {
   return result;
 }
 
-export function buildAtticStockEmailSubject(jobNumber: string, jobName: string): string {
-  return `Attic Stock Order | ${jobNumber} ${jobName}`.trim();
+export function buildAtticStockEmailSubject(jobNumber: string, jobName: string, poNumber = ""): string {
+  const po = poNumber.trim();
+  const job = `${jobNumber} ${jobName}`.trim();
+  return po ? `Attic Stock Order | PO ${po} | ${job}` : `Attic Stock Order | ${job}`;
 }
 
 export function buildVendorEmailSubject(
@@ -423,25 +446,27 @@ function buildTablesHtml(items: PaintItem[], submittalType: TradeSubmittalType):
   return html;
 }
 
-function introAtticStockPlain(vendorName: string, jobNumber: string, jobName: string): string[] {
+function introAtticStockPlain(vendorName: string, jobNumber: string, jobName: string, poNumber = ""): string[] {
   const first = vendorFirstName(vendorName);
   const job = `${jobNumber} - ${jobName}`.trim();
+  const po = poNumber.trim();
   return [
     `Hi ${first},`,
     "",
-    `Please provide attic stock paint for the following items for Job ${job}, and let us know when these will be ready or if you need anything further from us.`,
+    `Please provide attic stock paint for Job ${job}${po ? ` on PO ${po}` : ""}, and let us know when these will be ready or if you need anything further from us.`,
     "",
     "Attic Stock Items:",
   ];
 }
 
-function introAtticStockHtml(vendorName: string, jobNumber: string, jobName: string): string {
+function introAtticStockHtml(vendorName: string, jobNumber: string, jobName: string, poNumber = ""): string {
   const greeting = `Hi ${escHtml(vendorFirstName(vendorName))},`;
   const job = `${escHtml(jobNumber)} - ${escHtml(jobName)}`.trim();
+  const po = poNumber.trim();
   return [
     emailParagraph(greeting),
     emailParagraph(
-      `Please provide <strong>attic stock paint</strong> for the following items for <strong>Job ${job}</strong>, and let us know when these will be ready or if you need anything further from us.`,
+      `Please provide <strong>attic stock paint</strong> for <strong>Job ${job}</strong>${po ? ` on <strong>PO ${escHtml(po)}</strong>` : ""}, and let us know when these will be ready or if you need anything further from us.`,
     ),
     emailParagraph("<strong>Attic Stock Items:</strong>"),
   ].join("");
@@ -521,9 +546,10 @@ export function buildAtticStockEmailPlainBody(
   paintItems: AtticStockPaintItem[],
   customItems: AtticStockCustomItem[],
   signature?: EmailSignatureSettings,
+  poNumber = "",
 ): string {
   const parts = [
-    ...introAtticStockPlain(vendor.name, jobNumber, jobName),
+    ...introAtticStockPlain(vendor.name, jobNumber, jobName, poNumber),
     "",
     buildAtticStockPlainTable(paintItems, customItems),
   ];
@@ -541,8 +567,9 @@ export function buildAtticStockEmailHtmlFragment(
   customItems: AtticStockCustomItem[],
   signature?: EmailSignatureSettings,
   logoUrl = "",
+  poNumber = "",
 ): string {
-  const intro = introAtticStockHtml(vendor.name, jobNumber, jobName);
+  const intro = introAtticStockHtml(vendor.name, jobNumber, jobName, poNumber);
   const table = buildAtticStockTableHtml(paintItems, customItems);
   const sig = signature ? buildEmailSignatureHtml(signature, logoUrl) : "";
   return `${intro}${table}${sig}`;
@@ -556,6 +583,7 @@ export function buildAtticStockEmailHtmlBody(
   customItems: AtticStockCustomItem[],
   signature?: EmailSignatureSettings,
   logoUrl = "",
+  poNumber = "",
 ): string {
   const fragment = buildAtticStockEmailHtmlFragment(
     vendor,
@@ -565,6 +593,7 @@ export function buildAtticStockEmailHtmlBody(
     customItems,
     signature,
     logoUrl,
+    poNumber,
   );
   return `<html><body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333;">${fragment}</body></html>`;
 }

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { ImportPaintPackageModal } from "../components/sds/ImportPaintPackageModal";
+import { PackageHistoryModal } from "../components/sds/PackageHistoryModal";
 import { SdsSectionEditorModal } from "../components/sds/SdsSectionEditorModal";
 import { SdsSectionListRow } from "../components/sds/SdsSectionListRow";
 import { DateInput } from "../components/DateInput";
@@ -24,10 +25,7 @@ import {
   paintPackageImportSummary,
   type PaintPackageGroup,
 } from "../lib/paintPackageLink";
-import {
-  appendSdsPacketSubmittalRow,
-  queueSdsForTransmittal,
-} from "../lib/sdsSubmittalIntegrations";
+import { appendSdsPacketSubmittalRow } from "../lib/sdsSubmittalIntegrations";
 import { applySdsProfileDefaults } from "../lib/userProfile";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
 import type { ProjectForm } from "../types/database";
@@ -41,14 +39,19 @@ import {
   leadSpecSection,
   normalizePaintSubmittal,
   normalizeSdsPacket,
+  normalizeSdsPacketHistory,
   normalizeWallcoveringSubmittal,
   paintItemSpecScope,
   sdsPacketOutputName,
   sdsSectionsFromWallcoveringItems,
+  startNewSdsPackage,
+  upsertSdsPacketHistory,
+  type SdsPacketData,
   type SdsSection,
   type ProjectTradeData,
 } from "../types/tradeDocuments";
 import type { SdsPacketType } from "../lib/sdsPacketPresets";
+import { formatSubmittalNumberDisplay } from "../lib/printCore";
 import { sortSdsSectionsBySpec } from "../lib/sdsSectionModel";
 
 type Ctx = { project: ProjectForm; projectId: string };
@@ -63,6 +66,8 @@ export function SdsPacketPage() {
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
   const [draft, setDraft] = useState(defaultSdsPacket());
+  const [history, setHistory] = useState<SdsPacketData[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [building, setBuilding] = useState(false);
   const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -71,6 +76,36 @@ export function SdsPacketPage() {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [lastSpecSection, setLastSpecSection] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const importMenuRef = useRef<HTMLDivElement>(null);
+  const coverPurposeRef = useRef<HTMLTextAreaElement>(null);
+
+  function fitCoverPurpose(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }
+
+  useEffect(() => {
+    fitCoverPurpose(coverPurposeRef.current);
+  }, [draft.cover_purpose]);
+
+  useEffect(() => {
+    if (!importOpen) return;
+    function onPointer(event: MouseEvent) {
+      if (!importMenuRef.current?.contains(event.target as Node)) setImportOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setImportOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [importOpen]);
 
   useEffect(() => {
     if (!loading) {
@@ -79,8 +114,9 @@ export function SdsPacketPage() {
         ...base,
         contract: coerceTransmittalContract(project, base.contract),
       });
+      setHistory(normalizeSdsPacketHistory(tradeData.sds_packet_history));
     }
-  }, [loading, tradeData.sds_packet, profile, project]);
+  }, [loading, tradeData.sds_packet, tradeData.sds_packet_history, profile, project]);
 
   const showContractSwitch = hasTransmittalContractSwitch(project);
 
@@ -108,6 +144,23 @@ export function SdsPacketPage() {
     if (!hasProduct) return "";
     return colorScheduleCoverValue(paintSubmittal.submittal_number, paintSubmittal.revision_number);
   }, [paintSubmittal]);
+
+  const sectionStatus = useMemo(() => {
+    const packageCount = draft.sections.length;
+    if (!packageCount) return { tone: "warn" as const, text: "Empty" };
+    const missing = paintLinkGaps.scheduleOnly.length;
+    if (missing > 0) {
+      return {
+        tone: "warn" as const,
+        text: `${missing} product${missing === 1 ? "" : "s"} from schedule not included`,
+      };
+    }
+    if (!colorScheduleLabel) return null;
+    return {
+      tone: "ok" as const,
+      text: `Matches Submittal #${formatSubmittalNumberDisplay(paintSubmittal.submittal_number)}`,
+    };
+  }, [colorScheduleLabel, draft.sections.length, paintLinkGaps.scheduleOnly.length, paintSubmittal.submittal_number]);
 
   function replaceSection(section: SdsSection) {
     if (section.spec_section.trim()) setLastSpecSection(section.spec_section.trim());
@@ -242,17 +295,65 @@ export function SdsPacketPage() {
   }
 
   function onClearAll() {
-    if (!draft.sections.length) return;
-    if (!window.confirm("Remove all sections?")) return;
+    setClearConfirm(false);
     setDraft((d) => ({ ...d, sections: [] }));
   }
 
+  function packetTrade(nextDraft: SdsPacketData, nextHistory: SdsPacketData[]): ProjectTradeData {
+    return { ...tradeData, sds_packet: nextDraft, sds_packet_history: nextHistory };
+  }
+
   async function onSave() {
-    const ok = await save({ ...tradeData, sds_packet: draft });
+    const nextHistory = draft.sections.length ? upsertSdsPacketHistory(history, draft) : history;
+    const ok = await save(packetTrade(draft, nextHistory));
     if (ok) {
+      setHistory(nextHistory);
       setError(null);
       setSuccess("Submittal package saved.");
     }
+  }
+
+  async function onNewPackage() {
+    if (
+      !window.confirm(
+        "Start a new package? This one stays in History. The next Packet PDF gets its own submittal log row.",
+      )
+    ) {
+      return;
+    }
+    const next = startNewSdsPackage(draft, history);
+    setDraft(next.draft);
+    setHistory(next.history);
+    const ok = await save(packetTrade(next.draft, next.history));
+    if (ok) {
+      setSuccess(`Package #${String(next.draft.submittal_number).padStart(3, "0")} started.`);
+    }
+  }
+
+  async function onOpenHistoryPackage(packet: SdsPacketData) {
+    if (packet.submittal_number === draft.submittal_number) {
+      setHistoryOpen(false);
+      return;
+    }
+    const archived = draft.sections.length ? upsertSdsPacketHistory(history, draft) : history;
+    const nextHistory = upsertSdsPacketHistory(archived, packet);
+    const opened = normalizeSdsPacket(packet);
+    setDraft(opened);
+    setHistory(nextHistory);
+    setHistoryOpen(false);
+    const ok = await save(packetTrade(opened, nextHistory));
+    if (ok) {
+      setSuccess(`Opened package #${String(opened.submittal_number).padStart(3, "0")}.`);
+    }
+  }
+
+  async function onDeleteHistoryPackage(submittalNumber: number) {
+    const label = `Package #${String(submittalNumber).padStart(3, "0")}`;
+    if (!window.confirm(`Remove ${label} from history? The submittal log row stays.`)) return;
+    const nextHistory = history.filter((packet) => packet.submittal_number !== submittalNumber);
+    setHistory(nextHistory);
+    const ok = await save(packetTrade(draft, nextHistory));
+    if (ok) setSuccess(`${label} removed from history.`);
   }
 
   async function onBuild() {
@@ -274,9 +375,11 @@ export function SdsPacketPage() {
     setSuccess(null);
     setError(null);
     try {
-      let nextTrade: ProjectTradeData = { ...tradeData, sds_packet: draft };
+      const nextHistory = upsertSdsPacketHistory(history, draft);
+      const nextTrade: ProjectTradeData = packetTrade(draft, nextHistory);
       const ok = await save(nextTrade);
       if (!ok) return;
+      setHistory(nextHistory);
 
       const outputName = sdsPacketOutputName(packageJob.job_name, packageJob.job_number, draft);
       const bytes = await buildSdsPacketPdf(
@@ -293,18 +396,10 @@ export function SdsPacketPage() {
       downloadPdfBytes(bytes, outputName);
 
       const notes: string[] = [`Downloaded ${outputName}.`];
-      if (draft.add_to_submittal_log) {
-        const row = await appendSdsPacketSubmittalRow(projectId, draft);
-        if (row) notes.push(`Submittal log row #${row.line_number} added (Ready).`);
-        if (draft.add_to_transmittal) {
-          nextTrade = await queueSdsForTransmittal(nextTrade, draft, outputName, row?.id);
-          await save(nextTrade);
-          notes.push("Queued for Transmittal (Pending for next send).");
-        }
-      } else if (draft.add_to_transmittal) {
-        nextTrade = await queueSdsForTransmittal(nextTrade, draft, outputName);
-        await save(nextTrade);
-        notes.push("Queued for Transmittal (Pending for next send).");
+      const row = await appendSdsPacketSubmittalRow(projectId, draft);
+      if (row?.created) {
+        const packageNo = String(draft.submittal_number).padStart(3, "0");
+        notes.push(`Submittal log row #${row.line_number} added for package #${packageNo}.`);
       }
       setSuccess(notes.join(" "));
     } catch (e) {
@@ -329,6 +424,15 @@ export function SdsPacketPage() {
 
   return (
     <div className="stack sds-packet-page">
+      {historyOpen ? (
+        <PackageHistoryModal
+          history={history}
+          currentNumber={draft.submittal_number}
+          onOpen={(packet) => void onOpenHistoryPackage(packet)}
+          onDelete={(submittalNumber) => void onDeleteHistoryPackage(submittalNumber)}
+          onClose={() => setHistoryOpen(false)}
+        />
+      ) : null}
       {error && <div className="banner banner-error">{error}</div>}
       {success && <div className="banner banner-ok">{success}</div>}
       {buildProgress && (
@@ -390,9 +494,14 @@ export function SdsPacketPage() {
                   )}
               </span>
               <textarea
+                ref={coverPurposeRef}
+                className="sds-cover-purpose"
                 value={draft.cover_purpose}
-                onChange={(e) => setDraft({ ...draft, cover_purpose: e.target.value })}
-                rows={3}
+                onChange={(e) => {
+                  setDraft({ ...draft, cover_purpose: e.target.value });
+                  fitCoverPurpose(e.currentTarget);
+                }}
+                rows={2}
                 placeholder={
                   draft.packet_type === "Custom"
                     ? "Describe the purpose of this submittal…"
@@ -478,99 +587,157 @@ export function SdsPacketPage() {
               End page
             </label>
           </div>
-          <div className="stack sds-checks sds-checks-after">
-            <p className="sds-checks-after-label muted small">After generating</p>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={draft.add_to_submittal_log}
-                onChange={(e) => setDraft({ ...draft, add_to_submittal_log: e.target.checked })}
-              />
-              Add submittal log row
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={draft.add_to_transmittal}
-                onChange={(e) => setDraft({ ...draft, add_to_transmittal: e.target.checked })}
-              />
-              Add to transmittal
-            </label>
-          </div>
           <div className="sds-options-actions stack">
             <p
-              className={`sds-readiness-line small${readiness.gaps.length ? " sds-readiness-line--warn" : readiness.sectionCount ? " sds-readiness-line--ok" : ""}`}
+              className={`sds-readiness-line small${readiness.ready ? " sds-readiness-line--ok" : " sds-readiness-line--warn"}`}
             >
-              {readiness.summaryLine}
+              {readiness.ready ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="m8 12 2.5 2.5L16 9" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                  <path d="M12 9v4" />
+                  <path d="M12 17h.01" />
+                  <path d="M10.3 4.8 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.8a2 2 0 0 0-3.4 0z" />
+                </svg>
+              )}
+              {readiness.sectionCount ? readiness.summaryLine : "No sections · nothing to build"}
             </p>
-            <div className="row-gap wrap">
-              <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
-                {saving ? "Saving…" : "Save"}
+            <div className="sds-package-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={building || !draft.sections.length}
+                title={outputFilename}
+                onClick={() => void onBuild()}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M12 4v10" />
+                  <path d="m7 11 5 5 5-5" />
+                  <path d="M5 19h14" />
+                </svg>
+                {building ? "Building…" : "Packet PDF"}
               </button>
-              <span className="paint-toolbar-download-wrap pdf-filename-hover">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={building || !draft.sections.length}
-                  onClick={() => void onBuild()}
-                >
-                  {building ? "Building…" : "Packet PDF"}
+              <div className="sds-package-actions-row">
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <path d="M17 21v-8H7v8" />
+                    <path d="M7 3v5h8" />
+                  </svg>
+                  {saving ? "Saving…" : "Save"}
                 </button>
-                <span className="paint-toolbar-download-tip" role="tooltip">
-                  {outputFilename}
-                </span>
-              </span>
+                <button type="button" className="btn btn-secondary" onClick={() => setHistoryOpen(true)}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M12 8v5l3 2" />
+                  </svg>
+                  History
+                </button>
+              </div>
+              <hr className="sds-package-actions-rule" />
+              <button type="button" className="sds-package-new" disabled={saving} onClick={() => void onNewPackage()}>
+                + New package
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       <section className="card stack sds-sections-panel">
-        <div className="sds-sections-hint">
-          <span className="muted small">Drag ⋮⋮ to reorder</span>
+        <div className="sds-sections-head">
+          <div className="paint-items-title">
+            <h3>Sections ({draft.sections.length})</h3>
+            {sectionStatus ? (
+              <p className={`paint-items-status paint-items-status--${sectionStatus.tone}`}>
+                {sectionStatus.tone === "ok" ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="m8 12 2.5 2.5L16 9" />
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                    <path d="M10.3 4.8 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.8a2 2 0 0 0-3.4 0z" />
+                  </svg>
+                )}
+                {sectionStatus.text}
+              </p>
+            ) : null}
+          </div>
+          <div className="sds-sections-toolbar">
+            <div className="paint-toolbar-menu" ref={importMenuRef}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                aria-haspopup="menu"
+                aria-expanded={importOpen}
+                onClick={() => setImportOpen((open) => !open)}
+              >
+                Import
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              {importOpen ? (
+                <div className="paint-toolbar-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    title="Add each product from the paint color schedule as a section in this package"
+                    onClick={() => {
+                      setImportOpen(false);
+                      importFromPaint();
+                    }}
+                  >
+                    From Paint schedule
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    title="Add each product from the wallcovering submittal as a section in this package"
+                    onClick={() => {
+                      setImportOpen(false);
+                      importFromWallcovering();
+                    }}
+                  >
+                    From Wallcovering
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <button type="button" className="btn btn-secondary btn-small" onClick={openAddSection}>
+              Add section
+            </button>
+            <span className="sds-sections-toolbar-rule" aria-hidden />
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              disabled={!draft.sections.length}
+              onClick={() => setClearConfirm(true)}
+            >
+              Clear all
+            </button>
+          </div>
         </div>
-        {colorScheduleLabel ? (
-          <p
-            className={`small ${
-              paintLinkGaps.scheduleOnly.length || paintLinkGaps.packageOnly.length
-                ? "paint-items-readiness--warn"
-                : "paint-items-readiness--ok"
-            }`}
-          >
-            {paintLinkGaps.scheduleOnly.length || paintLinkGaps.packageOnly.length
-              ? [
-                  paintLinkGaps.scheduleOnly.length
-                    ? `Missing from this package: ${paintLinkGaps.scheduleOnly.join(", ")}`
-                    : "",
-                  paintLinkGaps.packageOnly.length
-                    ? `Not on the color schedule: ${paintLinkGaps.packageOnly.join(", ")}`
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : `${colorScheduleLabel} matches this package.`}
-          </p>
+        {clearConfirm ? (
+          <div className="sds-clear-confirm" role="alert">
+            <span>Remove all {draft.sections.length} sections from this package?</span>
+            <button type="button" className="btn btn-ghost btn-small" onClick={() => setClearConfirm(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-small sds-clear-confirm-go" onClick={onClearAll}>
+              Clear all
+            </button>
+          </div>
         ) : null}
-        <div className="sds-sections-toolbar row-gap wrap">
-          <button type="button" className="btn btn-success btn-small" onClick={openAddSection}>
-            + Add Section
-          </button>
-          <button type="button" className="btn btn-secondary btn-small" onClick={importFromPaint}>
-            Import · Paint
-          </button>
-          <button type="button" className="btn btn-secondary btn-small" onClick={importFromWallcovering}>
-            Import · Wallcovering
-          </button>
-          <span className="sds-sections-toolbar-spacer" aria-hidden />
-          <button type="button" className="btn btn-ghost btn-small" onClick={onClearAll}>
-            Clear All
-          </button>
-        </div>
 
         {draft.sections.length === 0 ? (
           <p className="muted small sds-sections-empty">
-            No sections yet. Click <strong>+ Add Section</strong>, import from a trade tab, or enter
-            products manually. Set Spec section on each product — the list sorts by CSI.
+            No sections yet. Import from the Paint schedule or add one.
           </p>
         ) : (
           <ul className="sds-section-list">

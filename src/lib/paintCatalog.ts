@@ -532,13 +532,44 @@ export function parseColorLookupQuery(raw: string): {
   return { vendorKeys: null, term: full, full };
 }
 
+/** Pull color codes out of a phrase, including when a name sits in front of the number. */
+function extractColorCodes(raw: string): { codes: string[]; name: string } {
+  const vendorCode =
+    /\b(SW|BM|DE|PPG|BEHR|VISTA)\s*[-.]?\s*([A-Z0-9]*\d[A-Z0-9]*(?:-\d+)?)\b/gi;
+  const otherCode =
+    /\b\d{2,4}[A-Z]-\d{1,3}\b|\b\d{3,5}-\d{1,3}\b|\b[A-Z]{1,3}-\d{1,4}\b|\b[A-Z]{2,4}\d{2,5}\b|\b\d{3,5}\b/gi;
+  const codes: string[] = [];
+  let rest = raw.replace(vendorCode, (_match, prefix: string, body: string) => {
+    codes.push(`${prefix}${body}`.replace(/\s+/g, ""));
+    return " ";
+  });
+  rest = rest.replace(otherCode, (match) => {
+    codes.push(match);
+    return " ";
+  });
+  const name = rest
+    .replace(/&/g, " ")
+    .split(/[^a-z0-9]+/i)
+    .map((word) => word.trim().toLowerCase())
+    .filter((word) => word.length >= 3)
+    .join(" ");
+  return { codes: [...new Set(codes.map((code) => code.trim()).filter(Boolean))], name };
+}
+
+function nameCovers(name: string, phrase: string): boolean {
+  if (!phrase) return false;
+  if (name.includes(phrase)) return true;
+  const words = phrase.split(/\s+/).filter((word) => word.length >= 3);
+  return words.length >= 2 && words.every((word) => name.includes(word));
+}
+
 function colorEntryMatches(entry: PaintColorEntry, term: string, full: string): boolean {
   const num = (entry.number || "").trim().toLowerCase();
   const name = (entry.name || "").trim().toLowerCase();
   if (!num) return false;
   if (full === num || full === name) return true;
-  if (term && (num.includes(term) || name.includes(term))) return true;
-  if (full && (num.includes(full) || name.includes(full))) return true;
+  if (term && (num.includes(term) || nameCovers(name, term))) return true;
+  if (full && (num.includes(full) || nameCovers(name, full))) return true;
   return false;
 }
 
@@ -590,20 +621,47 @@ export function formatColorDisplay(mfrKey: string, entry: PaintColorEntry): stri
   return prefix ? `${prefix} ${name} ${num}`.trim() : `${name} ${num}`.trim();
 }
 
+function searchParsedQuery(colors: PaintColorsDb, query: string): PaintColorMatch[] {
+  const { vendorKeys, term, full } = parseColorLookupQuery(query);
+  if (!full) return [];
+  let manufacturers = vendorKeys?.length ? vendorKeys.filter((k) => k in colors) : Object.keys(colors);
+  if (!manufacturers.length) manufacturers = Object.keys(colors);
+  return collectColorMatches(colors, manufacturers, term, full);
+}
+
+function displayCoversName(match: PaintColorMatch, name: string): boolean {
+  return nameCovers(match.display.toLowerCase(), name);
+}
+
 export function searchPaintColors(
   colors: PaintColorsDb,
   query: string,
   _productDisplay?: string,
 ): PaintColorMatch[] {
-  const { vendorKeys, term, full } = parseColorLookupQuery(query);
-  if (!full) return [];
+  const trimmed = query.trim();
+  if (!trimmed) return [];
 
-  let manufacturers =
-    vendorKeys?.length ? vendorKeys.filter((k) => k in colors) : Object.keys(colors);
+  const { codes, name } = extractColorCodes(trimmed);
+  if (codes.length) {
+    const seen = new Set<string>();
+    const byCode: PaintColorMatch[] = [];
+    for (const code of codes) {
+      for (const match of searchParsedQuery(colors, code)) {
+        const key = `${match.vendor}::${match.display}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        byCode.push(match);
+      }
+    }
+    if (byCode.length) {
+      if (!name) return byCode;
+      const narrowed = byCode.filter((match) => displayCoversName(match, name));
+      return narrowed.length ? narrowed : byCode;
+    }
+    if (name) return searchParsedQuery(colors, name);
+  }
 
-  if (!manufacturers.length) manufacturers = Object.keys(colors);
-
-  return collectColorMatches(colors, manufacturers, term, full);
+  return searchParsedQuery(colors, trimmed);
 }
 
 /** Skip lookup when color already looks formatted (matches desktop). */

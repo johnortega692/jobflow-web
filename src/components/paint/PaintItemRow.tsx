@@ -117,6 +117,7 @@ export function PaintItemRow({
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={(e) => {
+          if (Array.from(e.dataTransfer.types).includes("Files")) return;
           e.preventDefault();
           e.stopPropagation();
           onDrop();
@@ -127,7 +128,7 @@ export function PaintItemRow({
           className="paint-row-handle"
           draggable
           aria-label={`Reorder row ${index + 1}`}
-          title="Drag to reorder or move between tables"
+          title="Drag to reorder"
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = "move";
             e.dataTransfer.setData("text/plain", String(index));
@@ -165,7 +166,7 @@ export function PaintItemRow({
           <div className={`paint-color-field${missingColor ? " paint-color-field--warn" : ""}`}>
             <input
               value={item.color}
-              placeholder="⚠ Add color"
+              placeholder="SW7004 or color name"
               onChange={(e) => onChange({ color: e.target.value })}
               onKeyDown={onColorKeyDown}
               aria-label={`Color row ${index + 1}`}

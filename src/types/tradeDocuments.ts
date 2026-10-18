@@ -484,7 +484,9 @@ export type TransmittalHistoryEntry = {
   frp_submittal_nums: number[];
   enclosure_count: number;
   missing_warnings: string[];
-  /** Full transmittal state at time of download (before number bump). */
+  /** False when the row was filed by New transmittal before a PDF was downloaded. */
+  downloaded?: boolean;
+  /** Full transmittal state when it was downloaded or filed. */
   snapshot: TransmittalData;
 };
 
@@ -499,6 +501,8 @@ export type ProjectTradeData = {
   transmittal?: TransmittalData;
   transmittal_history?: TransmittalHistoryEntry[];
   sds_packet?: SdsPacketData;
+  /** Earlier product packages. The working package stays in `sds_packet`. */
+  sds_packet_history?: SdsPacketData[];
   budget_maker?: BudgetMakerData;
   paint_tracker?: PaintTrackerState;
   wc_tracker?: WcTrackerState;
@@ -633,6 +637,58 @@ export function normalizeSdsPacket(raw: Partial<SdsPacketData> | undefined): Sds
     add_to_transmittal: raw.add_to_transmittal ?? base.add_to_transmittal,
     contract: normalizeTransmittalContract(raw.contract),
     sections: sortSdsSectionsBySpec(sections),
+  };
+}
+
+export function normalizeSdsPacketHistory(raw: unknown): SdsPacketData[] {
+  if (!Array.isArray(raw)) return [];
+  const byNumber = new Map<number, SdsPacketData>();
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const packet = normalizeSdsPacket(row as Partial<SdsPacketData>);
+    if (!packet.submittal_number) continue;
+    byNumber.set(packet.submittal_number, packet);
+  }
+  return [...byNumber.values()].sort((a, b) => b.submittal_number - a.submittal_number);
+}
+
+/** Replace the snapshot for this package number, or add it. */
+export function upsertSdsPacketHistory(history: SdsPacketData[], packet: SdsPacketData): SdsPacketData[] {
+  const snap = normalizeSdsPacket(packet);
+  const rest = history.filter((row) => row.submittal_number !== snap.submittal_number);
+  return [snap, ...rest].sort((a, b) => b.submittal_number - a.submittal_number);
+}
+
+export function nextSdsPackageNumber(history: SdsPacketData[], currentNumber: number): number {
+  const used = history.map((row) => row.submittal_number);
+  used.push(currentNumber);
+  return Math.min(99, Math.max(0, ...used) + 1);
+}
+
+/** Archive the working package when it has sections, then start the next empty package. */
+export function startNewSdsPackage(
+  current: SdsPacketData,
+  history: SdsPacketData[],
+): { draft: SdsPacketData; history: SdsPacketData[] } {
+  const nextHistory = current.sections.length ? upsertSdsPacketHistory(history, current) : history;
+  const fresh = defaultSdsPacket();
+  return {
+    history: nextHistory,
+    draft: {
+      ...fresh,
+      packet_type: current.packet_type,
+      preparer: current.preparer,
+      cover_purpose: current.cover_purpose,
+      include_cover: current.include_cover,
+      include_toc: current.include_toc,
+      include_dividers: current.include_dividers,
+      include_stamp: current.include_stamp,
+      include_end: current.include_end,
+      add_to_submittal_log: current.add_to_submittal_log,
+      add_to_transmittal: current.add_to_transmittal,
+      contract: current.contract,
+      submittal_number: nextSdsPackageNumber(nextHistory, current.submittal_number),
+    },
   };
 }
 
@@ -1228,7 +1284,17 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     items: auto_label ? applyPaintAutoLabels(items) : items,
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
-    package_type: normalizePackageCategory(raw.package_type, "Paint Brush-Outs / Color Samples", "paint"),
+    package_type: "Paint Brush-Outs / Color Samples",
+    subject:
+      !raw.subject?.trim() || raw.subject.trim() === "Paint Product Data"
+        ? paintSubjectForType(
+            raw.submittal_type === "revised" ||
+              raw.submittal_type === "substitution" ||
+              raw.submittal_type === "original"
+              ? raw.submittal_type
+              : "new",
+          )
+        : raw.subject,
     revision_note: raw.revision_note?.trim() || undefined,
     spec_sections,
     // TODO: remove once downstream reads leadSpecSection()
@@ -1284,7 +1350,17 @@ export function normalizeWallcoveringSubmittal(
     items: labeled,
     revision_number: normalizeRevisionNumber(raw.revision_number),
     issue_status: normalizeSubmittalIssueStatus(raw.issue_status),
-    package_type: normalizePackageCategory(raw.package_type, "Wallcovering Samples", "wallcovering"),
+    package_type: "Wallcovering Samples",
+    subject:
+      !raw.subject?.trim() || raw.subject.trim() === "Wallcovering Product Data"
+        ? wcSubjectForType(
+            raw.submittal_type === "revised" ||
+              raw.submittal_type === "substitution" ||
+              raw.submittal_type === "original"
+              ? raw.submittal_type
+              : "new",
+          )
+        : raw.subject,
     revision_note: raw.revision_note?.trim() || undefined,
     spec_sections,
     // TODO: remove once downstream reads leadSpecSection()
@@ -1412,32 +1488,5 @@ export function parseProjectTradeData(raw: Json | null | undefined): ProjectTrad
 export function paintItemDescription(item: PaintItem): string {
   const color = [item.manufacturer, item.color].filter((p) => p.trim()).join(" ").trim();
   const parts = [item.label, color, item.product, item.sheen].filter((p) => p.trim());
-  return parts.join(" - ");
-}
-
-export function paintItemToTransmittalDescription(item: PaintItem, includeFloor: boolean): string {
-  const label = item.label.trim();
-  const floor = item.floor.trim();
-  const color = [item.manufacturer, item.color].filter((p) => p.trim()).join(" ").trim();
-  const product = item.product.trim();
-  const sheen = item.sheen.trim();
-  if (!label && !color && !product && !sheen) return "";
-  const parts = [label, includeFloor ? floor : null, color, product, sheen].filter(Boolean);
-  return parts.join(" - ");
-}
-
-export function wallcoveringItemToTransmittalDescription(
-  item: WallcoveringItem,
-  includeFloor: boolean,
-): string {
-  const label = item.label.trim();
-  const floor = item.floor.trim();
-  const mfr = item.manufacturer.trim();
-  const product = item.product.trim();
-  const color = item.color.trim();
-  const qty = item.qty.trim();
-  const notes = item.notes.trim();
-  if (!label && !product && !color) return "";
-  const parts = [label, includeFloor ? floor : null, mfr, product, color, qty, notes].filter(Boolean);
   return parts.join(" - ");
 }

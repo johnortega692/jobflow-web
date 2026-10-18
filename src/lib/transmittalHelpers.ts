@@ -4,18 +4,17 @@ import {
   inferContentKeysFromPending,
   type TransmittalContentKey,
 } from "./transmittalCategories";
+import { formatLineNumberDisplay, sdsSubmittalDescription } from "./submittalLogHelpers";
+import { sdsPacketSpecSectionsLabel } from "./sdsSectionModel";
+import type { SubmittalLogRow } from "../types/submittalLog";
 import {
   emptyEnclosure,
   normalizeEnclosure,
   normalizePendingItem,
-  paintItemToTransmittalDescription,
-  wallcoveringItemToTransmittalDescription,
-  type PaintItem,
   type PendingSubmittalItem,
-  type ProjectTradeData,
+  type SdsPacketData,
   type TransmittalData,
   type TransmittalEnclosure,
-  type WallcoveringItem,
 } from "../types/tradeDocuments";
 import { esc, formatLongDate } from "./printCore";
 import type { EmailSignatureSettings } from "./emailSignature";
@@ -24,8 +23,6 @@ import {
   openGmailComposeWithHtml,
   copyHtmlToClipboard,
   type OpenMailtoResult,
-  type AtticStockCustomItem,
-  type AtticStockPaintItem,
 } from "./paintVendorEmail";
 import type { ComposeEmailMethod } from "./paintUserSettings";
 
@@ -161,6 +158,128 @@ export function appendPendingToEnclosures(
   };
 }
 
+function logSourceForScope(scope: string): string {
+  const s = scope.trim().toLowerCase();
+  if (s === "paint") return "paint_submittal";
+  if (s.includes("wallcover")) return "wallcovering_submittal";
+  if (s === "frp") return "frp_submittal";
+  if (s === "product data") return "sds_packet";
+  return "";
+}
+
+export function logRowAsPending(row: SubmittalLogRow): PendingSubmittalItem {
+  const source = logSourceForScope(row.scope);
+  return normalizePendingItem({
+    submittal_type: row.submittal_type,
+    scope: row.scope,
+    spec: row.spec,
+    section: row.section,
+    spec_section: row.section || row.spec,
+    packet_type: source === "sds_packet" ? row.submittal_type : "",
+    notes: row.notes,
+    source,
+    log_row_id: row.id,
+    trade_submittal_number: row.trade_submittal_number,
+  });
+}
+
+export function logRowEnclosureDescription(row: SubmittalLogRow): string {
+  const scope = row.scope.trim();
+  const stype = row.submittal_type.trim();
+  const spec = row.section.trim();
+  if (scope === "Product Data") return row.notes.trim() || stype || "Product Data";
+  if (scope === "Paint" || scope === "Wallcovering" || scope === "FRP") {
+    const base = stype ? `${stype} · ${scope}` : scope;
+    return spec ? `${spec} · ${base}` : base;
+  }
+  if (row.notes.trim()) return row.notes.trim();
+  return [stype, scope, spec].filter(Boolean).join(" · ") || "Submittal item";
+}
+
+/** Package number for a product-data log row that was saved before the number was stored. */
+export function productPackageNumberForLogRow(
+  row: SubmittalLogRow,
+  packets: readonly SdsPacketData[],
+): string {
+  if (row.scope.trim() !== "Product Data") return "";
+  const note = row.notes.trim();
+  const type = row.submittal_type.trim();
+  const section = row.section.trim();
+  const unique = new Map<number, SdsPacketData>();
+  for (const packet of packets) {
+    if (!packet?.submittal_number) continue;
+    unique.set(packet.submittal_number, packet);
+  }
+  const list = [...unique.values()];
+  const described = list.filter((packet) => {
+    const label = sdsPacketSpecSectionsLabel(packet.sections);
+    if (note && sdsSubmittalDescription(label, packet.packet_type) === note) return true;
+    if (!type || packet.packet_type !== type || !label || !section) return false;
+    return section === label || section.includes(label) || label.includes(section);
+  });
+  if (described.length === 1) return String(described[0]!.submittal_number);
+  const sameType = list.filter((packet) => !type || packet.packet_type === type);
+  if (sameType.length === 1) return String(sameType[0]!.submittal_number);
+  return "";
+}
+
+export function logRowSuggestionLabel(row: SubmittalLogRow, packageNumber = ""): string {
+  const line = formatLineNumberDisplay(row.line_number);
+  const logTag = line ? `Log #${line}` : "";
+  const num = row.trade_submittal_number.trim() || packageNumber.trim();
+  const n = Number.parseInt(num, 10);
+  const tag = Number.isFinite(n) && n > 0 ? `#${String(n).padStart(3, "0")}` : "";
+  return [logTag, tag, logRowEnclosureDescription(row)].filter(Boolean).join(" · ");
+}
+
+/** Ready log rows that are not already an enclosure or still sitting in the old pending queue. */
+export function readyLogRowsForTransmittal(
+  rows: readonly SubmittalLogRow[],
+  transmittal: TransmittalData,
+): SubmittalLogRow[] {
+  const used = new Set<string>();
+  for (const enc of transmittal.enclosures) {
+    if (enc.log_row_id?.trim()) used.add(enc.log_row_id.trim());
+  }
+  for (const item of transmittal.pending_submittal_queue ?? []) {
+    if (item.log_row_id?.trim()) used.add(item.log_row_id.trim());
+  }
+  return rows.filter((row) => row.id && !used.has(row.id) && row.status.trim().toLowerCase() === "ready");
+}
+
+export function appendLogRowsToEnclosures(
+  transmittal: TransmittalData,
+  rows: readonly SubmittalLogRow[],
+): { transmittal: TransmittalData; added: number; skipped: number } {
+  const used = new Set(transmittal.enclosures.map((e) => e.log_row_id).filter(Boolean) as string[]);
+  let added = 0;
+  let skipped = 0;
+  const newEnclosures = [...transmittal.enclosures.filter((e) => e.description.trim())];
+  const addedItems: PendingSubmittalItem[] = [];
+  for (const row of rows) {
+    if (!row.id) continue;
+    if (used.has(row.id)) {
+      skipped += 1;
+      continue;
+    }
+    used.add(row.id);
+    newEnclosures.push({
+      ...emptyEnclosure(),
+      description: stripPdfFilenameFromEnclosureDescription(logRowEnclosureDescription(row)),
+      included: true,
+      copies: "1",
+      log_row_id: row.id,
+    });
+    addedItems.push(logRowAsPending(row));
+    added += 1;
+  }
+  const next = applyPendingSheetIncludes(
+    { ...transmittal, enclosures: newEnclosures.length ? newEnclosures : [emptyEnclosure()] },
+    addedItems,
+  );
+  return { transmittal: next, added, skipped };
+}
+
 function parseTradeSubmittalNum(raw: string): number | undefined {
   const n = Number.parseInt(raw.trim(), 10);
   return Number.isFinite(n) && n > 0 ? n : undefined;
@@ -223,127 +342,6 @@ export function removePendingItems(
   const removeSet = new Set(indices);
   const queue = (transmittal.pending_submittal_queue ?? []).filter((_, i) => !removeSet.has(i));
   return { ...transmittal, pending_submittal_queue: queue };
-}
-
-export function refreshEnclosuresFromTradeData(
-  transmittal: TransmittalData,
-  tradeData: ProjectTradeData,
-): TransmittalData {
-  const descriptions: { desc: string; copies: string }[] = [];
-  const includePaintFloor = transmittal.include_paint_floor;
-  const includeWcFloor = transmittal.include_wc_floor;
-
-  for (const item of tradeData.paint_submittal?.items ?? []) {
-    const desc = paintItemToTransmittalDescription(item, includePaintFloor);
-    if (desc) descriptions.push({ desc, copies: "1" });
-  }
-  for (const item of tradeData.wallcovering_submittal?.items ?? []) {
-    if (item.include_in_submittal === false) continue;
-    const desc = wallcoveringItemToTransmittalDescription(item, includeWcFloor);
-    if (desc) descriptions.push({ desc, copies: item.qty.trim() || "1" });
-  }
-
-  const enclosures = descriptions.map(({ desc, copies }) => ({
-    ...emptyEnclosure(),
-    description: desc,
-    included: true,
-    copies,
-  }));
-
-  return {
-    ...transmittal,
-    enclosures: enclosures.length ? enclosures : [emptyEnclosure()],
-  };
-}
-
-export type AtticStockOrderResult =
-  | { ok: true; paintItems: AtticStockPaintItem[]; customItems: AtticStockCustomItem[] }
-  | { ok: false; error: string };
-
-/** Match included transmittal enclosures to paint tab items (desktop transmittal_order_attic_stock). */
-export function buildAtticStockFromTransmittal(
-  transmittal: TransmittalData,
-  tradeData: ProjectTradeData,
-): AtticStockOrderResult {
-  const includedItems: Record<string, string> = {};
-  for (const row of transmittal.enclosures) {
-    if (!row.included) continue;
-    const desc = row.description.trim();
-    if (!desc) continue;
-    includedItems[desc] = row.copies.trim() || "1";
-  }
-
-  if (!Object.keys(includedItems).length) {
-    return {
-      ok: false,
-      error:
-        "No items are selected in the transmittal. Include at least one enclosure, or use Refresh to populate from Paint/Wallcovering.",
-    };
-  }
-
-  const includePaintFloor = transmittal.include_paint_floor;
-  const paintItems: AtticStockPaintItem[] = [];
-  const matchedDescriptions = new Set<string>();
-
-  for (const item of tradeData.paint_submittal?.items ?? []) {
-    const desc = paintItemToTransmittalDescription(item, includePaintFloor);
-    if (!desc) continue;
-    if (desc in includedItems) {
-      paintItems.push({ ...item, qty: includedItems[desc]! });
-      matchedDescriptions.add(desc);
-    }
-  }
-
-  const customItems: AtticStockCustomItem[] = Object.entries(includedItems)
-    .filter(([desc]) => !matchedDescriptions.has(desc))
-    .map(([description, qty]) => ({ description, qty }));
-
-  if (!paintItems.length && !customItems.length) {
-    return {
-      ok: false,
-      error:
-        "No items in the transmittal match the current Paint tab items. Use Refresh to populate from Paint, or ensure enclosures are included.",
-    };
-  }
-
-  return { ok: true, paintItems, customItems };
-}
-
-export function addItemsFromPaintHistory(
-  transmittal: TransmittalData,
-  items: PaintItem[],
-  replace: boolean,
-  includeFloor: boolean,
-): TransmittalData {
-  const existing = replace ? [] : transmittal.enclosures.filter((e) => e.description.trim());
-  const additions = items
-    .map((item) => paintItemToTransmittalDescription(item, includeFloor))
-    .filter(Boolean)
-    .map((desc) => ({ ...emptyEnclosure(), description: desc, included: true, copies: "1" }));
-  const enclosures = [...existing, ...additions];
-  return {
-    ...transmittal,
-    enclosures: enclosures.length ? enclosures : [emptyEnclosure()],
-  };
-}
-
-export function addItemsFromWallcoveringHistory(
-  transmittal: TransmittalData,
-  items: WallcoveringItem[],
-  replace: boolean,
-  includeFloor: boolean,
-): TransmittalData {
-  const existing = replace ? [] : transmittal.enclosures.filter((e) => e.description.trim());
-  const additions = items
-    .filter((item) => item.include_in_submittal !== false)
-    .map((item) => wallcoveringItemToTransmittalDescription(item, includeFloor))
-    .filter(Boolean)
-    .map((desc) => ({ ...emptyEnclosure(), description: desc, included: true, copies: "1" }));
-  const enclosures = [...existing, ...additions];
-  return {
-    ...transmittal,
-    enclosures: enclosures.length ? enclosures : [emptyEnclosure()],
-  };
 }
 
 export function moveEnclosure(

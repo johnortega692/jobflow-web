@@ -11,7 +11,9 @@ import {
 } from "../lib/approvedBrushouts";
 import { commitProjectUpdate } from "../lib/projectActivity";
 import { parseProjectDataBlob } from "../lib/jobInfo";
-import { markPaintTrackerApproved } from "../lib/fieldTrackerProject";
+import { markPaintTrackerApproved, applyApprovedPaintVendor } from "../lib/fieldTrackerProject";
+import { PAINT_VENDOR_OPTIONS } from "../lib/googleSheetsConfig";
+import { normalizePaintVendor } from "../lib/paintTrackerSync";
 import { parseStartupChecklist, type StartupChecklistState } from "../lib/projectStartupChecklist";
 import { supabase } from "../lib/supabase";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
@@ -92,10 +94,10 @@ export function ApprovedBrushoutsPage() {
             sort_order: r.sort_order,
           })),
         );
-        setPaintVendor(data[0]?.paint_vendor ?? "");
+        setPaintVendor(normalizePaintVendor(data[0]?.paint_vendor ?? ""));
         setSavedApprovedCount(data.filter((r) => r.approved).length);
       } else {
-        setPaintVendor(paintSubmittal.paint_vendor ?? "");
+        setPaintVendor(normalizePaintVendor(paintSubmittal.paint_vendor ?? ""));
         setRows([]);
         setSavedApprovedCount(0);
       }
@@ -112,8 +114,21 @@ export function ApprovedBrushoutsPage() {
 
   const approvedCount = useMemo(() => rows.filter((r) => r.approved).length, [rows]);
 
+  async function onVendorChange(value: string) {
+    const vendor = normalizePaintVendor(value);
+    setPaintVendor(vendor);
+    setRows((prev) => prev.map((row) => ({ ...row, paint_vendor: vendor })));
+    setError(null);
+    const err = await applyApprovedPaintVendor(projectId, vendor);
+    if (err) {
+      setError(err);
+      return;
+    }
+    setStatus(`Paint vendor set to ${vendor}. Material Tracker and the paint submittal now use it.`);
+  }
+
   function onImportSelected(selectedItems: PaintItem[]) {
-    const vendor = paintVendor.trim() || paintSubmittal.paint_vendor?.trim() || "";
+    const vendor = normalizePaintVendor(paintVendor.trim() || paintSubmittal.paint_vendor?.trim() || "");
     if (!selectedItems.length) {
       setError("Select at least one color to import.");
       return;
@@ -165,6 +180,8 @@ export function ApprovedBrushoutsPage() {
         paint_vendor: paintVendor.trim() || r.paint_vendor,
       }));
       await saveProjectBrushouts(projectId, project.job_number, withVendor, approverName);
+      const vendorErr = await applyApprovedPaintVendor(projectId, paintVendor.trim() || "PPG");
+      if (vendorErr) throw new Error(vendorErr);
       setStatus(`Saved. ${withVendor.length} approved line(s) available to Field Tools.`);
       await load();
     } catch (e) {
@@ -269,13 +286,20 @@ export function ApprovedBrushoutsPage() {
       <section className="card stack">
         <div className="row-between wrap gap">
           <label className="stack gap-xs" style={{ minWidth: 220 }}>
-            <span className="label">Brush-out vendor</span>
-            <input
+            <span className="label">Paint vendor</span>
+            <select
               className="input"
-              value={paintVendor}
-              onChange={(e) => setPaintVendor(e.target.value)}
-              placeholder="e.g. PPG Paints"
-            />
+              value={normalizePaintVendor(paintVendor)}
+              disabled={busy || loading}
+              onChange={(e) => void onVendorChange(e.target.value)}
+            >
+              {PAINT_VENDOR_OPTIONS.map((vendor) => (
+                <option key={vendor} value={vendor}>
+                  {vendor}
+                </option>
+              ))}
+            </select>
+            <span className="muted small">This sets the vendor for the job. Material Tracker follows it.</span>
           </label>
           <div className="row-gap wrap">
             <button

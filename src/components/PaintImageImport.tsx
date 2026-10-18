@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { PaintImportPreviewModal } from "./PaintImportPreviewModal";
 import {
   extractPaintFromImage,
@@ -15,6 +15,19 @@ type Props = {
   onImported: (rows: ExtractedPaintRow[]) => void;
   /** Kept for call-site compatibility; drop zone layout is the same either way. */
   layout?: "stack" | "row";
+  /** When set, the paint items card is the drop target and the standalone zone is not rendered. */
+  children?: (zone: ImportZone) => ReactNode;
+};
+
+export type ImportZone = {
+  dragOver: boolean;
+  importing: boolean;
+  error: string | null;
+  onDragOver: (e: DragEvent) => void;
+  onDragLeave: (e: DragEvent) => void;
+  onDrop: (e: DragEvent) => void;
+  openFilePicker: () => void;
+  cancelImport: () => void;
 };
 
 function isAbortError(e: unknown): boolean {
@@ -78,7 +91,7 @@ function SpinnerIcon() {
   );
 }
 
-export function PaintImageImport({ onImported }: Props) {
+export function PaintImageImport({ onImported, children }: Props) {
   const zoneRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -174,6 +187,7 @@ export function PaintImageImport({ onImported }: Props) {
 
   function onDragOver(e: DragEvent) {
     if (importing) return;
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setDragOver(true);
@@ -213,8 +227,63 @@ export function PaintImageImport({ onImported }: Props) {
   function onChooseFileClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    openFilePicker();
+  }
+
+  function openFilePicker() {
     if (importing) return;
+    setError(null);
     inputRef.current?.click();
+  }
+
+  useEffect(() => {
+    if (!children) return;
+    function onDocPaste(e: globalThis.ClipboardEvent) {
+      if (importing) return;
+      const file = imageFileFromDataTransfer(e.clipboardData);
+      if (!file) return;
+      e.preventDefault();
+      void onFile(file);
+    }
+    document.addEventListener("paste", onDocPaste);
+    return () => document.removeEventListener("paste", onDocPaste);
+  });
+
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="image/*"
+      className="sr-only"
+      tabIndex={-1}
+      onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+    />
+  );
+
+  if (children) {
+    return (
+      <>
+        {fileInput}
+        {children({
+          dragOver,
+          importing,
+          error,
+          onDragOver,
+          onDragLeave,
+          onDrop,
+          openFilePicker,
+          cancelImport,
+        })}
+        {preview ? (
+          <PaintImportPreviewModal
+            rows={preview.rows}
+            imageUrl={preview.imageUrl}
+            onConfirm={confirmPreview}
+            onCancel={closePreview}
+          />
+        ) : null}
+      </>
+    );
   }
 
   const zoneClass = [

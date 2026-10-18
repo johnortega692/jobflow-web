@@ -2,28 +2,22 @@ import { DateInput } from "../DateInput";
 import { RevisionNoteField } from "../submittals/RevisionNoteField";
 import { SpecSectionsChipField } from "../submittals/SpecSectionsChipField";
 import { SubmittalIssueStatusPill } from "../submittals/SubmittalIssueStatusPill";
-import { SubmittalPackageTypeSelect } from "../submittals/SubmittalPackageTypeSelect";
 import {
   addWcSpecSection,
   MAX_PAINT_SPEC_SECTIONS,
   removeWcSpecSection,
   WALLCOVERING_SUBMITTAL_TYPES,
   type SubmittalIssueStatus,
-  type SubmittalPackageCategory,
   type TradeSubmittalType,
   type WallcoveringSubmittalData,
 } from "../../types/tradeDocuments";
 
-type PackageOption = { id: SubmittalPackageCategory; label: string };
-
 type Props = {
   draft: WallcoveringSubmittalData;
   draftLocked: boolean;
-  packageTypeOptions: PackageOption[];
   onSubmittalNumberChange: (value: number) => void;
   onIssueStatusChange: (value: SubmittalIssueStatus) => void;
   onDateChange: (value: string) => void;
-  onPackageTypeChange: (value: SubmittalPackageCategory) => void;
   onTypeChange: (value: TradeSubmittalType) => void;
   onSubjectChange: (value: string) => void;
   onSpecSectionsChange: (updater: (d: WallcoveringSubmittalData) => WallcoveringSubmittalData) => void;
@@ -39,11 +33,9 @@ function formatSubmittalIdentity(submittalNumber: number, revisionNumber: number
 export function WallcoveringSubmittalMetaPanel({
   draft,
   draftLocked,
-  packageTypeOptions,
   onSubmittalNumberChange,
   onIssueStatusChange,
   onDateChange,
-  onPackageTypeChange,
   onTypeChange,
   onSubjectChange,
   onSpecSectionsChange,
@@ -107,13 +99,7 @@ export function WallcoveringSubmittalMetaPanel({
         )}
       </div>
 
-      <div className="paint-submittal-meta-fields-row wc-submittal-meta-fields-row">
-        <SubmittalPackageTypeSelect
-          value={draft.package_type}
-          options={packageTypeOptions}
-          disabled={draftLocked}
-          onChange={onPackageTypeChange}
-        />
+      <div className="paint-submittal-meta-fields-row paint-submittal-meta-type-subject-row">
         <label>
           Type
           <select
@@ -127,29 +113,27 @@ export function WallcoveringSubmittalMetaPanel({
             ))}
           </select>
         </label>
-      </div>
-
-      <div className="paint-submittal-meta-spec-subject-row">
-        <SpecSectionsChipField
-          selected={draft.spec_sections ?? []}
-          disabled={draftLocked}
-          maxSections={MAX_PAINT_SPEC_SECTIONS}
-          onAdd={(section) => onSpecSectionsChange((d) => addWcSpecSection(d, section))}
-          onRemove={(index) =>
-            onSpecSectionsChange((d) => {
-              const first = removeWcSpecSection(d, index);
-              if (first.ok) return first.draft;
-              if (!window.confirm(first.message)) return d;
-              const second = removeWcSpecSection(d, index, { confirmed: true });
-              return second.ok ? second.draft : d;
-            })
-          }
-        />
         <label className="paint-submittal-meta-subject-field">
           Subject
           <input value={draft.subject} onChange={(e) => onSubjectChange(e.target.value)} />
         </label>
       </div>
+
+      <SpecSectionsChipField
+        selected={draft.spec_sections ?? []}
+        disabled={draftLocked}
+        maxSections={MAX_PAINT_SPEC_SECTIONS}
+        onAdd={(section) => onSpecSectionsChange((d) => addWcSpecSection(d, section))}
+        onRemove={(index) =>
+          onSpecSectionsChange((d) => {
+            const first = removeWcSpecSection(d, index);
+            if (first.ok) return first.draft;
+            if (!window.confirm(first.message)) return d;
+            const second = removeWcSpecSection(d, index, { confirmed: true });
+            return second.ok ? second.draft : d;
+          })
+        }
+      />
 
       <RevisionNoteField
         revisionNumber={draft.revision_number}
