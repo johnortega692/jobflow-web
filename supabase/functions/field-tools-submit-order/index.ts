@@ -80,6 +80,22 @@ function strField(v: unknown): string {
   return typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
 }
 
+/** Will-call with two vendors: each material email names only that vendor's store. */
+function materialNotesForScope(
+  notes: string,
+  payload: Record<string, unknown>,
+  scope: "paint" | "sundries" | undefined,
+): string {
+  const sundriesLoc = strField(payload.sundriesStoreLocation);
+  if (!sundriesLoc || (scope !== "paint" && scope !== "sundries")) return notes;
+  const paintLoc = strField(payload.storeLocation);
+  const time = notes.match(/\| Pick-up Time: (.+)$/)?.[1]?.trim() ?? "";
+  if (!time) return notes;
+  const loc = scope === "sundries" ? sundriesLoc : paintLoc;
+  if (!loc) return notes;
+  return `[WILL CALL] Store Location: ${loc} | Pick-up Time: ${time}`;
+}
+
 function jobInfoFromProjectData(data: unknown): Record<string, unknown> {
   if (!data || typeof data !== "object" || Array.isArray(data)) return {};
   const blob = data as Record<string, unknown>;
@@ -263,6 +279,74 @@ function jobCodeKey(jobNumber: string): string {
 function asUuid(value: string | undefined): string {
   const s = (value ?? "").trim();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s) ? s : "";
+}
+
+function rentalUnitCount(item: LineItem): number {
+  const fromQuantity = /^(\d+)/.exec(String(item.quantity ?? "").trim());
+  const fromRaw = /^(\d+)\s*x\b/i.exec(String(item.raw ?? "").trim());
+  const qty = Number(fromQuantity?.[1] ?? fromRaw?.[1] ?? 1);
+  return Number.isFinite(qty) && qty >= 1 ? Math.min(Math.floor(qty), 50) : 1;
+}
+
+/** One rentals row per unit so each machine can be called off on its own. */
+async function recordRentalsForOrder(
+  supabase: ReturnType<typeof createClient>,
+  opts: {
+    orderId: string;
+    projectId: string;
+    vendorName: string;
+    items: LineItem[];
+    createdBy: string;
+  },
+): Promise<void> {
+  const projectId = asUuid(opts.projectId);
+  if (!projectId || !opts.items.length) return;
+  const { count } = await supabase
+    .from("rentals")
+    .select("id", { count: "exact", head: true })
+    .eq("order_id", opts.orderId);
+  if ((count ?? 0) > 0) return;
+
+  const { data: vendors } = await supabase
+    .from("field_tools_vendors")
+    .select("id, name")
+    .eq("category", "rental");
+  const vendorRows = (vendors ?? []) as { id: string; name: string }[];
+  const vendorFor = (name: string) =>
+    vendorRows.find((v) => v.name.trim().toLowerCase() === name.trim().toLowerCase());
+
+  const models = [...new Set(opts.items.map((item) => item.name.trim()).filter(Boolean))];
+  const { data: catalog } = await supabase
+    .from("field_tools_catalog_items")
+    .select("id, name, vendor_name")
+    .eq("section", "rental_equipment")
+    .in("name", models.length ? models : [""]);
+  const catalogRows = (catalog ?? []) as { id: string; name: string; vendor_name: string | null }[];
+
+  const rows: Record<string, unknown>[] = [];
+  for (const item of opts.items) {
+    const model = item.name.trim();
+    if (!model) continue;
+    const vendor = vendorFor(item.vendor?.trim() || opts.vendorName);
+    if (!vendor) continue;
+    const equipment =
+      catalogRows.find((c) => c.name === model && (c.vendor_name ?? "").trim() === vendor.name) ??
+      catalogRows.find((c) => c.name === model && !(c.vendor_name ?? "").trim());
+    const units = rentalUnitCount(item);
+    for (let i = 0; i < units; i++) {
+      rows.push({
+        project_id: projectId,
+        vendor_id: vendor.id,
+        order_id: opts.orderId,
+        equipment_id: equipment?.id ?? null,
+        model,
+        created_by: opts.createdBy,
+      });
+    }
+  }
+  if (!rows.length) return;
+  const { error } = await supabase.from("rentals").insert(rows);
+  if (error) console.error("rentals insert failed", error.message);
 }
 
 type ExistingDispatchRow = {
@@ -798,6 +882,7 @@ Deno.serve(async (req) => {
         case "material":
         case "job_scope_kit": {
           const materialScope = spec.material_scope;
+          emailNotes = materialNotesForScope(o.notes, payload, materialScope);
           const dispatchVendor = String(spec.vendor_name ?? vendorName);
           const pdfPaint = materialScope === "sundries" ? [] : paintItems;
           const pdfSundries =
@@ -814,6 +899,7 @@ Deno.serve(async (req) => {
           vendorLabel = dispatchVendor;
           pdfBytes = await buildMaterialPdf({
             ...baseMeta,
+            notes: emailNotes,
             poNumber,
             vendor: dispatchVendor,
             paint: pdfPaint,
@@ -1022,6 +1108,20 @@ Deno.serve(async (req) => {
     }
 
     await supabase.rpc("field_tools_refresh_order_email_status", { p_order_id: orderId });
+
+    if (results.some((r) => r.type === "rental" && r.ok)) {
+      try {
+        await recordRentalsForOrder(supabase, {
+          orderId,
+          projectId,
+          vendorName: rentalVendor?.name ?? "",
+          items: rentalItems,
+          createdBy: trustedProfile.id,
+        });
+      } catch (e) {
+        console.error("rentals record failed", e instanceof Error ? e.message : e);
+      }
+    }
 
     const uniquePos = [...new Set(assignedPos.filter(Boolean))];
     const orderPoLabel = uniquePos.join(", ");
