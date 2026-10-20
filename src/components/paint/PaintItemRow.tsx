@@ -3,7 +3,10 @@ import {
   abbreviateVendorKey,
   formatSheenSelection,
   getProductDisplay,
+  isStandardColorSystem,
+  paintItemPrimerView,
   parseSheenSelection,
+  primerOverrideAfterProductChange,
   searchPaintColors,
   sheensForPaintProduct,
   shouldSkipColorLookup,
@@ -11,7 +14,12 @@ import {
   type PaintColorsDb,
   type PaintProduct,
 } from "../../lib/paintCatalog";
-import { nextPaintRevisionChange, type PaintItem, type PaintRevisionChange } from "../../types/tradeDocuments";
+import {
+  nextPaintRevisionChange,
+  PAINT_PRIMER_OVERRIDE_NONE,
+  type PaintItem,
+  type PaintRevisionChange,
+} from "../../types/tradeDocuments";
 import { ColorLookupModal } from "./ColorLookupModal";
 import { PaintProductSelect, PaintSheenSelect } from "./PaintFieldSelects";
 
@@ -20,6 +28,8 @@ type Props = {
   index: number;
   total: number;
   products: PaintProduct[];
+  /** Full catalog, including products hidden from the finish dropdown. Primer lookup uses this. */
+  catalogProducts?: PaintProduct[];
   sheenOptions: string[];
   colors: PaintColorsDb | null;
   showPreviousColor: boolean;
@@ -48,10 +58,58 @@ function SearchIcon() {
   );
 }
 
+function PaintPrimerLine({
+  item,
+  products,
+  index,
+  onChange,
+}: {
+  item: PaintItem;
+  products: PaintProduct[];
+  index: number;
+  onChange: (patch: Partial<PaintItem>) => void;
+}) {
+  const primer = useMemo(() => paintItemPrimerView(item, products), [item, products]);
+  if (!primer.show) return null;
+  const tagLabel =
+    primer.tag === "paired" ? "Paired" : primer.tag === "override" ? "Override" : primer.tag === "missing" ? "None set" : "";
+  return (
+    <div className="paint-primer-line">
+      <span className="paint-primer-label">Primer</span>
+      <select
+        className={`paint-field-select paint-primer-select${primer.tag === "override" ? " paint-primer-select--override" : ""}`}
+        value={primer.selectValue}
+        aria-label={`Primer row ${index + 1}`}
+        title={
+          primer.selectValue === PAINT_PRIMER_OVERRIDE_NONE
+            ? "None (self-priming)"
+            : primer.selectValue
+              ? (primer.primers.find((option) => option.id === primer.selectValue)?.name ?? primer.firstLabel)
+              : primer.firstLabel
+        }
+        onChange={(event) => {
+          const value = event.target.value;
+          onChange({ primer_override_id: value ? value : null });
+        }}
+      >
+        <option value="">{primer.firstLabel}</option>
+        {primer.primers.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.name}
+          </option>
+        ))}
+        <option value={PAINT_PRIMER_OVERRIDE_NONE}>None (self-priming)</option>
+      </select>
+      {tagLabel ? <span className={`paint-primer-tag paint-primer-tag--${primer.tag}`}>{tagLabel}</span> : null}
+    </div>
+  );
+}
+
 export function PaintItemRow({
   item,
   index,
   products,
+  catalogProducts,
   sheenOptions,
   colors,
   showPreviousColor,
@@ -92,10 +150,11 @@ export function PaintItemRow({
     }
   }
 
-  function onLookupSelect(display: string, vendor: string) {
+  function onLookupSelect(display: string, vendor: string, hex?: string) {
     onChange({
       color: display,
-      manufacturer: abbreviateVendorKey(vendor),
+      color_hex: hex || "",
+      ...(isStandardColorSystem(vendor) ? {} : { manufacturer: abbreviateVendorKey(vendor) }),
     });
     setLookupOpen(false);
     setLookupMatches([]);
@@ -210,8 +269,20 @@ export function PaintItemRow({
                 product: productName,
                 manufacturer,
                 sheen: formatSheenSelection(kept),
+                primer_override_id: primerOverrideAfterProductChange(
+                  productName,
+                  manufacturer,
+                  item.primer_override_id,
+                  products,
+                ),
               });
             }}
+          />
+          <PaintPrimerLine
+            item={item}
+            products={catalogProducts?.length ? catalogProducts : products}
+            index={index}
+            onChange={onChange}
           />
         </div>
 

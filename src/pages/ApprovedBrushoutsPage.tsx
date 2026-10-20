@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { SubmittalsHubTabs } from "../components/submittals/SubmittalsHubTabs";
 import { ImportApprovedBrushoutsModal } from "../components/paint/ImportApprovedBrushoutsModal";
@@ -8,10 +8,14 @@ import {
   listProjectBrushouts,
   mergePaintItemsIntoBrushoutRows,
   saveProjectBrushouts,
+  stampBrushoutPrimerFields,
+  brushoutPrimerCaption,
+  isStandalonePrimerBrushout,
   type ApprovedBrushoutDraft,
   type ApprovedBrushoutRow,
 } from "../lib/approvedBrushouts";
 import { applyApprovedPaintVendor } from "../lib/fieldTrackerProject";
+import { loadPaintProducts, type PaintProduct } from "../lib/paintCatalog";
 import { PAINT_VENDOR_OPTIONS } from "../lib/googleSheetsConfig";
 import { normalizePaintVendor } from "../lib/paintTrackerSync";
 import { useProjectTradeData } from "../lib/useProjectTradeData";
@@ -32,6 +36,10 @@ function emptyRow(sortOrder: number): ApprovedBrushoutDraft {
     display_line: "",
     approved: false,
     sort_order: sortOrder,
+    catalog_item_id: null,
+    primer_catalog_id: null,
+    primer_name: null,
+    self_priming: null,
   };
 }
 
@@ -85,6 +93,7 @@ export function ApprovedBrushoutsPage() {
   const [savedApprovedCount, setSavedApprovedCount] = useState(0);
   const [savedSignature, setSavedSignature] = useState(() => lineSignature([]));
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [products, setProducts] = useState<PaintProduct[]>([]);
   const approveHeaderRef = useRef<HTMLInputElement>(null);
 
   const approverName = user?.email?.split("@")[0] ?? "PM";
@@ -115,6 +124,10 @@ export function ApprovedBrushoutsPage() {
         display_line: r.display_line,
         approved: r.approved,
         sort_order: r.sort_order,
+        catalog_item_id: r.catalog_item_id ?? null,
+        primer_catalog_id: r.primer_catalog_id ?? null,
+        primer_name: r.primer_name ?? null,
+        self_priming: r.self_priming ?? null,
       }));
       setRows(nextRows);
       setSavedSignature(lineSignature(nextRows));
@@ -122,7 +135,7 @@ export function ApprovedBrushoutsPage() {
       setPaintVendor(
         normalizePaintVendor(data[0]?.paint_vendor ?? paintSubmittal.paint_vendor ?? ""),
       );
-      setSavedApprovedCount(data.filter((r) => r.approved).length);
+      setSavedApprovedCount(data.filter((r) => r.approved && !isStandalonePrimerBrushout(r)).length);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -134,7 +147,24 @@ export function ApprovedBrushoutsPage() {
     void load();
   }, [load]);
 
-  const approvedCount = useMemo(() => rows.filter((r) => r.approved).length, [rows]);
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    void loadPaintProducts(uid, { includeHidden: true })
+      .then((rows) => {
+        if (!cancelled) setProducts(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setProducts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const finishRows = useMemo(() => rows.filter((row) => !isStandalonePrimerBrushout(row)), [rows]);
+  const approvedCount = useMemo(() => finishRows.filter((r) => r.approved).length, [finishRows]);
 
   async function onVendorChange(value: string) {
     const vendor = normalizePaintVendor(value);
@@ -156,11 +186,17 @@ export function ApprovedBrushoutsPage() {
       return;
     }
     setPaintVendor(vendor);
-    setRows((prev) => mergePaintItemsIntoBrushoutRows(prev, selectedItems, vendor));
+    const merged = mergePaintItemsIntoBrushoutRows(rows, selectedItems, vendor, products);
+    setRows(merged.rows);
     setImportOpen(false);
-    setStatus(
-      `Added ${selectedItems.length} line(s). Check Approved on the ones ready for field use, then save.`,
-    );
+    const addedLabel = merged.added === 1 ? "Added 1 line" : `Added ${merged.added} lines`;
+    const updatedLabel =
+      merged.updated > 0
+        ? ` Updated primer on ${merged.updated} existing line${merged.updated === 1 ? "" : "s"}.`
+        : "";
+    const follow =
+      merged.added > 0 ? " Check Approved on the ones ready for field use, then save." : "";
+    setStatus(`${addedLabel}.${updatedLabel}${follow}`);
     setError(null);
   }
 
@@ -197,14 +233,21 @@ export function ApprovedBrushoutsPage() {
     setError(null);
     setStatus(null);
     try {
-      const withVendor = approvedRows.map((r) => ({
-        ...r,
-        paint_vendor: paintVendor.trim() || r.paint_vendor,
-      }));
-      await saveProjectBrushouts(projectId, project.job_number, withVendor, approverName);
+      const stamped = stampBrushoutPrimerFields(
+        rows.map((r) => ({
+          ...r,
+          paint_vendor: paintVendor.trim() || r.paint_vendor,
+        })),
+        paintSubmittal.items,
+        products,
+      );
+      setRows(stamped);
+      await saveProjectBrushouts(projectId, project.job_number, stamped, approverName);
       const vendorErr = await applyApprovedPaintVendor(projectId, paintVendor.trim() || "PPG");
       if (vendorErr) throw new Error(vendorErr);
-      setStatus(`Saved. ${withVendor.length} approved line(s) available to Field Tools.`);
+      setStatus(
+        `Saved. ${stamped.filter((row) => row.approved && !isStandalonePrimerBrushout(row)).length} approved line(s) available to Field Tools.`,
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -214,7 +257,7 @@ export function ApprovedBrushoutsPage() {
   }
 
   const dirty = lineSignature(rows) !== savedSignature;
-  const allApproved = rows.length > 0 && approvedCount === rows.length;
+  const allApproved = finishRows.length > 0 && approvedCount === finishRows.length;
   const someApproved = approvedCount > 0 && !allApproved;
   const savedTime = lastSavedAt ? formatSavedTime(lastSavedAt) : "";
 
@@ -247,8 +290,8 @@ export function ApprovedBrushoutsPage() {
                 )}
               </span>
               {dirty
-                ? `Unsaved changes · ${approvedCount} of ${rows.length} approved · Field Tools still shows ${savedApprovedCount}`
-                : `Saved · ${approvedCount} of ${rows.length} approved · synced to Field Tools${savedTime ? ` · ${savedTime}` : ""}`}
+                ? `Unsaved changes · ${approvedCount} of ${finishRows.length} approved · Field Tools shows ${savedApprovedCount}`
+                : `Saved · ${approvedCount} of ${finishRows.length} approved · Field Tools shows ${savedApprovedCount}${savedTime ? ` · ${savedTime}` : ""}`}
             </p>
           ) : null}
         </div>
@@ -338,8 +381,11 @@ export function ApprovedBrushoutsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => (
-                  <tr key={row.id ?? `new-${index}`}>
+                {rows.map((row, index) => {
+                  const primerCaption = brushoutPrimerCaption(row, products);
+                  return (
+                  <Fragment key={row.id ?? `new-${index}`}>
+                  <tr>
                     <td className="brushout-col-approved">
                       <input
                         type="checkbox"
@@ -398,7 +444,14 @@ export function ApprovedBrushoutsPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  {primerCaption ? (
+                    <tr>
+                      <td className="brushout-primer-line">{primerCaption}</td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

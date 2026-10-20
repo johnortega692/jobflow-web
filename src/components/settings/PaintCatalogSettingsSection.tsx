@@ -183,8 +183,9 @@ export function PaintCatalogSettingsSection({
           {tab === "products" && (
             <section className="stack">
               <p className="muted small">
-                Hide primers and other materials you do not want in paint submittal dropdowns. Hidden
-                items still appear in Field Tools orders.
+                Hide products you do not want in the finish Product list. A hidden primer still
+                shows under Primer when a finish is paired to it. Hidden items still appear in Field
+                Tools orders.
                 {fromFieldTools ? " Manufacturer codes match color lookup (PPG, SW, BM, etc.)." : ""}
                 {hiddenCount ? ` ${hiddenCount} hidden from submittals.` : ""}
               </p>

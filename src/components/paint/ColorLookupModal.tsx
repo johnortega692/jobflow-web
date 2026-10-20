@@ -11,18 +11,16 @@ type Props = {
 export function ColorLookupModal({ query, matches, onSelect, onClose }: Props) {
   const listRef = useRef<HTMLUListElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
-  const [filter, setFilter] = useState(query);
+  const [filter, setFilter] = useState("");
   const [highlight, setHighlight] = useState(0);
 
   const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return matches;
-    return matches.filter(
-      (m) =>
-        m.display.toLowerCase().includes(q) ||
-        m.vendor.toLowerCase().includes(q) ||
-        abbreviateVendorKey(m.vendor).toLowerCase().includes(q),
-    );
+    const words = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return matches;
+    return matches.filter((m) => {
+      const hay = `${m.display} ${m.vendor} ${abbreviateVendorKey(m.vendor)}`.toLowerCase();
+      return words.every((word) => hay.includes(word));
+    });
   }, [filter, matches]);
 
   useEffect(() => {
@@ -101,6 +99,9 @@ export function ColorLookupModal({ query, matches, onSelect, onClose }: Props) {
                   onMouseEnter={() => setHighlight(i)}
                   onClick={() => onSelect(m.display, m.vendor, m.hex)}
                 >
+                  {m.hex ? (
+                    <span className="color-lookup-swatch" style={{ background: m.hex }} aria-hidden />
+                  ) : null}
                   <span className="color-lookup-item-label">{m.display}</span>
                   <span className="color-lookup-item-vendor">{abbreviateVendorKey(m.vendor)}</span>
                 </button>
@@ -111,8 +112,8 @@ export function ColorLookupModal({ query, matches, onSelect, onClose }: Props) {
           <p className="muted small color-lookup-empty">No results match your filter.</p>
         ) : (
           <p className="muted small color-lookup-empty">
-            No matches in <code>paint_colors.json</code> for that number or name. Try{" "}
-            <code>SW7004</code>, <code>7004</code>, or part of the color name.
+            No matches for that number or name. Try <code>SW7004</code>, <code>RAL 1000</code>,{" "}
+            <code>PMS 185 C</code>, or part of the color name.
           </p>
         )}
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { brushoutColorLine } from "../../lib/paintBrushouts";
 import {
+  brushoutImportDisplayLine,
   brushoutImportLineDetail,
   defaultApprovedBrushoutImportSelection,
   pickDefaultBrushoutImportSourceId,
@@ -48,7 +48,7 @@ export function ImportApprovedBrushoutsModal({
         return {
           index,
           item,
-          line: brushoutColorLine(item),
+          line: brushoutImportDisplayLine(item),
           status: detail.status,
           previousColor: detail.previousColor,
         };
@@ -106,8 +106,7 @@ export function ImportApprovedBrushoutsModal({
       >
         <h3 id="import-approved-brushouts-title">Import from paint submittal</h3>
         <p className="muted small">
-          Choose a saved submittal package, then pick which colors to add. The paint tab may only show the latest
-          revision — use history for earlier batches (e.g. Original with 5 colors).
+          Choose a saved submittal package, then pick which finishes to add. The primer stays on that finish line.
         </p>
 
         {sources.length > 1 ? (
@@ -135,10 +134,10 @@ export function ImportApprovedBrushoutsModal({
         {allAlreadyAdded ? (
           <div className="brushouts-import-empty">
             <p className="brushouts-import-empty-title">
-              All {colorRows.length} colors are already on the list
+              All {colorRows.length} finishes are already on the list
             </p>
             <p className="muted small">
-              Pick an earlier revision above to pull colors that were dropped or changed.
+              Import again to refresh primer fields on those lines. No new lines are added.
             </p>
           </div>
         ) : (
@@ -203,9 +202,19 @@ export function ImportApprovedBrushoutsModal({
 
         <div className="row-gap wrap">
           {allAlreadyAdded ? (
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={onClose}>
-              Close
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy || colorRows.length === 0}
+                onClick={() => onConfirm(colorRows.map((r) => r.item))}
+              >
+                {busy ? "Updating…" : "Update primers"}
+              </button>
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
+                Close
+              </button>
+            </>
           ) : (
             <>
               <button

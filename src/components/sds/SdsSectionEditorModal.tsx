@@ -4,7 +4,9 @@ import { requiredAttachmentsForPacketType } from "../../lib/sdsPacketRequirement
 import { parseSdsFilename, removeSdsPdf, uploadSdsPdf } from "../../lib/sdsFileStorage";
 import {
   SDS_ATTACHMENT_KINDS,
+  intendedUseHasSelfPriming,
   sanitizeFinishType,
+  setSelfPrimingNote,
   type SdsAttachmentKind,
 } from "../../lib/sdsSectionModel";
 import type { SdsSection } from "../../types/tradeDocuments";
@@ -15,6 +17,7 @@ type Props = {
   section: SdsSection;
   projectId: string;
   packetType: SdsPacketType;
+  showSelfPriming?: boolean;
   onSave: (section: SdsSection) => void;
   onClose: () => void;
 };
@@ -24,6 +27,7 @@ export function SdsSectionEditorModal({
   section: initial,
   projectId,
   packetType,
+  showSelfPriming = false,
   onSave,
   onClose,
 }: Props) {
@@ -170,6 +174,18 @@ export function SdsSectionEditorModal({
                 placeholder="Optional — TDS/SDS attachments are listed separately"
               />
             </label>
+            {showSelfPriming ? (
+              <label className="check sds-self-prime">
+                <input
+                  type="checkbox"
+                  checked={intendedUseHasSelfPriming(section.intended_use)}
+                  onChange={(event) =>
+                    patch({ intended_use: setSelfPrimingNote(section.intended_use, event.target.checked) })
+                  }
+                />
+                Self-priming
+              </label>
+            ) : null}
           </div>
 
           <div className="stack sds-attachments-block">

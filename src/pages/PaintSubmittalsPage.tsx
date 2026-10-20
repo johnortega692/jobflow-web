@@ -13,9 +13,12 @@ import { PaintImageImport } from "../components/PaintImageImport";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import {
+  loadFieldToolsPaintCatalog,
   loadPaintColors,
   loadPaintProducts,
   loadPaintSheens,
+  omitCatalogPrimerItems,
+  paintItemPrimerView,
   type PaintColorsDb,
   type PaintProduct,
 } from "../lib/paintCatalog";
@@ -27,6 +30,7 @@ import {
   paintRowAutoLabel,
 } from "../lib/paintItemLabels";
 import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
+import { syncApprovedBrushoutPrimers } from "../lib/approvedBrushouts";
 import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/paintImageImport";
 import { gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
@@ -90,6 +94,7 @@ export function PaintSubmittalsPage() {
   const [draft, setDraft] = useState<PaintSubmittalData>(defaultPaintSubmittal());
   const [history, setHistory] = useState<SubmittalHistoryEntry[]>([]);
   const [products, setProducts] = useState<PaintProduct[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<PaintProduct[]>([]);
   const [sheens, setSheens] = useState<string[]>([]);
   const [colors, setColors] = useState<PaintColorsDb | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -118,6 +123,7 @@ export function PaintSubmittalsPage() {
 
   const persist = useCallback(
     async (nextDraft: PaintSubmittalData, nextHistory = history) => {
+      const previousItems = normalizePaintSubmittal(tradeData.paint_submittal).items;
       const snapshot = await paintVendorSnapshot(projectId);
       const paint_vendor = snapshot?.paint_vendor ?? nextDraft.paint_vendor;
       const ok = await save({
@@ -132,12 +138,22 @@ export function PaintSubmittalsPage() {
         setHistory(nextHistory);
         syncBaseline({ draft: nextSubmittal, history: nextHistory });
         setError(null);
+        try {
+          await syncApprovedBrushoutPrimers({
+            projectId,
+            previous: previousItems,
+            next: nextDraft.items,
+            products: catalogProducts,
+          });
+        } catch {
+          /* Paint saved. The next save retries the brush-out primer update. */
+        }
         const updated = await reloadProject(projectId);
         if (updated) setProject(updated);
       }
       return ok;
     },
-    [history, tradeData, save, setError, syncBaseline, projectId, setProject],
+    [history, tradeData, save, setError, syncBaseline, projectId, setProject, catalogProducts],
   );
 
   const onDiscardUnsaved = useCallback(() => {
@@ -213,16 +229,19 @@ export function PaintSubmittalsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const loadCatalog = async () => {
       try {
         const uid = user?.id ?? null;
-        const [p, s, c] = await Promise.all([
+        await loadFieldToolsPaintCatalog(true);
+        const [visible, all, s, c] = await Promise.all([
           loadPaintProducts(uid),
+          loadPaintProducts(uid, { includeHidden: true }),
           loadPaintSheens(uid),
           loadPaintColors(),
         ]);
         if (!cancelled) {
-          setProducts(p);
+          setProducts(visible);
+          setCatalogProducts(all);
           setSheens(s);
           setColors(c);
         }
@@ -231,9 +250,15 @@ export function PaintSubmittalsPage() {
       } finally {
         if (!cancelled) setCatalogLoading(false);
       }
-    })();
+    };
+    void loadCatalog();
+    const onFocus = () => {
+      void loadCatalog();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", onFocus);
     };
   }, [setError, user?.id]);
 
@@ -264,7 +289,18 @@ export function PaintSubmittalsPage() {
   const secondaryLabel = paintSpecSectionShortLabel(draft.spec_sections?.[1] ?? "");
   const secondarySection = draft.spec_sections?.[1] ?? "";
   const leadSection = draft.spec_sections?.[0] ?? draft.spec_section;
-  const itemsReadiness = useMemo(() => paintItemsReadiness(draft.items), [draft.items]);
+  const itemsReadiness = useMemo(
+    () => paintItemsReadiness(omitCatalogPrimerItems(draft.items, catalogProducts)),
+    [draft.items, catalogProducts],
+  );
+  const primerStatus = useMemo(() => {
+    const missing = draft.items.filter((item) => paintItemPrimerView(item, catalogProducts).missing).length;
+    if (missing === 0) return { tone: "ok" as const, text: "Every item has a primer" };
+    return {
+      tone: "bad" as const,
+      text: `${missing} ${missing === 1 ? "item" : "items"} missing a primer`,
+    };
+  }, [draft.items, catalogProducts]);
   const productPacket = useMemo(() => normalizeSdsPacket(tradeData.sds_packet), [tradeData.sds_packet]);
   const paintLinkGaps = useMemo(() => {
     const lead = leadSpecSection(draft);
@@ -452,6 +488,7 @@ export function PaintSubmittalsPage() {
             index={index}
             total={draft.items.length}
             products={products}
+            catalogProducts={catalogProducts}
             sheenOptions={sheens}
             colors={colors}
             showPreviousColor={showPreviousColor}
@@ -919,6 +956,7 @@ export function PaintSubmittalsPage() {
         <div className="row-between paint-items-toolbar">
           <div className="paint-items-title">
             <h3>Paint items ({draft.items.length})</h3>
+            <p className={`paint-items-status paint-items-status--${primerStatus.tone}`}>{primerStatus.text}</p>
             <p
               className={`paint-items-status paint-items-status--${itemsStatus.tone}`}
               title={"title" in itemsStatus ? itemsStatus.title : undefined}
@@ -1237,7 +1275,7 @@ export function PaintSubmittalsPage() {
         <EmailVendorModal
           jobNumber={project.job_number}
           jobName={project.job_name}
-          items={(emailDraft ?? draft).items}
+          items={omitCatalogPrimerItems((emailDraft ?? draft).items, catalogProducts)}
           submittalType={(emailDraft ?? draft).submittal_type}
           vendors={userSettings.vendors}
           defaultQty={userSettings.default_brushout_qty}
@@ -1252,7 +1290,7 @@ export function PaintSubmittalsPage() {
           foremanName={project.jobInfo?.icbi_foreman}
           foremanEmail={project.jobInfo?.icbi_foreman_email}
           composeEmailMethod={userSettings.compose_email_method}
-          previouslyOrderedItems={previouslyOrderedItems}
+          previouslyOrderedItems={omitCatalogPrimerItems(previouslyOrderedItems, catalogProducts)}
           includeItemFloor={draft.show_floor === true}
           onClose={() => {
             setEmailOpen(false);

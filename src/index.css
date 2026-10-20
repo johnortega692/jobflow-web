@@ -5159,6 +5159,11 @@ th {
   line-height: 1.35;
 }
 
+.sds-self-prime {
+  width: fit-content;
+  font-size: 0.82rem;
+}
+
 .sds-section-colors {
   display: flex;
   flex-wrap: wrap;
@@ -8416,6 +8421,11 @@ tr.budget-hours-pdf-hidden td {
   background: color-mix(in srgb, var(--ok) 16%, transparent);
 }
 
+.paint-items-status--bad {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
 .paint-items-status svg {
   flex-shrink: 0;
 }
@@ -9051,6 +9061,15 @@ tr.budget-hours-pdf-hidden td {
   flex: 0 0 auto;
 }
 
+.brushout-primer-line {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+  padding: 0 12px 10px 46px;
+  min-height: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 .brushout-col-approved,
 .brushout-col-remove {
   justify-content: center;
@@ -9413,9 +9432,83 @@ tr.budget-hours-pdf-hidden td {
 }
 
 .paint-col-product {
-  flex: 0 0 280px;
-  width: 280px;
+  flex: 1 1 360px;
+  width: auto;
   min-width: 280px;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.paint-primer-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding-left: 12px;
+  position: relative;
+  min-width: 0;
+}
+
+.paint-primer-line::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: -8px;
+  width: 8px;
+  height: 16px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+  pointer-events: none;
+}
+
+.paint-primer-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.paint-col .paint-primer-select {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  min-height: 26px;
+  max-height: 26px;
+  font-size: 12px;
+  padding-right: 1.4rem;
+}
+
+.paint-col .paint-primer-select--override {
+  border-color: var(--warn);
+}
+
+.paint-primer-tag {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.paint-primer-tag--paired {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.paint-primer-tag--override {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+
+.paint-primer-tag--missing {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
 
 .paint-col-sheen {
@@ -9733,6 +9826,14 @@ tr.budget-hours-pdf-hidden td {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.color-lookup-swatch {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .color-lookup-item-label {
@@ -16459,6 +16560,7 @@ input.readonly {
     flex: 1 1 100%;
     width: 100%;
     min-width: 0;
+    max-width: none;
   }
 
   .paint-items-header .paint-col-head:not(.paint-col-label):not(.paint-col-head-actions) {

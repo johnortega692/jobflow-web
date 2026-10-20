@@ -53,7 +53,15 @@ export type PaintItem = {
   revision_change?: PaintRevisionChange;
   /** Defaults to primary. Used when package has an optional 2nd spec. */
   spec_scope?: PaintItemSpecScope;
+  /**
+   * Primer chosen on this finish. Null follows the product's paired primer.
+   * "none" is an explicit self-priming override. A uuid overrides to that primer.
+   */
+  primer_override_id?: string | null;
 };
+
+/** Stored primer_override_id when the finish is explicitly self-priming. */
+export const PAINT_PRIMER_OVERRIDE_NONE = "none";
 
 /** Order-form unit of measure (vendor-facing). */
 export type MaterialOrderUnit =
@@ -531,6 +539,91 @@ import type { SdsSectionAttachments, SdsSectionCategory } from "../lib/sdsSectio
 
 export type { SdsSectionCategory } from "../lib/sdsSectionModel.js";
 
+export type PaintPackageScheduleRow = {
+  labels: string[];
+  finish: string;
+  manufacturer: string;
+  sheen: string;
+  /** Catalog primer id. Null when the finish is self-priming or has no primer. */
+  primer_id: string | null;
+  primer_name: string;
+  self_priming: boolean;
+};
+
+export type PaintPackageScheduleProduct = {
+  product: string;
+  use: string;
+  tds: boolean;
+  sds: boolean;
+  voc: string;
+  manufacturer: string;
+};
+
+/** System Schedule rows saved with an sds_packet_history snapshot. */
+export type PaintPackageScheduleSnapshot = {
+  spec_section: string;
+  rows: PaintPackageScheduleRow[];
+  /** Package section ids in primer-then-finish product-data order. */
+  section_order: string[];
+  products: PaintPackageScheduleProduct[];
+};
+
+function normalizeScheduleText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function normalizePaintPackageSchedule(raw: unknown): PaintPackageScheduleSnapshot | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const record = raw as Record<string, unknown>;
+  if (!Array.isArray(record.rows)) return undefined;
+  const rows: PaintPackageScheduleRow[] = [];
+  for (const entry of record.rows) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const finish = normalizeScheduleText(row.finish);
+    if (!finish) continue;
+    const labels = Array.isArray(row.labels)
+      ? row.labels.map(normalizeScheduleText).filter(Boolean)
+      : [];
+    const primerId = normalizeScheduleText(row.primer_id);
+    rows.push({
+      labels,
+      finish,
+      manufacturer: normalizeScheduleText(row.manufacturer),
+      sheen: normalizeScheduleText(row.sheen),
+      primer_id: primerId || null,
+      primer_name: normalizeScheduleText(row.primer_name),
+      self_priming: row.self_priming === true,
+    });
+  }
+  const section_order = Array.isArray(record.section_order)
+    ? record.section_order.map(normalizeScheduleText).filter(Boolean)
+    : [];
+  const products: PaintPackageScheduleProduct[] = [];
+  if (Array.isArray(record.products)) {
+    for (const entry of record.products) {
+      if (!entry || typeof entry !== "object") continue;
+      const product = entry as Record<string, unknown>;
+      const name = normalizeScheduleText(product.product);
+      if (!name) continue;
+      products.push({
+        product: name,
+        use: normalizeScheduleText(product.use),
+        tds: product.tds === true,
+        sds: product.sds === true,
+        voc: normalizeScheduleText(product.voc),
+        manufacturer: normalizeScheduleText(product.manufacturer),
+      });
+    }
+  }
+  return {
+    spec_section: normalizeScheduleText(record.spec_section),
+    rows,
+    section_order,
+    products,
+  };
+}
+
 export type SdsSection = {
   id: string;
   category: SdsSectionCategory;
@@ -569,6 +662,11 @@ export type SdsPacketData = {
   /** Which contract identity appears on the package cover and PDF filename */
   contract: TransmittalContract;
   sections: SdsSection[];
+  /**
+   * Resolved System Schedule frozen when this package was saved to history.
+   * Absent on a live draft and on older snapshots; those still compute from current paint items.
+   */
+  paint_schedule?: PaintPackageScheduleSnapshot;
 };
 
 export function newSdsSectionId(): string {
@@ -637,6 +735,7 @@ export function normalizeSdsPacket(raw: Partial<SdsPacketData> | undefined): Sds
     add_to_transmittal: raw.add_to_transmittal ?? base.add_to_transmittal,
     contract: normalizeTransmittalContract(raw.contract),
     sections: sortSdsSectionsBySpec(sections),
+    paint_schedule: normalizePaintPackageSchedule(raw.paint_schedule),
   };
 }
 
@@ -845,6 +944,12 @@ export function frpSubjectForPackage(packageType: SubmittalPackageCategory): str
   return "FRP Product Data";
 }
 
+function normalizePrimerOverrideId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return value || null;
+}
+
 export function emptyPaintItem(): PaintItem {
   return {
     label: "",
@@ -856,6 +961,7 @@ export function emptyPaintItem(): PaintItem {
     sheen: "",
     previous_color: "",
     spec_scope: "primary",
+    primer_override_id: null,
   };
 }
 
@@ -1273,6 +1379,7 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     color_hex: typeof i.color_hex === "string" ? i.color_hex.trim() : "",
     revision_change: parsePaintRevisionChange(i.revision_change),
     spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
+    primer_override_id: normalizePrimerOverrideId(i.primer_override_id),
   }));
   const auto_label =
     typeof raw.auto_label === "boolean" ? raw.auto_label : paintItemsSuggestAutoLabel(items);

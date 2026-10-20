@@ -1,9 +1,20 @@
 /** Paint product / sheen / color catalogs. Products and sheens come from Field Tools. */
 
+import { PAINT_PRIMER_OVERRIDE_NONE } from "../types/tradeDocuments.js";
 import { loadRawUserSettings, patchOrgSettings } from "./budgetLibrary.js";
 import { supabase } from "./supabase.js";
 
-export type PaintProduct = { product: string; manufacturer: string; sheens?: string[] };
+export type PaintProduct = {
+  product: string;
+  manufacturer: string;
+  sheens?: string[];
+  /** Field Tools catalog row. Vendor copies of one product share this id. */
+  id?: string;
+  is_primer?: boolean;
+  paired_primer_id?: string | null;
+  /** VOC in g/L when the catalog product has one. */
+  voc?: string;
+};
 
 export const PAINT_PRODUCTS_KEY = "paint_products";
 export const PAINT_SHEENS_KEY = "paint_sheens";
@@ -86,10 +97,14 @@ export type FieldToolsPaintCatalog = {
 };
 
 type FieldToolsPaintProductRow = {
+  id?: unknown;
   product?: unknown;
   category?: unknown;
   vendor_names?: unknown;
   sheens?: unknown;
+  is_primer?: unknown;
+  paired_primer_id?: unknown;
+  voc?: unknown;
 };
 
 function manufacturerFromFieldToolsVendor(raw: string): string {
@@ -115,13 +130,28 @@ function productsFromFieldToolsRows(rows: FieldToolsPaintProductRow[]): PaintPro
     const sheens = stringList(row.sheens);
     const vendors = stringList(row.vendor_names);
     const category = typeof row.category === "string" ? row.category.trim() : "";
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    const paired =
+      typeof row.paired_primer_id === "string" && row.paired_primer_id.trim()
+        ? row.paired_primer_id.trim()
+        : null;
+    const isPrimer = row.is_primer === true;
+    const voc = typeof row.voc === "string" ? row.voc.trim() : "";
     const vendorList = vendors.length ? vendors : category ? [category] : [""];
     for (const vendor of vendorList) {
       const manufacturer = manufacturerFromFieldToolsVendor(vendor);
       const key = `${product.toLowerCase()}::${manufacturer.toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ product, manufacturer, sheens });
+      out.push({
+        product,
+        manufacturer,
+        sheens,
+        ...(id ? { id } : {}),
+        is_primer: isPrimer,
+        paired_primer_id: paired,
+        ...(voc ? { voc } : {}),
+      });
     }
   }
   return out;
@@ -194,9 +224,12 @@ export async function loadFieldToolsPaintCatalog(force = false): Promise<FieldTo
   }
 }
 
-export async function loadPaintProducts(userId?: string | null): Promise<PaintProduct[]> {
+export async function loadPaintProducts(
+  userId?: string | null,
+  options?: { includeHidden?: boolean },
+): Promise<PaintProduct[]> {
   const catalog = await loadFieldToolsPaintCatalog();
-  if (!userId) return catalog.products;
+  if (!userId || options?.includeHidden) return catalog.products;
   const hidden = await loadHiddenPaintProductNames(userId);
   return excludeHiddenPaintProducts(catalog.products, hidden);
 }
@@ -308,7 +341,11 @@ export function sheensForPaintProduct(
 export async function loadPaintColors(): Promise<PaintColorsDb> {
   if (colorsCache) return colorsCache;
   if (!colorsLoadPromise) {
-    colorsLoadPromise = fetchJson<PaintColorsDb>("/json/paint_colors.json").then((data) => {
+    colorsLoadPromise = Promise.all([
+      fetchJson<PaintColorsDb>("/json/paint_colors.json"),
+      fetchJson<PaintColorsDb>("/json/pantone_ral_colors.json"),
+    ]).then(([paint, standards]) => {
+      const data = { ...paint, ...standards };
       colorsCache = data;
       return data;
     });
@@ -534,12 +571,18 @@ export function parseColorLookupQuery(raw: string): {
 
 /** Pull color codes out of a phrase, including when a name sits in front of the number. */
 function extractColorCodes(raw: string): { codes: string[]; name: string } {
+  const standardCode =
+    /\bPMS\s*\d{1,4}\s*C\b|\bRAL\s*\d{3,4}(?:-[A-Z0-9]{1,4})?\b|\bH\d{3}L\d{2}C\d{2}\b/gi;
   const vendorCode =
     /\b(SW|BM|DE|PPG|BEHR|VISTA)\s*[-.]?\s*([A-Z0-9]*\d[A-Z0-9]*(?:-\d+)?)\b/gi;
   const otherCode =
     /\b\d{2,4}[A-Z]-\d{1,3}\b|\b\d{3,5}-\d{1,3}\b|\b[A-Z]{1,3}-\d{1,4}\b|\b[A-Z]{2,4}\d{2,5}\b|\b\d{3,5}\b/gi;
   const codes: string[] = [];
-  let rest = raw.replace(vendorCode, (_match, prefix: string, body: string) => {
+  let rest = raw.replace(standardCode, (match) => {
+    codes.push(match.replace(/\s+/g, " ").trim());
+    return " ";
+  });
+  rest = rest.replace(vendorCode, (_match, prefix: string, body: string) => {
     codes.push(`${prefix}${body}`.replace(/\s+/g, ""));
     return " ";
   });
@@ -563,13 +606,24 @@ function nameCovers(name: string, phrase: string): boolean {
   return words.length >= 2 && words.every((word) => name.includes(word));
 }
 
+function compactColorCode(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function colorEntryMatches(entry: PaintColorEntry, term: string, full: string): boolean {
   const num = (entry.number || "").trim().toLowerCase();
   const name = (entry.name || "").trim().toLowerCase();
+  const numCompact = compactColorCode(num);
+  const termCompact = compactColorCode(term);
+  const fullCompact = compactColorCode(full);
   if (!num) return false;
-  if (full === num || full === name) return true;
-  if (term && (num.includes(term) || nameCovers(name, term))) return true;
-  if (full && (num.includes(full) || nameCovers(name, full))) return true;
+  if (full === num || full === name || (fullCompact.length >= 3 && numCompact === fullCompact)) return true;
+  if (term && (num.includes(term) || (termCompact.length >= 3 && numCompact.includes(termCompact)) || nameCovers(name, term))) {
+    return true;
+  }
+  if (full && (num.includes(full) || (fullCompact.length >= 3 && numCompact.includes(fullCompact)) || nameCovers(name, full))) {
+    return true;
+  }
   return false;
 }
 
@@ -674,7 +728,224 @@ export function shouldSkipColorLookup(raw: string): boolean {
   return false;
 }
 
+/** Pantone and RAL are color systems. They do not replace the paint manufacturer. */
+export function isStandardColorSystem(vendor: string): boolean {
+  return vendor === "Pantone" || vendor === "RAL";
+}
+
 export function abbreviateVendorKey(vendor: string): string {
+  if (isStandardColorSystem(vendor)) return vendor;
   return PREFIX_MAP[vendor] ?? vendor.slice(0, 2).toUpperCase();
+}
+
+export type PaintPrimerOption = { id: string; name: string };
+
+/** Finish row fields the primer select needs. The paired primer is never stored here. */
+export type PaintPrimerItemRef = {
+  product: string;
+  manufacturer: string;
+  primer_override_id?: string | null;
+  color?: string;
+  sheen?: string;
+  floor?: string;
+  previous_color?: string;
+};
+
+export type PaintPrimerTag = "paired" | "override" | "missing";
+
+export type PaintPrimerView = {
+  /** Primer products don't take a primer of their own. */
+  show: boolean;
+  selectValue: string;
+  firstLabel: string;
+  primers: PaintPrimerOption[];
+  tag: PaintPrimerTag | null;
+  /** Counts toward the header when this finish has no primer and is not self-priming. */
+  missing: boolean;
+};
+
+export function paintPrimers(products: PaintProduct[]): PaintPrimerOption[] {
+  const byId = new Map<string, string>();
+  for (const product of products) {
+    const id = product.id?.trim();
+    if (!product.is_primer || !id || byId.has(id)) continue;
+    byId.set(id, product.product.trim());
+  }
+  return [...byId.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+export function findCatalogPaintProduct(
+  products: PaintProduct[],
+  productName: string,
+  manufacturer = "",
+): PaintProduct | undefined {
+  const name = productName.trim().toLowerCase();
+  if (!name) return undefined;
+  const matches = products.filter((product) => product.product.trim().toLowerCase() === name);
+  if (!matches.length) return undefined;
+  const mfr = manufacturer.trim().toLowerCase();
+  if (mfr) {
+    const exact = matches.find((product) => product.manufacturer.trim().toLowerCase() === mfr);
+    if (exact) return exact;
+  }
+  return matches[0];
+}
+
+export function paintItemIsCatalogPrimer(products: PaintProduct[], item: { product: string; manufacturer: string }): boolean {
+  return Boolean(findCatalogPaintProduct(products, item.product, item.manufacturer)?.is_primer);
+}
+
+export function omitCatalogPrimerItems<T extends { product: string; manufacturer: string }>(
+  items: T[],
+  products: PaintProduct[],
+): T[] {
+  if (!products.length) return items;
+  return items.filter((item) => !paintItemIsCatalogPrimer(products, item));
+}
+
+function finishHasContent(item: PaintPrimerItemRef): boolean {
+  return Boolean(
+    item.product.trim() ||
+      item.color?.trim() ||
+      item.sheen?.trim() ||
+      item.floor?.trim() ||
+      item.previous_color?.trim(),
+  );
+}
+
+export type EffectivePaintPrimer = {
+  isPrimerProduct: boolean;
+  /** Set when this row stores an override (a primer id or explicit self-priming). */
+  overridden: boolean;
+  primerId: string | null;
+  primerName: string;
+  selfPriming: boolean;
+  missing: boolean;
+};
+
+/**
+ * Effective primer is the override, else the catalog pair, else none. The pair is not stored on the item.
+ * Same rule as public.resolve_job_paint_primer. Brush-out rows store that result;
+ * this stays in the app so the Paint tab does not call the SQL function.
+ */
+export function effectivePaintPrimer(item: PaintPrimerItemRef, products: PaintProduct[]): EffectivePaintPrimer {
+  const raw = (item.primer_override_id ?? "").trim();
+  const explicitNone = raw === PAINT_PRIMER_OVERRIDE_NONE;
+  if (!products.length) {
+    return {
+      isPrimerProduct: false,
+      overridden: explicitNone,
+      primerId: null,
+      primerName: "",
+      selfPriming: explicitNone,
+      missing: false,
+    };
+  }
+  const catalog = findCatalogPaintProduct(products, item.product, item.manufacturer);
+  const primers = paintPrimers(products);
+  const primerIds = new Set(primers.map((primer) => primer.id));
+  if (catalog?.is_primer) {
+    return {
+      isPrimerProduct: true,
+      overridden: false,
+      primerId: null,
+      primerName: "",
+      selfPriming: false,
+      missing: false,
+    };
+  }
+  const pairedId =
+    catalog?.paired_primer_id && primerIds.has(catalog.paired_primer_id) ? catalog.paired_primer_id : null;
+  const overrideId = raw && !explicitNone && primerIds.has(raw) ? raw : null;
+  const catalogSelfPriming = Boolean(catalog) && !catalog?.paired_primer_id;
+  if (explicitNone) {
+    return {
+      isPrimerProduct: false,
+      overridden: true,
+      primerId: null,
+      primerName: "",
+      selfPriming: true,
+      missing: false,
+    };
+  }
+  if (overrideId) {
+    return {
+      isPrimerProduct: false,
+      overridden: true,
+      primerId: overrideId,
+      primerName: primers.find((primer) => primer.id === overrideId)?.name ?? "",
+      selfPriming: false,
+      missing: false,
+    };
+  }
+  if (pairedId) {
+    return {
+      isPrimerProduct: false,
+      overridden: false,
+      primerId: pairedId,
+      primerName: primers.find((primer) => primer.id === pairedId)?.name ?? "",
+      selfPriming: false,
+      missing: false,
+    };
+  }
+  const missing = !catalogSelfPriming && finishHasContent(item);
+  return {
+    isPrimerProduct: false,
+    overridden: false,
+    primerId: null,
+    primerName: "",
+    selfPriming: catalogSelfPriming,
+    missing,
+  };
+}
+
+/** Effective primer is the override, else the catalog pair, else none. */
+export function paintItemPrimerView(item: PaintPrimerItemRef, products: PaintProduct[]): PaintPrimerView {
+  const primers = paintPrimers(products);
+  const effect = effectivePaintPrimer(item, products);
+  if (effect.isPrimerProduct) {
+    return { show: false, selectValue: "", firstLabel: "", primers, tag: null, missing: false };
+  }
+  const catalog = products.length
+    ? findCatalogPaintProduct(products, item.product, item.manufacturer)
+    : undefined;
+  const pairedId =
+    catalog?.paired_primer_id && primers.some((primer) => primer.id === catalog.paired_primer_id)
+      ? catalog.paired_primer_id
+      : null;
+  const pairedName = pairedId ? (primers.find((primer) => primer.id === pairedId)?.name ?? "") : "";
+  const tag: PaintPrimerTag | null = effect.overridden ? "override" : effect.primerId ? "paired" : effect.missing ? "missing" : null;
+  const selectValue = effect.overridden
+    ? effect.selfPriming
+      ? PAINT_PRIMER_OVERRIDE_NONE
+      : (effect.primerId ?? "")
+    : "";
+  return {
+    show: true,
+    selectValue,
+    firstLabel: pairedName ? `${pairedName} (paired)` : "No paired primer",
+    primers,
+    tag,
+    missing: effect.missing,
+  };
+}
+
+/** Drop an override the new finish can't keep: unknown primer, same as the new pair, or the product is itself a primer. */
+export function primerOverrideAfterProductChange(
+  product: string,
+  manufacturer: string,
+  current: string | null | undefined,
+  products: PaintProduct[],
+): string | null {
+  const raw = (current ?? "").trim();
+  if (!raw) return null;
+  const catalog = findCatalogPaintProduct(products, product, manufacturer);
+  if (catalog?.is_primer) return null;
+  if (raw === PAINT_PRIMER_OVERRIDE_NONE) return PAINT_PRIMER_OVERRIDE_NONE;
+  if (!paintPrimers(products).some((primer) => primer.id === raw)) return null;
+  if (catalog?.paired_primer_id && raw === catalog.paired_primer_id) return null;
+  return raw;
 }
 

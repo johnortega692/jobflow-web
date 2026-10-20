@@ -65,6 +65,60 @@ export function samePaintPackageProduct(
   return a === b;
 }
 
+/** Paint lines whose product and sheen match a section in this package. */
+export function paintItemsInPackage(items: PaintItem[], sections: SdsSection[]): PaintItem[] {
+  return items.filter((item) => itemMatchesPackageSection(item, sections));
+}
+
+function itemMatchesPackageSection(item: PaintItem, sections: SdsSection[]): boolean {
+  if (!item.product.trim() && !item.manufacturer.trim()) return false;
+  return sections.some((section) =>
+    samePaintPackageProduct(
+      { manufacturer: item.manufacturer, product: item.product, sheen: item.sheen },
+      { manufacturer: section.manufacturer, product: section.product, sheen: section.finish_type },
+    ),
+  );
+}
+
+/** Labels written into a package section when the color schedule is imported. */
+export function labelsAssignedOnSections(sections: SdsSection[], items: PaintItem[]): Set<string> {
+  const known = new Set(items.map((item) => item.label.trim().toLowerCase()).filter(Boolean));
+  const found = new Set<string>();
+  for (const section of sections) {
+    for (const part of section.color.split(";")) {
+      const head = part.split(/\s+[—–-]\s+/)[0] ?? "";
+      const token = head.trim().split(/\s+/)[0]?.trim().toLowerCase() ?? "";
+      if (token && known.has(token)) found.add(token);
+    }
+  }
+  return found;
+}
+
+/**
+ * Lines listed on this package's sections stay with this package.
+ * A line listed only on another package stays there.
+ * A line listed on no package falls back to product and sheen.
+ */
+export function paintItemsForPackageSchedule(
+  items: PaintItem[],
+  packetSections: SdsSection[],
+  otherPackageSections: SdsSection[][] = [],
+): PaintItem[] {
+  const here = labelsAssignedOnSections(packetSections, items);
+  const elsewhere = new Set<string>();
+  for (const sections of otherPackageSections) {
+    for (const label of labelsAssignedOnSections(sections, items)) {
+      if (!here.has(label)) elsewhere.add(label);
+    }
+  }
+  const known = new Set([...here, ...elsewhere]);
+  return items.filter((item) => {
+    const label = item.label.trim().toLowerCase();
+    if (label && known.has(label)) return here.has(label);
+    return itemMatchesPackageSection(item, packetSections);
+  });
+}
+
 export function paintProductKey(manufacturer: string, product: string, sheen: string): string {
   return [manufacturerKey(manufacturer), norm(product), norm(sheen)].join("|");
 }

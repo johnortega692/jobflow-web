@@ -25,6 +25,7 @@ import {
   loadPaintColors,
   loadPaintProducts,
   loadPaintSheens,
+  omitCatalogPrimerItems,
   type PaintColorsDb,
   type PaintProduct,
 } from "../lib/paintCatalog";
@@ -71,6 +72,7 @@ export function BrushOutRequestPage() {
     null,
   );
   const [products, setProducts] = useState<PaintProduct[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<PaintProduct[]>([]);
   const [sheens, setSheens] = useState<string[]>([]);
   const [colors, setColors] = useState<PaintColorsDb | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -101,13 +103,15 @@ export function BrushOutRequestPage() {
     void (async () => {
       try {
         const uid = user?.id ?? null;
-        const [p, s, c] = await Promise.all([
+        const [visible, all, s, c] = await Promise.all([
           loadPaintProducts(uid),
+          loadPaintProducts(uid, { includeHidden: true }),
           loadPaintSheens(uid),
           loadPaintColors(),
         ]);
         if (!cancelled) {
-          setProducts(p);
+          setProducts(visible);
+          setCatalogProducts(all);
           setSheens(s);
           setColors(c);
         }
@@ -260,7 +264,10 @@ export function BrushOutRequestPage() {
     setLinkModal(true);
   }
 
-  const emailItems = draft.items.filter((i) => i.product.trim() || i.color.trim());
+  const emailItems = omitCatalogPrimerItems(
+    draft.items.filter((i) => i.product.trim() || i.color.trim()),
+    catalogProducts,
+  );
   const vendorOptions = userSettings?.vendors ?? [];
 
   return (
@@ -401,6 +408,7 @@ export function BrushOutRequestPage() {
               index={index}
               total={draft.items.length}
               products={products}
+              catalogProducts={catalogProducts}
               sheenOptions={sheens}
               colors={colors}
               showPreviousColor={false}

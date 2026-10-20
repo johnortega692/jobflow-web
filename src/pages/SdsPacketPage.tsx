@@ -5,6 +5,7 @@ import { PackageHistoryModal } from "../components/sds/PackageHistoryModal";
 import { SdsSectionEditorModal } from "../components/sds/SdsSectionEditorModal";
 import { SdsSectionListRow } from "../components/sds/SdsSectionListRow";
 import { DateInput } from "../components/DateInput";
+import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
 import { TradeContractTabs } from "../components/jobinfo/TradeContractTabs";
 import {
@@ -14,6 +15,8 @@ import {
   transmittalPrintInfo,
   type TransmittalContract,
 } from "../lib/jobInfo";
+import { loadPaintProducts, type PaintProduct } from "../lib/paintCatalog";
+import { countPaintItemsMissingPrimer, paintScheduleSpecLabel, buildPaintSystemSchedule, snapshotFromPaintSchedule } from "../lib/paintSystemSchedule";
 import { buildSdsPacketPdf, downloadPdfBytes, type BuildProgress } from "../lib/sdsPacketBuild";
 import { evaluatePacketReadiness } from "../lib/sdsPacketRequirements";
 import {
@@ -21,6 +24,7 @@ import {
   colorScheduleCoverValue,
   groupPaintItemsForPackage,
   packageScheduleWarning,
+  paintItemsForPackageSchedule,
   paintPackageGaps,
   paintPackageImportSummary,
   type PaintPackageGroup,
@@ -52,7 +56,7 @@ import {
 } from "../types/tradeDocuments";
 import type { SdsPacketType } from "../lib/sdsPacketPresets";
 import { formatSubmittalNumberDisplay } from "../lib/printCore";
-import { sortSdsSectionsBySpec } from "../lib/sdsSectionModel";
+import { setSelfPrimingNote, sortSdsSectionsBySpec } from "../lib/sdsSectionModel";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
@@ -62,6 +66,7 @@ type EditorState =
   | null;
 
 export function SdsPacketPage() {
+  const { user } = useAuth();
   const { branding, profile } = useLetterhead();
   const { project, projectId } = useOutletContext<Ctx>();
   const { tradeData, saving, error, setError, save, loading } = useProjectTradeData(projectId);
@@ -77,6 +82,7 @@ export function SdsPacketPage() {
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [lastSpecSection, setLastSpecSection] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [products, setProducts] = useState<PaintProduct[]>([]);
   const [clearConfirm, setClearConfirm] = useState(false);
   const importMenuRef = useRef<HTMLDivElement>(null);
   const coverPurposeRef = useRef<HTMLTextAreaElement>(null);
@@ -119,6 +125,22 @@ export function SdsPacketPage() {
   }, [loading, tradeData.sds_packet, tradeData.sds_packet_history, profile, project]);
 
   const showContractSwitch = hasTransmittalContractSwitch(project);
+
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    void loadPaintProducts(uid, { includeHidden: true })
+      .then((rows) => {
+        if (!cancelled) setProducts(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setProducts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const readiness = useMemo(
     () => evaluatePacketReadiness(draft.sections, draft.packet_type),
@@ -303,8 +325,59 @@ export function SdsPacketPage() {
     return { ...tradeData, sds_packet: nextDraft, sds_packet_history: nextHistory };
   }
 
+  function otherPackageSections(packetNumber: number): SdsSection[][] {
+    const packets = history.filter((row) => row.submittal_number !== packetNumber);
+    if (draft.submittal_number !== packetNumber) packets.push(draft);
+    return packets.map((row) => row.sections);
+  }
+
+  async function catalogForSchedule(): Promise<PaintProduct[]> {
+    if (products.length || !user?.id) return products;
+    try {
+      const rows = await loadPaintProducts(user.id, { includeHidden: true });
+      setProducts(rows);
+      return rows;
+    } catch {
+      return products;
+    }
+  }
+
+  function computeScheduleSnapshot(packet: SdsPacketData, catalog: PaintProduct[]) {
+    const items = paintItemsForPackageSchedule(
+      paintSubmittal.items,
+      packet.sections,
+      otherPackageSections(packet.submittal_number),
+    );
+    const specSection = paintScheduleSpecLabel({ ...paintSubmittal, items });
+    const schedule = buildPaintSystemSchedule(items, catalog, packet.sections, specSection);
+    return snapshotFromPaintSchedule(schedule, packet.sections, specSection);
+  }
+
+  /** A schedule loaded from History stays as loaded. Refresh is the only recompute. */
+  function withScheduleSnapshot(packet: SdsPacketData, catalog: PaintProduct[]): SdsPacketData {
+    if (packet.contract !== "paint" || packet.paint_schedule) return packet;
+    return { ...packet, paint_schedule: computeScheduleSnapshot(packet, catalog) };
+  }
+
+  async function onRefreshSchedule() {
+    if (draft.contract !== "paint" || !draft.paint_schedule) return;
+    if (!window.confirm("Replace the saved schedule with current paint items and primers?")) return;
+    const catalog = await catalogForSchedule();
+    const nextDraft = { ...draft, paint_schedule: computeScheduleSnapshot(draft, catalog) };
+    const nextHistory = upsertSdsPacketHistory(history, nextDraft);
+    setDraft(nextDraft);
+    setHistory(nextHistory);
+    const ok = await save(packetTrade(nextDraft, nextHistory));
+    if (ok) {
+      setError(null);
+      setSuccess("Schedule refreshed from the Paint tab.");
+    }
+  }
+
   async function onSave() {
-    const nextHistory = draft.sections.length ? upsertSdsPacketHistory(history, draft) : history;
+    const catalog = await catalogForSchedule();
+    const archived = draft.sections.length ? withScheduleSnapshot(draft, catalog) : null;
+    const nextHistory = archived ? upsertSdsPacketHistory(history, archived) : history;
     const ok = await save(packetTrade(draft, nextHistory));
     if (ok) {
       setHistory(nextHistory);
@@ -321,7 +394,9 @@ export function SdsPacketPage() {
     ) {
       return;
     }
-    const next = startNewSdsPackage(draft, history);
+    const catalog = await catalogForSchedule();
+    const current = draft.sections.length ? withScheduleSnapshot(draft, catalog) : draft;
+    const next = startNewSdsPackage(current, history);
     setDraft(next.draft);
     setHistory(next.history);
     const ok = await save(packetTrade(next.draft, next.history));
@@ -335,9 +410,11 @@ export function SdsPacketPage() {
       setHistoryOpen(false);
       return;
     }
-    const archived = draft.sections.length ? upsertSdsPacketHistory(history, draft) : history;
-    const nextHistory = upsertSdsPacketHistory(archived, packet);
+    const catalog = await catalogForSchedule();
+    const current = draft.sections.length ? withScheduleSnapshot(draft, catalog) : draft;
+    const archived = draft.sections.length ? upsertSdsPacketHistory(history, current) : history;
     const opened = normalizeSdsPacket(packet);
+    const nextHistory = upsertSdsPacketHistory(archived, opened);
     setDraft(opened);
     setHistory(nextHistory);
     setHistoryOpen(false);
@@ -358,6 +435,33 @@ export function SdsPacketPage() {
 
   async function onBuild() {
     if (!draft.sections.length) return;
+    let catalog = products;
+    if (draft.contract === "paint" && !catalog.length && user?.id) {
+      try {
+        catalog = await loadPaintProducts(user.id, { includeHidden: true });
+        setProducts(catalog);
+      } catch {
+        catalog = [];
+      }
+    }
+    const savedSchedule = draft.contract === "paint" ? draft.paint_schedule : undefined;
+    const packageItems =
+      draft.contract === "paint" && !savedSchedule
+        ? paintItemsForPackageSchedule(
+            paintSubmittal.items,
+            draft.sections,
+            otherPackageSections(draft.submittal_number),
+          )
+        : [];
+    const missingPrimers = savedSchedule
+      ? savedSchedule.rows.filter((row) => !row.primer_name && !row.self_priming).length
+      : draft.contract === "paint"
+        ? countPaintItemsMissingPrimer(packageItems, catalog)
+        : 0;
+    const primerWarning =
+      missingPrimers > 0
+        ? `${missingPrimers} ${missingPrimers === 1 ? "item has" : "items have"} no primer. Generate anyway?`
+        : "";
     const scheduleWarning = packageScheduleWarning(
       {
         scheduleOnly: paintLinkGaps.scheduleOnly,
@@ -365,7 +469,9 @@ export function SdsPacketPage() {
       },
       paintSubmittal.submittal_number,
     );
-    const confirmParts = [scheduleWarning, readiness.gaps.length ? readiness.confirmMessage : ""].filter(Boolean);
+    const confirmParts = [primerWarning, scheduleWarning, readiness.gaps.length ? readiness.confirmMessage : ""].filter(
+      Boolean,
+    );
     if (confirmParts.length && !window.confirm(confirmParts.join("\n\n"))) {
       return;
     }
@@ -375,7 +481,8 @@ export function SdsPacketPage() {
     setSuccess(null);
     setError(null);
     try {
-      const nextHistory = upsertSdsPacketHistory(history, draft);
+      const historyPacket = draft.contract === "paint" ? withScheduleSnapshot(draft, catalog) : draft;
+      const nextHistory = upsertSdsPacketHistory(history, historyPacket);
       const nextTrade: ProjectTradeData = packetTrade(draft, nextHistory);
       const ok = await save(nextTrade);
       if (!ok) return;
@@ -391,7 +498,19 @@ export function SdsPacketPage() {
         draft,
         branding,
         setBuildProgress,
-        colorScheduleLabel ? { colorSchedule: colorScheduleLabel } : undefined,
+        {
+          ...(colorScheduleLabel ? { colorSchedule: colorScheduleLabel } : {}),
+          ...(draft.contract === "paint" && !savedSchedule
+            ? {
+                paint: {
+                  items: paintSubmittal.items,
+                  products: catalog,
+                  specSection: paintScheduleSpecLabel({ ...paintSubmittal, items: packageItems }),
+                  otherPackageSections: otherPackageSections(draft.submittal_number),
+                },
+              }
+            : {}),
+        },
       );
       downloadPdfBytes(bytes, outputName);
 
@@ -637,6 +756,16 @@ export function SdsPacketPage() {
                   History
                 </button>
               </div>
+              {draft.contract === "paint" && draft.paint_schedule ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  disabled={saving || building}
+                  onClick={() => void onRefreshSchedule()}
+                >
+                  Refresh schedule from Paint tab
+                </button>
+              ) : null}
               <hr className="sds-package-actions-rule" />
               <button type="button" className="sds-package-new" disabled={saving} onClick={() => void onNewPackage()}>
                 + New package
@@ -770,6 +899,10 @@ export function SdsPacketPage() {
                 onRemove={() => {
                   if (window.confirm(`Remove section ${index + 1}?`)) removeSection(section.id);
                 }}
+                showSelfPriming={draft.contract === "paint"}
+                onSelfPrimingChange={(on) =>
+                  replaceSection({ ...section, intended_use: setSelfPrimingNote(section.intended_use, on) })
+                }
               />
             ))}
           </ul>
@@ -791,6 +924,7 @@ export function SdsPacketPage() {
           section={editor.section}
           projectId={projectId}
           packetType={draft.packet_type}
+          showSelfPriming={draft.contract === "paint"}
           onSave={(section) => {
             addSectionRow(section);
             setEditor(null);
@@ -805,6 +939,7 @@ export function SdsPacketPage() {
           section={editor.section}
           projectId={projectId}
           packetType={draft.packet_type}
+          showSelfPriming={draft.contract === "paint"}
           onSave={(section) => {
             replaceSection(section);
             setEditor(null);

@@ -13,6 +13,15 @@ export function brushoutColorLine(item: PaintItem): string | null {
   return [label, floor, color].filter(Boolean).join(" - ");
 }
 
+/** Color line, or a primer line when the paint item has a product and no color. */
+export function brushoutListLine(item: PaintItem): string | null {
+  const colorLine = brushoutColorLine(item);
+  if (colorLine) return colorLine;
+  const product = item.product.trim();
+  if (!product) return null;
+  return `Primer — ${product}`;
+}
+
 /** Stable key for merge — label + floor (color can change on revision). */
 export function brushoutMergeKey(item: PaintItem): string | null {
   const line = brushoutColorLine(item);

@@ -1,6 +1,7 @@
 import type { DragEvent } from "react";
 import type { SdsPacketType } from "../../lib/sdsPacketPresets";
 import { sectionAttachmentBadges } from "../../lib/sdsPacketRequirements";
+import { intendedUseHasSelfPriming } from "../../lib/sdsSectionModel";
 import type { SdsSection } from "../../types/tradeDocuments";
 
 type Props = {
@@ -16,6 +17,8 @@ type Props = {
   onDragEnd: () => void;
   onEdit: () => void;
   onRemove: () => void;
+  showSelfPriming?: boolean;
+  onSelfPrimingChange?: (on: boolean) => void;
 };
 
 function colorPieces(color: string): { tag: string; location: string }[] {
@@ -47,6 +50,8 @@ export function SdsSectionListRow({
   onDragEnd,
   onEdit,
   onRemove,
+  showSelfPriming = false,
+  onSelfPrimingChange,
 }: Props) {
   const badges = sectionAttachmentBadges(section, packetType);
   const title =
@@ -92,6 +97,19 @@ export function SdsSectionListRow({
           <strong className="sds-section-row-title">{title}</strong>
         </div>
         {detail ? <p className="sds-section-row-sub muted small">{detail}</p> : null}
+        {showSelfPriming ? (
+          <label className="check sds-self-prime" onDoubleClick={(event) => event.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={intendedUseHasSelfPriming(section.intended_use)}
+              onChange={(event) => onSelfPrimingChange?.(event.target.checked)}
+            />
+            Self-priming
+          </label>
+        ) : null}
+        {section.intended_use.trim() ? (
+          <p className="sds-section-row-sub muted small">Notes: {section.intended_use.trim()}</p>
+        ) : null}
         {colorTags.length > 0 ? (
           <div className="sds-section-colors">
             {colorTags.map((tag, tagIndex) => (

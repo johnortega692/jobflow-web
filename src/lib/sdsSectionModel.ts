@@ -313,6 +313,23 @@ export function notesFromAttachments(section: SdsSection): string {
   return suffix || intended;
 }
 
+export const SELF_PRIMING_NOTE = "Self-priming";
+
+export function intendedUseHasSelfPriming(notes: string): boolean {
+  return notes
+    .split(";")
+    .some((part) => part.trim().toLowerCase() === SELF_PRIMING_NOTE.toLowerCase());
+}
+
+export function setSelfPrimingNote(notes: string, on: boolean): string {
+  const parts = notes
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part && part.toLowerCase() !== SELF_PRIMING_NOTE.toLowerCase());
+  if (on) parts.push(SELF_PRIMING_NOTE);
+  return parts.join("; ");
+}
+
 export function sectionsGroupedByCategory(sections: SdsSection[]): SdsSection[] {
   const buckets = new Map<SdsSectionCategory, SdsSection[]>();
   for (const cat of SDS_SECTION_CATEGORIES) buckets.set(cat, []);

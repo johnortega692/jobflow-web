@@ -2,7 +2,11 @@ import { PDFDocument, PDFImage, PDFPage, RGB, StandardFonts, rgb, type PDFFont }
 import { wrapLines } from "./pdfDrawCore";
 import { setPdfOutlines, type PdfOutlineItem } from "./pdfOutlines";
 import { addInternalPageLink } from "./pdfPageLinks";
-import { companyLetterheadLine, type PrintBranding } from "./printCore";
+import { paintItemsForPackageSchedule } from "./paintPackageLink";
+import { buildPaintSystemSchedule, paintScheduleFromSnapshot, type PaintSystemSchedule } from "./paintSystemSchedule";
+import type { PaintProduct } from "./paintCatalog";
+import type { PaintItem, SdsPacketData, SdsSection } from "../types/tradeDocuments";
+import { companyLetterheadLine, formatSubmittalNumberDisplay, type PrintBranding } from "./printCore";
 import { downloadSdsPdf } from "./sdsFileStorage";
 import {
   attachmentStampLabel,
@@ -24,7 +28,6 @@ import {
   resolveCoverPurpose,
   resolveCoverTitle,
 } from "./sdsPacketPresets";
-import type { SdsPacketData, SdsSection } from "../types/tradeDocuments";
 
 const LETTER: [number, number] = [612, 792];
 const LETTER_LANDSCAPE: [number, number] = [792, 612];
@@ -1121,12 +1124,258 @@ function insertTableOfContents(
   return tocPageCount;
 }
 
+const PAINT_SCHEDULE_INTRO =
+  "Each finish product is listed with the primer it goes over. Product data (TDS and SDS) for every product follows this page, primer directly before its finish.";
+const PAINT_SCHEDULE_NOTE =
+  "Colors are submitted separately as brush-outs; primers are not color-approved.";
+
+function addPaintSystemSchedule(
+  project: ProjectInfo,
+  packet: SdsPacketData,
+  branding: PrintBranding,
+  ctx: BuildContext,
+  schedule: PaintSystemSchedule,
+) {
+  const margin = 36;
+  const pageW = LETTER[0];
+  const tableW = pageW - margin * 2;
+  const bottom = 64;
+  const ink = rgb(0.1, 0.1, 0.18);
+  const muted = rgb(0.35, 0.35, 0.38);
+  const rule = rgb(0.75, 0.75, 0.75);
+  const headerBg = rgb(0.2, 0.2, 0.2);
+  const white = rgb(1, 1, 1);
+  const check = rgb(0.12, 0.42, 0.26);
+
+  let page = ctx.doc.addPage(LETTER);
+
+  const drawMasthead = (continued: boolean): number => {
+    let y = LETTER[1] - 36;
+    const company = branding.companyName.trim();
+    if (ctx.logo && !continued) {
+      const scale = Math.min(160 / ctx.logo.width, 32 / ctx.logo.height, 1);
+      const lw = ctx.logo.width * scale;
+      const lh = ctx.logo.height * scale;
+      page.drawImage(ctx.logo, { x: margin, y: y - lh + 8, width: lw, height: lh });
+      if (company) {
+        const cw = ctx.font.widthOfTextAtSize(company, 9);
+        page.drawText(company, { x: pageW - margin - cw, y: y - 4, size: 9, font: ctx.font, color: muted });
+      }
+      y -= lh + 8;
+    } else if (company) {
+      page.drawText(company, { x: margin, y, size: 9, font: ctx.bold, color: ink });
+      y -= 16;
+    }
+    const title = continued ? "Paint System Schedule (continued)" : "Paint System Schedule";
+    const titleSize = continued ? 12 : 16;
+    page.drawText(title, { x: margin, y, size: titleSize, font: ctx.bold, color: ink });
+    y -= continued ? 16 : 20;
+    const jobNo = project.job_number.trim() || "—";
+    const jobName = project.job_name.trim() || "—";
+    const submittal = formatSubmittalNumberDisplay(packet.submittal_number) || "—";
+    const spec = schedule.specSection.trim() || "—";
+    page.drawText(`Job # ${jobNo}`, { x: margin, y, size: 9, font: ctx.bold, color: ink });
+    page.drawText(jobName, { x: margin + 120, y, size: 9, font: ctx.font, color: ink });
+    y -= 13;
+    page.drawText(`Submittal # ${submittal}`, { x: margin, y, size: 9, font: ctx.bold, color: ink });
+    const specLabel = truncateTextToWidth(`Spec section ${spec}`, tableW - 160, ctx.font, 9);
+    page.drawText(specLabel, { x: margin + 160, y, size: 9, font: ctx.font, color: ink });
+    y -= 8;
+    page.drawLine({
+      start: { x: margin, y },
+      end: { x: pageW - margin, y },
+      thickness: 0.75,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    return y - 16;
+  };
+
+  let y = drawMasthead(false);
+  const nextPage = () => {
+    drawPageFooter(page, ctx, branding, packet.preparer);
+    page = ctx.doc.addPage(LETTER);
+    y = drawMasthead(true);
+  };
+  const ensure = (needed: number) => {
+    if (y - needed < bottom) nextPage();
+  };
+
+  const introLines = wrapLines(PAINT_SCHEDULE_INTRO, ctx.font, 9, tableW);
+  ensure(introLines.length * 12 + 10);
+  for (const line of introLines) {
+    page.drawText(line, { x: margin, y, size: 9, font: ctx.font, color: ink });
+    y -= 12;
+  }
+  y -= 10;
+
+  const drawHeading = (text: string) => {
+    ensure(52);
+    page.drawText(text, { x: margin, y, size: 11, font: ctx.bold, color: ink });
+    y -= 16;
+  };
+
+  const drawTableHeader = (headers: string[], widths: number[]) => {
+    const height = 16;
+    ensure(height + 8);
+    let x = margin;
+    const rectBottom = y - height + 10;
+    for (let i = 0; i < headers.length; i++) {
+      page.drawRectangle({ x, y: rectBottom, width: widths[i]!, height, color: headerBg });
+      page.drawText(headers[i]!, {
+        x: x + 4,
+        y: rectBottom + 4,
+        size: 8,
+        font: ctx.bold,
+        color: white,
+      });
+      x += widths[i]!;
+    }
+    y = rectBottom - 2;
+  };
+
+  const systemWidths = columnWidthsFromWeights(tableW, [3.4, 1.5, 2.2]);
+  drawHeading("Systems");
+  drawTableHeader(["Finish", "Sheen", "Items"], systemWidths);
+  schedule.systems.forEach((system, index) => {
+    const finishWidth = Math.max(8, systemWidths[0]! - 8);
+    const sheenWidth = Math.max(8, systemWidths[1]! - 8);
+    const itemsWidth = Math.max(8, systemWidths[2]! - 8);
+    const finishLines = wrapCellLines(system.finishName, ctx.bold, 8, finishWidth);
+    const primerLines = wrapCellLines(system.primerLine, ctx.font, 7.5, finishWidth);
+    const sheenLines = wrapCellLines(system.sheen || "—", ctx.font, 8, sheenWidth);
+    const itemLines = wrapCellLines(system.items || "—", ctx.font, 8, itemsWidth);
+    const lineCount = Math.max(finishLines.length + primerLines.length, sheenLines.length, itemLines.length, 1);
+    const rowH = lineCount * 10 + 6;
+    if (y - rowH < bottom) {
+      nextPage();
+      drawTableHeader(["Finish", "Sheen", "Items"], systemWidths);
+    }
+    const rowBottom = y - rowH;
+    const fill = index % 2 === 0 ? rgb(1, 1, 1) : rgb(0.97, 0.97, 0.97);
+    let x = margin;
+    for (const width of systemWidths) {
+      page.drawRectangle({
+        x,
+        y: rowBottom,
+        width,
+        height: rowH,
+        color: fill,
+        borderColor: rule,
+        borderWidth: 0.4,
+      });
+      x += width;
+    }
+    let textY = y - 11;
+    for (const line of finishLines) {
+      page.drawText(line, { x: margin + 4, y: textY, size: 8, font: ctx.bold, color: ink });
+      textY -= 10;
+    }
+    for (const line of primerLines) {
+      page.drawText(line, { x: margin + 4, y: textY, size: 7.5, font: ctx.font, color: muted });
+      textY -= 10;
+    }
+    sheenLines.forEach((line, lineIndex) => {
+      page.drawText(line, {
+        x: margin + systemWidths[0]! + 4,
+        y: y - 11 - lineIndex * 10,
+        size: 8,
+        font: ctx.font,
+        color: ink,
+      });
+    });
+    itemLines.forEach((line, lineIndex) => {
+      page.drawText(line, {
+        x: margin + systemWidths[0]! + systemWidths[1]! + 4,
+        y: y - 11 - lineIndex * 10,
+        size: 8,
+        font: ctx.font,
+        color: ink,
+      });
+    });
+    y = rowBottom - 1;
+  });
+  y -= 16;
+
+  const productWidths = columnWidthsFromWeights(tableW, [2.6, 2.4, 0.7, 0.7, 1]);
+  drawHeading("Product data included, in order");
+  drawTableHeader(["Product", "Use", "TDS", "SDS", "VOC (g/L)"], productWidths);
+  schedule.products.forEach((row, index) => {
+    const productLines = wrapCellLines(row.product, ctx.font, 8, Math.max(8, productWidths[0]! - 8));
+    const useLines = wrapCellLines(row.use, ctx.font, 8, Math.max(8, productWidths[1]! - 8));
+    const vocLines = row.voc.trim()
+      ? wrapCellLines(row.voc.trim(), ctx.font, 8, Math.max(8, productWidths[4]! - 8))
+      : [];
+    const lineCount = Math.max(productLines.length, useLines.length, vocLines.length, 1);
+    const rowH = lineCount * 10 + 6;
+    if (y - rowH < bottom) {
+      nextPage();
+      drawTableHeader(["Product", "Use", "TDS", "SDS", "VOC (g/L)"], productWidths);
+    }
+    const rowBottom = y - rowH;
+    const fill = index % 2 === 0 ? rgb(1, 1, 1) : rgb(0.97, 0.97, 0.97);
+    let x = margin;
+    for (const width of productWidths) {
+      page.drawRectangle({
+        x,
+        y: rowBottom,
+        width,
+        height: rowH,
+        color: fill,
+        borderColor: rule,
+        borderWidth: 0.4,
+      });
+      x += width;
+    }
+    productLines.forEach((line, lineIndex) => {
+      page.drawText(line, { x: margin + 4, y: y - 11 - lineIndex * 10, size: 8, font: ctx.font, color: ink });
+    });
+    useLines.forEach((line, lineIndex) => {
+      page.drawText(line, {
+        x: margin + productWidths[0]! + 4,
+        y: y - 11 - lineIndex * 10,
+        size: 8,
+        font: ctx.font,
+        color: ink,
+      });
+    });
+    const mark = (column: number, on: boolean) => {
+      if (!on) return;
+      const cellX = margin + productWidths.slice(0, column).reduce((sum, width) => sum + width, 0);
+      drawPdfCheckmark(page, cellX + productWidths[column]! / 2 - 3.5, rowBottom + rowH / 2 - 2, 7, check);
+    };
+    mark(2, row.tds);
+    mark(3, row.sds);
+    vocLines.forEach((line, lineIndex) => {
+      const vocX = margin + productWidths.slice(0, 4).reduce((sum, width) => sum + width, 0) + 4;
+      page.drawText(line, { x: vocX, y: y - 11 - lineIndex * 10, size: 8, font: ctx.font, color: ink });
+    });
+    y = rowBottom - 1;
+  });
+  y -= 16;
+
+  const noteLines = wrapLines(PAINT_SCHEDULE_NOTE, ctx.font, 8, tableW);
+  ensure(noteLines.length * 11 + 4);
+  for (const line of noteLines) {
+    page.drawText(line, { x: margin, y, size: 8, font: ctx.font, color: muted });
+    y -= 11;
+  }
+  drawPageFooter(page, ctx, branding, packet.preparer);
+}
+
+export type PaintPackageScheduleInput = {
+  items: PaintItem[];
+  products: PaintProduct[];
+  specSection: string;
+  /** Sections from other saved packages, so a line assigned there is not pulled into this one. */
+  otherPackageSections?: SdsSection[][];
+};
+
 export async function buildSdsPacketPdf(
   project: ProjectInfo,
   packet: SdsPacketData,
   branding: PrintBranding,
   onProgress?: (p: BuildProgress) => void,
-  extras?: { colorSchedule?: string },
+  extras?: { colorSchedule?: string; paint?: PaintPackageScheduleInput | null },
 ): Promise<Uint8Array> {
   if (!packet.sections.length) {
     throw new Error("Add at least one section before building the packet.");
@@ -1136,10 +1385,35 @@ export async function buildSdsPacketPdf(
     throw new Error("Each section needs at least one file attachment (product data, SDS, warranty, etc.).");
   }
 
-  const groupedSections = sortSdsSectionsBySpec(packet.sections);
+  const savedSchedule = packet.paint_schedule
+    ? paintScheduleFromSnapshot(packet.paint_schedule, packet.sections)
+    : null;
+  const packageItems = !packet.paint_schedule && extras?.paint
+    ? paintItemsForPackageSchedule(
+        extras.paint.items,
+        packet.sections,
+        extras.paint.otherPackageSections ?? [],
+      )
+    : [];
+  const builtSchedule = !packet.paint_schedule && extras?.paint
+    ? buildPaintSystemSchedule(
+        packageItems,
+        extras.paint.products,
+        packet.sections,
+        extras.paint.specSection,
+      )
+    : null;
+  // A saved history snapshot draws its own rows. A live draft computes them.
+  // Finish rows in this package stay on the schedule when they have no primer ("No primer").
+  const chosenSchedule = packet.paint_schedule ? savedSchedule : builtSchedule;
+  const paintSchedule = chosenSchedule?.systems.length ? chosenSchedule : null;
+  const groupedSections = chosenSchedule?.orderedSections.length
+    ? chosenSchedule.orderedSections
+    : sortSdsSectionsBySpec(packet.sections);
 
   const totalSteps =
     (packet.include_cover ? 1 : 0) +
+    (paintSchedule ? 1 : 0) +
     (packet.include_toc ? 1 : 0) +
     1 +
     groupedSections.reduce((n, s, i, arr) => {
@@ -1180,6 +1454,18 @@ export async function buildSdsPacketPdf(
     outlines.push({ title: "Cover", to: pageCount() - 1 });
   }
 
+  let schedulePageCount = 0;
+  if (paintSchedule) {
+    tick("Paint system schedule");
+    const scheduleStart = pageCount();
+    addPaintSystemSchedule(project, packet, branding, ctx, paintSchedule);
+    schedulePageCount = pageCount() - scheduleStart;
+    outlines.push({ title: "Paint System Schedule", to: scheduleStart });
+    if (packet.include_toc) {
+      tocEntries.push({ level: 0, label: "Paint System Schedule", pageIndex: scheduleStart });
+    }
+  }
+
   tick("Product summary");
   summaryRowRects = addMaterialSummaryPage(project, packet, branding, ctx);
   summaryPageIndex = pageCount() - 1;
@@ -1187,6 +1473,8 @@ export async function buildSdsPacketPdf(
   if (packet.include_toc) {
     tocEntries.push({ level: 0, label: "Product Summary", pageIndex: summaryPageIndex });
   }
+
+  const seenDocPaths = new Set<string>();
 
   for (let i = 0; i < groupedSections.length; i++) {
     const section = groupedSections[i]!;
@@ -1212,13 +1500,18 @@ export async function buildSdsPacketPdf(
     const stamp = `Section ${num}: ${sectionTitle(section)}`;
     for (const kind of sectionAttachmentKinds(section)) {
       const attachment = section.attachments[kind];
-      if (!attachment?.path) continue;
+      const path = attachment?.path?.trim();
+      if (!path) continue;
+      if (paintSchedule) {
+        if (seenDocPaths.has(path)) continue;
+        seenDocPaths.add(path);
+      }
       const label = attachmentStampLabel(kind);
       if (packet.include_toc) {
         tocEntries.push({ level: 2, label: tocAttachmentLabel(kind), pageIndex: pageCount() });
       }
       tick(`Section ${num} ${label}`);
-      const bytes = await downloadSdsPdf(attachment.path);
+      const bytes = await downloadSdsPdf(path);
       await appendPdfWithStamp(ctx, bytes, `${stamp} — ${label}`, packet.include_stamp);
     }
 
@@ -1231,11 +1524,15 @@ export async function buildSdsPacketPdf(
   }
 
   let tocPageCount = 0;
-  const tocInsertIndex = packet.include_cover ? 1 : 0;
+  const tocInsertIndex = (packet.include_cover ? 1 : 0) + schedulePageCount;
   if (packet.include_toc && tocEntries.length) {
     tick("Table of contents");
     tocPageCount = insertTableOfContents(doc, ctx, packet, project, branding, tocEntries, tocInsertIndex);
-    outlines.splice(tocInsertIndex, 0, { title: "Table of Contents", to: tocInsertIndex });
+    const summaryOutlineAt = outlines.findIndex((item) => item.title === "Product Summary");
+    outlines.splice(summaryOutlineAt === -1 ? tocInsertIndex : summaryOutlineAt, 0, {
+      title: "Table of Contents",
+      to: tocInsertIndex,
+    });
     for (const item of outlines) {
       if (item.title !== "Table of Contents") {
         item.to = adjustPageIndexAfterTocInsert(item.to, tocInsertIndex, tocPageCount);
