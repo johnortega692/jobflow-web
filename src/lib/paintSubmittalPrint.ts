@@ -241,7 +241,7 @@ export function buildPaintSubmittalSections(
   const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
   const showLocation = data.show_floor === true;
   const cols = paintSectionColumns(isSub, markRevision, showLocation);
-  const items = data.items.filter((i) => i.color.trim() || i.label.trim());
+  const items = data.items.filter((i) => !i.pdf_hidden && (i.color.trim() || i.label.trim()));
   const secondaryOn = paintSecondarySpecEnabled(data);
   const primaryItems = secondaryOn
     ? items.filter((i) => paintItemSpecScope(i) === "primary")
@@ -311,7 +311,7 @@ export function buildPaintSubmittalHtml(
 ): string {
   const isSub = data.submittal_type === "substitution";
   const markRevision = !isSub && previousItems.some((row) => row.color.trim() || row.label.trim());
-  const items = data.items.filter((i) => i.color.trim() || i.label.trim());
+  const items = data.items.filter((i) => !i.pdf_hidden && (i.color.trim() || i.label.trim()));
   const secondaryOn = paintSecondarySpecEnabled(data);
   const primaryItems = secondaryOn
     ? items.filter((i) => paintItemSpecScope(i) === "primary")

@@ -1,3 +1,4 @@
+import type { PaintProduct } from "./paintCatalog";
 import { formatRevisionTag, formatSubmittalNumberDisplay } from "./printCore";
 import { sectionHasAnyAttachment } from "./sdsSectionModel";
 import type { PaintItem, SdsSection } from "../types/tradeDocuments";
@@ -51,6 +52,26 @@ const MANUFACTURER_ALIASES: Record<string, string> = {
 function manufacturerKey(value: string): string {
   const key = norm(value);
   return MANUFACTURER_ALIASES[key] ?? key;
+}
+
+/**
+ * Vendor that sells this line's product. The line's manufacturer can hold the color's brand
+ * (an SW color in a Dunn-Edwards product), so the catalog wins when it knows the product.
+ */
+export function paintItemProductVendor(
+  item: { product: string; manufacturer: string },
+  products: PaintProduct[] = [],
+): string {
+  const name = norm(item.product);
+  const own = item.manufacturer.trim();
+  if (!name || !products.length) return own;
+  const vendors = products
+    .filter((product) => norm(product.product) === name)
+    .map((product) => product.manufacturer.trim())
+    .filter(Boolean);
+  if (!vendors.length) return own;
+  const ownKey = manufacturerKey(own);
+  return vendors.find((vendor) => manufacturerKey(vendor) === ownKey) ?? vendors[0]!;
 }
 
 /** Same product and sheen. Dunn Edwards and DE count as one manufacturer. Spec does not. */
@@ -144,21 +165,23 @@ export function paintPackageUseField(group: PaintPackageGroup): string {
 export function groupPaintItemsForPackage(
   items: PaintItem[],
   specForItem: (item: PaintItem) => string,
+  products: PaintProduct[] = [],
 ): PaintPackageGroup[] {
   const groups: PaintPackageGroup[] = [];
   const indexByKey = new Map<string, number>();
 
   for (const item of items) {
     if (!item.product.trim() && !item.manufacturer.trim()) continue;
+    const vendor = paintItemProductVendor(item, products);
     const specSection = specForItem(item).trim();
-    const key = `${paintProductKey(item.manufacturer, item.product, item.sheen)}|${norm(specSection)}`;
+    const key = `${paintProductKey(vendor, item.product, item.sheen)}|${norm(specSection)}`;
     let index = indexByKey.get(key);
     if (index === undefined) {
       index = groups.length;
       indexByKey.set(key, index);
       groups.push({
         key,
-        manufacturer: item.manufacturer.trim(),
+        manufacturer: vendor,
         product: item.product.trim(),
         sheen: item.sheen.trim(),
         specSection,

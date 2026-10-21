@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useOutletContext } from "react-router-dom";
 import { SubmittalsHubTabs } from "../components/submittals/SubmittalsHubTabs";
 import { ImportApprovedBrushoutsModal } from "../components/paint/ImportApprovedBrushoutsModal";
+import { PaintEstimatesCard } from "../components/paint/PaintEstimatesCard";
 import { useAuth } from "../contexts/AuthContext";
 import {
   buildBrushoutImportSources,
@@ -457,6 +458,15 @@ export function ApprovedBrushoutsPage() {
           </div>
         )}
       </section>
+
+      {!loading ? (
+        <PaintEstimatesCard
+          projectId={projectId}
+          jobNumber={project.job_number}
+          brushoutRows={rows}
+          updatedByName={approverName}
+        />
+      ) : null}
 
       {importOpen && (
         <ImportApprovedBrushoutsModal

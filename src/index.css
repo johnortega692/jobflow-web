@@ -9061,6 +9061,64 @@ tr.budget-hours-pdf-hidden td {
   flex: 0 0 auto;
 }
 
+.paint-estimates-table td {
+  vertical-align: middle;
+}
+
+.paint-estimates-table tfoot td {
+  font-weight: 700;
+  border-bottom: none;
+}
+
+.paint-estimates-num {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.data-table th.paint-estimates-num,
+.data-table td.paint-estimates-num {
+  text-align: right;
+}
+
+.paint-estimates-input {
+  width: 6.5rem;
+  text-align: right;
+}
+
+.paint-estimates-product {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-weight: 600;
+}
+
+.paint-estimates-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--warning, #d97706) 18%, transparent);
+  color: var(--warning, #d97706);
+}
+
+.paint-estimates-tag--muted {
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+.paint-estimates-lastmin {
+  margin: 0;
+  color: var(--warning, #d97706);
+  font-weight: 600;
+}
+
+.paint-estimates-over-text {
+  color: var(--danger, #dc2626);
+  font-weight: 700;
+}
+
 .brushout-primer-line {
   grid-column: 1 / -1;
   justify-content: flex-start;
@@ -9576,9 +9634,9 @@ tr.budget-hours-pdf-hidden td {
 
 .paint-col-head-actions,
 .paint-row-actions {
-  flex: 0 0 36px;
-  width: 36px;
-  min-width: 36px;
+  flex: 0 0 76px;
+  width: 76px;
+  min-width: 76px;
 }
 
 .paint-col-head-actions {
@@ -9753,10 +9811,34 @@ tr.budget-hours-pdf-hidden td {
 
 .paint-row-actions {
   display: flex;
-  gap: 0;
+  gap: 4px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   padding-bottom: 0;
+}
+
+.paint-pdf-toggle {
+  height: var(--paint-control-height, 32px);
+  min-width: 34px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.paint-pdf-toggle.is-off {
+  border-color: var(--border);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.paint-item-row--pdf-hidden {
+  opacity: 0.55;
 }
 
 .paint-row-actions .btn-icon {

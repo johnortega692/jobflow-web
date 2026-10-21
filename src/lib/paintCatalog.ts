@@ -738,7 +738,38 @@ export function abbreviateVendorKey(vendor: string): string {
   return PREFIX_MAP[vendor] ?? vendor.slice(0, 2).toUpperCase();
 }
 
-export type PaintPrimerOption = { id: string; name: string };
+export type PaintPrimerOption = { id: string; name: string; manufacturer: string };
+
+export type PrimerSelectGroup = {
+  manufacturer: string;
+  items: PaintPrimerOption[];
+};
+
+/** Group primers under vendor names, same order as the finish product menu (PPG first). */
+export function groupPrimersForSelect(
+  primers: PaintPrimerOption[],
+  preferredManufacturer = "PPG",
+): PrimerSelectGroup[] {
+  const byManufacturer = new Map<string, PaintPrimerOption[]>();
+  for (const primer of primers) {
+    const manufacturer = primer.manufacturer.trim() || "Other";
+    const list = byManufacturer.get(manufacturer) ?? [];
+    list.push(primer);
+    byManufacturer.set(manufacturer, list);
+  }
+  const order = [
+    preferredManufacturer,
+    ...[...byManufacturer.keys()].filter((manufacturer) => manufacturer !== preferredManufacturer).sort(),
+  ];
+  return order
+    .filter((manufacturer) => byManufacturer.has(manufacturer))
+    .map((manufacturer) => ({
+      manufacturer,
+      items: [...(byManufacturer.get(manufacturer) ?? [])].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      ),
+    }));
+}
 
 /** Finish row fields the primer select needs. The paired primer is never stored here. */
 export type PaintPrimerItemRef = {
@@ -765,15 +796,22 @@ export type PaintPrimerView = {
 };
 
 export function paintPrimers(products: PaintProduct[]): PaintPrimerOption[] {
-  const byId = new Map<string, string>();
+  const seen = new Set<string>();
+  const primers: PaintPrimerOption[] = [];
   for (const product of products) {
     const id = product.id?.trim();
-    if (!product.is_primer || !id || byId.has(id)) continue;
-    byId.set(id, product.product.trim());
+    if (!product.is_primer || !id) continue;
+    const manufacturer = product.manufacturer.trim() || "Other";
+    const key = `${id}::${manufacturer.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    primers.push({ id, name: product.product.trim(), manufacturer });
   }
-  return [...byId.entries()]
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return primers.sort(
+    (a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) ||
+      a.manufacturer.localeCompare(b.manufacturer, undefined, { sensitivity: "base" }),
+  );
 }
 
 export function findCatalogPaintProduct(

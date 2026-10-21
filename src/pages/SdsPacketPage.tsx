@@ -155,11 +155,13 @@ export function SdsPacketPage() {
   const paintLinkGaps = useMemo(() => {
     const lead = leadSpecSection(paintSubmittal);
     const secondary = paintSubmittal.spec_sections?.[1]?.trim() ?? "";
-    const groups = groupPaintItemsForPackage(paintSubmittal.items, (item) =>
-      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
+    const groups = groupPaintItemsForPackage(
+      paintSubmittal.items,
+      (item) => (paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead),
+      products,
     );
     return paintPackageGaps(groups, draft.sections);
-  }, [paintSubmittal, draft.sections]);
+  }, [paintSubmittal, draft.sections, products]);
 
   const colorScheduleLabel = useMemo(() => {
     const hasProduct = paintSubmittal.items.some((item) => item.product.trim() || item.manufacturer.trim());
@@ -248,8 +250,10 @@ export function SdsPacketPage() {
     const paint = normalizePaintSubmittal(tradeData.paint_submittal);
     const lead = leadSpecSection(paint);
     const secondary = paint.spec_sections?.[1]?.trim() ?? "";
-    return groupPaintItemsForPackage(paint.items, (item) =>
-      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
+    return groupPaintItemsForPackage(
+      paint.items,
+      (item) => (paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead),
+      products,
     );
   }
 

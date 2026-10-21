@@ -3,6 +3,7 @@ import {
   abbreviateVendorKey,
   formatSheenSelection,
   getProductDisplay,
+  groupPrimersForSelect,
   isStandardColorSystem,
   paintItemPrimerView,
   parseSheenSelection,
@@ -20,6 +21,7 @@ import {
   type PaintItem,
   type PaintRevisionChange,
 } from "../../types/tradeDocuments";
+import { paintItemProductVendor } from "../../lib/paintPackageLink";
 import { ColorLookupModal } from "./ColorLookupModal";
 import { PaintProductSelect, PaintSheenSelect } from "./PaintFieldSelects";
 
@@ -70,6 +72,7 @@ function PaintPrimerLine({
   onChange: (patch: Partial<PaintItem>) => void;
 }) {
   const primer = useMemo(() => paintItemPrimerView(item, products), [item, products]);
+  const primerGroups = useMemo(() => groupPrimersForSelect(primer.primers), [primer.primers]);
   if (!primer.show) return null;
   const tagLabel =
     primer.tag === "paired" ? "Paired" : primer.tag === "override" ? "Override" : primer.tag === "missing" ? "None set" : "";
@@ -93,10 +96,14 @@ function PaintPrimerLine({
         }}
       >
         <option value="">{primer.firstLabel}</option>
-        {primer.primers.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
+        {primerGroups.map((group) => (
+          <optgroup key={group.manufacturer} label={group.manufacturer}>
+            {group.items.map((option) => (
+              <option key={`${option.id}::${option.manufacturer}`} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </optgroup>
         ))}
         <option value={PAINT_PRIMER_OVERRIDE_NONE}>None (self-priming)</option>
       </select>
@@ -151,10 +158,16 @@ export function PaintItemRow({
   }
 
   function onLookupSelect(display: string, vendor: string, hex?: string) {
+    const manufacturer = isStandardColorSystem(vendor)
+      ? null
+      : paintItemProductVendor(
+          { product: item.product, manufacturer: abbreviateVendorKey(vendor) },
+          catalogProducts ?? products,
+        );
     onChange({
       color: display,
       color_hex: hex || "",
-      ...(isStandardColorSystem(vendor) ? {} : { manufacturer: abbreviateVendorKey(vendor) }),
+      ...(manufacturer ? { manufacturer } : {}),
     });
     setLookupOpen(false);
     setLookupMatches([]);
@@ -170,7 +183,7 @@ export function PaintItemRow({
   return (
     <>
       <div
-        className={`paint-item-row${dragging ? " paint-item-row--dragging" : ""}${dragOver ? " paint-item-row--dragover" : ""}`}
+        className={`paint-item-row${dragging ? " paint-item-row--dragging" : ""}${dragOver ? " paint-item-row--dragover" : ""}${item.pdf_hidden ? " paint-item-row--pdf-hidden" : ""}`}
         data-index={index}
         role="row"
         onDragOver={onDragOver}
@@ -321,6 +334,24 @@ export function PaintItemRow({
         ) : null}
 
         <div className="paint-row-actions" role="cell">
+          <button
+            type="button"
+            className={`paint-pdf-toggle${item.pdf_hidden ? " is-off" : ""}`}
+            aria-pressed={!item.pdf_hidden}
+            title={
+              item.pdf_hidden
+                ? "Hidden from the downloaded PDF. Click to show it."
+                : "Shown on the downloaded PDF. Click to hide it."
+            }
+            aria-label={
+              item.pdf_hidden
+                ? `Show row ${index + 1} on the PDF`
+                : `Hide row ${index + 1} from the PDF`
+            }
+            onClick={() => onChange({ pdf_hidden: !item.pdf_hidden })}
+          >
+            PDF
+          </button>
           <button
             type="button"
             className="btn btn-icon btn-small btn-danger-soft"

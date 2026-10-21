@@ -58,6 +58,8 @@ export type PaintItem = {
    * "none" is an explicit self-priming override. A uuid overrides to that primer.
    */
   primer_override_id?: string | null;
+  /** When true, the row stays on the submittal but is left out of the downloaded PDF. */
+  pdf_hidden?: boolean;
 };
 
 /** Stored primer_override_id when the finish is explicitly self-priming. */
@@ -962,6 +964,7 @@ export function emptyPaintItem(): PaintItem {
     previous_color: "",
     spec_scope: "primary",
     primer_override_id: null,
+    pdf_hidden: false,
   };
 }
 
@@ -1380,6 +1383,7 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     revision_change: parsePaintRevisionChange(i.revision_change),
     spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
     primer_override_id: normalizePrimerOverrideId(i.primer_override_id),
+    pdf_hidden: i.pdf_hidden === true,
   }));
   const auto_label =
     typeof raw.auto_label === "boolean" ? raw.auto_label : paintItemsSuggestAutoLabel(items);

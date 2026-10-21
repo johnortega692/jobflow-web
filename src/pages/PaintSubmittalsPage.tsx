@@ -305,11 +305,13 @@ export function PaintSubmittalsPage() {
   const paintLinkGaps = useMemo(() => {
     const lead = leadSpecSection(draft);
     const secondary = draft.spec_sections?.[1]?.trim() ?? "";
-    const groups = groupPaintItemsForPackage(draft.items, (item) =>
-      paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead,
+    const groups = groupPaintItemsForPackage(
+      draft.items,
+      (item) => (paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead),
+      catalogProducts,
     );
     return paintPackageGaps(groups, productPacket.sections);
-  }, [draft, productPacket.sections]);
+  }, [draft, productPacket.sections, catalogProducts]);
   const itemsStatus = useMemo(() => {
     const packageNumber = formatSubmittalNumberDisplay(productPacket.submittal_number);
     const missingFromPackage = paintLinkGaps.scheduleOnly.length;
@@ -975,6 +977,11 @@ export function PaintSubmittalsPage() {
               )}
               {itemsStatus.text}
             </p>
+            {draft.items.some((item) => item.pdf_hidden) ? (
+              <p className="muted small paint-items-pdf-note">
+                {draft.items.filter((item) => item.pdf_hidden).length} hidden from the PDF
+              </p>
+            ) : null}
           </div>
           <div className="paint-items-toolbar-actions" ref={itemsActionsRef}>
             <button
