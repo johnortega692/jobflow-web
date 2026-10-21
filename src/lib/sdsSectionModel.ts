@@ -154,6 +154,7 @@ export function sdsPacketFilenameSpecSection(sections: SdsSection[]): string {
 }
 
 /** Sort by CSI (blank last), then category, then product — stable within ties. */
+/** Groups by spec section, blank specs last. Order inside a spec is the user's drag order. */
 export function sortSdsSectionsBySpec(sections: SdsSection[]): SdsSection[] {
   return sections
     .map((section, index) => ({ section, index }))
@@ -165,14 +166,6 @@ export function sortSdsSectionsBySpec(sections: SdsSection[]): SdsSection[] {
       if (aBlank !== bBlank) return aBlank ? 1 : -1;
       const specCmp = aSpec.localeCompare(bSpec, undefined, { sensitivity: "base" });
       if (specCmp !== 0) return specCmp;
-      const catCmp = a.section.category.localeCompare(b.section.category, undefined, {
-        sensitivity: "base",
-      });
-      if (catCmp !== 0) return catCmp;
-      const prodCmp = a.section.product.localeCompare(b.section.product, undefined, {
-        sensitivity: "base",
-      });
-      if (prodCmp !== 0) return prodCmp;
       return a.index - b.index;
     })
     .map(({ section }) => section);
