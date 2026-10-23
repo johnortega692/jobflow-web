@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ReceiptImageViewer } from "./ReceiptImageViewer";
 import { getFieldToolsOrder, listOrderReceiptImages, type OrderReceiptImage } from "../../lib/fieldToolsPoTracker";
 import {
   buildOrderDetailGroups,
@@ -14,6 +15,7 @@ type Props = {
   poNumber: string;
   receivedField: boolean;
   completed: boolean;
+  hasReceipt: boolean;
   trackingBusy?: boolean;
   onToggleReceived: (next: boolean) => void;
   onToggleCompleted: (next: boolean) => void;
@@ -31,6 +33,7 @@ export function FieldToolsOrderViewModal({
   poNumber,
   receivedField,
   completed,
+  hasReceipt,
   trackingBusy,
   onToggleReceived,
   onToggleCompleted,
@@ -63,14 +66,11 @@ export function FieldToolsOrderViewModal({
   }, [orderId]);
 
   const isLastMin = order?.order_type === "last_min";
+  const expectReceipt = isLastMin || hasReceipt;
 
   useEffect(() => {
-    if (!isLastMin) {
-      setReceipts([]);
-      setReceiptsError(null);
-      return;
-    }
     let cancelled = false;
+    setReceipts([]);
     setReceiptsLoading(true);
     setReceiptsError(null);
     void listOrderReceiptImages(orderId)
@@ -86,7 +86,7 @@ export function FieldToolsOrderViewModal({
     return () => {
       cancelled = true;
     };
-  }, [isLastMin, orderId]);
+  }, [orderId]);
 
   const groups = order ? buildOrderDetailGroups(order) : [];
   const detailRows = order ? buildOrderDetailRows(order) : [];
@@ -96,7 +96,7 @@ export function FieldToolsOrderViewModal({
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="modal card stack field-tools-order-modal"
+        className={`modal card stack field-tools-order-modal${expectReceipt || receipts.length > 0 ? " field-tools-order-modal-wide" : ""}`}
         role="dialog"
         aria-labelledby="field-tools-order-title"
         onClick={(e) => e.stopPropagation()}
@@ -184,23 +184,17 @@ export function FieldToolsOrderViewModal({
               <p className="muted">No line items recorded for this order.</p>
             )}
 
-            {isLastMin && (
+            {(expectReceipt || receipts.length > 0 || receiptsError) && (
               <div className="field-tools-order-cart">
-                <p className="field-tools-order-cart-title">Receipt</p>
-                {receiptsLoading && <p className="muted small">Loading receipt…</p>}
+                <p className="field-tools-order-cart-title">
+                  Receipt{receipts.length > 1 ? "s" : ""}
+                </p>
+                {expectReceipt && receiptsLoading && <p className="muted small">Loading receipt…</p>}
                 {receiptsError && <div className="banner banner-error">{receiptsError}</div>}
-                {!receiptsLoading && !receiptsError && receipts.length === 0 && (
+                {expectReceipt && !receiptsLoading && !receiptsError && receipts.length === 0 && (
                   <p className="muted small">No receipt was uploaded in Field Tools for this order.</p>
                 )}
-                {receipts.map((receipt) => (
-                  <a key={receipt.id} href={receipt.url} target="_blank" rel="noreferrer">
-                    <img
-                      src={receipt.url}
-                      alt={`Receipt for PO ${poNumber}`}
-                      style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 8 }}
-                    />
-                  </a>
-                ))}
+                <ReceiptImageViewer receipts={receipts} poNumber={poNumber} />
               </div>
             )}
 

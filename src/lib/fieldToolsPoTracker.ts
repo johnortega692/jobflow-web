@@ -24,6 +24,8 @@ export type FieldToolsPoDispatchRow = {
   emailStatus: string;
   receivedField: boolean;
   completed: boolean;
+  /** Store receipt photos uploaded in Field Tools for this order. */
+  hasReceipt: boolean;
 };
 
 type DispatchRecord = {
@@ -164,6 +166,8 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as unknown as DispatchRecord[];
+  const matched = rows.filter((row) => jobCodes.has(normalizeFieldToolsJobCode(row.order.job_number)));
+  const receiptOrderIds = await orderIdsWithReceipts([...new Set(matched.map((row) => row.order.id))]);
   const byOrder = new Map<string, string[]>();
 
   for (const row of rows) {
@@ -171,9 +175,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
     byOrder.get(row.order.id)!.push(row.po_number);
   }
 
-  const fieldRows: FieldToolsPoDispatchRow[] = rows
-    .filter((row) => jobCodes.has(normalizeFieldToolsJobCode(row.order.job_number)))
-    .map((row) => {
+  const fieldRows: FieldToolsPoDispatchRow[] = matched.map((row) => {
       const payload =
         row.order.payload && typeof row.order.payload === "object" && !Array.isArray(row.order.payload)
           ? row.order.payload
@@ -198,6 +200,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         emailStatus: row.email_status,
         receivedField: row.received_field,
         completed: row.completed,
+        hasReceipt: receiptOrderIds.has(row.order.id),
       };
     });
 
@@ -222,6 +225,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
       emailStatus: "sent",
       receivedField: row.receivedField,
       completed: row.completed,
+      hasReceipt: false,
     };
   });
 
@@ -236,6 +240,16 @@ export type OrderReceiptImage = {
   uploadedBy: string;
   createdAt: string;
 };
+
+async function orderIdsWithReceipts(orderIds: string[]): Promise<Set<string>> {
+  if (!orderIds.length) return new Set();
+  const { data, error } = await supabase
+    .from("field_tools_order_receipts")
+    .select("order_id")
+    .in("order_id", orderIds);
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((row) => String((row as { order_id: string }).order_id)));
+}
 
 const RECEIPT_BUCKET = "field-tools-receipts";
 

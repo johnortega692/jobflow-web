@@ -1,17 +1,12 @@
 import { useEffect, useState } from "react";
 import { listOrderReceiptImages, type OrderReceiptImage } from "../../lib/fieldToolsPoTracker";
+import { ReceiptImageViewer } from "./ReceiptImageViewer";
 
 type Props = {
   orderId: string;
   poNumber: string;
   onClose: () => void;
 };
-
-function formatUploadedAt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
 
 export function LastMinReceiptsModal({ orderId, poNumber, onClose }: Props) {
   const [receipts, setReceipts] = useState<OrderReceiptImage[]>([]);
@@ -40,7 +35,7 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose }: Props) {
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="modal card stack field-tools-order-modal"
+        className="modal card stack field-tools-order-modal field-tools-order-modal-wide"
         role="dialog"
         aria-labelledby="last-min-receipts-title"
         onClick={(e) => e.stopPropagation()}
@@ -48,7 +43,7 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose }: Props) {
         <div className="row-between wrap">
           <div>
             <h3 id="last-min-receipts-title">Receipt · PO# {poNumber}</h3>
-            <p className="muted small">Last-Min store receipt uploaded with this order.</p>
+            <p className="muted small">Store receipt uploaded in Field Tools for this order.</p>
           </div>
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Close
@@ -62,25 +57,7 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose }: Props) {
           <p className="muted">No receipt was saved with this order.</p>
         )}
 
-        {receipts.map((receipt) => (
-          <figure key={receipt.id} className="stack" style={{ margin: 0 }}>
-            <a href={receipt.url} target="_blank" rel="noreferrer">
-              <img
-                src={receipt.url}
-                alt={`Receipt for PO ${poNumber}`}
-                style={{ width: "100%", maxHeight: 480, objectFit: "contain", borderRadius: 8 }}
-              />
-            </a>
-            <figcaption className="muted small">
-              {formatUploadedAt(receipt.createdAt)}
-              {receipt.uploadedBy ? ` · ${receipt.uploadedBy}` : ""}
-              {" · "}
-              <a href={receipt.url} target="_blank" rel="noreferrer">
-                Open full size
-              </a>
-            </figcaption>
-          </figure>
-        ))}
+        <ReceiptImageViewer receipts={receipts} poNumber={poNumber} />
       </div>
     </div>
   );

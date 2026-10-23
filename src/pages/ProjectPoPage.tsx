@@ -488,7 +488,7 @@ export function ProjectPoPage() {
                     </td>
                     <td className="po-tracker-action-col">
                       <div className="po-tracker-actions">
-                        {row.orderType === "last_min" && (
+                        {(row.orderType === "last_min" || row.hasReceipt) && (
                           <button
                             type="button"
                             className="btn btn-ghost po-tracker-icon-btn"
@@ -550,6 +550,7 @@ export function ProjectPoPage() {
           poNumber={viewOrder.poNumber}
           receivedField={viewRow.receivedField}
           completed={viewRow.completed}
+          hasReceipt={viewRow.hasReceipt}
           trackingBusy={busyId === viewRow.dispatchId}
           onToggleReceived={(next) => void toggleRow(viewRow, "receivedField", next)}
           onToggleCompleted={(next) => void toggleRow(viewRow, "completed", next)}
