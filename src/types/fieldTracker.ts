@@ -1,5 +1,5 @@
 import type { PaintVendorLabel } from "../lib/googleSheetsConfig.js";
-import { normalizeWcComponents, type WcComponent } from "../lib/wcComponents";
+import { normalizeWcComponents, type WcComponent } from "../lib/wcComponents.js";
 
 export type PaintTrackerState = {
   matchExisting: boolean;

@@ -11,7 +11,7 @@ import { applyPaintAutoLabels, paintItemsSuggestAutoLabel } from "../lib/paintIt
 import { groupPaintItemsForPackage, paintPackageSectionsFromGroups } from "../lib/paintPackageLink.js";
 import { applyFrpAutoLabels, frpItemsSuggestAutoLabel, parseFrpQtyField } from "../lib/frpItemLabels.js";
 import { applyWcAutoLabels, parseWcQtyField, wcItemsHaveFloor, wcItemsSuggestAutoLabel } from "../lib/wcItemLabels.js";
-import { migrateTrackItems, normalizeWcComponents, refreshComponentTags } from "../lib/wcComponents";
+import { migrateTrackItems, normalizeWcComponents, refreshComponentTags } from "../lib/wcComponents.js";
 
 /** Paint dual-table model is binary (`primary` | `secondary`); chip UI is capped to match. */
 export const MAX_PAINT_SPEC_SECTIONS = 2;
@@ -119,7 +119,7 @@ export type WallcoveringItem = {
   order: boolean;
   /** Defaults to primary. Used when package has an optional 2nd spec. */
   spec_scope?: PaintItemSpecScope;
-  components?: import("../lib/wcComponents").WcComponent[];
+  components?: import("../lib/wcComponents.js").WcComponent[];
   fabricatedAssembly?: boolean;
   shopDrawings?: boolean;
   e84ClassA?: boolean;

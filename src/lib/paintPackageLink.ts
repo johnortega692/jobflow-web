@@ -1,6 +1,6 @@
 import type { PaintProduct } from "./paintCatalog";
-import { formatRevisionTag, formatSubmittalNumberDisplay } from "./printCore";
-import { sectionHasAnyAttachment } from "./sdsSectionModel";
+import { formatRevisionTag, formatSubmittalNumberDisplay } from "./printCore.js";
+import { sectionHasAnyAttachment } from "./sdsSectionModel.js";
 import type { PaintItem, SdsSection } from "../types/tradeDocuments";
 
 type ScheduleMark = {

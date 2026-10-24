@@ -35,7 +35,7 @@ import {
   type WallcoveringSubmittalData,
 } from "../types/tradeDocuments.js";
 import { harmonizeTrackerRevision } from "./paintTrackerRevision.js";
-import { applySubmittalComponents, isApsTrackItem, mergeLineComponents, migrateApsTrackerLine, normalizeWcComponents } from "./wcComponents";
+import { applySubmittalComponents, isApsTrackItem, mergeLineComponents, migrateApsTrackerLine, normalizeWcComponents } from "./wcComponents.js";
 
 export function withSyncedPaintVendor(trade: ProjectTradeData, submittal: PaintSubmittalData): ProjectTradeData {
   const vendor = normalizePaintVendor(submittal.paint_vendor ?? "PPG");
