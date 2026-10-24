@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { FieldToolsOrderViewModal } from "../components/fieldTools/FieldToolsOrderViewModal";
 import { LastMinReceiptsModal } from "../components/fieldTools/LastMinReceiptsModal";
+import { PoSequencePanel } from "../components/fieldTools/PoSequencePanel";
+import { useAuth } from "../contexts/AuthContext";
+import { userJobRoleIsPm } from "../types/jobRoles";
 import { projectTradeJobIdentities, type TransmittalContract } from "../lib/jobInfo";
 import {
   formatPoOrderMeta,
   listPoDispatchesForJobs,
+  normalizeFieldToolsJobCode,
   type FieldToolsPoDispatchRow,
   updatePoDispatchTracking,
 } from "../lib/fieldToolsPoTracker";
@@ -190,6 +194,8 @@ function PoReceiptIcon() {
 
 export function ProjectPoPage() {
   const { project, projectId } = useOutletContext<Ctx>();
+  const { isAdmin, jobRole } = useAuth();
+  const canAdjustPoSequence = isAdmin || userJobRoleIsPm(jobRole);
   const [rows, setRows] = useState<FieldToolsPoDispatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +234,18 @@ export function ProjectPoPage() {
   );
 
   const hasMultipleContracts = jobLookups.length > 1;
+
+  const sequenceJobs = useMemo(() => {
+    const byCode = new Map<string, string[]>();
+    for (const lookup of jobLookups) {
+      const code = normalizeFieldToolsJobCode(lookup.jobNumber);
+      if (!code || code === "JOB") continue;
+      const labels = byCode.get(code) ?? [];
+      if (!labels.includes(lookup.contractLabel)) labels.push(lookup.contractLabel);
+      byCode.set(code, labels);
+    }
+    return [...byCode.entries()].map(([code, labels]) => ({ code, labels }));
+  }, [jobLookups]);
 
   const load = useCallback(async () => {
     if (!jobLookups.length || hiddenFromFieldApps) {
@@ -356,6 +374,8 @@ export function ProjectPoPage() {
           </p>
         )}
       </div>
+
+      {canAdjustPoSequence && sequenceJobs.length > 0 && <PoSequencePanel jobs={sequenceJobs} />}
 
       {hasMultipleContracts && (
         <div className="row-gap wrap po-tracker-filters">

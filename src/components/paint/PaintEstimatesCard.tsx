@@ -6,6 +6,7 @@ import {
   loadLastMinUncounted,
   loadPaintEstimates,
   mergePaintEstimates,
+  parseAdjustmentGallons,
   parseEstimateGallons,
   savePaintEstimates,
   type LastMinUncounted,
@@ -20,7 +21,7 @@ type Props = {
 };
 
 type SavedRows = Awaited<ReturnType<typeof loadPaintEstimates>>;
-type Edit = { gallons: string; notes: string };
+type Edit = { gallons: string; notes: string; adjustment: string };
 
 let customSeq = 0;
 
@@ -33,6 +34,7 @@ function emptyCustomRow(): PaintEstimateDraft {
     role: "custom",
     gallons: "",
     notes: "",
+    adjustment: "",
     orderedGallons: 0,
     offList: false,
   };
@@ -84,13 +86,16 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
   const totals = useMemo(() => {
     let estimated = 0;
     let ordered = 0;
+    let adjustment = 0;
     for (const row of rows) {
       const gallons = parseEstimateGallons(row.gallons);
+      const extra = parseAdjustmentGallons(row.adjustment) ?? 0;
+      adjustment += extra;
       if (gallons === null) continue;
       estimated += gallons;
       ordered += row.orderedGallons;
     }
-    return { estimated, ordered };
+    return { estimated, ordered, adjustment };
   }, [rows]);
 
   function edit(row: PaintEstimateDraft, patch: Partial<Edit>) {
@@ -101,7 +106,10 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
     }
     setEdits((prev) => ({
       ...prev,
-      [row.key]: { ...(prev[row.key] ?? { gallons: row.gallons, notes: row.notes }), ...patch },
+      [row.key]: {
+        ...(prev[row.key] ?? { gallons: row.gallons, notes: row.notes, adjustment: row.adjustment }),
+        ...patch,
+      },
     }));
   }
 
@@ -125,6 +133,11 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
       setError(`Enter gallons as a number for ${bad.product || "the new product"}.`);
       return;
     }
+    const badAdjustment = rows.find((row) => parseAdjustmentGallons(row.adjustment) === null);
+    if (badAdjustment) {
+      setError(`Enter the adjustment as a number for ${badAdjustment.product || "the new product"}.`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -145,7 +158,8 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
           <h3>Estimated quantities</h3>
           <p className="muted small">
             Gallons per product and sheen. Ordered counts Field Tools field orders, PM orders, and last-min receipts
-            with paint on job {jobNumber || "—"}.
+            with paint on job {jobNumber || "—"}. Adjust adds gallons bought outside the app and does not use a PO
+            number.
           </p>
           {lastMin.count > 0 ? (
             <p className="small paint-estimates-lastmin">{lastMinUncountedLabel(lastMin, jobNumber)}</p>
@@ -187,6 +201,7 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
                 <th>Sheen</th>
                 <th className="paint-estimates-num">Estimate (gal)</th>
                 <th className="paint-estimates-num">Ordered</th>
+                <th className="paint-estimates-num">Adjust</th>
                 <th className="paint-estimates-num">Left</th>
                 <th>Notes</th>
                 <th aria-label="Remove" />
@@ -195,7 +210,8 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
             <tbody>
               {rows.map((row) => {
                 const estimate = parseEstimateGallons(row.gallons);
-                const left = estimate === null ? null : estimate - row.orderedGallons;
+                const adjustment = parseAdjustmentGallons(row.adjustment) ?? 0;
+                const left = estimate === null ? null : estimate - row.orderedGallons - adjustment;
                 const isNew = row.key.startsWith("custom-");
                 return (
                   <tr key={row.key} className={left !== null && left < 0 ? "paint-estimates-over" : undefined}>
@@ -243,6 +259,17 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
                     </td>
                     <td className="paint-estimates-num">{gallonsLabel(row.orderedGallons)}</td>
                     <td className="paint-estimates-num">
+                      <input
+                        className="input paint-estimates-input"
+                        inputMode="decimal"
+                        value={row.adjustment}
+                        placeholder="0"
+                        title="Gallons ordered outside Field Tools. Use a negative number to subtract."
+                        aria-label={`Adjustment gallons for ${row.product} ${row.sheen}`.trim()}
+                        onChange={(e) => edit(row, { adjustment: e.target.value })}
+                      />
+                    </td>
+                    <td className="paint-estimates-num">
                       {left === null ? (
                         <span className="muted">—</span>
                       ) : left < 0 ? (
@@ -280,10 +307,11 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
                 <td colSpan={2}>Total</td>
                 <td className="paint-estimates-num">{gallonsLabel(totals.estimated)}</td>
                 <td className="paint-estimates-num">{gallonsLabel(totals.ordered)}</td>
+                <td className="paint-estimates-num">{gallonsLabel(totals.adjustment)}</td>
                 <td className="paint-estimates-num">
-                  {totals.estimated - totals.ordered < 0
-                    ? `${gallonsLabel(totals.ordered - totals.estimated)} over`
-                    : gallonsLabel(totals.estimated - totals.ordered)}
+                  {totals.estimated - totals.ordered - totals.adjustment < 0
+                    ? `${gallonsLabel(totals.ordered + totals.adjustment - totals.estimated)} over`
+                    : gallonsLabel(totals.estimated - totals.ordered - totals.adjustment)}
                 </td>
                 <td colSpan={2} />
               </tr>

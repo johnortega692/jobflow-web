@@ -13,6 +13,8 @@ export type PaintEstimateDraft = {
   /** Typed value. Blank means no estimate yet. */
   gallons: string;
   notes: string;
+  /** Gallons bought outside Field Tools. Blank means zero. May be negative. */
+  adjustment: string;
   orderedGallons: number;
   /** Saved before, but the product is no longer on the brush-out list. */
   offList: boolean;
@@ -24,7 +26,9 @@ type SavedEstimate = {
   sheen: string;
   estimated_gallons: number | string;
   notes: string;
+  adjustment_gallons: number | string;
   ordered_gallons: number | string;
+  app_ordered_gallons?: number | string;
 };
 
 /** Not in the generated Database types yet. */
@@ -56,9 +60,22 @@ export function parseEstimateGallons(text: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+/** Blank is zero. Any other finite number is kept, including a negative correction. */
+export function parseAdjustmentGallons(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatAdjustment(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return "";
+  return formatGallons(value);
+}
+
 /** One row per product and sheen on the brush-outs, then their primers. */
-function brushoutEstimateTargets(rows: ApprovedBrushoutDraft[]): Omit<PaintEstimateDraft, "gallons" | "notes" | "orderedGallons" | "offList">[] {
-  const finishes: Omit<PaintEstimateDraft, "gallons" | "notes" | "orderedGallons" | "offList">[] = [];
+function brushoutEstimateTargets(rows: ApprovedBrushoutDraft[]): Omit<PaintEstimateDraft, "gallons" | "notes" | "adjustment" | "orderedGallons" | "offList">[] {
+  const finishes: Omit<PaintEstimateDraft, "gallons" | "notes" | "adjustment" | "orderedGallons" | "offList">[] = [];
   const primers: typeof finishes = [];
   const seen = new Set<string>();
   for (const row of rows) {
@@ -99,6 +116,7 @@ export function mergePaintEstimates(
       ...target,
       gallons: match ? formatGallons(Number(match.estimated_gallons)) : "",
       notes: match?.notes ?? "",
+      adjustment: match ? formatAdjustment(Number(match.adjustment_gallons) || 0) : "",
       orderedGallons: match ? Number(match.ordered_gallons) || 0 : 0,
       offList: false,
     };
@@ -111,6 +129,7 @@ export function mergePaintEstimates(
       role: "custom",
       gallons: formatGallons(Number(row.estimated_gallons)),
       notes: row.notes ?? "",
+      adjustment: formatAdjustment(Number(row.adjustment_gallons) || 0),
       orderedGallons: Number(row.ordered_gallons) || 0,
       offList: true,
     });
@@ -120,7 +139,7 @@ export function mergePaintEstimates(
 
 export async function loadPaintEstimates(projectId: string, jobNumber: string): Promise<SavedEstimate[]> {
   const { data, error } = await estimatesTable()
-    .select("id, product, sheen, estimated_gallons, notes")
+    .select("id, product, sheen, estimated_gallons, notes, adjustment_gallons")
     .eq("project_id", projectId);
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as unknown as Omit<SavedEstimate, "ordered_gallons">[];
@@ -133,7 +152,11 @@ export async function loadPaintEstimates(projectId: string, jobNumber: string): 
     );
     if (progressError) throw new Error(progressError.message);
     for (const item of (Array.isArray(progress) ? progress : []) as SavedEstimate[]) {
-      ordered.set(item.id, Number(item.ordered_gallons) || 0);
+      const appOrdered =
+        item.app_ordered_gallons != null && item.app_ordered_gallons !== ""
+          ? Number(item.app_ordered_gallons)
+          : Number(item.ordered_gallons) || 0;
+      ordered.set(item.id, Number.isFinite(appOrdered) ? appOrdered : 0);
     }
   }
   return rows.map((row) => ({ ...row, ordered_gallons: ordered.get(row.id) ?? 0 }));
@@ -173,7 +196,8 @@ export async function savePaintEstimates(
   const keep = new Map<string, PaintEstimateDraft>();
   for (const row of rows) {
     const gallons = parseEstimateGallons(row.gallons);
-    if (!row.product.trim() || (gallons === null && !row.notes.trim())) continue;
+    const adjustment = parseAdjustmentGallons(row.adjustment);
+    if (!row.product.trim() || (gallons === null && !row.notes.trim() && !adjustment)) continue;
     keep.set(paintEstimateKey(row.product, row.sheen), row);
   }
 
@@ -189,6 +213,7 @@ export async function savePaintEstimates(
     product: row.product.trim(),
     sheen: row.sheen.trim(),
     estimated_gallons: parseEstimateGallons(row.gallons) ?? 0,
+    adjustment_gallons: parseAdjustmentGallons(row.adjustment) ?? 0,
     notes: row.notes.trim(),
     updated_by_name: updatedByName.trim(),
     updated_at: now,

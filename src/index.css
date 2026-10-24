@@ -2974,6 +2974,30 @@ th {
   margin: 0 0 0.35rem;
 }
 
+.po-sequence-panel h3 {
+  margin: 0;
+}
+
+.po-sequence-panel p {
+  margin: 0.2rem 0 0;
+}
+
+.po-sequence-job {
+  font-weight: 600;
+}
+
+.po-sequence-input {
+  width: 6.5rem;
+  margin-top: 0;
+  text-align: right;
+}
+
+.po-sequence-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
 .po-tracker-legend {
   list-style: none;
   margin: 0 0 0.45rem;
