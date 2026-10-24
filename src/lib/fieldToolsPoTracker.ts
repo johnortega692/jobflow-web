@@ -284,6 +284,13 @@ export async function listOrderReceiptImages(orderId: string): Promise<OrderRece
   return images;
 }
 
+export async function deleteOrderReceiptImage(receiptId: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_field_tools_order_receipt" as never, {
+    p_receipt_id: receiptId,
+  } as never);
+  if (error) throw new Error(error.message);
+}
+
 export async function getFieldToolsOrder(orderId: string): Promise<FieldToolsOrder | null> {
   const { data, error } = await supabase
     .from("field_tools_orders")

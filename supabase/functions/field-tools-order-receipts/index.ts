@@ -40,6 +40,7 @@ type OrderRow = {
   submitted_by_email?: string | null;
   receipt_reminder_sent_at?: string | null;
   receipt_reminder_count?: number | null;
+  created_at?: string | null;
 };
 
 type ReceiptRow = {
@@ -146,21 +147,28 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+type OfficeContacts = { pm: string; pmEmail: string; superName: string; superEmail: string };
+
+function contactsFromJobInfo(ji: Record<string, unknown>): OfficeContacts {
+  return {
+    pm: strField(ji.icbi_pm) || strField(ji.field_request_pm),
+    pmEmail: strField(ji.icbi_pm_email),
+    superName: strField(ji.field_request_super) || strField(ji.icbi_super),
+    superEmail: strField(ji.icbi_super_email),
+  };
+}
+
+const emptyContacts: OfficeContacts = { pm: "", pmEmail: "", superName: "", superEmail: "" };
+
 async function loadPmEmail(
   supabase: ReturnType<typeof createClient>,
   jobCode: string,
   jobName: string,
   projectId: string,
-): Promise<{ pm: string; pmEmail: string }> {
+): Promise<OfficeContacts> {
   if (projectId) {
     const { data } = await supabase.from("projects").select("data").eq("id", projectId).maybeSingle();
-    if (data) {
-      const ji = jobInfoFromProjectData(data.data);
-      return {
-        pm: strField(ji.icbi_pm) || strField(ji.field_request_pm),
-        pmEmail: strField(ji.icbi_pm_email),
-      };
-    }
+    if (data) return contactsFromJobInfo(jobInfoFromProjectData(data.data));
   }
 
   const { data } = await supabase
@@ -168,7 +176,7 @@ async function loadPmEmail(
     .select("id, job_number, job_name, data")
     .ilike("job_number", jobCode);
   const rows = (data ?? []) as { job_number: string; job_name: string | null; data: unknown }[];
-  if (!rows.length) return { pm: "", pmEmail: "" };
+  if (!rows.length) return emptyContacts;
 
   const code = jobCode.trim().toLowerCase();
   const name = jobName.trim().toLowerCase();
@@ -176,12 +184,8 @@ async function loadPmEmail(
   const pool = exact.length ? exact : rows;
   const named = name ? pool.find((r) => strField(r.job_name).toLowerCase() === name) : undefined;
   const picked = named ?? pool[0];
-  if (!picked) return { pm: "", pmEmail: "" };
-  const ji = jobInfoFromProjectData(picked.data);
-  return {
-    pm: strField(ji.icbi_pm) || strField(ji.field_request_pm),
-    pmEmail: strField(ji.icbi_pm_email),
-  };
+  if (!picked) return emptyContacts;
+  return contactsFromJobInfo(jobInfoFromProjectData(picked.data));
 }
 
 async function sendGasEmail(params: {
@@ -218,51 +222,96 @@ async function sendGasEmail(params: {
   }
 }
 
-function receiptReminderHtml(opts: {
+type DigestLine = { poNumber: string; jobLabel: string; ordered: string };
+
+function pacificToday(): { friday: boolean; date: string } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return {
+    friday: part("weekday") === "Fri",
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+  };
+}
+
+function formatOrdered(iso: string | null | undefined): string {
+  const time = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(time)) return "";
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric" }).format(new Date(time));
+}
+
+function isEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function clipPdf(value: string, max = 88): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+function receiptDigestHtml(opts: {
   companyName: string;
   ordererName: string;
-  jobLabel: string;
-  poNumber: string;
-  pm: string;
+  lines: DigestLine[];
 }): string {
-  const lines = [
-    `<p>Hi ${escapeHtml(opts.ordererName || "there")},</p>`,
-    "<p>Please upload the store receipt for this order in Field Tools.</p>",
-    opts.poNumber ? `<p><strong>PO Number:</strong> ${escapeHtml(opts.poNumber)}</p>` : "",
-    `<p><strong>Project:</strong> ${escapeHtml(opts.jobLabel)}</p>`,
-    opts.pm ? `<p><strong>PM:</strong> ${escapeHtml(opts.pm)}</p>` : "",
-    "<p>Open <strong>Ordering → Order History</strong>, open this order, and add the receipt photo.</p>",
-  ].filter(Boolean).join("");
-
+  const rows = opts.lines
+    .map(
+      (line) =>
+        `<tr>
+          <td style="padding:8px 10px;border-bottom:1px solid #e6e6e6;">${escapeHtml(line.poNumber || "—")}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e6e6e6;">${escapeHtml(line.jobLabel)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e6e6e6;">${escapeHtml(line.ordered || "—")}</td>
+        </tr>`,
+    )
+    .join("");
   return `<!DOCTYPE html>
 <html lang="en">
 <body style="margin:0;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#333;line-height:1.5;">
-  <h2 style="margin:0 0 12px;color:#1a3a5c;">Upload your order receipt</h2>
-  ${lines}
+  <h2 style="margin:0 0 12px;color:#1a3a5c;">Receipts still needed</h2>
+  <p>Hi ${escapeHtml(opts.ordererName || "there")},</p>
+  <p>These orders still need a store receipt. Open <strong>Ordering → Order History</strong>, open the order, and add the receipt photo.</p>
+  <table style="border-collapse:collapse;width:100%;max-width:640px;font-size:14px;">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:8px 10px;border-bottom:2px solid #1a3a5c;">PO</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:2px solid #1a3a5c;">Project</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:2px solid #1a3a5c;">Ordered</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
   <p style="color:#666;font-size:13px;">${escapeHtml(opts.companyName)}</p>
 </body>
 </html>`;
 }
 
-async function buildReminderPdf(name: string, jobLabel: string, poNumber: string): Promise<Uint8Array> {
+async function buildDigestPdf(name: string, lines: DigestLine[]): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const page = doc.addPage([612, 792]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  let page = doc.addPage([612, 792]);
   let y = 740;
-  page.drawText("Upload your order receipt", { x: 48, y, size: 18, font: bold });
+  const nextPage = () => {
+    page = doc.addPage([612, 792]);
+    y = 740;
+  };
+  page.drawText("Receipts still needed", { x: 48, y, size: 18, font: bold });
   y -= 28;
-  page.drawText(`Hi ${name || "there"},`, { x: 48, y, size: 12, font });
-  y -= 22;
-  page.drawText("Please upload the store receipt in Field Tools.", { x: 48, y, size: 12, font });
-  y -= 22;
-  if (poNumber) {
-    page.drawText(`PO Number: ${poNumber}`, { x: 48, y, size: 12, font });
+  page.drawText(clipPdf(`Hi ${name || "there"},`), { x: 48, y, size: 12, font });
+  y -= 20;
+  page.drawText("Upload the store receipt in Field Tools → Ordering → Order History.", { x: 48, y, size: 11, font });
+  y -= 26;
+  for (const line of lines) {
+    if (y < 72) nextPage();
+    const label = [line.poNumber || "No PO", line.jobLabel, line.ordered].filter(Boolean).join("  ·  ");
+    page.drawText(clipPdf(label), { x: 48, y, size: 11, font });
     y -= 18;
   }
-  page.drawText(`Project: ${jobLabel}`, { x: 48, y, size: 12, font });
-  y -= 22;
-  page.drawText("Open Ordering → Order History, then add the receipt photo.", { x: 48, y, size: 12, font });
   return doc.save();
 }
 
@@ -280,61 +329,72 @@ function ccJoin(emails: (string | undefined)[]): string {
   return out.join(",");
 }
 
-async function sendReceiptReminderForOrder(
+async function sendReceiptDigest(
   supabase: ReturnType<typeof createClient>,
-  order: OrderRow,
-  opts: { companyName: string; senderName: string; settings: ReceiptReminderSettings },
-): Promise<{ ok: boolean; message: string }> {
-  if (!opts.settings.enabled) {
-    return { ok: false, message: "Receipt reminders are turned off in Admin." };
-  }
-  if ((order.order_type ?? "") === "last_min") {
-    return { ok: false, message: "Last-Min receipts are added at submit" };
-  }
-  if ((order.order_type ?? "") === "haul_off") {
-    return { ok: false, message: "Haul Out does not send receipt reminders" };
-  }
-  const to = (order.submitted_by_email ?? "").trim();
-  if (!to) return { ok: false, message: "No email on file for the person who ordered" };
+  orders: OrderRow[],
+  opts: { companyName: string; senderName: string; secret: string; sentOn: string },
+): Promise<{ ok: boolean; message: string; skipped?: boolean }> {
+  const to = (orders[0]?.submitted_by_email ?? "").trim();
+  if (!isEmail(to)) return { ok: false, message: "No email on file for the person who ordered" };
 
-  const payload = order.payload ?? {};
-  const projectId = strField(payload.projectId ?? payload.project_id);
-  const { pm, pmEmail } = await loadPmEmail(
-    supabase,
-    order.job_number,
-    order.job_name ?? "",
-    projectId,
-  );
-  const cc = opts.settings.ccPm
-    ? ccJoin([pmEmail].filter((email) => email.trim().toLowerCase() !== to.toLowerCase()))
-    : "";
-  const jobLabel = [order.job_number, order.job_name].filter(Boolean).join(" ");
-  const poNumber = strField(order.po_number);
-  const ordererName = strField(order.submitted_by_name);
-  const pdf = await buildReminderPdf(ordererName, jobLabel, poNumber);
+  const { data: claim, error: claimErr } = await supabase.rpc("field_tools_receipt_digest_claim", {
+    p_secret: opts.secret,
+    p_sent_on: opts.sentOn,
+    p_email: to,
+  });
+  if (claimErr) return { ok: false, message: claimErr.message };
+  const claimed = claim as { ok?: boolean; claimed?: boolean; error?: string } | null;
+  if (!claimed?.ok) return { ok: false, message: claimed?.error ?? "Could not reserve that digest." };
+  if (claimed.claimed !== true) return { ok: true, message: "Already sent today", skipped: true };
+
+  const contacts = new Map<string, OfficeContacts>();
+  const lines: DigestLine[] = [];
+  const ccEmails: string[] = [];
+  let ordererName = "";
+  for (const order of orders) {
+    if (!ordererName) ordererName = strField(order.submitted_by_name);
+    const payload = order.payload ?? {};
+    const projectId = strField(payload.projectId ?? payload.project_id);
+    const key = `${projectId}|${order.job_number}|${order.job_name ?? ""}`;
+    let office = contacts.get(key);
+    if (!office) {
+      office = await loadPmEmail(supabase, order.job_number, order.job_name ?? "", projectId);
+      contacts.set(key, office);
+    }
+    if (isEmail(office.pmEmail)) ccEmails.push(office.pmEmail);
+    if (isEmail(office.superEmail)) ccEmails.push(office.superEmail);
+    lines.push({
+      poNumber: strField(order.po_number),
+      jobLabel: [order.job_number, order.job_name].filter(Boolean).join(" "),
+      ordered: formatOrdered(order.created_at),
+    });
+  }
+  const cc = ccJoin(ccEmails.filter((email) => email.toLowerCase() !== to.toLowerCase()));
+  const pdf = await buildDigestPdf(ordererName, lines);
+  const subject = lines.length === 1
+    ? `Receipt needed — ${lines[0]?.jobLabel ?? "order"}${lines[0]?.poNumber ? ` — ${lines[0].poNumber}` : ""}`
+    : `Receipts needed — ${lines.length} orders`;
   const mailed = await sendGasEmail({
     to,
     cc,
-    subject: `Receipt reminder — ${jobLabel}${poNumber ? ` — ${poNumber}` : ""}`,
-    htmlBody: receiptReminderHtml({
-      companyName: opts.companyName,
-      ordererName,
-      jobLabel,
-      poNumber,
-      pm,
-    }),
-    attachmentName: "receipt-reminder.pdf",
+    subject,
+    htmlBody: receiptDigestHtml({ companyName: opts.companyName, ordererName, lines }),
+    attachmentName: "receipts-needed.pdf",
     attachmentBase64: bytesToBase64(pdf),
     senderName: opts.senderName,
   });
-  if (!mailed.ok) return mailed;
+  if (!mailed.ok) {
+    await supabase.rpc("field_tools_receipt_digest_release", {
+      p_secret: opts.secret,
+      p_sent_on: opts.sentOn,
+      p_email: to,
+    });
+    return mailed;
+  }
   await supabase
     .from("field_tools_orders")
-    .update({
-      receipt_reminder_sent_at: new Date().toISOString(),
-      receipt_reminder_count: (order.receipt_reminder_count ?? 0) + 1,
-    })
-    .eq("id", order.id);
+    .update({ receipt_reminder_sent_at: new Date().toISOString() })
+    .in("id", orders.map((order) => order.id));
   return mailed;
 }
 
@@ -467,49 +527,79 @@ Deno.serve(async (req) => {
       if (!expected || (body.secret ?? "").trim() !== expected) {
         return jsonResponse({ ok: false, error: "Unauthorized" }, 401);
       }
-      const reminder = await loadReceiptReminderSettings(supabase);
-      if (!reminder.enabled || !reminder.followup) {
+      const when = pacificToday();
+      if (!when.friday) {
         return jsonResponse({ ok: true, sent: 0, skipped: 0, failed: 0 });
       }
-      const { data: rows, error: listErr } = await supabase
-        .from("field_tools_orders")
-        .select(
-          "id, job_number, job_name, po_number, order_type, payload, submitted_by_profile_id, submitted_by_name, submitted_by_email, receipt_reminder_sent_at, receipt_reminder_count, created_at, status",
-        )
-        .neq("order_type", "last_min")
-        .neq("order_type", "haul_off")
-        .in("status", ["submitted", "confirmed"])
-        .lt("created_at", new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString())
-        .order("created_at", { ascending: true })
-        .limit(40);
-      if (listErr) return jsonResponse({ ok: false, error: listErr.message }, 500);
+      const reminder = await loadReceiptReminderSettings(supabase);
+      if (!reminder.enabled) {
+        return jsonResponse({ ok: true, sent: 0, skipped: 0, failed: 0 });
+      }
+      const orders: OrderRow[] = [];
+      const pageSize = 200;
+      for (let from = 0; from < 800; from += pageSize) {
+        const { data: rows, error: listErr } = await supabase
+          .from("field_tools_orders")
+          .select(
+            "id, job_number, job_name, po_number, order_type, payload, submitted_by_profile_id, submitted_by_name, submitted_by_email, created_at, status",
+          )
+          .in("order_type", ["field_request", "job_scope_kit"])
+          .in("status", ["submitted", "confirmed"])
+          .order("created_at", { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (listErr) return jsonResponse({ ok: false, error: listErr.message }, 500);
+        const batch = (rows ?? []) as OrderRow[];
+        orders.push(...batch);
+        if (batch.length < pageSize) break;
+      }
+      const withReceipt = new Set<string>();
+      for (let index = 0; index < orders.length; index += 150) {
+        const slice = orders.slice(index, index + 150).map((order) => order.id);
+        if (!slice.length) continue;
+        const { data: receiptRows, error: receiptErr } = await supabase
+          .from("field_tools_order_receipts")
+          .select("order_id")
+          .in("order_id", slice);
+        if (receiptErr) return jsonResponse({ ok: false, error: receiptErr.message }, 500);
+        for (const row of receiptRows ?? []) withReceipt.add(String((row as { order_id: string }).order_id));
+      }
+      const hiddenJobs = new Map<string, boolean>();
+      const missing: OrderRow[] = [];
+      for (const order of orders) {
+        if (withReceipt.has(order.id)) continue;
+        const email = (order.submitted_by_email ?? "").trim();
+        if (!isEmail(email)) continue;
+        const jobKey = order.job_number.trim().toLowerCase();
+        let hidden = hiddenJobs.get(jobKey);
+        if (hidden === undefined) {
+          const { data: hiddenFlag } = await supabase.rpc("field_tools_job_number_hidden", {
+            p_job_number: order.job_number,
+          });
+          hidden = hiddenFlag === true;
+          hiddenJobs.set(jobKey, hidden);
+        }
+        if (hidden) continue;
+        missing.push(order);
+      }
+      const groups = new Map<string, OrderRow[]>();
+      for (const order of missing) {
+        const key = (order.submitted_by_email ?? "").trim().toLowerCase();
+        const list = groups.get(key) ?? [];
+        list.push(order);
+        groups.set(key, list);
+      }
       let sent = 0;
       let skipped = 0;
       let failed = 0;
-      for (const row of (rows ?? []) as OrderRow[]) {
-        if ((row.receipt_reminder_count ?? 0) >= reminder.maxCount) {
-          skipped += 1;
-          continue;
-        }
-        const last = row.receipt_reminder_sent_at ? Date.parse(row.receipt_reminder_sent_at) : 0;
-        if (last && Date.now() - last < 20 * 60 * 60 * 1000) {
-          skipped += 1;
-          continue;
-        }
-        const { count } = await supabase
-          .from("field_tools_order_receipts")
-          .select("id", { count: "exact", head: true })
-          .eq("order_id", row.id);
-        if ((count ?? 0) > 0) {
-          skipped += 1;
-          continue;
-        }
-        const mailed = await sendReceiptReminderForOrder(supabase, row, {
+      for (const list of groups.values()) {
+        const mailed = await sendReceiptDigest(supabase, list, {
           companyName,
           senderName,
-          settings: reminder,
+          secret: expected,
+          sentOn: when.date,
         });
-        if (mailed.ok) sent += 1;
+        if (mailed.skipped) skipped += 1;
+        else if (mailed.ok) sent += 1;
         else failed += 1;
       }
       return jsonResponse({ ok: true, sent, skipped, failed });
@@ -529,46 +619,13 @@ Deno.serve(async (req) => {
     if ("error" in loaded) return jsonResponse({ ok: false, error: loaded.error }, loaded.status);
     const { order } = loaded;
 
-    const reminder = await loadReceiptReminderSettings(supabase);
-
     if (action === "list") {
       const receipts = await receiptsWithUrls(supabase, order.id);
-      return jsonResponse({ ok: true, receipts, reminders_enabled: reminder.enabled });
+      return jsonResponse({ ok: true, receipts, reminders_enabled: false });
     }
 
     if (action === "remind") {
-      if (!reminder.enabled) {
-        return jsonResponse({ ok: false, error: "Receipt reminders are turned off in Admin." }, 400);
-      }
-      if ((order.order_type ?? "") === "last_min") {
-        return jsonResponse({ ok: false, error: "Last-Min receipts cannot be reminded" }, 400);
-      }
-      if ((order.order_type ?? "") === "haul_off") {
-        return jsonResponse({ ok: false, error: "Haul Out does not send receipt reminders" }, 400);
-      }
-      const { count } = await supabase
-        .from("field_tools_order_receipts")
-        .select("id", { count: "exact", head: true })
-        .eq("order_id", order.id);
-      if ((count ?? 0) > 0) {
-        return jsonResponse({ ok: false, error: "This order already has a receipt" }, 400);
-      }
-      const last = order.receipt_reminder_sent_at ? Date.parse(order.receipt_reminder_sent_at) : 0;
-      if (last && Date.now() - last < 10 * 60 * 1000) {
-        return jsonResponse({ ok: false, error: "A reminder was just sent. Try again in a few minutes." }, 429);
-      }
-      const mailed = await sendReceiptReminderForOrder(supabase, order, {
-        companyName,
-        senderName,
-        settings: reminder,
-      });
-      if (!mailed.ok) return jsonResponse({ ok: false, error: mailed.message }, 500);
-      return jsonResponse({
-        ok: true,
-        message: reminder.ccPm
-          ? "Reminder emailed to the person who ordered. The PM was copied."
-          : "Reminder emailed to the person who ordered.",
-      });
+      return jsonResponse({ ok: false, error: "Receipt reminders go out Friday morning." }, 400);
     }
 
     if (action !== "upload") {

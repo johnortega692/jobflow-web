@@ -5,6 +5,7 @@ import { esc, printHtml } from "../../lib/printCore";
 type Props = {
   receipts: OrderReceiptImage[];
   poNumber: string;
+  onDelete?: (receiptId: string) => Promise<void>;
 };
 
 const MIN_ZOOM = 0.5;
@@ -51,8 +52,10 @@ function printReceipts(poNumber: string, receipts: OrderReceiptImage[]): void {
   printHtml(html, title);
 }
 
-export function ReceiptImageViewer({ receipts, poNumber }: Props) {
+export function ReceiptImageViewer({ receipts, poNumber, onDelete }: Props) {
   const [zoom, setZoom] = useState(1);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef(zoom);
   const pendingScroll = useRef<{ left: number; top: number } | null>(null);
@@ -100,6 +103,23 @@ export function ReceiptImageViewer({ receipts, poNumber }: Props) {
   }, [applyZoom, receipts.length]);
 
   if (receipts.length === 0) return null;
+
+  async function removeReceipt(receipt: OrderReceiptImage) {
+    if (!onDelete || deletingId) return;
+    const ok = window.confirm(
+      "Delete this receipt photo? It will be removed from the order and cannot be restored.",
+    );
+    if (!ok) return;
+    setDeletingId(receipt.id);
+    setDeleteError(null);
+    try {
+      await onDelete(receipt.id);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Could not delete the receipt.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="receipt-zoom">
@@ -178,15 +198,28 @@ export function ReceiptImageViewer({ receipts, poNumber }: Props) {
           />
         ))}
       </div>
+      {deleteError && <div className="banner banner-error">{deleteError}</div>}
       <ul className="receipt-zoom-meta">
         {receipts.map((receipt) => (
-          <li key={receipt.id} className="muted small">
-            {formatUploadedAt(receipt.createdAt)}
-            {receipt.uploadedBy ? ` · ${receipt.uploadedBy}` : ""}
-            {" · "}
-            <a href={receipt.url} target="_blank" rel="noreferrer">
-              Open full size
-            </a>
+          <li key={receipt.id} className="receipt-zoom-meta-row muted small">
+            <span>
+              {formatUploadedAt(receipt.createdAt)}
+              {receipt.uploadedBy ? ` · ${receipt.uploadedBy}` : ""}
+              {" · "}
+              <a href={receipt.url} target="_blank" rel="noreferrer">
+                Open full size
+              </a>
+            </span>
+            {onDelete ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm btn-danger-soft"
+                disabled={deletingId !== null}
+                onClick={() => void removeReceipt(receipt)}
+              >
+                {deletingId === receipt.id ? "Deleting…" : "Delete"}
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>

@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
 import { ReceiptImageViewer } from "./ReceiptImageViewer";
-import { getFieldToolsOrder, listOrderReceiptImages, type OrderReceiptImage } from "../../lib/fieldToolsPoTracker";
+import {
+  deleteOrderReceiptImage,
+  getFieldToolsOrder,
+  listOrderReceiptImages,
+  type OrderReceiptImage,
+} from "../../lib/fieldToolsPoTracker";
 import {
   buildOrderDetailGroups,
   buildOrderDetailRows,
@@ -20,6 +26,7 @@ type Props = {
   onToggleReceived: (next: boolean) => void;
   onToggleCompleted: (next: boolean) => void;
   onClose: () => void;
+  onReceiptCount?: (count: number) => void;
 };
 
 function formatSubmittedAt(iso: string): string {
@@ -38,7 +45,9 @@ export function FieldToolsOrderViewModal({
   onToggleReceived,
   onToggleCompleted,
   onClose,
+  onReceiptCount,
 }: Props) {
+  const { isAdmin } = useAuth();
   const [order, setOrder] = useState<FieldToolsOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +96,13 @@ export function FieldToolsOrderViewModal({
       cancelled = true;
     };
   }, [orderId]);
+
+  async function deleteReceipt(receiptId: string) {
+    await deleteOrderReceiptImage(receiptId);
+    const next = receipts.filter((row) => row.id !== receiptId);
+    setReceipts(next);
+    onReceiptCount?.(next.length);
+  }
 
   const groups = order ? buildOrderDetailGroups(order) : [];
   const detailRows = order ? buildOrderDetailRows(order) : [];
@@ -194,7 +210,11 @@ export function FieldToolsOrderViewModal({
                 {expectReceipt && !receiptsLoading && !receiptsError && receipts.length === 0 && (
                   <p className="muted small">No receipt was uploaded in Field Tools for this order.</p>
                 )}
-                <ReceiptImageViewer receipts={receipts} poNumber={poNumber} />
+                <ReceiptImageViewer
+                  receipts={receipts}
+                  poNumber={poNumber}
+                  onDelete={isAdmin ? deleteReceipt : undefined}
+                />
               </div>
             )}
 

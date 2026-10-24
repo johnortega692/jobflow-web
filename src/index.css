@@ -3292,6 +3292,15 @@ th {
   margin: 0;
   padding: 0;
   list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.receipt-zoom-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .field-tools-order-tracking {

@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
-import { listOrderReceiptImages, type OrderReceiptImage } from "../../lib/fieldToolsPoTracker";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  deleteOrderReceiptImage,
+  listOrderReceiptImages,
+  type OrderReceiptImage,
+} from "../../lib/fieldToolsPoTracker";
 import { ReceiptImageViewer } from "./ReceiptImageViewer";
 
 type Props = {
   orderId: string;
   poNumber: string;
   onClose: () => void;
+  onReceiptCount?: (count: number) => void;
 };
 
-export function LastMinReceiptsModal({ orderId, poNumber, onClose }: Props) {
+export function LastMinReceiptsModal({ orderId, poNumber, onClose, onReceiptCount }: Props) {
+  const { isAdmin } = useAuth();
   const [receipts, setReceipts] = useState<OrderReceiptImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +38,13 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose }: Props) {
       cancelled = true;
     };
   }, [orderId]);
+
+  async function deleteReceipt(receiptId: string) {
+    await deleteOrderReceiptImage(receiptId);
+    const next = receipts.filter((row) => row.id !== receiptId);
+    setReceipts(next);
+    onReceiptCount?.(next.length);
+  }
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -57,7 +71,11 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose }: Props) {
           <p className="muted">No receipt was saved with this order.</p>
         )}
 
-        <ReceiptImageViewer receipts={receipts} poNumber={poNumber} />
+        <ReceiptImageViewer
+          receipts={receipts}
+          poNumber={poNumber}
+          onDelete={isAdmin ? deleteReceipt : undefined}
+        />
       </div>
     </div>
   );

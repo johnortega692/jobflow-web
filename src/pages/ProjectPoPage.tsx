@@ -295,6 +295,12 @@ export function ProjectPoPage() {
 
   const viewRow = viewOrder ? rows.find((r) => r.dispatchId === viewOrder.dispatchId) : null;
 
+  function noteReceiptCount(orderId: string, count: number) {
+    setRows((current) =>
+      current.map((row) => (row.orderId === orderId ? { ...row, hasReceipt: count > 0 } : row)),
+    );
+  }
+
   if (visibilityLoaded && hiddenFromFieldApps) {
     return (
       <div className="stack po-tracker-page">
@@ -541,6 +547,7 @@ export function ProjectPoPage() {
           orderId={receiptOrder.orderId}
           poNumber={receiptOrder.poNumber}
           onClose={() => setReceiptOrder(null)}
+          onReceiptCount={(count) => noteReceiptCount(receiptOrder.orderId, count)}
         />
       )}
 
@@ -555,6 +562,7 @@ export function ProjectPoPage() {
           onToggleReceived={(next) => void toggleRow(viewRow, "receivedField", next)}
           onToggleCompleted={(next) => void toggleRow(viewRow, "completed", next)}
           onClose={() => setViewOrder(null)}
+          onReceiptCount={(count) => noteReceiptCount(viewOrder.orderId, count)}
         />
       )}
     </div>
