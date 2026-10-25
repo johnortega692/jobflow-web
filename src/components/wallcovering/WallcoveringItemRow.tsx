@@ -241,6 +241,16 @@ export function WallcoveringItemRow({
                 </select>
               </label>
             )}
+            <div className="wc-qty-group">
+              <span className="wc-qty-prefix">Size</span>
+              <input
+                className="wc-size-input"
+                value={item.size}
+                placeholder={'54"'}
+                onChange={(e) => onChange({ size: e.target.value })}
+                aria-label={`Size row ${index + 1}`}
+              />
+            </div>
             <div className={`wc-qty-group${missingQty ? " wc-qty-group--warn" : ""}`}>
               <span className={`wc-qty-prefix${missingQty ? " wc-qty-prefix--warn" : ""}`}>Qty</span>
               <input
@@ -289,6 +299,20 @@ export function WallcoveringItemRow({
           onPanelFlags={(patch) => onChange(patch)}
         />
       ) : null}
+      <div className="wc-item-product-url">
+        <span className="wc-url-label">Image URL</span>
+        {item.image_url.trim() ? (
+          <img className="wc-image-thumb" src={item.image_url.trim()} alt="" />
+        ) : null}
+        <input
+          type="url"
+          inputMode="url"
+          value={item.image_url}
+          placeholder="https://"
+          onChange={(e) => onChange({ image_url: e.target.value })}
+          aria-label={`Image URL row ${index + 1}`}
+        />
+      </div>
       <div className="wc-item-product-url">
         <button
           type="button"

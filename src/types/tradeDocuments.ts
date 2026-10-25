@@ -110,9 +110,13 @@ export type WallcoveringItem = {
   qty: string;
   /** Unit of measure for material orders; defaults to EA. */
   unit: MaterialOrderUnit | string;
+  /** Roll width or pattern size shown on the package divider card. */
+  size: string;
   notes: string;
   /** Optional product page for sample labels. */
   product_page_url: string;
+  /** Swatch image. Same value as this label’s Material Tracker Image URL. */
+  image_url: string;
   panels: boolean;
   include_in_submittal: boolean;
   /** Include in Orders by Vendor / Order Samples */
@@ -636,6 +640,8 @@ export type SdsSection = {
   finish_type: string;
   system_material: string;
   color: string;
+  /** Roll width or pattern size for a wallcovering divider card. */
+  size: string;
   intended_use: string;
   attachments: SdsSectionAttachments;
 };
@@ -828,6 +834,7 @@ export function sdsSectionsFromWallcoveringItems(
       manufacturer: item.manufacturer.trim(),
       product: item.product.trim(),
       color: item.color.trim(),
+      size: item.size.trim(),
       system_material: item.panels ? "Wallcovering Panels" : "Vinyl Wallcovering",
       intended_use: notes.join("; ") || "",
     });
@@ -1123,8 +1130,10 @@ export function emptyWallcoveringItem(): WallcoveringItem {
     previous_color: "",
     qty: "",
     unit: "LY",
+    size: "",
     notes: "",
     product_page_url: "",
+    image_url: "",
     panels: false,
     include_in_submittal: true,
     order: false,
@@ -1435,6 +1444,7 @@ export function normalizeWallcoveringSubmittal(
       ...emptyWallcoveringItem(),
       ...i,
       product_page_url: typeof i.product_page_url === "string" ? i.product_page_url.trim() : "",
+      image_url: typeof i.image_url === "string" ? i.image_url.trim() : "",
       order: i.order ?? false,
       spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
     };
@@ -1443,6 +1453,7 @@ export function normalizeWallcoveringSubmittal(
       ...merged,
       qty: parsed.qty,
       unit: parsed.unit,
+      size: typeof i.size === "string" ? i.size.trim() : "",
       components: normalizeWcComponents(i.components, String(i.label ?? "")),
       fabricatedAssembly: Boolean(i.fabricatedAssembly),
       shopDrawings: Boolean(i.shopDrawings),

@@ -2,6 +2,8 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { createExtractGcScheduleMiddleware } from "./server/extractGcScheduleDev";
 import { createExtractPaintMiddleware } from "./server/extractPaintDev";
+import { createFetchImageMiddleware } from "./server/fetchImageDev";
+import { createFindProductSheetsMiddleware } from "./server/findProductSheetsDev";
 import { createRfiAssistMiddleware } from "./server/rfiAssistDev";
 import { createGoogleSheetsMiddleware } from "./server/googleSheetsDev";
 import { createSendVendorEmailMiddleware } from "./server/sendVendorEmailDev";
@@ -39,6 +41,8 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use(createExtractPaintMiddleware());
           server.middlewares.use(createExtractGcScheduleMiddleware());
           server.middlewares.use(createRfiAssistMiddleware());
+          server.middlewares.use(createFindProductSheetsMiddleware());
+          server.middlewares.use(createFetchImageMiddleware());
           server.middlewares.use(createGoogleSheetsMiddleware());
           server.middlewares.use(createSendVendorEmailMiddleware());
         },

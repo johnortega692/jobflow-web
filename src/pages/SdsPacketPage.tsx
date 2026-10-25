@@ -18,6 +18,7 @@ import {
 import { loadPaintProducts, type PaintProduct } from "../lib/paintCatalog";
 import { countPaintItemsMissingPrimer, paintScheduleSpecLabel, buildPaintSystemSchedule, snapshotFromPaintSchedule } from "../lib/paintSystemSchedule";
 import { buildSdsPacketPdf, downloadPdfBytes, type BuildProgress } from "../lib/sdsPacketBuild";
+import { fillItemImageUrlsFromTracker, resolveWcTrackerLines } from "../lib/fieldTrackerProject";
 import { evaluatePacketReadiness } from "../lib/sdsPacketRequirements";
 import {
   applyPaintPackageChoices,
@@ -172,6 +173,7 @@ export function SdsPacketPage() {
   const sectionStatus = useMemo(() => {
     const packageCount = draft.sections.length;
     if (!packageCount) return { tone: "warn" as const, text: "Empty" };
+    if (draft.contract !== "paint") return null;
     const missing = paintLinkGaps.scheduleOnly.length;
     if (missing > 0) {
       return {
@@ -184,7 +186,13 @@ export function SdsPacketPage() {
       tone: "ok" as const,
       text: `Matches Submittal #${formatSubmittalNumberDisplay(paintSubmittal.submittal_number)}`,
     };
-  }, [colorScheduleLabel, draft.sections.length, paintLinkGaps.scheduleOnly.length, paintSubmittal.submittal_number]);
+  }, [
+    colorScheduleLabel,
+    draft.contract,
+    draft.sections.length,
+    paintLinkGaps.scheduleOnly.length,
+    paintSubmittal.submittal_number,
+  ]);
 
   function replaceSection(section: SdsSection) {
     if (section.spec_section.trim()) setLastSpecSection(section.spec_section.trim());
@@ -466,13 +474,16 @@ export function SdsPacketPage() {
       missingPrimers > 0
         ? `${missingPrimers} ${missingPrimers === 1 ? "item has" : "items have"} no primer. Generate anyway?`
         : "";
-    const scheduleWarning = packageScheduleWarning(
-      {
-        scheduleOnly: paintLinkGaps.scheduleOnly,
-        packageOnly: colorScheduleLabel ? paintLinkGaps.packageOnly : [],
-      },
-      paintSubmittal.submittal_number,
-    );
+    const scheduleWarning =
+      draft.contract === "paint"
+        ? packageScheduleWarning(
+            {
+              scheduleOnly: paintLinkGaps.scheduleOnly,
+              packageOnly: colorScheduleLabel ? paintLinkGaps.packageOnly : [],
+            },
+            paintSubmittal.submittal_number,
+          )
+        : "";
     const confirmParts = [primerWarning, scheduleWarning, readiness.gaps.length ? readiness.confirmMessage : ""].filter(
       Boolean,
     );
@@ -503,7 +514,7 @@ export function SdsPacketPage() {
         branding,
         setBuildProgress,
         {
-          ...(colorScheduleLabel ? { colorSchedule: colorScheduleLabel } : {}),
+          ...(draft.contract === "paint" && colorScheduleLabel ? { colorSchedule: colorScheduleLabel } : {}),
           ...(draft.contract === "paint" && !savedSchedule
             ? {
                 paint: {
@@ -514,6 +525,10 @@ export function SdsPacketPage() {
                 },
               }
             : {}),
+          wallcoveringItems: fillItemImageUrlsFromTracker(
+            normalizeWallcoveringSubmittal(tradeData.wallcovering_submittal).items,
+            resolveWcTrackerLines(tradeData),
+          ),
         },
       );
       downloadPdfBytes(bytes, outputName);

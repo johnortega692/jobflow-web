@@ -5266,6 +5266,16 @@ th {
   line-height: 1.35;
 }
 
+.sds-section-row-notes {
+  white-space: pre-wrap;
+}
+
+.sds-notes-input {
+  min-height: 6.5rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .sds-self-prime {
   width: fit-content;
   font-size: 0.82rem;
@@ -5505,10 +5515,66 @@ th {
   gap: 0.85rem;
 }
 
+.sds-attachments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
 .sds-attachments-heading {
   margin: 0;
   font-size: 0.92rem;
   font-weight: 650;
+}
+
+.sds-sheet-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sds-sheet-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.sds-sheet-result-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.sds-sheet-result-copy strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+}
+
+.sds-sheet-result-copy span,
+.sds-sheet-result-copy a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sds-sheet-result-copy a {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sds-sheet-note {
+  margin: 0;
 }
 
 .sds-attachments-grid {
@@ -11428,6 +11494,20 @@ tr.budget-hours-pdf-hidden td {
   vertical-align: middle;
 }
 
+.wc-size-input {
+  width: 7.5rem;
+  min-width: 7.5rem;
+  max-width: 7.5rem;
+  height: var(--wc-control-height);
+  min-height: var(--wc-control-height);
+  max-height: var(--wc-control-height);
+  box-sizing: border-box;
+  border-radius: 6px;
+  margin-top: 0;
+  line-height: 1.2;
+  padding: 0 0.4rem;
+}
+
 .wc-qty-input {
   width: 56px;
   min-width: 56px;
@@ -11477,6 +11557,23 @@ tr.budget-hours-pdf-hidden td {
 .wc-product-url-toggle:hover,
 .wc-product-url-toggle:focus-visible {
   text-decoration: underline;
+}
+
+.wc-url-label {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  color: var(--muted, #5c6570);
+}
+
+.wc-image-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--line, #d5d8de);
+  flex: 0 0 auto;
+  background: #f4f5f7;
 }
 
 .wc-item-product-url input {

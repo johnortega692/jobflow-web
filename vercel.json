@@ -11,6 +11,14 @@
     "api/rfi-assist.ts": {
       "maxDuration": 60
     },
+    "api/find-product-sheets.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/fetch-image.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
     "api/send-vendor-email.ts": {
       "maxDuration": 30
     },

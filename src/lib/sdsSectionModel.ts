@@ -86,6 +86,7 @@ export function normalizeSdsSection(raw: LegacySection | null | undefined): SdsS
     finish_type: sanitizeFinishType(raw.finish_type ?? raw.sheen_type ?? ""),
     system_material: (raw.system_material ?? raw.material ?? "").trim(),
     color: raw.color?.trim() ?? "",
+    size: raw.size?.trim() ?? "",
     intended_use: raw.intended_use?.trim() ?? "",
     attachments,
   };
@@ -121,6 +122,7 @@ function emptySdsSectionInternal(): SdsSection {
     finish_type: "",
     system_material: "",
     color: "",
+    size: "",
     intended_use: "",
     attachments: {},
   };

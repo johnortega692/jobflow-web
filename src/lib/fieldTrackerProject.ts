@@ -143,6 +143,7 @@ function linesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
       wallcoveringName: wcNameFromItem(item) || item.product.trim(),
       ...defaults,
       ...orderFieldsFromItem(item),
+      imageUrl: item.image_url.trim(),
       components: normalizeWcComponents(item.components, item.label),
       fabricatedAssembly: Boolean(item.fabricatedAssembly),
       shopDrawings: Boolean(item.shopDrawings),
@@ -214,6 +215,7 @@ function lineFromSubmittalItem(item: WallcoveringItem, index: number): WcTracker
     wallcoveringName,
     ...defaultWcTrackerLineFields(),
     ...orderFieldsFromItem(item),
+    imageUrl: item.image_url.trim(),
     components: normalizeWcComponents(item.components, label),
     fabricatedAssembly: Boolean(item.fabricatedAssembly),
     shopDrawings: Boolean(item.shopDrawings),
@@ -237,6 +239,7 @@ function updatedLineFromMatch(match: WcTrackerLineState, item: WallcoveringItem)
     orderUnit: match.orderUnit.trim() || fromItem.orderUnit,
     orderNotes: match.orderNotes.trim() || fromItem.orderNotes,
     orderSelected: match.orderSelected ?? fromItem.orderSelected,
+    imageUrl: item.image_url.trim() || match.imageUrl,
     fabricatedAssembly: Boolean(item.fabricatedAssembly),
     shopDrawings: Boolean(item.shopDrawings),
     e84ClassA: Boolean(item.e84ClassA),
@@ -254,7 +257,8 @@ function trackerLineChanged(before: WcTrackerLineState, after: WcTrackerLineStat
     after.panels !== before.panels ||
     after.orderQty !== before.orderQty ||
     after.orderUnit !== before.orderUnit ||
-    after.orderNotes !== before.orderNotes
+    after.orderNotes !== before.orderNotes ||
+    after.imageUrl !== before.imageUrl
   );
 }
 
@@ -613,6 +617,74 @@ export async function patchProjectData(
   });
 }
 
+/** Copy a wallcovering line’s image URL onto the matching Material Tracker row. */
+export function syncTrackerImageUrlsFromItems(
+  lines: WcTrackerLineState[],
+  items: WallcoveringItem[],
+): { lines: WcTrackerLineState[]; changed: boolean } {
+  const next = lines.map((line) => ({ ...line }));
+  const used = new Set<number>();
+  let changed = false;
+  for (const item of items) {
+    const at = indexOfWcTrackerMatch(
+      next,
+      item.label.trim(),
+      wcNameFromItem(item) || item.product.trim(),
+      used,
+    );
+    if (at < 0) continue;
+    used.add(at);
+    const url = item.image_url.trim();
+    if (next[at]!.imageUrl.trim() === url) continue;
+    next[at] = { ...next[at]!, imageUrl: url };
+    changed = true;
+  }
+  return { lines: changed ? next : lines, changed };
+}
+
+/** Show a Material Tracker image on a wallcovering line that does not have one yet. */
+export function fillItemImageUrlsFromTracker(
+  items: WallcoveringItem[],
+  lines: WcTrackerLineState[],
+): WallcoveringItem[] {
+  const used = new Set<number>();
+  return items.map((item) => {
+    const at = indexOfWcTrackerMatch(
+      lines,
+      item.label.trim(),
+      wcNameFromItem(item) || item.product.trim(),
+      used,
+    );
+    if (at < 0) return item;
+    used.add(at);
+    if (item.image_url.trim()) return item;
+    const url = lines[at]!.imageUrl.trim();
+    if (!url) return item;
+    return { ...item, image_url: url };
+  });
+}
+
+/** Copy Material Tracker image URLs onto matching wallcovering lines. */
+export function syncItemImageUrlsFromTracker(
+  items: WallcoveringItem[],
+  lines: WcTrackerLineState[],
+): WallcoveringItem[] {
+  const used = new Set<number>();
+  return items.map((item) => {
+    const at = indexOfWcTrackerMatch(
+      lines,
+      item.label.trim(),
+      wcNameFromItem(item) || item.product.trim(),
+      used,
+    );
+    if (at < 0) return item;
+    used.add(at);
+    const url = lines[at]!.imageUrl.trim();
+    if (item.image_url.trim() === url) return item;
+    return { ...item, image_url: url };
+  });
+}
+
 export function wcLineSummary(line: WcTrackerLineState): string {
   if (line.label.trim() && line.wallcoveringName.trim()) {
     return `${line.label} · ${line.wallcoveringName}`;
@@ -625,9 +697,18 @@ export async function saveWcTrackerLines(
   lines: WcTrackerLineState[],
   summary = "Wallcovering tracker updated",
 ): Promise<string | null> {
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return error;
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const submittal = normalizeWallcoveringSubmittal(trade.wallcovering_submittal);
+  const items = syncItemImageUrlsFromTracker(submittal.items, lines);
+  const imageChanged = items.some((item, index) => item.image_url !== submittal.items[index]?.image_url);
   return patchProjectData(
     projectId,
-    { wc_tracker_lines: lines },
+    {
+      wc_tracker_lines: lines,
+      ...(imageChanged ? { wallcovering_submittal: { ...submittal, items } } : {}),
+    },
     { action: "wc_tracker_saved", summary },
   );
 }

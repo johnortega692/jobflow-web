@@ -1,4 +1,4 @@
-import { PDFArray, PDFName, PDFPage } from "pdf-lib";
+import { PDFArray, PDFName, PDFPage, PDFString } from "pdf-lib";
 
 /** Internal page link — rect is PDF coords [left, bottom, right, top]. */
 export function addInternalPageLink(
@@ -21,6 +21,36 @@ export function addInternalPageLink(
     }),
   );
 
+  const existing = page.node.lookup(PDFName.of("Annots"));
+  if (existing instanceof PDFArray) {
+    existing.push(link);
+  } else {
+    page.node.set(PDFName.of("Annots"), doc.context.obj([link]));
+  }
+}
+
+/** Clickable web link. Rect is PDF coords [left, bottom, right, top]. */
+export function addExternalUrlLink(
+  page: PDFPage,
+  url: string,
+  rect: [number, number, number, number],
+): void {
+  const href = url.trim();
+  if (!/^https?:\/\//i.test(href)) return;
+  const doc = page.doc;
+  const link = doc.context.register(
+    doc.context.obj({
+      Type: "Annot",
+      Subtype: "Link",
+      Rect: rect,
+      Border: [0, 0, 0],
+      A: {
+        Type: "Action",
+        S: "URI",
+        URI: PDFString.of(href),
+      },
+    }),
+  );
   const existing = page.node.lookup(PDFName.of("Annots"));
   if (existing instanceof PDFArray) {
     existing.push(link);

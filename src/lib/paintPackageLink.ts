@@ -208,6 +208,7 @@ export function paintPackageSectionsFromGroups(groups: PaintPackageGroup[]): Sds
     finish_type: group.sheen,
     system_material: /exterior/i.test(group.specSection) ? "Exterior Paint" : "Interior Paint",
     color: paintPackageUseField(group),
+    size: "",
     intended_use: "",
     attachments: {},
   }));

@@ -1,7 +1,8 @@
 import { useId, useState, type DragEvent } from "react";
 import type { SdsPacketType } from "../../lib/sdsPacketPresets";
-import { requiredAttachmentsForPacketType } from "../../lib/sdsPacketRequirements";
+import { requiredAttachmentsForSection } from "../../lib/sdsPacketRequirements";
 import { parseSdsFilename, removeSdsPdf, uploadSdsPdf } from "../../lib/sdsFileStorage";
+import { downloadProductSheet, searchProductSheets, type ProductSheetHit } from "../../lib/productSheetSearch";
 import {
   SDS_ATTACHMENT_KINDS,
   intendedUseHasSelfPriming,
@@ -33,17 +34,22 @@ export function SdsSectionEditorModal({
 }: Props) {
   const [section, setSection] = useState<SdsSection>({ ...initial });
   const [uploading, setUploading] = useState<SdsAttachmentKind | null>(null);
+  const [finding, setFinding] = useState(false);
+  const [sheetHits, setSheetHits] = useState<ProductSheetHit[] | null>(null);
+  const [sheetNote, setSheetNote] = useState<string | null>(null);
+  const [usingUrl, setUsingUrl] = useState<string | null>(null);
+  const [attachedUrls, setAttachedUrls] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tipOpen, setTipOpen] = useState(false);
   const tipId = useId();
-  const requiredKinds = new Set(requiredAttachmentsForPacketType(packetType));
+  const requiredKinds = new Set(requiredAttachmentsForSection(section, packetType));
   const title = mode === "add" ? "Add section" : "Edit section";
 
   function patch(patch: Partial<SdsSection>) {
     setSection((s) => ({ ...s, ...patch }));
   }
 
-  async function onUploadFile(kind: SdsAttachmentKind, file: File | null) {
+  async function onUploadFile(kind: SdsAttachmentKind, file: File | null, applyName = true) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       setError("Only PDF files are supported.");
@@ -52,7 +58,7 @@ export function SdsSectionEditorModal({
     setUploading(kind);
     setError(null);
     try {
-      const meta = parseSdsFilename(file.name);
+      const meta = applyName ? parseSdsFilename(file.name) : null;
       const { path, filename } = await uploadSdsPdf(projectId, section.id, kind, file);
       const attachments = {
         ...section.attachments,
@@ -61,15 +67,61 @@ export function SdsSectionEditorModal({
       const next: SdsSection = {
         ...section,
         attachments,
-        ...(meta.manufacturer ? { manufacturer: meta.manufacturer } : {}),
-        ...(meta.product ? { product: meta.product } : {}),
-        ...(meta.finish_type ? { finish_type: meta.finish_type } : {}),
+        ...(meta?.manufacturer ? { manufacturer: meta.manufacturer } : {}),
+        ...(meta?.product ? { product: meta.product } : {}),
+        ...(meta?.finish_type ? { finish_type: meta.finish_type } : {}),
       };
       setSection(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
+      return false;
     } finally {
       setUploading(null);
+    }
+    return true;
+  }
+
+  const canSearch = Boolean(section.manufacturer.trim() || section.product.trim());
+
+  async function findSheets() {
+    if (!canSearch || finding || usingUrl) return;
+    setFinding(true);
+    setError(null);
+    setSheetNote(null);
+    setSheetHits(null);
+    setAttachedUrls([]);
+    try {
+      const results = await searchProductSheets({
+        manufacturer: section.manufacturer,
+        product: section.product,
+        finish: section.finish_type,
+        color: section.color,
+      });
+      setSheetHits(results);
+      setSheetNote(
+        results.length
+          ? "Confirm the sheet matches this product before attaching it."
+          : "No downloadable PDF turned up. Upload the file in a slot below.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI search failed");
+    } finally {
+      setFinding(false);
+    }
+  }
+
+  async function useSheet(hit: ProductSheetHit) {
+    if (usingUrl || attachedUrls.includes(hit.url)) return;
+    setUsingUrl(hit.url);
+    setError(null);
+    try {
+      const file = await downloadProductSheet(hit);
+      const attached = await onUploadFile(hit.kind, file, false);
+      if (attached) setAttachedUrls((urls) => [...urls, hit.url]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not attach that PDF.");
+    } finally {
+      setUsingUrl(null);
     }
   }
 
@@ -166,12 +218,24 @@ export function SdsSectionEditorModal({
               Color / Pattern / Finish
               <input value={section.color} onChange={(e) => patch({ color: e.target.value })} />
             </label>
+            {section.category === "Wallcovering" ? (
+              <label>
+                Size
+                <input
+                  value={section.size}
+                  onChange={(e) => patch({ size: e.target.value })}
+                  placeholder={'54"'}
+                />
+              </label>
+            ) : null}
             <label className="grid-span-2">
               Notes / intended use
-              <input
+              <textarea
+                className="sds-notes-input"
                 value={section.intended_use}
                 onChange={(e) => patch({ intended_use: e.target.value })}
-                placeholder="Optional — TDS/SDS attachments are listed separately"
+                rows={4}
+                placeholder="Optional — press Enter for a new line. TDS/SDS attachments are listed separately."
               />
             </label>
             {showSelfPriming ? (
@@ -189,7 +253,45 @@ export function SdsSectionEditorModal({
           </div>
 
           <div className="stack sds-attachments-block">
-            <h4 className="sds-attachments-heading">Attachments</h4>
+            <div className="sds-attachments-head">
+              <h4 className="sds-attachments-heading">Attachments</h4>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                disabled={!canSearch || finding || Boolean(usingUrl)}
+                title={canSearch ? "Search for this product’s PDS and SDS" : "Enter a manufacturer or product first."}
+                onClick={() => void findSheets()}
+              >
+                {finding ? "Searching…" : "Find PDS / SDS"}
+              </button>
+            </div>
+            {sheetNote ? <p className="muted small sds-sheet-note">{sheetNote}</p> : null}
+            {sheetHits && sheetHits.length > 0 ? (
+              <ul className="sds-sheet-results">
+                {sheetHits.map((hit) => {
+                  const attached = attachedUrls.includes(hit.url);
+                  return (
+                    <li key={hit.url} className="sds-sheet-result">
+                      <div className="sds-sheet-result-copy">
+                        <strong>{hit.kind === "sds" ? "SDS" : "Product Data"}</strong>
+                        <span>{hit.title}</span>
+                        <a href={hit.url} target="_blank" rel="noreferrer">
+                          {hit.source || hit.url}
+                        </a>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-small"
+                        disabled={attached || usingUrl === hit.url || Boolean(uploading)}
+                        onClick={() => void useSheet(hit)}
+                      >
+                        {attached ? "Attached" : usingUrl === hit.url ? "Attaching…" : "Use this"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
             <div className="sds-attachments-grid">
               {SDS_ATTACHMENT_KINDS.map(({ kind, label }) => {
                 const filename = section.attachments[kind]?.filename ?? "";

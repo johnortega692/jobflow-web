@@ -30,6 +30,16 @@ export function requiredAttachmentsForPacketType(packetType: SdsPacketType): Sds
   }
 }
 
+/** Wallcovering sections can ship without a product data sheet or an SDS. */
+export function requiredAttachmentsForSection(
+  section: Pick<SdsSection, "category">,
+  packetType: SdsPacketType,
+): SdsAttachmentKind[] {
+  const required = requiredAttachmentsForPacketType(packetType);
+  if (section.category !== "Wallcovering") return required;
+  return required.filter((kind) => kind !== "product_data" && kind !== "sds");
+}
+
 export function attachmentShortLabel(kind: SdsAttachmentKind): string {
   return SDS_ATTACHMENT_KINDS.find((k) => k.kind === kind)?.short ?? kind;
 }
@@ -43,7 +53,7 @@ export function sectionAttachmentBadges(
   section: SdsSection,
   packetType: SdsPacketType,
 ): AttachmentBadgeState[] {
-  const required = new Set(requiredAttachmentsForPacketType(packetType));
+  const required = new Set(requiredAttachmentsForSection(section, packetType));
   const badges: AttachmentBadgeState[] = [];
 
   for (const meta of SDS_ATTACHMENT_KINDS) {
@@ -83,11 +93,11 @@ export function evaluatePacketReadiness(
   sections: SdsSection[],
   packetType: SdsPacketType,
 ): PacketReadiness {
-  const required = requiredAttachmentsForPacketType(packetType);
   const gaps: SectionGap[] = [];
   const countByKind = new Map<SdsAttachmentKind, number>();
 
   sections.forEach((section, i) => {
+    const required = requiredAttachmentsForSection(section, packetType);
     const missing = required.filter((kind) => !sectionHasAttachment(section, kind));
     if (!missing.length) return;
     gaps.push({

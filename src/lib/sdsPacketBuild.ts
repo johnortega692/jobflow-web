@@ -1,11 +1,12 @@
 import { PDFDocument, PDFImage, PDFPage, RGB, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import { wrapLines } from "./pdfDrawCore";
 import { setPdfOutlines, type PdfOutlineItem } from "./pdfOutlines";
-import { addInternalPageLink } from "./pdfPageLinks";
+import { addExternalUrlLink, addInternalPageLink } from "./pdfPageLinks";
 import { paintItemsForPackageSchedule } from "./paintPackageLink";
+import { loadProductImage, isProgressiveJpeg, pngBytesFromImage } from "./productImage";
 import { buildPaintSystemSchedule, paintScheduleFromSnapshot, type PaintSystemSchedule } from "./paintSystemSchedule";
 import type { PaintProduct } from "./paintCatalog";
-import type { PaintItem, SdsPacketData, SdsSection } from "../types/tradeDocuments";
+import type { PaintItem, SdsPacketData, SdsSection, WallcoveringItem } from "../types/tradeDocuments";
 import { companyLetterheadLine, formatSubmittalNumberDisplay, type PrintBranding } from "./printCore";
 import { downloadSdsPdf } from "./sdsFileStorage";
 import {
@@ -21,6 +22,7 @@ import {
   sortSdsSectionsBySpec,
   tocAttachmentLabel,
   tocSectionTitle,
+  type SdsAttachmentKind,
 } from "./sdsSectionModel";
 import {
   packetEndPageLabel,
@@ -44,6 +46,70 @@ export type BuildProgress = {
 };
 
 type RowRect = [number, number, number, number];
+
+type DividerDocLink = {
+  pageIndex: number;
+  rect: RowRect;
+  kind: SdsAttachmentKind;
+};
+
+type WcDividerCard = {
+  label: string;
+  manufacturer: string;
+  product: string;
+  color: string;
+  location: string;
+  size: string;
+  imageUrl: string;
+  productUrl: string;
+};
+
+function wallcoveringMatchKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/** One product card per wallcovering finish-schedule line that belongs on this divider. */
+function wallcoveringDividerCards(section: SdsSection, items: WallcoveringItem[]): WcDividerCard[] | null {
+  if (section.category !== "Wallcovering") return null;
+  const matches = items.filter((item) => {
+    if (!item.product.trim() && !item.manufacturer.trim()) return false;
+    return (
+      wallcoveringMatchKey(item.manufacturer) === wallcoveringMatchKey(section.manufacturer) &&
+      wallcoveringMatchKey(item.product) === wallcoveringMatchKey(section.product) &&
+      wallcoveringMatchKey(item.color) === wallcoveringMatchKey(section.color)
+    );
+  });
+  const rows = matches.length ? matches : [null];
+  return rows.map((item) => ({
+    label: item?.label.trim() || labelFromIntendedUse(section.intended_use),
+    manufacturer: item?.manufacturer.trim() || section.manufacturer.trim(),
+    product: item?.product.trim() || section.product.trim(),
+    color: item?.color.trim() || section.color.trim(),
+    location: item?.floor.trim() || "",
+    size: section.size.trim() || item?.size.trim() || "",
+    imageUrl: item?.image_url.trim() || "",
+    productUrl: item?.product_page_url.trim() || "",
+  }));
+}
+
+async function embedRemoteImage(doc: PDFDocument, url: string): Promise<PDFImage | null> {
+  const loaded = await loadProductImage(url);
+  if (!loaded) return null;
+  const progressive = loaded.contentType === "image/jpeg" && isProgressiveJpeg(loaded.bytes);
+  try {
+    if (loaded.contentType === "image/jpeg" && !progressive) return await doc.embedJpg(loaded.bytes);
+    if (loaded.contentType === "image/png") return await doc.embedPng(loaded.bytes);
+  } catch {
+    /* Convert formats the PDF library cannot embed. */
+  }
+  const png = await pngBytesFromImage(loaded.bytes, loaded.contentType);
+  if (!png) return null;
+  try {
+    return await doc.embedPng(png);
+  } catch {
+    return null;
+  }
+}
 
 type BuildContext = {
   doc: PDFDocument;
@@ -780,17 +846,210 @@ function addSpecDivider(
   drawPageFooter(page, ctx, branding, packet.preparer);
 }
 
-function addSectionDivider(
+type ScheduleMark = { label: string; color: string; location: string };
+
+const COLOR_CODE_PREFIXES = new Set(["sw", "de", "bm", "pp", "ppg"]);
+
+/** First token is a schedule mark (A, AA, W-1), not a color code such as SW 7006. */
+function isScheduleLabel(token: string, next?: string): boolean {
+  if (/^[A-Za-z]{1,3}-\d+[A-Za-z]?$/i.test(token)) return true;
+  if (/^[A-Za-z]$/.test(token)) return true;
+  if (/^[A-Za-z]{2}$/i.test(token)) {
+    if (COLOR_CODE_PREFIXES.has(token.toLowerCase())) return false;
+    if (next && /^\d/.test(next)) return false;
+    return true;
+  }
+  return false;
+}
+
+function parseScheduleMark(part: string): ScheduleMark {
+  const dash = part.search(/\s+[—–-]\s+/);
+  const head = (dash === -1 ? part : part.slice(0, dash)).trim();
+  const location = dash === -1 ? "" : part.slice(dash).replace(/^\s+[—–-]\s+/, "").trim();
+  const tokens = head.split(/\s+/).filter(Boolean);
+  const first = tokens[0] ?? "";
+  const rest = tokens.slice(1).join(" ");
+  if (first && rest && isScheduleLabel(first, tokens[1])) {
+    return { label: first, color: rest, location };
+  }
+  return { label: "", color: head, location };
+}
+
+function labelFromIntendedUse(notes: string): string {
+  const match = notes.match(/(?:^|;)\s*Label\s+([^;]+)/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+/** Marks stored on a package section: "A Swiss Coffee — Lobby; B Extra White". */
+function sectionScheduleMarks(section: SdsSection): ScheduleMark[] {
+  const marks = section.color
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map(parseScheduleMark);
+  const noteLabel = labelFromIntendedUse(section.intended_use);
+  if (!noteLabel || marks.some((mark) => mark.label)) return marks;
+  if (marks.length === 1) return [{ ...marks[0]!, label: noteLabel }];
+  if (!marks.length) return [{ label: noteLabel, color: "", location: "" }];
+  return marks;
+}
+
+async function drawWallcoveringCards(
+  startPage: PDFPage,
+  startY: number,
+  cards: WcDividerCard[],
+  args: {
+    sectionNum: number;
+    margin: number;
+    contentBottom: number;
+    ink: RGB;
+    muted: RGB;
+    line: RGB;
+    ctx: BuildContext;
+    branding: PrintBranding;
+    packet: SdsPacketData;
+    project: ProjectInfo;
+  },
+): Promise<{ page: PDFPage; y: number }> {
+  const { sectionNum, margin, contentBottom, ink, muted, line, ctx, branding, packet, project } = args;
+  const linkBlue = rgb(0.08, 0.22, 0.62);
+  const box = 200;
+  const factLabelSize = 11;
+  const factValueSize = 14;
+  const factPadTop = 16;
+  const factPadBottom = 14;
+  const factRowH = 18 + factValueSize + factPadBottom;
+  let page = startPage;
+  let y = startY;
+
+  for (const card of cards) {
+    const image = await embedRemoteImage(ctx.doc, card.imageUrl);
+    const facts = (
+      [
+        ["Product", card.product],
+        ["Color / Pattern", card.color],
+        ["Size", card.size],
+        ["Location", card.location],
+      ] as const
+    ).filter((row) => row[1].trim());
+    const textH = (card.label ? 22 : 0) + (card.manufacturer ? 18 : 0);
+    const imageBlock = box + (card.productUrl ? 24 : 0);
+    const bodyH = Math.max(imageBlock, facts.length * factRowH);
+    const blockH = textH + bodyH + 18;
+    if (y - blockH < contentBottom) {
+      page = ctx.doc.addPage(LETTER);
+      y = drawRunningHeader(page, ctx, branding, packet, project);
+      page.drawText(`SECTION ${sectionNum} continued`, {
+        x: margin,
+        y,
+        size: 9,
+        font: ctx.font,
+        color: muted,
+      });
+      y -= 22;
+    }
+
+    if (card.label) {
+      page.drawText(card.label, { x: margin, y, size: 16, font: ctx.bold, color: ink });
+      y -= 22;
+    }
+    if (card.manufacturer) {
+      page.drawText(card.manufacturer, { x: margin, y, size: 12, font: ctx.font, color: muted });
+      y -= 18;
+    }
+
+    const imageTop = y;
+    const imageBottom = y - box;
+    page.drawRectangle({
+      x: margin,
+      y: imageBottom,
+      width: box,
+      height: box,
+      color: image ? rgb(1, 1, 1) : rgb(0.96, 0.96, 0.96),
+      borderColor: line,
+      borderWidth: 0.75,
+    });
+    if (!image) {
+      const msg = "No image";
+      const msgW = ctx.font.widthOfTextAtSize(msg, 10);
+      page.drawText(msg, {
+        x: margin + (box - msgW) / 2,
+        y: imageBottom + box / 2 - 4,
+        size: 10,
+        font: ctx.font,
+        color: muted,
+      });
+    } else {
+      const pad = 4;
+      const scale = Math.min((box - pad * 2) / image.width, (box - pad * 2) / image.height);
+      const iw = image.width * scale;
+      const ih = image.height * scale;
+      page.drawImage(image, {
+        x: margin + (box - iw) / 2,
+        y: imageBottom + (box - ih) / 2,
+        width: iw,
+        height: ih,
+      });
+    }
+
+    let belowImage = imageBottom;
+    if (card.productUrl) {
+      const linkLabel = "Mfr Product Link";
+      const linkSize = 11;
+      const linkW = ctx.font.widthOfTextAtSize(linkLabel, linkSize);
+      const linkY = imageBottom - 18;
+      page.drawText(linkLabel, { x: margin, y: linkY, size: linkSize, font: ctx.font, color: linkBlue });
+      page.drawLine({
+        start: { x: margin, y: linkY - 1.5 },
+        end: { x: margin + linkW, y: linkY - 1.5 },
+        thickness: 0.7,
+        color: linkBlue,
+      });
+      addExternalUrlLink(page, card.productUrl, [margin, linkY - 3, margin + linkW + 2, linkY + 12]);
+      belowImage = linkY - 4;
+    }
+
+    let factY = imageTop - factPadTop;
+    const factX = margin + box + 18;
+    const valueMax = LETTER[0] - margin - factX;
+    for (const [label, value] of facts) {
+      page.drawText(label, { x: factX, y: factY, size: factLabelSize, font: ctx.bold, color: muted });
+      factY -= 18;
+      page.drawText(truncateTextToWidth(value, valueMax, ctx.font, factValueSize), {
+        x: factX,
+        y: factY,
+        size: factValueSize,
+        font: ctx.font,
+        color: ink,
+      });
+      factY -= factValueSize + factPadBottom;
+    }
+
+    y = Math.min(belowImage, factY) - 18;
+  }
+
+  return { page, y };
+}
+
+async function addSectionDivider(
   sectionNum: number,
   section: SdsSection,
   packet: SdsPacketData,
   project: ProjectInfo,
   branding: PrintBranding,
   ctx: BuildContext,
-) {
-  const page = ctx.doc.addPage(LETTER);
+  wcCards: WcDividerCard[] | null,
+): Promise<DividerDocLink[]> {
+  const docLinks: DividerDocLink[] = [];
   const w = LETTER[0];
   const margin = 54;
+  const contentBottom = 48;
+  const ink = rgb(0.1, 0.1, 0.18);
+  const muted = rgb(0.33, 0.33, 0.33);
+  const line = rgb(0.8, 0.8, 0.8);
+  const labelFill = rgb(0.94, 0.94, 0.94);
+
+  let page = ctx.doc.addPage(LETTER);
   let y = drawRunningHeader(page, ctx, branding, packet, project);
 
   const title = sectionTitle(section);
@@ -805,7 +1064,7 @@ function addSectionDivider(
     y,
     size: 9,
     font: ctx.font,
-    color: rgb(0.33, 0.33, 0.33),
+    color: muted,
   });
   y -= 28;
 
@@ -814,7 +1073,7 @@ function addSectionDivider(
     y,
     size: 22,
     font: ctx.bold,
-    color: rgb(0.1, 0.1, 0.18),
+    color: ink,
   });
   y -= 28;
 
@@ -826,6 +1085,24 @@ function addSectionDivider(
   });
   y -= 18;
 
+  if (wcCards) {
+    const drawn = await drawWallcoveringCards(page, y, wcCards, {
+      sectionNum,
+      margin,
+      contentBottom,
+      ink,
+      muted,
+      line,
+      ctx,
+      branding,
+      packet,
+      project,
+    });
+    page = drawn.page;
+    y = drawn.y;
+  }
+
+  if (!wcCards) {
   const labelW = 94;
   const valueW = w - margin * 2 - labelW;
   const infoRows: [string, string][] = [
@@ -844,8 +1121,8 @@ function addSectionDivider(
       y: rowY - 18,
       width: labelW,
       height: 20,
-      color: rgb(0.94, 0.94, 0.94),
-      borderColor: rgb(0.8, 0.8, 0.8),
+      color: labelFill,
+      borderColor: line,
       borderWidth: 0.5,
     });
     page.drawRectangle({
@@ -854,59 +1131,251 @@ function addSectionDivider(
       width: valueW,
       height: 20,
       color: rgb(1, 1, 1),
-      borderColor: rgb(0.8, 0.8, 0.8),
+      borderColor: line,
       borderWidth: 0.5,
     });
-    page.drawText(label, { x: margin + 8, y: rowY - 12, size: 9, font: ctx.bold, color: rgb(0.1, 0.1, 0.18) });
-    page.drawText(value, { x: margin + labelW + 8, y: rowY - 12, size: 9, font: ctx.font, color: rgb(0.2, 0.2, 0.2) });
+    page.drawText(label, { x: margin + 8, y: rowY - 12, size: 9, font: ctx.bold, color: ink });
+    page.drawText(truncateTextToWidth(value, valueW - 16, ctx.font, 9), {
+      x: margin + labelW + 8,
+      y: rowY - 12,
+      size: 9,
+      font: ctx.font,
+      color: rgb(0.2, 0.2, 0.2),
+    });
   }
   y -= infoRows.length * 22 + 16;
 
-  page.drawText("Included Documents", {
-    x: margin,
-    y,
-    size: 10,
-    font: ctx.bold,
-    color: rgb(0.1, 0.1, 0.18),
-  });
-  y -= 18;
+  const marks = sectionScheduleMarks(section);
+  if (marks.length) {
+    const showLabel = marks.some((mark) => mark.label.trim());
+    const showLocation = marks.some((mark) => mark.location.trim());
+    const columns: { header: string; value: (mark: ScheduleMark) => string; weight: number }[] = [];
+    if (showLabel) columns.push({ header: "Label", value: (mark) => mark.label.trim(), weight: 0.16 });
+    columns.push({
+      header: "Color",
+      value: (mark) => mark.color.trim(),
+      weight: showLabel ? (showLocation ? 0.5 : 0.84) : showLocation ? 0.62 : 1,
+    });
+    if (showLocation) {
+      columns.push({ header: "Location", value: (mark) => mark.location.trim(), weight: 0.34 });
+    }
+    const tableW = w - margin * 2;
+    const widths = columnWidthsFromWeights(
+      tableW,
+      columns.map((column) => column.weight),
+    );
+    const cellSize = 9;
+    const lineHeight = 11;
+
+    const openContinuedPage = () => {
+      page = ctx.doc.addPage(LETTER);
+      y = drawRunningHeader(page, ctx, branding, packet, project);
+      page.drawText(`SECTION ${sectionNum} continued`, {
+        x: margin,
+        y,
+        size: 9,
+        font: ctx.font,
+        color: muted,
+      });
+      y -= 22;
+    };
+
+    const drawColorHeader = () => {
+      if (y < contentBottom + 52) openContinuedPage();
+      page.drawText("Colors", {
+        x: margin,
+        y,
+        size: 10,
+        font: ctx.bold,
+        color: ink,
+      });
+      y -= 16;
+      const headerH = 16;
+      let x = margin;
+      for (let i = 0; i < columns.length; i++) {
+        page.drawRectangle({
+          x,
+          y: y - headerH,
+          width: widths[i]!,
+          height: headerH,
+          color: labelFill,
+          borderColor: line,
+          borderWidth: 0.5,
+        });
+        page.drawText(columns[i]!.header, {
+          x: x + 6,
+          y: y - 12,
+          size: 8,
+          font: ctx.bold,
+          color: ink,
+        });
+        x += widths[i]!;
+      }
+      y -= headerH;
+    };
+
+    drawColorHeader();
+    for (const mark of marks) {
+      const wrapped = columns.map((column, index) => {
+        const raw = column.value(mark);
+        if (!raw) return [];
+        return wrapCellLines(raw, ctx.font, cellSize, Math.max(8, widths[index]! - 12)).slice(0, 2);
+      });
+      const lineCount = Math.max(1, ...wrapped.map((lines) => lines.length));
+      const rowH = Math.max(16, lineCount * lineHeight + 6);
+      if (y - rowH < contentBottom) {
+        openContinuedPage();
+        drawColorHeader();
+      }
+      let x = margin;
+      const rowBottom = y - rowH;
+      for (let i = 0; i < columns.length; i++) {
+        page.drawRectangle({
+          x,
+          y: rowBottom,
+          width: widths[i]!,
+          height: rowH,
+          color: rgb(1, 1, 1),
+          borderColor: line,
+          borderWidth: 0.5,
+        });
+        wrapped[i]!.forEach((text, lineIndex) => {
+          page.drawText(text, {
+            x: x + 6,
+            y: y - 12 - lineIndex * lineHeight,
+            size: cellSize,
+            font: columns[i]!.header === "Label" ? ctx.bold : ctx.font,
+            color: ink,
+          });
+        });
+        x += widths[i]!;
+      }
+      y = rowBottom;
+    }
+    y -= 18;
+  }
+  }
 
   const includedDocs = sectionIncludedDocuments(section);
-  const checkColor = rgb(0.15, 0.15, 0.15);
-  for (const doc of includedDocs) {
-    drawPdfCheckmark(page, margin + 8, y, 7, checkColor);
-    page.drawText(doc.label, {
-      x: margin + 20,
+  const noteSize = 9;
+  const noteLineH = 12;
+  const notePadX = 10;
+  const noteInnerW = w - margin * 2 - notePadX * 2;
+  const noteSource = section.intended_use.trim();
+  const noteLines = !wcCards && noteSource ? wrapCellLines(noteSource, ctx.font, noteSize, noteInnerW) : [];
+  const noteBoxH = noteLines.length ? 20 + noteLines.length * noteLineH + 10 : 0;
+  const wcNoteLines = wcCards && noteSource ? wrapCellLines(noteSource, ctx.font, noteSize, w - margin * 2) : [];
+  const wcNoteHeight = wcNoteLines.length ? 18 + wcNoteLines.length * 14 : 0;
+  const includedHeight =
+    (includedDocs.length ? 18 + includedDocs.length * 14 : 0) +
+    (noteBoxH ? 22 + noteBoxH : 0) +
+    (wcNoteHeight ? 16 + wcNoteHeight : 0);
+  if (includedHeight > 0 && y - includedHeight < contentBottom) {
+    page = ctx.doc.addPage(LETTER);
+    y = drawRunningHeader(page, ctx, branding, packet, project);
+    page.drawText(`SECTION ${sectionNum} continued`, {
+      x: margin,
       y,
       size: 9,
       font: ctx.font,
-      color: checkColor,
+      color: muted,
     });
-    y -= 14;
+    y -= 22;
   }
-  y -= 22;
 
-  const bannerText = "See following page(s) for attached documents";
-  const bannerW = w - margin * 2;
-  const bannerH = 36;
-  page.drawRectangle({
-    x: margin,
-    y: y - bannerH,
-    width: bannerW,
-    height: bannerH,
-    color: rgb(0.94, 0.94, 0.94),
-    borderColor: rgb(0.1, 0.1, 0.18),
-    borderWidth: 1.5,
-  });
-  const btw = ctx.bold.widthOfTextAtSize(bannerText, 10);
-  page.drawText(bannerText, {
-    x: (w - btw) / 2,
-    y: y - bannerH / 2 - 4,
-    size: 10,
-    font: ctx.bold,
-    color: rgb(0.1, 0.1, 0.18),
-  });
+  if (includedDocs.length) {
+    page.drawText("Included Documents", {
+      x: margin,
+      y,
+      size: 10,
+      font: ctx.bold,
+      color: ink,
+    });
+    y -= 18;
 
+    const checkColor = rgb(0.15, 0.15, 0.15);
+    const linkBlue = rgb(0.08, 0.22, 0.62);
+    for (const docItem of includedDocs) {
+    drawPdfCheckmark(page, margin + 8, y, 7, checkColor);
+    const labelSize = 9;
+    const labelX = margin + 20;
+    const labelW = ctx.font.widthOfTextAtSize(docItem.label, labelSize);
+    page.drawText(docItem.label, {
+      x: labelX,
+      y,
+      size: labelSize,
+      font: ctx.font,
+      color: linkBlue,
+    });
+    page.drawLine({
+      start: { x: labelX, y: y - 1.5 },
+      end: { x: labelX + labelW, y: y - 1.5 },
+      thickness: 0.6,
+      color: linkBlue,
+    });
+    const pageIndex = ctx.doc.getPages().indexOf(page);
+    if (pageIndex >= 0) {
+      docLinks.push({
+        pageIndex,
+        rect: [margin + 4, y - 3, labelX + labelW + 4, y + 10],
+        kind: docItem.kind,
+      });
+    }
+    y -= 14;
+    }
+  }
+
+    if (wcNoteLines.length) {
+    y -= 16;
+    page.drawText("Product Notes", {
+      x: margin,
+      y,
+      size: 10,
+      font: ctx.bold,
+      color: ink,
+    });
+    y -= 18;
+    for (const line of wcNoteLines) {
+      page.drawText(truncateTextToWidth(line, w - margin * 2, ctx.font, 9), {
+        x: margin,
+        y,
+        size: 9,
+        font: ctx.font,
+        color: ink,
+      });
+      y -= 14;
+    }
+  } else if (noteLines.length) {
+    y -= 22;
+    const boxW = w - margin * 2;
+    page.drawRectangle({
+      x: margin,
+      y: y - noteBoxH,
+      width: boxW,
+      height: noteBoxH,
+      color: labelFill,
+      borderColor: ink,
+      borderWidth: 1.5,
+    });
+    page.drawText("Notes / intended use", {
+      x: margin + notePadX,
+      y: y - 16,
+      size: 10,
+      font: ctx.bold,
+      color: ink,
+    });
+    noteLines.forEach((line, index) => {
+      page.drawText(line, {
+        x: margin + notePadX,
+        y: y - 32 - index * noteLineH,
+        size: noteSize,
+        font: ctx.font,
+        color: ink,
+      });
+    });
+  }
+
+  return docLinks;
 }
 
 async function appendPdfWithStamp(
@@ -1375,12 +1844,18 @@ export async function buildSdsPacketPdf(
   packet: SdsPacketData,
   branding: PrintBranding,
   onProgress?: (p: BuildProgress) => void,
-  extras?: { colorSchedule?: string; paint?: PaintPackageScheduleInput | null },
+  extras?: {
+    colorSchedule?: string;
+    paint?: PaintPackageScheduleInput | null;
+    wallcoveringItems?: WallcoveringItem[];
+  },
 ): Promise<Uint8Array> {
   if (!packet.sections.length) {
     throw new Error("Add at least one section before building the packet.");
   }
-  const missingFiles = packet.sections.filter((s) => !sectionHasAnyAttachment(s));
+  const missingFiles = packet.sections.filter(
+    (section) => section.category !== "Wallcovering" && !sectionHasAnyAttachment(section),
+  );
   if (missingFiles.length) {
     throw new Error("Each section needs at least one file attachment (product data, SDS, warranty, etc.).");
   }
@@ -1475,6 +1950,8 @@ export async function buildSdsPacketPdf(
   }
 
   const seenDocPaths = new Set<string>();
+  const pathFirstPage = new Map<string, number>();
+  const dividerDocLinks: { pageIndex: number; rect: RowRect; target: number }[] = [];
 
   for (let i = 0; i < groupedSections.length; i++) {
     const section = groupedSections[i]!;
@@ -1492,30 +1969,57 @@ export async function buildSdsPacketPdf(
       tocEntries.push({ level: 1, label: tocSectionTitle(section), pageIndex: pageCount() });
     }
 
+    let dividerLinks: DividerDocLink[] = [];
     if (packet.include_dividers) {
       tick(`Section ${num} divider`);
-      addSectionDivider(num, section, packet, project, branding, ctx);
+      dividerLinks = await addSectionDivider(
+        num,
+        section,
+        packet,
+        project,
+        branding,
+        ctx,
+        wallcoveringDividerCards(section, extras?.wallcoveringItems ?? []),
+      );
     }
 
     const stamp = `Section ${num}: ${sectionTitle(section)}`;
+    const attachmentOutlines: PdfOutlineItem[] = [];
+    const attachmentPages = new Map<SdsAttachmentKind, number>();
     for (const kind of sectionAttachmentKinds(section)) {
       const attachment = section.attachments[kind];
       const path = attachment?.path?.trim();
       if (!path) continue;
-      if (paintSchedule) {
-        if (seenDocPaths.has(path)) continue;
-        seenDocPaths.add(path);
+      if (paintSchedule && seenDocPaths.has(path)) {
+        const first = pathFirstPage.get(path);
+        if (first !== undefined) attachmentPages.set(kind, first);
+        continue;
       }
       const label = attachmentStampLabel(kind);
+      const attachmentPage = pageCount();
+      pathFirstPage.set(path, attachmentPage);
+      if (paintSchedule) seenDocPaths.add(path);
+      attachmentPages.set(kind, attachmentPage);
+      const bookmark = tocAttachmentLabel(kind);
       if (packet.include_toc) {
-        tocEntries.push({ level: 2, label: tocAttachmentLabel(kind), pageIndex: pageCount() });
+        tocEntries.push({ level: 2, label: bookmark, pageIndex: attachmentPage });
       }
+      attachmentOutlines.push({ title: bookmark, to: attachmentPage });
       tick(`Section ${num} ${label}`);
       const bytes = await downloadSdsPdf(path);
       await appendPdfWithStamp(ctx, bytes, `${stamp} — ${label}`, packet.include_stamp);
     }
+    for (const link of dividerLinks) {
+      const target = attachmentPages.get(link.kind);
+      if (target === undefined) continue;
+      dividerDocLinks.push({ pageIndex: link.pageIndex, rect: link.rect, target });
+    }
 
-    outlines.push({ title: `Section ${num}: ${sectionTitle(section)}`, to: sectionStartPages[i]! });
+    outlines.push({
+      title: `Section ${num}: ${sectionTitle(section)}`,
+      to: sectionStartPages[i]!,
+      ...(attachmentOutlines.length ? { children: attachmentOutlines } : {}),
+    });
   }
 
   if (packet.include_end) {
@@ -1533,10 +2037,12 @@ export async function buildSdsPacketPdf(
       title: "Table of Contents",
       to: tocInsertIndex,
     });
+    const shiftOutline = (item: PdfOutlineItem) => {
+      item.to = adjustPageIndexAfterTocInsert(item.to, tocInsertIndex, tocPageCount);
+      item.children?.forEach(shiftOutline);
+    };
     for (const item of outlines) {
-      if (item.title !== "Table of Contents") {
-        item.to = adjustPageIndexAfterTocInsert(item.to, tocInsertIndex, tocPageCount);
-      }
+      if (item.title !== "Table of Contents") shiftOutline(item);
     }
     if (summaryPageIndex !== null) {
       summaryPageIndex = adjustPageIndexAfterTocInsert(summaryPageIndex, tocInsertIndex, tocPageCount);
@@ -1544,6 +2050,16 @@ export async function buildSdsPacketPdf(
     for (let i = 0; i < sectionStartPages.length; i++) {
       sectionStartPages[i] = adjustPageIndexAfterTocInsert(sectionStartPages[i]!, tocInsertIndex, tocPageCount);
     }
+    for (const link of dividerDocLinks) {
+      link.pageIndex = adjustPageIndexAfterTocInsert(link.pageIndex, tocInsertIndex, tocPageCount);
+      link.target = adjustPageIndexAfterTocInsert(link.target, tocInsertIndex, tocPageCount);
+    }
+  }
+
+  for (const link of dividerDocLinks) {
+    if (link.pageIndex < 0 || link.pageIndex >= doc.getPageCount()) continue;
+    if (link.target < 0 || link.target >= doc.getPageCount()) continue;
+    addInternalPageLink(doc.getPage(link.pageIndex), link.target, link.rect);
   }
 
   if (summaryPageIndex !== null && summaryRowRects.length && sectionStartPages.length) {

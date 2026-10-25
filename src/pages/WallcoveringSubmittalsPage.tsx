@@ -22,7 +22,13 @@ import {
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
-import { updateWcTrackerFromSubmittalItems, syncWcSubmittalOrdered } from "../lib/fieldTrackerProject";
+import {
+  resolveWcTrackerLines,
+  fillItemImageUrlsFromTracker,
+  syncTrackerImageUrlsFromItems,
+  syncWcSubmittalOrdered,
+  updateWcTrackerFromSubmittalItems,
+} from "../lib/fieldTrackerProject";
 import { defaultGotTrackComponent, normalizeWcComponents, refreshComponentTags } from "../lib/wcComponents";
 import {
   applyGotTrackToggle,
@@ -119,10 +125,12 @@ export function WallcoveringSubmittalsPage() {
   const persist = useCallback(
     async (nextDraft: WallcoveringSubmittalData, nextHistory = history) => {
       const historyWithDraft = snapshotSubmittalDraftToHistory(nextHistory, nextDraft, "wallcovering");
+      const trackerImages = syncTrackerImageUrlsFromItems(resolveWcTrackerLines(tradeData), nextDraft.items);
       const ok = await save({
         ...tradeData,
         wallcovering_submittal: nextDraft,
         wallcovering_submittal_history: historyWithDraft,
+        ...(trackerImages.changed ? { wc_tracker_lines: trackerImages.lines } : {}),
       });
       if (ok) {
         setDraft(nextDraft);
@@ -152,7 +160,11 @@ export function WallcoveringSubmittalsPage() {
 
   useEffect(() => {
     if (!loading) {
-      const d = normalizeWcDraft(tradeData.wallcovering_submittal ?? defaultWallcoveringSubmittal());
+      const loaded = normalizeWcDraft(tradeData.wallcovering_submittal ?? defaultWallcoveringSubmittal());
+      const d = {
+        ...loaded,
+        items: fillItemImageUrlsFromTracker(loaded.items, resolveWcTrackerLines(tradeData)),
+      };
       const h = tradeData.wallcovering_submittal_history ?? [];
       setDraft(d);
       setHistory(h);

@@ -108,7 +108,7 @@ export function SdsSectionListRow({
           </label>
         ) : null}
         {section.intended_use.trim() ? (
-          <p className="sds-section-row-sub muted small">Notes: {section.intended_use.trim()}</p>
+          <p className="sds-section-row-sub sds-section-row-notes muted small">Notes: {section.intended_use.trim()}</p>
         ) : null}
         {colorTags.length > 0 ? (
           <div className="sds-section-colors">
