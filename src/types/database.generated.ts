@@ -509,6 +509,56 @@ export type Database = {
           },
         ];
       };
+      project_notes: {
+        Row: {
+          id: string;
+          project_id: string;
+          body: string;
+          type: string;
+          status: string;
+          follow_up_date: string | null;
+          waiting_on: string | null;
+          completed_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          body: string;
+          type?: string;
+          status?: string;
+          follow_up_date?: string | null;
+          waiting_on?: string | null;
+          completed_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          body?: string;
+          type?: string;
+          status?: string;
+          follow_up_date?: string | null;
+          waiting_on?: string | null;
+          completed_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_notes_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

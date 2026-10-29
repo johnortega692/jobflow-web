@@ -1,4 +1,4 @@
-export type TrackerEmailCronSlot = "daily" | "weekly" | "monday";
+export type TrackerEmailCronSlot = "daily" | "weekly" | "monday" | "notes";
 
 /** JS `Date.getUTCDay()` — Sunday = 0 … Saturday = 6. */
 export const WEEKDAY_LABELS = [
@@ -45,6 +45,12 @@ export type TrackerEmailSchedule = {
     /** Weekday (0–6, local timezone) to send site-ready + Needs attention. */
     site_ready_weekday: number;
   };
+  /** Weekday-morning follow-ups digest. Weekends are skipped. */
+  notes_digest: {
+    enabled: boolean;
+    /** Local hour (0–23) in `timezone`. */
+    send_hour: number;
+  };
 };
 
 export const DEFAULT_TRACKER_EMAIL_SCHEDULE: TrackerEmailSchedule = {
@@ -66,6 +72,10 @@ export const DEFAULT_TRACKER_EMAIL_SCHEDULE: TrackerEmailSchedule = {
     digest_weekday: DEFAULT_DIGEST_WEEKDAY,
     wallcovering_digest_weekday: DEFAULT_DIGEST_WEEKDAY,
     site_ready_weekday: DEFAULT_SITE_READY_WEEKDAY,
+  },
+  notes_digest: {
+    enabled: true,
+    send_hour: DEFAULT_SEND_HOUR,
   },
 };
 
@@ -171,6 +181,7 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
     ...DEFAULT_TRACKER_EMAIL_SCHEDULE,
     daily: { ...DEFAULT_TRACKER_EMAIL_SCHEDULE.daily },
     weekly: { ...DEFAULT_TRACKER_EMAIL_SCHEDULE.weekly },
+    notes_digest: { ...DEFAULT_TRACKER_EMAIL_SCHEDULE.notes_digest },
   };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
   const o = raw as Record<string, unknown>;
@@ -211,6 +222,13 @@ export function normalizeTrackerEmailSchedule(raw: unknown): TrackerEmailSchedul
     base.weekly.site_ready_weekday = normalizeWeekday(w.site_ready_weekday, DEFAULT_SITE_READY_WEEKDAY);
   }
 
+  base.notes_digest.send_hour = base.send_hour;
+  if (o.notes_digest && typeof o.notes_digest === "object" && !Array.isArray(o.notes_digest)) {
+    const notes = o.notes_digest as Record<string, unknown>;
+    if (typeof notes.enabled === "boolean") base.notes_digest.enabled = notes.enabled;
+    base.notes_digest.send_hour = normalizeHour(notes.send_hour, base.send_hour);
+  }
+
   // Migrate prior weekly month-list flag onto daily 4-day reminder.
   if (legacyWeeklyBillingDue !== undefined) {
     const d = o.daily && typeof o.daily === "object" && !Array.isArray(o.daily)
@@ -245,7 +263,7 @@ export const TRACKER_CRON_UTC_SCHEDULE = {
   monday: trackerCronUtcHint("site_ready", DEFAULT_SITE_READY_WEEKDAY),
 } as const;
 
-const CRON_SLOTS: TrackerEmailCronSlot[] = ["daily", "weekly", "monday"];
+const CRON_SLOTS: TrackerEmailCronSlot[] = ["daily", "weekly", "monday", "notes"];
 
 function isCronSlot(value: string | undefined): value is TrackerEmailCronSlot {
   return Boolean(value && (CRON_SLOTS as string[]).includes(value));
@@ -260,12 +278,18 @@ export function trackerCronSlotsDueOnUtcDate(
     siteReadyWeekday?: number;
     timezone?: string;
     sendHour?: number;
+    /** Follow-ups digest. Omitted means on, at `sendHour`, weekdays only. */
+    notesDigestEnabled?: boolean;
+    notesDigestHour?: number;
   },
 ): TrackerEmailCronSlot[] {
   const timezone = weekdays?.timezone?.trim() || DEFAULT_TRACKER_EMAIL_SCHEDULE.timezone;
   const sendHour = normalizeHour(weekdays?.sendHour, DEFAULT_SEND_HOUR);
+  const notesHour = normalizeHour(weekdays?.notesDigestHour, sendHour);
+  const notesEnabled = weekdays?.notesDigestEnabled !== false;
   const { weekday, hour } = zonedWeekdayAndHour(now, timezone);
-  if (hour !== sendHour) return [];
+  const notesDue = notesEnabled && !isWeekendWeekday(weekday) && hour === notesHour;
+  if (hour !== sendHour) return notesDue ? ["notes"] : [];
   const slots: TrackerEmailCronSlot[] = [];
   // Daily follow-ups / installs / billing skip Sat–Sun.
   if (!isWeekendWeekday(weekday)) slots.push("daily");
@@ -274,6 +298,7 @@ export function trackerCronSlotsDueOnUtcDate(
   const siteReady = effectiveScheduleWeekday(weekdays?.siteReadyWeekday, DEFAULT_SITE_READY_WEEKDAY);
   if (weekday === siteReady) slots.push("monday");
   if (weekday === digest || weekday === wcDigest) slots.push("weekly");
+  if (notesDue) slots.push("notes");
   return slots;
 }
 
@@ -310,6 +335,8 @@ export function resolveTrackerCronSlots(input: {
   siteReadyWeekday?: number;
   timezone?: string;
   sendHour?: number;
+  notesDigestEnabled?: boolean;
+  notesDigestHour?: number;
 }): TrackerEmailCronSlot[] {
   const query = input.querySlot?.trim();
   if (isCronSlot(query)) return [query];
@@ -325,5 +352,7 @@ export function resolveTrackerCronSlots(input: {
     siteReadyWeekday: input.siteReadyWeekday,
     timezone: input.timezone,
     sendHour: input.sendHour,
+    notesDigestEnabled: input.notesDigestEnabled,
+    notesDigestHour: input.notesDigestHour,
   });
 }

@@ -1,0 +1,187 @@
+.projects-followups-colhead {
+  font-weight: 600;
+}
+
+.projects-followups-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.projects-followups-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
+.projects-followups-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.projects-followups-all {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.projects-followups-all:hover {
+  color: var(--text-secondary);
+}
+
+.projects-followups .filter-chips {
+  margin-bottom: 0;
+}
+
+.projects-followups-count {
+  margin-left: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.projects-followups-head .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.projects-followups-group-label {
+  margin: 0.15rem 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.projects-followups-group-label--overdue {
+  color: var(--danger);
+}
+
+.projects-followups-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.projects-followups-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.projects-followups-list li:last-child .projects-followups-row {
+  border-bottom: none;
+}
+
+.projects-followups-row input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.projects-followups-row input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.projects-followups-note {
+  flex: 1 1 14rem;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.projects-followups-note:hover {
+  text-decoration: none;
+}
+
+.projects-followups-job {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.projects-followups-date,
+.projects-followups-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.projects-followups-date--overdue,
+.projects-followups-pill--overdue {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.projects-followups-date--today {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.projects-followups-date--none {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.projects-followups-snooze {
+  position: relative;
+  margin-left: auto;
+}
+
+.projects-followups-snooze-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 7.5rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 35%, transparent);
+}
+
+.projects-followups-snooze-menu .btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+@media (max-width: 720px) {
+  .projects-followups-note {
+    flex-basis: 100%;
+  }
+
+  .projects-followups-snooze {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projects-followups-row,
+  .projects-followups-snooze-menu {
+    transition: none;
+  }
+}

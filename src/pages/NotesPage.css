@@ -1,0 +1,272 @@
+.project-notes-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.project-notes-add .segmented-control {
+  flex: 0 0 auto;
+}
+
+.project-notes-body-input {
+  flex: 1 1 14rem;
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.project-notes-add > .btn {
+  flex: 0 0 auto;
+}
+
+.project-notes-add > .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.project-notes-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.project-notes-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.project-notes-custom-date {
+  width: auto;
+  max-width: 11rem;
+  margin-top: 0;
+  color-scheme: dark;
+}
+
+.project-notes-waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.project-notes-waiting span {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+}
+
+.project-notes-waiting input {
+  flex: 1 1 8rem;
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.project-notes-count {
+  margin-left: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-notes-wrap {
+  overflow-x: auto;
+}
+
+.project-notes-table {
+  min-width: 40rem;
+}
+
+.project-notes-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.project-notes-check {
+  width: 2.4rem;
+}
+
+.project-notes-table input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.project-notes-table input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.project-notes-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.project-notes-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-notes-row--done {
+  opacity: 0.55;
+}
+
+.project-notes-row--done .project-notes-body,
+.project-notes-row--done .project-notes-waiting-cell {
+  text-decoration: line-through;
+}
+
+.project-notes-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.project-notes-pill--follow_up {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.project-notes-pill--flag {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.project-notes-pill--overdue {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.project-notes-pill--today {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.project-notes-snooze {
+  position: relative;
+}
+
+.project-notes-snooze-menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 7.5rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 35%, transparent);
+}
+
+.project-notes-snooze-menu .btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.project-notes-empty {
+  text-align: center;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .project-notes-table {
+    min-width: 0;
+  }
+
+  .project-notes-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .project-notes-table,
+  .project-notes-table tbody {
+    display: block;
+  }
+
+  .project-notes-table tr {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "check type snooze"
+      "body body body"
+      "wait wait wait"
+      "date date date";
+    gap: 0.35rem 0.6rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .project-notes-table td {
+    display: block;
+    width: auto;
+    padding: 0;
+    border: none;
+  }
+
+  .project-notes-table td[data-col="check"] {
+    grid-area: check;
+  }
+
+  .project-notes-table td[data-col="type"] {
+    grid-area: type;
+  }
+
+  .project-notes-table td[data-col="note"] {
+    grid-area: body;
+  }
+
+  .project-notes-table td[data-col="waiting"] {
+    grid-area: wait;
+  }
+
+  .project-notes-table td[data-col="date"] {
+    grid-area: date;
+  }
+
+  .project-notes-table td[data-col="snooze"] {
+    grid-area: snooze;
+    justify-self: end;
+  }
+
+  .project-notes-table tr.project-notes-empty {
+    display: block;
+  }
+
+  .project-notes-table tr.project-notes-empty td {
+    display: block;
+    padding: 0.75rem 0;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-notes-table tbody tr {
+    transition: none;
+  }
+}

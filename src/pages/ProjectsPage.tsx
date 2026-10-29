@@ -6,6 +6,7 @@ import { ProjectsFiltersMenu } from "../components/projects/ProjectsFiltersMenu"
 import { ProjectsListSortControl } from "../components/projects/ProjectsListSortControl";
 import { ProjectsStatusChips } from "../components/projects/ProjectsStatusChips";
 import { ProjectsAttentionCard } from "../components/projects/ProjectsAttentionCard";
+import { FollowUpsColumnPill, ProjectsFollowUpsCard } from "../components/projects/ProjectsFollowUpsCard";
 import { ProjectStatusBadge } from "../components/projects/ProjectStatusBadge";
 import { SubmittalStagePill } from "../components/projects/SubmittalStagePill";
 import { StaffContactSelect } from "../components/projects/StaffContactSelect";
@@ -50,6 +51,7 @@ import {
   jobInfoPatchFromProfilePm,
   shouldDefaultPmFromProfile,
 } from "../lib/icbiPmDefaults";
+import { listOpenProjectFollowUps, type OpenProjectFollowUp } from "../lib/projectNotes";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
 import { CUSTOM_GC_STARTUP_ITEM_IDS, catalogSeedForId } from "../config/projectStartupItemsCatalog";
@@ -114,6 +116,8 @@ export function ProjectsPage() {
   );
   const [listFilters, setListFilters] = useState<ProjectsListFilters>(() => loadProjectsListFilters());
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+  const [followUps, setFollowUps] = useState<OpenProjectFollowUp[]>([]);
+  const [followUpsError, setFollowUpsError] = useState<string | null>(null);
   const pmDefaultedRef = useRef(false);
 
   const summaries = useMemo(() => {
@@ -136,10 +140,34 @@ export function ProjectsPage() {
     () => projects.filter((project) => !doneIds.has(project.id)),
     [projects, doneIds],
   );
-  const attentionSpotlight = useMemo(
-    () => getSpotlight(openProjects, summaries),
-    [openProjects, summaries],
-  );
+  const openProjectIds = useMemo(() => new Set(openProjects.map((project) => project.id)), [openProjects]);
+  const noteFlagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of followUps) {
+      if (row.type !== "flag" || !openProjectIds.has(row.projectId)) continue;
+      counts.set(row.projectId, (counts.get(row.projectId) ?? 0) + 1);
+    }
+    return counts;
+  }, [followUps, openProjectIds]);
+  const attentionSpotlight = useMemo(() => {
+    if (!noteFlagCounts.size) return getSpotlight(openProjects, summaries);
+    const augmented = new Map(summaries);
+    for (const [id, extra] of noteFlagCounts) {
+      const summary = augmented.get(id);
+      if (!summary || extra <= 0) continue;
+      augmented.set(id, { ...summary, attentionCount: summary.attentionCount + extra });
+    }
+    return getSpotlight(openProjects, augmented);
+  }, [openProjects, summaries, noteFlagCounts]);
+  const followUpsByProject = useMemo(() => {
+    const grouped = new Map<string, OpenProjectFollowUp[]>();
+    for (const row of followUps) {
+      const list = grouped.get(row.projectId);
+      if (list) list.push(row);
+      else grouped.set(row.projectId, [row]);
+    }
+    return grouped;
+  }, [followUps]);
   const filterContext = useMemo(
     () => ({
       search,
@@ -204,12 +232,18 @@ export function ProjectsPage() {
 
   async function loadProjects() {
     setLoading(true);
-    const [{ data, error: err }, doneRes, brushoutIds, , rfiRes] = await Promise.all([
+    const [{ data, error: err }, doneRes, brushoutIds, , rfiRes, followUpsRes] = await Promise.all([
       supabase.from("projects").select("*").order("updated_at", { ascending: false }),
       listDoneProjectIds(),
       listProjectIdsWithApprovedBrushouts().catch(() => new Set<string>()),
       loadDefaultStartupItems(),
       supabase.from("rfis").select("project_id, status"),
+      listOpenProjectFollowUps()
+        .then((rows) => ({ rows, error: null as string | null }))
+        .catch((err: unknown) => ({
+          rows: [] as OpenProjectFollowUp[],
+          error: err instanceof Error ? err.message : "Could not load follow-ups.",
+        })),
     ]);
     setLoading(false);
     if (err) {
@@ -229,6 +263,8 @@ export function ProjectsPage() {
       rfiCounts.set(projectId, (rfiCounts.get(projectId) ?? 0) + 1);
     }
     setOpenRfiCounts(rfiCounts);
+    setFollowUps(followUpsRes.rows);
+    setFollowUpsError(followUpsRes.error);
     setProjects(data ?? []);
   }
 
@@ -486,6 +522,12 @@ export function ProjectsPage() {
       ) : (
         <>
           {openProjects.length > 0 && <ProjectsAttentionCard spotlight={attentionSpotlight} />}
+          {followUpsError ? (
+            <div className="banner banner-error" role="alert">
+              {followUpsError}
+            </div>
+          ) : null}
+          <ProjectsFollowUpsCard items={followUps} activeProjectIds={openProjectIds} onChange={setFollowUps} />
 
           <div className="projects-toolbar">
             <div className="projects-toolbar-search">
@@ -547,10 +589,10 @@ export function ProjectsPage() {
                             ["attention", "Attention"],
                             ["start", "Job start"],
                           ] as const
-                        ).map(([column, label]) => {
+                        ).flatMap(([column, label]) => {
                           const active = projectsListColumnForSort(listSortState.sort) === column;
                           const arrowDir = active ? listSortState.dir : defaultSortDir(column);
-                          return (
+                          const header = (
                             <th
                               key={column}
                               aria-sort={active ? (listSortState.dir === "asc" ? "ascending" : "descending") : "none"}
@@ -567,6 +609,13 @@ export function ProjectsPage() {
                               </button>
                             </th>
                           );
+                          if (column !== "attention") return [header];
+                          return [
+                            header,
+                            <th key="follow-ups">
+                              <span className="projects-followups-colhead">Follow-ups</span>
+                            </th>,
+                          ];
                         })}
                         <th></th>
                       </tr>
@@ -574,7 +623,7 @@ export function ProjectsPage() {
                     <tbody>
                       {filteredProjects.length === 0 ? (
                         <tr>
-                          <td className="projects-table-empty" colSpan={7}>
+                          <td className="projects-table-empty" colSpan={8}>
                             No jobs match these filters.{" "}
                             <button
                               type="button"
@@ -610,6 +659,9 @@ export function ProjectsPage() {
                             </td>
                             <td>
                               <ProjectStatusBadge summary={summary} tableMode />
+                            </td>
+                            <td>
+                              <FollowUpsColumnPill rows={followUpsByProject.get(p.id)} />
                             </td>
                             <td>
                               <div className="muted">{projectJobStartLabel(p)}</div>

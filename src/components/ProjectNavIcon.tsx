@@ -100,6 +100,14 @@ export function ProjectNavIcon({ id, className = "project-nav-icon" }: Props) {
           <path d="M3 13l9 5 9-5" />
         </svg>
       );
+    case "notes":
+      return (
+        <svg {...common}>
+          <path d="M6 4h9l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+          <path d="M15 4v4h4" />
+          <path d="M8 12h8M8 16h5" />
+        </svg>
+      );
     case "aha":
       return (
         <svg {...common}>

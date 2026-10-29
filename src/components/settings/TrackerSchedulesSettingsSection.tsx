@@ -26,6 +26,7 @@ import {
   sendWeeklyTrackerDigest,
   type WeeklyDigestKind,
 } from "../../lib/trackerWeeklyDigest";
+import { sendNotesDigest } from "../../lib/notesDigestEmail";
 import { sendSiteReadyDigest } from "../../lib/startupSiteReadyDigest";
 import {
   BILLING_DUE_REMINDER_DAYS_BEFORE,
@@ -57,7 +58,8 @@ type SendKey =
   | "billing"
   | "combined"
   | "wc_digest"
-  | "site_ready";
+  | "site_ready"
+  | "notes_digest";
 
 function timezoneShort(tz: string): string {
   try {
@@ -73,6 +75,7 @@ function timezoneShort(tz: string): string {
 
 function cronSentChips(sent: string[]): string[] {
   const rules: { test: RegExp; label: string }[] = [
+    { test: /notes digest|follow-ups digest/i, label: "Follow-ups digest" },
     { test: /site-ready/i, label: "Monday site-ready digest" },
     { test: /combined/i, label: "Combined weekly digest" },
     { test: /wallcovering weekly|wallcovering digest/i, label: "Wallcovering weekly digest" },
@@ -120,10 +123,12 @@ function SendNowButton({
   busy,
   disabled,
   onClick,
+  label = "Send now",
 }: {
   busy: boolean;
   disabled?: boolean;
   onClick: () => void;
+  label?: string;
 }) {
   return (
     <button type="button" className="btn btn-secondary sched-send-btn" disabled={disabled || busy} onClick={onClick}>
@@ -131,7 +136,7 @@ function SendNowButton({
         <path d="M22 2 11 13" />
         <path d="M22 2 15 22l-4-9-9-4 20-7z" />
       </svg>
-      {busy ? "Sending…" : "Send now"}
+      {busy ? "Sending…" : label}
     </button>
   );
 }
@@ -239,6 +244,19 @@ export function TrackerSchedulesSettingsSection({
     setData((d) =>
       d
         ? { ...d, tracker_email_schedule: { ...d.tracker_email_schedule, daily: { ...d.tracker_email_schedule.daily, ...patch } } }
+        : d,
+    );
+  }
+  function patchNotes(patch: Partial<TrackerEmailSchedule["notes_digest"]>) {
+    setData((d) =>
+      d
+        ? {
+            ...d,
+            tracker_email_schedule: {
+              ...d.tracker_email_schedule,
+              notes_digest: { ...d.tracker_email_schedule.notes_digest, ...patch },
+            },
+          }
         : d,
     );
   }
@@ -399,6 +417,21 @@ export function TrackerSchedulesSettingsSection({
       </section>
 
       <section className="sched-card">
+        <ScheduleRow
+          title="Follow-ups digest"
+          detail={`Weekdays only · overdue, due today, and open flags · ${tzShort}`}
+          checked={schedule.notes_digest.enabled}
+          disabled={readOnly}
+          busy={sending === "notes_digest"}
+          hour={schedule.notes_digest.send_hour}
+          sendLabel="Send test digest"
+          onHour={(send_hour) => patchNotes({ send_hour })}
+          onToggle={(enabled) => patchNotes({ enabled })}
+          onSend={() => void runTestSend("notes_digest", sendNotesTest)}
+        />
+      </section>
+
+      <section className="sched-card">
         <div className="sched-card-head">
           <ScheduleToggle
             label="Send daily follow-up / install reminders"
@@ -536,6 +569,9 @@ function ScheduleRow({
   busy,
   weekday,
   onWeekday,
+  hour,
+  onHour,
+  sendLabel,
   onToggle,
   onSend,
 }: {
@@ -547,6 +583,9 @@ function ScheduleRow({
   busy: boolean;
   weekday?: number;
   onWeekday?: (value: number) => void;
+  hour?: number;
+  onHour?: (value: number) => void;
+  sendLabel?: string;
   onToggle: (next: boolean) => void;
   onSend: () => void;
 }) {
@@ -559,12 +598,26 @@ function ScheduleRow({
           <p>{detail}</p>
         </div>
       </div>
-      {typeof weekday === "number" && onWeekday ? (
+      {typeof hour === "number" && onHour ? (
+        <select
+          className="sched-day-select"
+          value={hour}
+          disabled={disabled}
+          aria-label="Follow-ups digest send time"
+          onChange={(e) => onHour(Number(e.target.value))}
+        >
+          {Array.from({ length: 24 }, (_, value) => (
+            <option key={value} value={value}>
+              {formatSendHourLabel(value)}
+            </option>
+          ))}
+        </select>
+      ) : typeof weekday === "number" && onWeekday ? (
         <WeekdaySelect value={weekday} disabled={disabled} onChange={onWeekday} />
       ) : (
         <span className="sched-row-meta">{meta}</span>
       )}
-      <SendNowButton busy={busy} onClick={onSend} />
+      <SendNowButton busy={busy} label={sendLabel} onClick={onSend} />
     </div>
   );
 }
@@ -637,6 +690,25 @@ async function sendBillingTest(ctx: ReturnType<typeof testSendContext>): Promise
     );
   }
   return `Billing due reminder sent to ${result.pmCount} ICBI PM${result.pmCount === 1 ? "" : "s"} (${result.count} job${result.count === 1 ? "" : "s"}).`;
+}
+
+async function sendNotesTest(ctx: ReturnType<typeof testSendContext>): Promise<string> {
+  const { projects, error } = await loadProjectsForWeeklyDigest();
+  if (error) throw new Error(error);
+  const result = await sendNotesDigest({
+    projects,
+    primaryEmail: ctx.primaryEmail,
+    primaryName: ctx.primaryName,
+    companyName: ctx.companyName,
+    companyAddress: ctx.companyAddress,
+    fromName: JOBFLOW_SCHEDULE_FROM_NAME,
+    gasUrl: ctx.gasUrl,
+    logoUrl: ctx.logoUrl,
+    gasPost: ctx.gasPost,
+    today: zonedCalendarDate(new Date(), ctx.timezone),
+  });
+  if (!result.sent) return "Follow-ups digest: nothing due, so no email was sent.";
+  return `Follow-ups digest sent (${result.dueToday} due today, ${result.overdue} overdue).`;
 }
 
 async function sendDigestKind(

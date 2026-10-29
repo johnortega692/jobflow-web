@@ -21,6 +21,8 @@ import { BudgetPage } from "./pages/BudgetPage";
 import { BillingPage } from "./pages/BillingPage";
 import { ProjectWorkOrdersPage } from "./pages/ProjectWorkOrdersPage";
 import { MaterialTrackerPage } from "./pages/MaterialTrackerPage";
+import { AllNotesPage } from "./pages/AllNotesPage";
+import { NotesPage } from "./pages/NotesPage";
 import { AhaPage } from "./pages/AhaPage";
 import { ToolboxTalksPage } from "./pages/ToolboxTalksPage";
 import { SafetyInspectionsPage } from "./pages/SafetyInspectionsPage";
@@ -63,6 +65,7 @@ export default function App() {
             <Route path="/projects/by-gc" element={<ProjectsByGcPage />} />
             <Route path="/workload" element={<CompanyWorkloadPage />} />
             <Route path="/brush-out-request" element={<BrushOutRequestPage />} />
+            <Route path="/notes" element={<AllNotesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/projects/:projectId" element={<ProjectLayout />}>
               <Route index element={<ProjectOverviewPage />} />
@@ -89,6 +92,7 @@ export default function App() {
               <Route path="work-orders" element={<ProjectWorkOrdersPage />} />
               <Route path="work-orders/:workOrderId" element={<WorkOrderEditorPage />} />
               <Route path="material-tracker" element={<MaterialTrackerPage />} />
+              <Route path="notes" element={<NotesPage />} />
               <Route path="aha" element={<AhaPage />} />
               <Route path="toolbox-talks" element={<ToolboxTalksPage />} />
               <Route path="safety-inspections" element={<SafetyInspectionsPage />} />

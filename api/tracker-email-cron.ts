@@ -64,6 +64,8 @@ async function parseSlots(req: VercelRequest): Promise<TrackerEmailCronSlot[]> {
     wallcoveringDigestWeekday: schedule.weekly.wallcovering_digest_weekday,
     timezone: schedule.timezone,
     sendHour: schedule.send_hour,
+    notesDigestEnabled: schedule.notes_digest.enabled,
+    notesDigestHour: schedule.notes_digest.send_hour,
   });
 }
 

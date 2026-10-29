@@ -9,6 +9,7 @@ export type ProjectModuleId =
   | "billing"
   | "work-orders"
   | "material-tracker"
+  | "notes"
   | "aha"
   | "toolbox-talks"
   | "safety-inspections"
@@ -60,6 +61,7 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     label: "Tracking",
     modules: [
       { id: "material-tracker", label: "Material Tracker", path: "material-tracker", ready: true },
+      { id: "notes", label: "Notes", path: "notes", ready: true },
       { id: "budget", label: "Budget Maker", path: "budget", ready: true },
       { id: "billing", label: "Labor Projection", path: "billing", ready: true },
       { id: "work-orders", label: "Work Orders", path: "work-orders", ready: true },

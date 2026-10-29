@@ -13,10 +13,13 @@ import { sendFollowUpReminder, followUpReminderHasContent } from "./trackerFollo
 import type { TrackerEmailCronSlot } from "./trackerEmailSchedule.js";
 import {
   effectiveScheduleWeekday,
+  formatSendHourLabel,
+  isWeekendWeekday,
   zonedCalendarDate,
   zonedWeekdayAndHour,
   weekdayLabel,
 } from "./trackerEmailSchedule.js";
+import { sendNotesDigest } from "./notesDigestEmail.js";
 import { sendWeeklyTrackerDigest } from "./trackerWeeklyDigest.js";
 import { sendSiteReadyDigest, siteReadyDigestHasContent } from "./startupSiteReadyDigest.js";
 import {
@@ -227,6 +230,30 @@ export async function runTrackerEmailCron(slot: TrackerEmailCronSlot): Promise<C
         }
       } else if (slot === "weekly" && !schedule.weekly.enabled) {
         result.skipped.push(`${label}: weekly schedule disabled`);
+      }
+
+      if (slot === "notes") {
+        const { weekday, hour } = zonedWeekdayAndHour(new Date(), schedule.timezone);
+        if (!schedule.notes_digest.enabled) {
+          result.skipped.push(`${label}: notes digest disabled`);
+        } else if (isWeekendWeekday(weekday)) {
+          result.skipped.push(`${label}: notes digest skipped (weekdays only)`);
+        } else if (hour !== schedule.notes_digest.send_hour) {
+          result.skipped.push(
+            `${label}: notes digest skipped (not ${formatSendHourLabel(schedule.notes_digest.send_hour)})`,
+          );
+        } else if (!primaryEmail) {
+          result.skipped.push(`${label}: notes digest skipped (no primary email)`);
+        } else {
+          const digest = await sendNotesDigest({ ...sendBase });
+          if (digest.sent) {
+            result.sent.push(
+              `${label}: notes digest (${digest.dueToday} due today, ${digest.overdue} overdue)`,
+            );
+          } else {
+            result.skipped.push(`${label}: notes digest (nothing due)`);
+          }
+        }
       }
 
       if (slot === "monday") {
