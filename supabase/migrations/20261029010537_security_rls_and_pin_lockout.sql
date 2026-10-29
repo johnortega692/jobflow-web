@@ -3,11 +3,8 @@
 
 -- ── Legacy login (no callers; replaced by field_tools_login_pin) ────────────
 
-REVOKE EXECUTE ON FUNCTION public.field_tools_list_profiles() FROM PUBLIC, anon, authenticated;
-DROP FUNCTION public.field_tools_list_profiles();
-
-REVOKE EXECUTE ON FUNCTION public.field_tools_login(uuid, text) FROM PUBLIC, anon, authenticated;
-DROP FUNCTION public.field_tools_login(uuid, text);
+DROP FUNCTION IF EXISTS public.field_tools_list_profiles();
+DROP FUNCTION IF EXISTS public.field_tools_login(uuid, text);
 
 -- ── Approved-user policies ──────────────────────────────────────────────────
 
