@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  allocateEwoNumber,
+  loadExtraWorkTags,
+  openExtraWorkTagPdf,
+  saveExtraWorkTagPrice,
+  type OfficeExtraWorkTag,
+} from "../lib/extraWorkTags";
 import { ContractListFilter, type ContractListFilterValue } from "../components/jobinfo/ContractListFilter";
 import {
   hasTransmittalContractSwitch,
@@ -49,6 +57,57 @@ function buildRowView(order: WorkOrderRow): RowView {
   return { ...order, parsed, budget };
 }
 
+function moneyDraft(value: number | null): string {
+  return value == null ? "" : value.toFixed(2);
+}
+
+function parsePrice(value: string): number | null {
+  const trimmed = value.trim().replace(/[$,]/g, "");
+  if (!trimmed) return null;
+  const amount = Number(trimmed);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 9999999.99) return null;
+  return Math.round(amount * 100) / 100;
+}
+
+function tagDateDisplay(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  if (!year || !month || !day) return iso || "—";
+  return `${month}/${day}/${year}`;
+}
+
+function tagIsPriced(tag: OfficeExtraWorkTag): boolean {
+  return tag.status === "signed" && tag.laborAmount != null && tag.materialAmount != null;
+}
+
+function ExtraWorkPdfActions({ path, filename }: { path: string; filename: string }) {
+  const [busy, setBusy] = useState<"" | "view" | "download">("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function open(download: boolean) {
+    setBusy(download ? "download" : "view");
+    setError(null);
+    try {
+      await openExtraWorkTagPdf(path, filename, download);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not open the PDF.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="row wrap" style={{ gap: 8, alignItems: "center" }}>
+      <button type="button" className="btn btn-secondary btn-small" disabled={busy !== ""} onClick={() => void open(false)}>
+        {busy === "view" ? "Opening…" : "View PDF"}
+      </button>
+      <button type="button" className="btn btn-secondary btn-small" disabled={busy !== ""} onClick={() => void open(true)}>
+        {busy === "download" ? "Downloading…" : "Download PDF"}
+      </button>
+      {error ? <span className="muted small">{error}</span> : null}
+    </div>
+  );
+}
+
 function StatusMark({ on, label }: { on: boolean; label: string }) {
   if (on) {
     return (
@@ -66,8 +125,12 @@ function StatusMark({ on, label }: { on: boolean; label: string }) {
 
 export function ProjectWorkOrdersPage() {
   const { project, projectId } = useOutletContext<Ctx>();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<WorkOrderRow[]>([]);
+  const [tags, setTags] = useState<OfficeExtraWorkTag[]>([]);
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, { labor: string; material: string }>>({});
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contractFilter, setContractFilter] = useState<ContractListFilterValue>("all");
@@ -76,19 +139,35 @@ export function ProjectWorkOrdersPage() {
 
   async function load() {
     setLoading(true);
-    const { data, error: err } = await supabase
+    const ordersPromise = supabase
       .from("work_orders")
       .select("*")
       .eq("project_id", projectId)
       .order("updated_at", { ascending: false });
-    setLoading(false);
+    const tagsPromise = isAdmin ? loadExtraWorkTags(projectId) : Promise.resolve({ tags: [] as OfficeExtraWorkTag[], error: null });
+    const [{ data, error: err }, tagResult] = await Promise.all([ordersPromise, tagsPromise]);
     if (err) setError(err.message);
     else setOrders((data ?? []) as WorkOrderRow[]);
+    if (tagResult.error) setError(tagResult.error);
+    else setTags(tagResult.tags);
+    setLoading(false);
   }
 
   useEffect(() => {
     void load();
-  }, [projectId]);
+  }, [projectId, isAdmin]);
+
+  useEffect(() => {
+    const next: Record<string, { labor: string; material: string }> = {};
+    for (const tag of tags) {
+      if (tag.status !== "signed") continue;
+      next[tag.id] = {
+        labor: moneyDraft(tag.laborAmount),
+        material: moneyDraft(tag.materialAmount),
+      };
+    }
+    setPriceDrafts(next);
+  }, [tags]);
 
   const rows = useMemo(() => orders.map(buildRowView), [orders]);
 
@@ -97,6 +176,9 @@ export function ProjectWorkOrdersPage() {
     return rows.filter((row) => row.parsed.contract === contractFilter);
   }, [contractFilter, rows]);
 
+  const pricedTags = useMemo(() => tags.filter(tagIsPriced), [tags]);
+  const visiblePricedTags = contractFilter === "all" ? pricedTags : [];
+
   const summary = useMemo(() => {
     let totalAmount = 0;
     let pendingFsi = 0;
@@ -104,8 +186,12 @@ export function ProjectWorkOrdersPage() {
       totalAmount += Number(row.total_amount);
       if (!row.parsed.fsi_checked) pendingFsi += 1;
     }
-    return { totalAmount, pendingFsi, count: filteredRows.length };
-  }, [filteredRows]);
+    for (const tag of visiblePricedTags) {
+      totalAmount += (tag.laborAmount ?? 0) + (tag.materialAmount ?? 0);
+    }
+    return { totalAmount, pendingFsi, count: filteredRows.length + visiblePricedTags.length };
+  }, [filteredRows, visiblePricedTags]);
+  const showOrderTable = filteredRows.length > 0 || visiblePricedTags.length > 0;
 
   useEffect(() => {
     setContractFilter("all");
@@ -122,8 +208,32 @@ export function ProjectWorkOrdersPage() {
     }
   }
 
+  async function savePrice(tag: OfficeExtraWorkTag) {
+    const draft = priceDrafts[tag.id] ?? {
+      labor: moneyDraft(tag.laborAmount),
+      material: moneyDraft(tag.materialAmount),
+    };
+    const labor = parsePrice(draft.labor);
+    const material = parsePrice(draft.material);
+    if (labor == null || material == null) {
+      setError("Enter a labor amount and a material amount.");
+      return;
+    }
+    setSavingPriceId(tag.id);
+    setError(null);
+    const message = await saveExtraWorkTagPrice(tag.id, labor, material);
+    setSavingPriceId(null);
+    if (message) {
+      setError(message);
+      return;
+    }
+    setTags((current) =>
+      current.map((row) => (row.id === tag.id ? { ...row, laborAmount: labor, materialAmount: material } : row)),
+    );
+  }
+
   async function createWorkOrder() {
-    const nextNum = nextEwoNumber(orders.map((o) => o.ewo_number));
+    const nextNum = await allocateEwoNumber(projectId, orders.map((o) => o.ewo_number), nextEwoNumber);
     const { data: userData } = await supabase.auth.getUser();
     const { data, error: err } = await supabase
       .from("work_orders")
@@ -167,9 +277,9 @@ export function ProjectWorkOrdersPage() {
 
       {loading ? (
         <p className="muted">Loading work orders…</p>
-      ) : orders.length === 0 ? (
+      ) : !showOrderTable && orders.length === 0 ? (
         <p className="muted">No work orders yet. Create an EWO to enter labor, material, and totals.</p>
-      ) : filteredRows.length === 0 ? (
+      ) : !showOrderTable ? (
         <p className="muted">
           No work orders for{" "}
           {contractFilter === "all" ? "this job" : TRANSMITTAL_CONTRACT_LABELS[contractFilter]}.
@@ -256,10 +366,192 @@ export function ProjectWorkOrdersPage() {
                     </td>
                   </tr>
                 ))}
+                {visiblePricedTags.map((tag) => (
+                  <tr key={tag.id}>
+                    <td>
+                      {tag.tagNumber || "—"} <span className="muted small">Tag</span>
+                    </td>
+                    {showContractColumn && <td />}
+                    <td>{tagDateDisplay(tag.tagDate)}</td>
+                    <td className="num">
+                      {tag.hoursTotal > 0
+                        ? tag.hoursTotal.toLocaleString(undefined, { maximumFractionDigits: 1 })
+                        : "—"}
+                    </td>
+                    <td className="num">{formatMoney((tag.laborAmount ?? 0) + (tag.materialAmount ?? 0))}</td>
+                    <td className="num">—</td>
+                    <td className="num">—</td>
+                    <td className="num">—</td>
+                    <td className="num">—</td>
+                    <td className="work-orders-status-col">—</td>
+                    <td className="work-orders-status-col">—</td>
+                    <td className="work-orders-updated">{formatUpdatedAt(tag.updatedAt)}</td>
+                    <td className="work-orders-chevron-col" />
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </>
+      )}
+
+      {isAdmin && (
+        <div className="stack">
+          <div>
+            <h3>Field tags</h3>
+            <p className="muted small">
+              Tags saved from Field Tools. They share this job&apos;s EWO numbers. Enter labor and materials after a tag is signed.
+            </p>
+          </div>
+          {tags.length === 0 ? (
+            <p className="muted">No field tags yet.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Tag #</th>
+                    <th>Date</th>
+                    <th>Area</th>
+                    <th>Description</th>
+                    <th>Hours</th>
+                    <th>Materials</th>
+                    <th className="num">Labor $</th>
+                    <th className="num">Material $</th>
+                    <th className="num">Total</th>
+                    <th>By</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tags.map((tag) => {
+                    const draft = priceDrafts[tag.id] ?? {
+                      labor: moneyDraft(tag.laborAmount),
+                      material: moneyDraft(tag.materialAmount),
+                    };
+                    const labor = parsePrice(draft.labor);
+                    const material = parsePrice(draft.material);
+                    const canSave = tag.status === "signed"
+                      && (draft.labor.trim() !== moneyDraft(tag.laborAmount)
+                        || draft.material.trim() !== moneyDraft(tag.materialAmount));
+                    return (
+                    <Fragment key={tag.id}>
+                    <tr>
+                      <td>{tag.tagNumber || "—"}</td>
+                      <td>{tag.tagDate || "—"}</td>
+                      <td>{tag.area || "—"}</td>
+                      <td>{tag.description || "—"}</td>
+                      <td>{tag.hoursLabel || "—"}</td>
+                      <td>{tag.materialsLabel || "—"}</td>
+                      <td className="num">
+                        {tag.status === "signed" ? (
+                          <input
+                            aria-label={`Labor price for tag ${tag.tagNumber}`}
+                            inputMode="decimal"
+                            value={draft.labor}
+                            onChange={(e) =>
+                              setPriceDrafts((current) => ({
+                                ...current,
+                                [tag.id]: { ...(current[tag.id] ?? draft), labor: e.target.value },
+                              }))
+                            }
+                            style={{ width: "7rem" }}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="num">
+                        {tag.status === "signed" ? (
+                          <input
+                            aria-label={`Material price for tag ${tag.tagNumber}`}
+                            inputMode="decimal"
+                            value={draft.material}
+                            onChange={(e) =>
+                              setPriceDrafts((current) => ({
+                                ...current,
+                                [tag.id]: { ...(current[tag.id] ?? draft), material: e.target.value },
+                              }))
+                            }
+                            style={{ width: "7rem" }}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="num">
+                        {tag.status === "signed" ? (
+                          <div className="stack" style={{ alignItems: "flex-end", gap: 6 }}>
+                            <span>{labor != null && material != null ? formatMoney(labor + material) : "—"}</span>
+                            {canSave ? (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-small"
+                                disabled={savingPriceId === tag.id}
+                                onClick={() => void savePrice(tag)}
+                              >
+                                {savingPriceId === tag.id ? "Saving…" : "Save"}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{tag.submittedByName}</td>
+                      <td>
+                        {tag.status === "waiting"
+                          ? "Waiting for signature"
+                          : tag.status === "signed"
+                            ? "Signed"
+                            : tag.status === "refused"
+                              ? "Refused"
+                              : "Draft"}
+                      </td>
+                    </tr>
+                    {tag.photos.length > 0 || tag.signaturePng || tag.refusedNote || tag.pdfPath || tag.status === "signed" ? (
+                      <tr>
+                        <td colSpan={11}>
+                          <div className="stack">
+                            {tag.pdfPath ? (
+                              <ExtraWorkPdfActions path={tag.pdfPath} filename={tag.pdfFilename || `Extra work tag ${tag.tagNumber}.pdf`} />
+                            ) : tag.status === "signed" ? (
+                              <p className="muted small">The PDF is saved when the signed tag is emailed.</p>
+                            ) : null}
+                            {tag.signerName ? (
+                              <p className="small">
+                                {tag.status === "refused" ? "Refused by" : "Signed by"} {tag.signerName}
+                                {tag.signerCompany ? `, ${tag.signerCompany}` : ""}
+                                {tag.refusedNote ? ` — ${tag.refusedNote}` : ""}
+                              </p>
+                            ) : null}
+                            {tag.signaturePng ? (
+                              <img src={tag.signaturePng} alt="Signature" style={{ maxWidth: 280, background: "#fff" }} />
+                            ) : null}
+                            {tag.photos.length > 0 ? (
+                              <div className="row wrap" style={{ gap: 8 }}>
+                                {tag.photos.map((photo, index) => (
+                                  <img
+                                    key={index}
+                                    src={photo.startsWith("data:") ? photo : `data:image/jpeg;base64,${photo}`}
+                                    alt=""
+                                    style={{ width: 120, height: 90, objectFit: "cover" }}
+                                  />
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </section>
   );

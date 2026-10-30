@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { formatDateTime } from "../lib/strings";
+import { SafetyRecordPdfActions } from "../components/SafetyRecordPdfActions";
 import {
   formatRecordDay,
   loadSafetyInspections,
@@ -39,7 +40,7 @@ export function SafetyInspectionsPage() {
 
   return (
     <section className="card stack">
-      <p className="muted small">Saved and submitted inspections from Field Tools for this job.</p>
+      <p className="muted small">Saved and submitted inspections from Field Tools for this job. A submitted inspection can be viewed or downloaded as the PDF that was emailed.</p>
       {error && <div className="banner banner-error">{error}</div>}
       {loading ? (
         <p className="muted small">Loading inspections…</p>
@@ -78,6 +79,7 @@ export function SafetyInspectionsPage() {
                 </button>
                 {open && (
                   <div className="stack" style={{ marginTop: "0.65rem" }}>
+                    <SafetyRecordPdfActions path={record.pdfPath} filename={record.pdfFilename} />
                     {record.accidentAttached && <p className="muted small">Accident investigation attached.</p>}
                     {flagged.length === 0 ? (
                       <p className="muted small">Nothing marked as needing attention.</p>

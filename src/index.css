@@ -300,7 +300,7 @@ label {
   top: calc(100% + 8px);
   right: 0;
   z-index: 200;
-  min-width: 180px;
+  width: max-content;
   padding: 0.3rem 0;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -321,6 +321,7 @@ label {
   font-size: 0.9rem;
   text-align: left;
   text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
 }
 

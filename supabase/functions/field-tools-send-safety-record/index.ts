@@ -54,6 +54,19 @@ function isPdfBase64(value: string): boolean {
   }
 }
 
+const PDF_BUCKET = "safety-record-pdfs";
+
+function pdfBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function recordTable(kind: string): "field_tools_field_reports" | "field_tools_safety_inspections" {
+  return kind === "field_report" ? "field_tools_field_reports" : "field_tools_safety_inspections";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -63,11 +76,13 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = (await req.json()) as {
+      action?: string;
       caller_id?: string;
       session_token?: string;
       p_caller_id?: string;
       p_session_token?: string;
       kind?: string;
+      record_id?: string;
       subject?: string;
       body?: string;
       filename?: string;
@@ -76,6 +91,8 @@ Deno.serve(async (req) => {
     const callerId = (body.caller_id ?? body.p_caller_id)?.trim();
     const sessionToken = (body.session_token ?? body.p_session_token)?.trim();
     const kind = body.kind?.trim();
+    const recordId = body.record_id?.trim() ?? "";
+    const action = body.action?.trim() || "email";
     const subject = body.subject?.trim() ?? "";
     const textBody = body.body?.trim() ?? "";
     const filename = (body.filename?.trim() || "safety-record.pdf").replace(/[\\/:*?"<>|]/g, "").slice(0, 180);
@@ -89,10 +106,6 @@ Deno.serve(async (req) => {
       console.error("safety-record-email reject bad_kind");
       return jsonResponse({ ok: false, error: "Choose Field Report or Safety Inspection." });
     }
-    if (!subject || !isPdfBase64(pdfBase64)) {
-      console.error("safety-record-email reject bad_pdf", pdfBase64.slice(0, 24), pdfBase64.length);
-      return jsonResponse({ ok: false, error: "The PDF could not be emailed. Download it and try again." });
-    }
 
     const { data: sessionProfile, error: sessionErr } = await supabase.rpc("field_tools_get_session_profile", {
       p_caller_id: callerId,
@@ -103,10 +116,64 @@ Deno.serve(async (req) => {
       console.error("safety-record-email reject session");
       return jsonResponse({ ok: false, error: msg });
     }
-    const profileResult = sessionProfile as { ok?: boolean; error?: string; profile?: { email?: string } };
+    const profileResult = sessionProfile as { ok?: boolean; error?: string; profile?: { email?: string; role?: string } };
     if (!profileResult?.ok) {
       console.error("safety-record-email reject session_profile");
       return jsonResponse({ ok: false, error: profileResult?.error ?? "Invalid session" });
+    }
+
+    const table = recordTable(kind);
+    const role = profileResult.profile?.role ?? "";
+    async function canReadRecord(): Promise<{ path: string; filename: string } | null> {
+      if (!recordId) return null;
+      const { data, error } = await supabase
+        .from(table)
+        .select("submitted_by_profile_id, pdf_storage_path, pdf_filename")
+        .eq("id", recordId)
+        .maybeSingle();
+      if (error || !data) return null;
+      const owner = data.submitted_by_profile_id === callerId;
+      const office = kind === "field_report" && (role === "admin" || role === "super");
+      if (!owner && !office) return null;
+      return {
+        path: String(data.pdf_storage_path ?? ""),
+        filename: String(data.pdf_filename ?? ""),
+      };
+    }
+
+    if (action === "link") {
+      const stored = await canReadRecord();
+      if (!stored?.path) return jsonResponse({ ok: false, error: "That PDF is not saved yet." });
+      const signed = await supabase.storage.from(PDF_BUCKET).createSignedUrl(stored.path, 60 * 10, {
+        download: stored.filename || true,
+      });
+      if (signed.error || !signed.data?.signedUrl) {
+        return jsonResponse({ ok: false, error: signed.error?.message || "Could not open the PDF." });
+      }
+      return jsonResponse({ ok: true, url: signed.data.signedUrl, filename: stored.filename });
+    }
+
+    if (!subject || !isPdfBase64(pdfBase64)) {
+      console.error("safety-record-email reject bad_pdf", pdfBase64.slice(0, 24), pdfBase64.length);
+      return jsonResponse({ ok: false, error: "The PDF could not be emailed. Download it and try again." });
+    }
+
+    let pdfPath = "";
+    const readable = await canReadRecord();
+    if (readable) {
+      const path = `${kind}/${recordId}.pdf`;
+      const uploaded = await supabase.storage.from(PDF_BUCKET).upload(path, new Blob([pdfBytes(pdfBase64)]), {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+      if (uploaded.error) {
+        console.error("safety-record-email store", uploaded.error.message.slice(0, 180));
+      } else {
+        const savedName = filename.toLowerCase().endsWith(".pdf") ? filename : `${filename}.pdf`;
+        const updated = await supabase.from(table).update({ pdf_storage_path: path, pdf_filename: savedName }).eq("id", recordId);
+        if (updated.error) console.error("safety-record-email path", updated.error.message.slice(0, 180));
+        else pdfPath = path;
+      }
     }
 
     const { data: settings, error: settingsErr } = await supabase
@@ -114,12 +181,12 @@ Deno.serve(async (req) => {
       .select("field_report_to_email, inspection_to_email")
       .eq("id", 1)
       .maybeSingle();
-    if (settingsErr) return jsonResponse({ ok: false, error: settingsErr.message });
+    if (settingsErr) return jsonResponse({ ok: false, error: settingsErr.message, pdf_path: pdfPath });
 
     const rawTo = kind === "field_report" ? settings?.field_report_to_email : settings?.inspection_to_email;
     const addresses = parseEmailList(rawTo ?? "");
     if (!addresses.length) {
-      return jsonResponse({ ok: true, emailed: false, reason: "no_address" });
+      return jsonResponse({ ok: true, emailed: false, reason: "no_address", pdf_path: pdfPath });
     }
 
     const cc = addresses.slice(1);
@@ -138,9 +205,9 @@ Deno.serve(async (req) => {
     });
     if (!sent.ok) {
       console.error("safety-record-email reject send");
-      return jsonResponse({ ok: false, error: gasErrorMessage(sent.message, 502) });
+      return jsonResponse({ ok: false, error: gasErrorMessage(sent.message, 502), pdf_path: pdfPath });
     }
-    return jsonResponse({ ok: true, emailed: true });
+    return jsonResponse({ ok: true, emailed: true, pdf_path: pdfPath });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Could not email the PDF.";
     console.error("safety-record-email reject throw", message.slice(0, 180));

@@ -98,7 +98,53 @@ export function orderTypeLabel(t: string): string {
   return "Field Request";
 }
 
-export function buildOrderDetailGroups(order: FieldToolsOrder): OrderCartGroup[] {
+/** Which part of a split order this PO should show. */
+export type PoViewScope = "all" | "paint" | "sundries" | "rental" | "equipment" | "wallcovering" | "haul_off";
+
+function sameVendorName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** Paint and sundries from different vendors are separate POs. Each view shows only that PO. */
+export function resolvePoViewScope(input: {
+  dispatchType: string;
+  vendorLabel: string;
+  payload: Record<string, unknown>;
+}): PoViewScope {
+  const type = input.dispatchType;
+  if (type === "rental" || type === "equipment" || type === "wallcovering" || type === "haul_off") return type;
+  if (type !== "material" && type !== "job_scope_kit") return "all";
+
+  const paint = asString(input.payload.vendor);
+  const sundries = asString(input.payload.sundriesVendor);
+  const separate = input.payload.separateSundriesVendor === true;
+  if (!separate || !sundries || sameVendorName(paint, sundries)) return "all";
+
+  const vendor = input.vendorLabel.trim();
+  if (vendor && sameVendorName(vendor, sundries) && !sameVendorName(vendor, paint)) return "sundries";
+  if (vendor && sameVendorName(vendor, paint)) return "paint";
+  return "all";
+}
+
+function listKeyAllowed(scope: PoViewScope, key: string): boolean {
+  if (scope === "all") return true;
+  if (scope === "paint") return key === "paint" || key === "additional";
+  if (scope === "sundries") return key === "sundries";
+  return key === scope;
+}
+
+function notesForScope(notes: string, payload: Record<string, unknown>, scope: PoViewScope): string {
+  if (scope !== "paint" && scope !== "sundries") return notes;
+  const sundriesLoc = asString(payload.sundriesStoreLocation);
+  if (!sundriesLoc) return notes;
+  const time = notes.match(/\| Pick-up Time: (.+)$/)?.[1]?.trim() ?? "";
+  if (!time) return notes;
+  const loc = scope === "sundries" ? sundriesLoc : asString(payload.storeLocation);
+  if (!loc) return notes;
+  return `[WILL CALL] Store Location: ${loc} | Pick-up Time: ${time}`;
+}
+
+export function buildOrderDetailGroups(order: FieldToolsOrder, scope: PoViewScope = "all"): OrderCartGroup[] {
   const payload = order.payload ?? {};
   const lists = payload.lists as Record<string, unknown> | undefined;
   const sections = payload.sections as FieldRequestSections | undefined;
@@ -106,20 +152,22 @@ export function buildOrderDetailGroups(order: FieldToolsOrder): OrderCartGroup[]
   const sundriesVendor = asString(payload.sundriesVendor);
   const groups: OrderCartGroup[] = [];
 
-  pushListGroup(groups, lists, "paint", "Paint", vendor);
-  pushListGroup(
-    groups,
-    lists,
-    "sundries",
-    "Sundries",
-    sundriesVendor && sundriesVendor !== vendor ? sundriesVendor : undefined,
-  );
-  pushListGroup(groups, lists, "additional", "Additional");
-  pushListGroup(groups, lists, "rental", "Rental");
-  pushListGroup(groups, lists, "equipment", "Equipment");
-  pushListGroup(groups, lists, "wallcovering", "Wallcovering");
+  if (listKeyAllowed(scope, "paint")) pushListGroup(groups, lists, "paint", "Paint", vendor);
+  if (listKeyAllowed(scope, "sundries")) {
+    pushListGroup(
+      groups,
+      lists,
+      "sundries",
+      "Sundries",
+      sundriesVendor && sundriesVendor !== vendor ? sundriesVendor : undefined,
+    );
+  }
+  if (listKeyAllowed(scope, "additional")) pushListGroup(groups, lists, "additional", "Additional");
+  if (listKeyAllowed(scope, "rental")) pushListGroup(groups, lists, "rental", "Rental");
+  if (listKeyAllowed(scope, "equipment")) pushListGroup(groups, lists, "equipment", "Equipment");
+  if (listKeyAllowed(scope, "wallcovering")) pushListGroup(groups, lists, "wallcovering", "Wallcovering");
 
-  if (sections?.haulOffActive) {
+  if (sections?.haulOffActive && (scope === "all" || scope === "haul_off")) {
     groups.push({
       section: "Haul Out",
       items: [
@@ -144,7 +192,7 @@ function formatDateNeeded(value: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
+export function buildOrderDetailRows(order: FieldToolsOrder, scope: PoViewScope = "all"): OrderDetailRow[] {
   const payload = order.payload ?? {};
   const rows: OrderDetailRow[] = [];
 
@@ -188,8 +236,10 @@ export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
 
   const vendor = asString(payload.vendor);
   const sundriesVendor = asString(payload.sundriesVendor);
-  if (vendor) rows.push({ label: "Paint vendor", value: vendor });
-  if (sundriesVendor && sundriesVendor !== vendor) {
+  if ((scope === "all" || scope === "paint") && vendor) {
+    rows.push({ label: "Paint vendor", value: vendor });
+  }
+  if ((scope === "all" || scope === "sundries") && sundriesVendor && sundriesVendor !== vendor) {
     rows.push({ label: "Sundries vendor", value: sundriesVendor });
   }
 
@@ -221,7 +271,7 @@ export function buildOrderDetailRows(order: FieldToolsOrder): OrderDetailRow[] {
     });
   }
 
-  const notes = order.notes || asString(payload.notes);
+  const notes = notesForScope(order.notes || asString(payload.notes), payload, scope);
   if (notes) rows.push({ label: "Notes", value: notes });
 
   return rows;

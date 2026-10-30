@@ -575,6 +575,8 @@ export function ProjectPoPage() {
         <FieldToolsOrderViewModal
           orderId={viewOrder.orderId}
           poNumber={viewOrder.poNumber}
+          dispatchType={viewRow.dispatchType}
+          vendorLabel={viewRow.vendorLabel}
           receivedField={viewRow.receivedField}
           completed={viewRow.completed}
           hasReceipt={viewRow.hasReceipt}

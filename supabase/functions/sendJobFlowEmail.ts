@@ -13,6 +13,15 @@ function splitEmails(raw: string): string[] {
     .filter(isValidEmail);
 }
 
+function fromWithDisplayName(from: string, displayName: string): string {
+  const name = displayName.replace(/[\r\n<>"]/g, "").trim();
+  if (!name) return from;
+  const match = from.match(/<([^>]+)>/);
+  const address = (match?.[1] ?? from).trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) return from;
+  return `"${name}" <${address}>`;
+}
+
 async function sendViaResend(params: {
   to: string;
   cc?: string;
@@ -21,6 +30,7 @@ async function sendViaResend(params: {
   text?: string;
   attachmentName?: string;
   attachmentBase64?: string;
+  fromName?: string;
 }): Promise<{ ok: boolean; message: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
   const from = Deno.env.get("EMAIL_FROM")?.trim();
@@ -33,7 +43,7 @@ async function sendViaResend(params: {
   const cc = splitEmails(params.cc ?? "");
 
   const payload: Record<string, unknown> = {
-    from,
+    from: fromWithDisplayName(from, params.fromName ?? ""),
     to,
     subject: params.subject,
     html: params.htmlBody,
@@ -115,6 +125,8 @@ export async function sendJobFlowNotification(params: {
   text?: string;
   attachmentName?: string;
   attachmentBase64?: string;
+  /** Display name only. The mailbox address stays EMAIL_FROM. */
+  fromName?: string;
   /** Stay on the JobFlow mailbox. Do not fall through to the order Gmail account. */
   jobFlowOnly?: boolean;
 }): Promise<{ ok: boolean; message: string }> {
@@ -124,7 +136,7 @@ export async function sendJobFlowNotification(params: {
   const base = Deno.env.get("GAS_SEND_EMAIL_URL")?.trim();
   if (!base) return { ok: false, message: resend.message };
 
-  const senderName = Deno.env.get("EMAIL_SENDER_NAME")?.trim() || "JobFlow";
+  const senderName = params.fromName?.trim() || Deno.env.get("EMAIL_SENDER_NAME")?.trim() || "JobFlow";
   const gasParams = { ...params, senderName };
   const jobFlow = await postGas(base, "sendJobFlowEmail", gasParams);
   if (jobFlow.ok) return jobFlow;

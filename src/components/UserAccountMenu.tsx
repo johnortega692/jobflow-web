@@ -28,6 +28,50 @@ function ChevronIcon({ up }: { up: boolean }) {
   );
 }
 
+function FieldViewIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z" />
+      <path d="M7 8h10" />
+      <path d="M7 12h10" />
+      <path d="M7 16h6" />
+    </svg>
+  );
+}
+
+function BrushIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 21v-4a4 4 0 1 1 4 4h-4" />
+      <path d="M21 3a16 16 0 0 0 -12.8 10.2" />
+      <path d="M21 3a16 16 0 0 1 -10.2 12.8" />
+      <path d="M10.6 9a9 9 0 0 1 4.4 4.4" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
     <svg
@@ -123,6 +167,27 @@ export function UserAccountMenu({ profile, email, onSignOut }: Props) {
 
       {open ? (
         <div id={menuId} className="user-account-menu-dropdown" role="menu">
+          <Link
+            to="/brush-out-request"
+            role="menuitem"
+            className="user-account-menu-item"
+            onClick={() => setOpen(false)}
+          >
+            <BrushIcon />
+            <span>Brush-out request</span>
+          </Link>
+          <Link
+            to="/field"
+            target="_blank"
+            rel="noopener noreferrer"
+            role="menuitem"
+            className="user-account-menu-item"
+            onClick={() => setOpen(false)}
+          >
+            <FieldViewIcon />
+            <span>Field view</span>
+          </Link>
+          <div className="user-account-menu-divider" role="separator" />
           <Link
             to="/settings"
             role="menuitem"

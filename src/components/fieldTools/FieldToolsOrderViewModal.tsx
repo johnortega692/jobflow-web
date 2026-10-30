@@ -13,12 +13,15 @@ import {
   countCartGroups,
   orderHaulOffPhotoSrc,
   orderTypeLabel,
+  resolvePoViewScope,
 } from "../../lib/fieldToolsOrderView";
 import type { FieldToolsOrder } from "../../types/fieldToolsOrder";
 
 type Props = {
   orderId: string;
   poNumber: string;
+  dispatchType: string;
+  vendorLabel: string;
   receivedField: boolean;
   completed: boolean;
   hasReceipt: boolean;
@@ -38,6 +41,8 @@ function formatSubmittedAt(iso: string): string {
 export function FieldToolsOrderViewModal({
   orderId,
   poNumber,
+  dispatchType,
+  vendorLabel,
   receivedField,
   completed,
   hasReceipt,
@@ -104,10 +109,13 @@ export function FieldToolsOrderViewModal({
     onReceiptCount?.(next.length);
   }
 
-  const groups = order ? buildOrderDetailGroups(order) : [];
-  const detailRows = order ? buildOrderDetailRows(order) : [];
+  const scope = order
+    ? resolvePoViewScope({ dispatchType, vendorLabel, payload: order.payload ?? {} })
+    : "all";
+  const groups = order ? buildOrderDetailGroups(order, scope) : [];
+  const detailRows = order ? buildOrderDetailRows(order, scope) : [];
   const totalItems = countCartGroups(groups);
-  const haulOffPhoto = order ? orderHaulOffPhotoSrc(order) : null;
+  const haulOffPhoto = order && (scope === "all" || scope === "haul_off") ? orderHaulOffPhotoSrc(order) : null;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>

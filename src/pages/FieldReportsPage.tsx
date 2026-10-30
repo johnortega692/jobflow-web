@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { formatDateTime } from "../lib/strings";
+import { SafetyRecordPdfActions } from "../components/SafetyRecordPdfActions";
 import {
   formatRecordDay,
   loadFieldReports,
@@ -52,7 +53,7 @@ export function FieldReportsPage() {
 
   return (
     <section className="card stack">
-      <p className="muted small">Saved and submitted field reports from Field Tools for this job. Photos are not stored.</p>
+      <p className="muted small">Saved and submitted field reports from Field Tools for this job. A submitted report can be viewed or downloaded as the PDF that was emailed.</p>
       {error && <div className="banner banner-error">{error}</div>}
       {loading ? (
         <p className="muted small">Loading field reports…</p>
@@ -97,6 +98,7 @@ export function FieldReportsPage() {
                 </button>
                 {open && (
                   <div className="stack" style={{ marginTop: "0.65rem" }}>
+                    <SafetyRecordPdfActions path={record.pdfPath} filename={record.pdfFilename} />
                     {weatherLine(record) ? <p className="muted small">{weatherLine(record)}</p> : null}
                     {[record.superintendent && `Superintendent: ${record.superintendent}`, record.contractor && `Contractor: ${record.contractor}`, record.location && `Location: ${record.location}`]
                       .filter(Boolean)

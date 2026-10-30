@@ -50,10 +50,6 @@ export function Layout() {
         <nav className="topnav">
           <Link to="/projects">Projects</Link>
           <Link to="/workload">Workload</Link>
-          <Link to="/field" target="_blank" rel="noopener noreferrer">
-            Field view
-          </Link>
-          <Link to="/brush-out-request">Brush-out request</Link>
           <NavLink to="/notes" end>
             Notes
             {overdueNotes > 0 ? (

@@ -24,6 +24,8 @@ export type SafetyInspectionRecord = {
   items: InspectionItem[];
   status: "saved" | "submitted";
   updatedAt: string;
+  pdfPath: string;
+  pdfFilename: string;
 };
 
 export type ManpowerEntry = {
@@ -59,6 +61,8 @@ export type FieldReportRecord = {
   completedAt: string;
   status: "saved" | "submitted";
   updatedAt: string;
+  pdfPath: string;
+  pdfFilename: string;
 };
 
 type InspectionRow = {
@@ -76,6 +80,8 @@ type InspectionRow = {
   items: InspectionItem[] | null;
   status: string | null;
   updated_at: string | null;
+  pdf_storage_path?: string | null;
+  pdf_filename?: string | null;
 };
 
 type ReportRow = {
@@ -102,6 +108,8 @@ type ReportRow = {
   completed_at: string;
   status: string | null;
   updated_at: string | null;
+  pdf_storage_path?: string | null;
+  pdf_filename?: string | null;
 };
 
 function recordStatus(value: string | null | undefined): "saved" | "submitted" {
@@ -131,6 +139,8 @@ export async function loadSafetyInspections(projectId: string): Promise<{
     items: Array.isArray(row.items) ? row.items : [],
     status: recordStatus(row.status),
     updatedAt: row.updated_at || row.completed_at,
+    pdfPath: (row.pdf_storage_path ?? "").trim(),
+    pdfFilename: (row.pdf_filename ?? "").trim(),
   }));
   return { records, error: null };
 }
@@ -172,8 +182,22 @@ export async function loadFieldReports(projectId: string): Promise<{
     completedAt: row.completed_at,
     status: recordStatus(row.status),
     updatedAt: row.updated_at || row.completed_at,
+    pdfPath: (row.pdf_storage_path ?? "").trim(),
+    pdfFilename: (row.pdf_filename ?? "").trim(),
   }));
   return { records, error: null };
+}
+
+const SAFETY_PDF_BUCKET = "safety-record-pdfs";
+
+export async function openSafetyRecordPdf(path: string, filename: string, download: boolean): Promise<void> {
+  const { data, error } = await supabase.storage.from(SAFETY_PDF_BUCKET).createSignedUrl(
+    path,
+    60 * 10,
+    download ? { download: filename || true } : undefined,
+  );
+  if (error || !data?.signedUrl) throw new Error(error?.message || "Could not open the PDF.");
+  window.open(data.signedUrl, "_blank", "noopener");
 }
 
 export function formatRecordDay(value: string): string {

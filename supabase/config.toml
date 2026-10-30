@@ -28,3 +28,9 @@ verify_jwt = false
 
 [functions.field-tools-identify-tool]
 verify_jwt = false
+
+[functions.field-tools-extra-work-sign]
+verify_jwt = false
+
+[functions.field-tools-extra-work-pdf]
+verify_jwt = false
