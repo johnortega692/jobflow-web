@@ -51,12 +51,24 @@ async function sha256Hex(value: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function emailList(value: string): string[] {
+  const seen = new Set<string>();
+  const emails: string[] = [];
+  for (const part of value.split(/[,;]/)) {
+    const email = part.trim().toLowerCase();
+    if (!isEmail(email) || seen.has(email)) continue;
+    seen.add(email);
+    emails.push(email);
+  }
+  return emails;
+}
+
 function recipients(linkEmail: string, submitterEmail: string): { to: string; cc: string } {
-  const link = linkEmail.trim().toLowerCase();
+  const list = emailList(linkEmail);
   const submitter = submitterEmail.trim().toLowerCase();
-  const to = isEmail(link) ? link : isEmail(submitter) ? submitter : "";
-  const cc = to && isEmail(submitter) && submitter !== to ? submitter : "";
-  return { to, cc };
+  const to = list[0] ?? (isEmail(submitter) ? submitter : "");
+  const cc = [...list.slice(1), ...(to && isEmail(submitter) && submitter !== to && !list.includes(submitter) ? [submitter] : [])];
+  return { to, cc: cc.join(", ") };
 }
 
 Deno.serve(async (req) => {
@@ -74,6 +86,7 @@ Deno.serve(async (req) => {
       token?: string;
       pdf_base64?: string;
       email?: boolean;
+      copy_emails?: string;
     };
     const action = body.action?.trim() || "save";
     const callerId = body.caller_id?.trim() ?? "";
@@ -148,7 +161,7 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      linkEmail = String(link?.sent_to_email ?? "");
+      linkEmail = [String(link?.sent_to_email ?? ""), String(body.copy_emails ?? "")].filter(Boolean).join(", ");
     }
 
     if (!tag || (tag.status !== "signed" && tag.status !== "refused")) {

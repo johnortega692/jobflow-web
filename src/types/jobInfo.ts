@@ -85,6 +85,8 @@ export type JobInfoData = {
   track_contract_amount: string;
   /** Default QR target for wallcovering sample labels. */
   sample_share_url: string;
+  /** Emails checked on Work Orders. Field Tools adds them to the extra work signature email. */
+  extra_work_sign_emails: string[];
 };
 
 export const JOB_TYPES = ["Commercial", "Residential"] as const;
@@ -154,5 +156,6 @@ export function defaultJobInfo(): JobInfoData {
     track_job_name: "",
     track_contract_amount: "",
     sample_share_url: "",
+    extra_work_sign_emails: [],
   };
 }

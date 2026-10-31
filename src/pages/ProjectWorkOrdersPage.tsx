@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -13,7 +13,8 @@ import {
   hasTransmittalContractSwitch,
   TRANSMITTAL_CONTRACT_LABELS,
 } from "../lib/jobInfo";
-import { logProjectActivityEvent } from "../lib/projectActivity";
+import { commitProjectUpdate, logProjectActivityEvent } from "../lib/projectActivity";
+import { extraWorkSignatureContacts } from "../lib/jobInfo";
 import { supabase } from "../lib/supabase";
 import {
   computeBudgetFromCosts,
@@ -22,6 +23,7 @@ import {
 } from "../lib/workOrderCalc";
 import type { ProjectForm } from "../types/database";
 import { parseWorkOrderData, type WorkOrderRow } from "../types/workOrder";
+import "./ProjectWorkOrdersPage.css";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
@@ -75,8 +77,48 @@ function tagDateDisplay(iso: string): string {
   return `${month}/${day}/${year}`;
 }
 
-function tagIsPriced(tag: OfficeExtraWorkTag): boolean {
-  return tag.status === "signed" && tag.laborAmount != null && tag.materialAmount != null;
+function formatHourCount(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function signedAtPhrase(value: string): string {
+  const formatted = formatUpdatedAt(value);
+  if (!value || formatted === "—") return "";
+  const comma = formatted.lastIndexOf(",");
+  if (comma < 0) return formatted;
+  return `${formatted.slice(0, comma)} at ${formatted.slice(comma + 1).trim()}`;
+}
+
+type TagFilter = "all" | "needs" | "draft" | "waiting" | "signed";
+
+function tagNeedsPricing(tag: OfficeExtraWorkTag): boolean {
+  return tag.status === "signed" && tag.laborAmount == null && tag.materialAmount == null;
+}
+
+function tagStatusLabel(status: string): string {
+  if (status === "waiting") return "Waiting for signature";
+  if (status === "signed") return "Signed";
+  if (status === "refused") return "Refused";
+  return "Draft";
+}
+
+function tagStatusTone(status: string): string {
+  if (status === "waiting") return "waiting";
+  if (status === "signed") return "signed";
+  if (status === "refused") return "refused";
+  return "draft";
+}
+
+function photoSrc(photo: string): string {
+  return photo.startsWith("data:") ? photo : `data:image/jpeg;base64,${photo}`;
+}
+
+function tagMatchesFilter(tag: OfficeExtraWorkTag, filter: TagFilter): boolean {
+  if (filter === "needs") return tagNeedsPricing(tag);
+  if (filter === "draft") return tag.status === "draft";
+  if (filter === "waiting") return tag.status === "waiting";
+  if (filter === "signed") return tag.status === "signed";
+  return true;
 }
 
 function ExtraWorkPdfActions({ path, filename }: { path: string; filename: string }) {
@@ -108,6 +150,354 @@ function ExtraWorkPdfActions({ path, filename }: { path: string; filename: strin
   );
 }
 
+const SIGN_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+function ExtraWorkSignatureEmails({ project, projectId }: { project: ProjectForm; projectId: string }) {
+  const contacts = useMemo(() => extraWorkSignatureContacts(project.jobInfo), [project.jobInfo]);
+  const saved = project.jobInfo.extra_work_sign_emails;
+  const [checked, setChecked] = useState<string[]>(saved);
+  const [added, setAdded] = useState<string[]>(() => saved.filter((email) => !extraWorkSignatureContacts(project.jobInfo).some((contact) => contact.email === email)));
+  const [custom, setCustom] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState("");
+
+  function toggle(email: string) {
+    setChecked((current) => (current.includes(email) ? current.filter((item) => item !== email) : [...current, email]));
+    setNote("");
+  }
+
+  function addCustom() {
+    const email = custom.trim().toLowerCase();
+    if (!SIGN_EMAIL_RE.test(email)) {
+      setNote("Enter a valid email.");
+      return;
+    }
+    setAdded((current) => (current.includes(email) || contacts.some((contact) => contact.email === email) ? current : [...current, email]));
+    setChecked((current) => (current.includes(email) ? current : [...current, email]));
+    setCustom("");
+    setNote("");
+  }
+
+  async function save() {
+    setSaving(true);
+    setNote("");
+    const data =
+      project.data && typeof project.data === "object" && !Array.isArray(project.data)
+        ? (project.data as Record<string, unknown>)
+        : {};
+    const jobInfo =
+      data.job_info && typeof data.job_info === "object" && !Array.isArray(data.job_info)
+        ? (data.job_info as Record<string, unknown>)
+        : {};
+    const message = await commitProjectUpdate({
+      projectId,
+      mergeData: { job_info: { ...jobInfo, extra_work_sign_emails: checked } },
+      activity: { action: "project_data_saved", summary: "Extra work signature emails saved" },
+    });
+    setSaving(false);
+    setNote(message ?? "Saved. Field Tools adds the checked emails to the signature.");
+  }
+
+  return (
+    <div className="stack">
+      <div>
+        <h3>Signature emails</h3>
+        <p className="muted small">
+          Checked emails are added to the extra work signature in Field Tools. Add anyone who is not already on the job.
+        </p>
+      </div>
+      {contacts.length === 0 && added.length === 0 ? (
+        <p className="muted small">No emails are on this job yet.</p>
+      ) : (
+        <div className="ewo-sign-email-list">
+          {contacts.map((contact) => (
+            <label key={contact.email} className="ewo-sign-email">
+              <input type="checkbox" checked={checked.includes(contact.email)} onChange={() => toggle(contact.email)} />
+              <span className="ewo-sign-email-text">
+                <span className="ewo-sign-email-name">{contact.label}</span>
+                <span className="ewo-sign-email-address">{contact.email}</span>
+              </span>
+            </label>
+          ))}
+          {added.map((email) => (
+            <label key={email} className="ewo-sign-email">
+              <input type="checkbox" checked={checked.includes(email)} onChange={() => toggle(email)} />
+              <span className="ewo-sign-email-text">
+                <span className="ewo-sign-email-name">{email}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="ewo-sign-add">
+        <input
+          aria-label="Additional signature email"
+          inputMode="email"
+          placeholder="name@company.com"
+          value={custom}
+          onChange={(event) => setCustom(event.target.value)}
+          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addCustom();
+            }
+          }}
+        />
+        <button type="button" className="btn btn-secondary btn-small" onClick={addCustom}>
+          Add email
+        </button>
+        <button type="button" className="btn btn-primary btn-small" disabled={saving} onClick={() => void save()}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {note ? <span className="muted small">{note}</span> : null}
+    </div>
+  );
+}
+
+function FieldTagList({
+  tags,
+  priceDrafts,
+  setPriceDrafts,
+  savingPriceId,
+  savedPriceId,
+  clearSaved,
+  onSave,
+}: {
+  tags: OfficeExtraWorkTag[];
+  priceDrafts: Record<string, { labor: string; material: string }>;
+  setPriceDrafts: Dispatch<SetStateAction<Record<string, { labor: string; material: string }>>>;
+  savingPriceId: string | null;
+  savedPriceId: string | null;
+  clearSaved: () => void;
+  onSave: (tag: OfficeExtraWorkTag) => void;
+}) {
+  const [filter, setFilter] = useState<TagFilter>("all");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const counts = {
+    all: tags.length,
+    needs: tags.filter(tagNeedsPricing).length,
+    draft: tags.filter((tag) => tag.status === "draft").length,
+    waiting: tags.filter((tag) => tag.status === "waiting").length,
+    signed: tags.filter((tag) => tag.status === "signed").length,
+  };
+  const chips: { id: TagFilter; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "needs", label: "Needs pricing" },
+    { id: "draft", label: "Draft" },
+    { id: "waiting", label: "Waiting" },
+    { id: "signed", label: "Signed" },
+  ];
+  const visible = tags.filter((tag) => tagMatchesFilter(tag, filter));
+
+  return (
+    <div className="field-tags">
+      <div className="filter-chips" role="group" aria-label="Filter field tags">
+        {chips.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            className={`filter-chip${filter === chip.id ? " filter-chip--active" : ""}`}
+            aria-pressed={filter === chip.id}
+            onClick={() => setFilter(chip.id)}
+          >
+            {chip.label}
+            <span className="field-tag-chip-count">{counts[chip.id]}</span>
+          </button>
+        ))}
+      </div>
+      {visible.length === 0 ? (
+        <p className="muted">No tags match this filter.</p>
+      ) : (
+        <div className="field-tag-list">
+          {visible.map((tag) => {
+            const open = openId === tag.id;
+            const panelId = `field-tag-${tag.id}`;
+            const draft = priceDrafts[tag.id] ?? {
+              labor: moneyDraft(tag.laborAmount),
+              material: moneyDraft(tag.materialAmount),
+            };
+            const labor = parsePrice(draft.labor);
+            const material = parsePrice(draft.material);
+            const canSave = tag.status === "signed"
+              && (draft.labor.trim() !== moneyDraft(tag.laborAmount)
+                || draft.material.trim() !== moneyDraft(tag.materialAmount));
+            const hours = tag.hoursSummary;
+            const shownPhotos = tag.photos.slice(0, 4);
+            const extraPhotos = tag.photos.length - shownPhotos.length;
+            const signedWhen = signedAtPhrase(tag.signedAt);
+            const signedWho = [tag.signerName, tag.signerCompany].filter(Boolean).join(", ");
+            const signedLine = [signedWho, signedWhen].filter(Boolean).join(", ");
+            const amount = tag.status === "signed" && (tag.laborAmount != null || tag.materialAmount != null)
+              ? formatMoney((tag.laborAmount ?? 0) + (tag.materialAmount ?? 0))
+              : "";
+            return (
+              <article key={tag.id} className={`field-tag${open ? " field-tag--open" : ""}`}>
+                <button
+                  type="button"
+                  className="field-tag-row"
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  onClick={() => setOpenId((current) => (current === tag.id ? null : tag.id))}
+                >
+                  <span className="field-tag-id">
+                    <span className="field-tag-number">{tag.tagNumber || "—"}</span>
+                    <span className="field-tag-date">{tagDateDisplay(tag.tagDate)}</span>
+                  </span>
+                  <span className="field-tag-desc">
+                    <span className="field-tag-desc-text">{tag.description || "—"}</span>
+                    <span className="field-tag-by">By {tag.submittedByName}</span>
+                  </span>
+                  <span className="field-tag-side">
+                    <span className="field-tag-status">
+                      <span className={`field-tag-badge field-tag-badge--${tagStatusTone(tag.status)}`}>
+                        {tagStatusLabel(tag.status)}
+                      </span>
+                      {tagNeedsPricing(tag) ? (
+                        <span className="field-tag-needs">Needs pricing</span>
+                      ) : amount ? (
+                        <span className="field-tag-amount">{amount}</span>
+                      ) : tag.status === "draft" || tag.status === "waiting" ? (
+                        <span className="field-tag-pending">Not signed yet</span>
+                      ) : null}
+                    </span>
+                    <span className="field-tag-chevron" aria-hidden="true">›</span>
+                  </span>
+                </button>
+                <div id={panelId} className="field-tag-panel" hidden={!open}>
+                  <div className="field-tag-grid">
+                    <div>
+                      <div className="field-tag-block-label">Hours</div>
+                      <div>{hours.people} people</div>
+                      <div className="muted small">
+                        {formatHourCount(hours.regular)} Reg, {formatHourCount(hours.overtime)} OT, {formatHourCount(hours.doubleTime)} DT
+                      </div>
+                      {hours.premium > 0 ? (
+                        <div className="muted small">{formatHourCount(hours.premium)} premium only</div>
+                      ) : null}
+                    </div>
+                    <div>
+                      <div className="field-tag-block-label">Materials ({tag.materialLines.length})</div>
+                      {tag.materialLines.length === 0 ? (
+                        <div className="muted small">None</div>
+                      ) : (
+                        tag.materialLines.map((line, index) => (
+                          <div key={`${line.name}-${index}`} className="muted small">
+                            {line.quantity ? `${line.name} (${line.quantity})` : line.name}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div>
+                      <div className="field-tag-block-label">Pricing</div>
+                      {tag.status === "signed" ? (
+                        <div className="field-tag-price">
+                          <label>
+                            Labor $
+                            <input
+                              aria-label={`Labor price for tag ${tag.tagNumber}`}
+                              inputMode="decimal"
+                              value={draft.labor}
+                              onChange={(event) => {
+                                if (savedPriceId === tag.id) clearSaved();
+                                const next = event.target.value;
+                                setPriceDrafts((current) => ({
+                                  ...current,
+                                  [tag.id]: { ...(current[tag.id] ?? draft), labor: next },
+                                }));
+                              }}
+                            />
+                          </label>
+                          <label>
+                            Material $
+                            <input
+                              aria-label={`Material price for tag ${tag.tagNumber}`}
+                              inputMode="decimal"
+                              value={draft.material}
+                              onChange={(event) => {
+                                if (savedPriceId === tag.id) clearSaved();
+                                const next = event.target.value;
+                                setPriceDrafts((current) => ({
+                                  ...current,
+                                  [tag.id]: { ...(current[tag.id] ?? draft), material: next },
+                                }));
+                              }}
+                            />
+                          </label>
+                          <div className="field-tag-price-total">
+                            <span className="muted small">Total</span>
+                            <strong>{labor != null && material != null ? formatMoney(labor + material) : "—"}</strong>
+                            {canSave ? (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-small"
+                                disabled={savingPriceId === tag.id}
+                                onClick={() => onSave(tag)}
+                              >
+                                {savingPriceId === tag.id ? "Saving…" : "Save"}
+                              </button>
+                            ) : savedPriceId === tag.id ? (
+                              <span className="muted small">Saved</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="muted small">Available after the tag is signed.</p>
+                      )}
+                    </div>
+                    {tag.status === "signed" ? (
+                      <div>
+                        <div className="field-tag-block-label">Files</div>
+                        {tag.pdfPath ? (
+                          <ExtraWorkPdfActions path={tag.pdfPath} filename={tag.pdfFilename || `Extra work tag ${tag.tagNumber}.pdf`} />
+                        ) : (
+                          <p className="muted small">The PDF is saved when the signed tag is emailed.</p>
+                        )}
+                      </div>
+                    ) : null}
+                    {tag.status === "signed" ? (
+                      <div>
+                        <div className="field-tag-block-label">Signed by</div>
+                        {signedLine ? <p className="small">{signedLine}</p> : null}
+                        {tag.signaturePng ? (
+                          <img className="field-tag-signature" src={tag.signaturePng} alt="Signature" />
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {tag.status === "refused" && (tag.signerName || tag.refusedNote) ? (
+                      <div>
+                        <div className="field-tag-block-label">Refused by</div>
+                        <p className="small">
+                          {tag.signerName}
+                          {tag.signerCompany ? `, ${tag.signerCompany}` : ""}
+                          {tag.refusedNote ? ` — ${tag.refusedNote}` : ""}
+                        </p>
+                      </div>
+                    ) : null}
+                    <div>
+                      <div className="field-tag-block-label">Photos ({tag.photos.length})</div>
+                      {tag.photos.length === 0 ? (
+                        <div className="muted small">None</div>
+                      ) : (
+                        <div className="field-tag-photos">
+                          {shownPhotos.map((photo, index) => (
+                            <img key={index} src={photoSrc(photo)} alt="" />
+                          ))}
+                          {extraPhotos > 0 ? <span className="field-tag-photos-more">+{extraPhotos}</span> : null}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatusMark({ on, label }: { on: boolean; label: string }) {
   if (on) {
     return (
@@ -131,9 +521,11 @@ export function ProjectWorkOrdersPage() {
   const [tags, setTags] = useState<OfficeExtraWorkTag[]>([]);
   const [priceDrafts, setPriceDrafts] = useState<Record<string, { labor: string; material: string }>>({});
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
+  const [savedPriceId, setSavedPriceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contractFilter, setContractFilter] = useState<ContractListFilterValue>("all");
+  const [section, setSection] = useState<"orders" | "field">("orders");
 
   const showContractColumn = hasTransmittalContractSwitch(project);
 
@@ -176,9 +568,6 @@ export function ProjectWorkOrdersPage() {
     return rows.filter((row) => row.parsed.contract === contractFilter);
   }, [contractFilter, rows]);
 
-  const pricedTags = useMemo(() => tags.filter(tagIsPriced), [tags]);
-  const visiblePricedTags = contractFilter === "all" ? pricedTags : [];
-
   const summary = useMemo(() => {
     let totalAmount = 0;
     let pendingFsi = 0;
@@ -186,15 +575,13 @@ export function ProjectWorkOrdersPage() {
       totalAmount += Number(row.total_amount);
       if (!row.parsed.fsi_checked) pendingFsi += 1;
     }
-    for (const tag of visiblePricedTags) {
-      totalAmount += (tag.laborAmount ?? 0) + (tag.materialAmount ?? 0);
-    }
-    return { totalAmount, pendingFsi, count: filteredRows.length + visiblePricedTags.length };
-  }, [filteredRows, visiblePricedTags]);
-  const showOrderTable = filteredRows.length > 0 || visiblePricedTags.length > 0;
+    return { totalAmount, pendingFsi, count: filteredRows.length };
+  }, [filteredRows]);
+  const showOrderTable = filteredRows.length > 0;
 
   useEffect(() => {
     setContractFilter("all");
+    setSection("orders");
   }, [projectId]);
 
   function openOrder(id: string) {
@@ -230,6 +617,7 @@ export function ProjectWorkOrdersPage() {
     setTags((current) =>
       current.map((row) => (row.id === tag.id ? { ...row, laborAmount: labor, materialAmount: material } : row)),
     );
+    setSavedPriceId(tag.id);
   }
 
   async function createWorkOrder() {
@@ -258,22 +646,50 @@ export function ProjectWorkOrdersPage() {
   }
 
   return (
-    <section className="card stack work-orders-page">
-      <div className="row-between wrap">
-        <div>
-          <h2>Work Orders (EWO)</h2>
-          <p className="muted small">
-            Track extra work orders for this job. Budget columns match desktop Work Order Manager Jobs List.
-          </p>
-        </div>
+    <div className="stack work-orders-page">
+      {isAdmin && (
+        <nav className="submittals-hub-tabs job-tracker-tabs" role="tablist" aria-label="Work order sections">
+          <button
+            type="button"
+            role="tab"
+            id="work-orders-tab-orders"
+            aria-selected={section === "orders"}
+            aria-controls="work-orders-panel-orders"
+            className={`job-tracker-tab${section === "orders" ? " job-tracker-tab--active" : ""}`}
+            onClick={() => setSection("orders")}
+          >
+            Work orders
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="work-orders-tab-field"
+            aria-selected={section === "field"}
+            aria-controls="work-orders-panel-field"
+            className={`job-tracker-tab${section === "field" ? " job-tracker-tab--active" : ""}`}
+            onClick={() => setSection("field")}
+          >
+            Field tags
+            {tags.length > 0 ? <span className="submittals-hub-tab-count">{tags.length}</span> : null}
+          </button>
+        </nav>
+      )}
+    <section className="card stack">
+      {error && <div className="banner banner-error">{error}</div>}
+
+      {(!isAdmin || section === "orders") && (
+      <div
+        className="stack"
+        role={isAdmin ? "tabpanel" : undefined}
+        id={isAdmin ? "work-orders-panel-orders" : undefined}
+        aria-labelledby={isAdmin ? "work-orders-tab-orders" : undefined}
+      >
+      <div className="work-orders-toolbar">
+        <ContractListFilter project={project} value={contractFilter} onChange={setContractFilter} />
         <button type="button" className="btn btn-primary" onClick={() => void createWorkOrder()}>
           New EWO
         </button>
       </div>
-
-      {error && <div className="banner banner-error">{error}</div>}
-
-      <ContractListFilter project={project} value={contractFilter} onChange={setContractFilter} />
 
       {loading ? (
         <p className="muted">Loading work orders…</p>
@@ -366,37 +782,26 @@ export function ProjectWorkOrdersPage() {
                     </td>
                   </tr>
                 ))}
-                {visiblePricedTags.map((tag) => (
-                  <tr key={tag.id}>
-                    <td>
-                      {tag.tagNumber || "—"} <span className="muted small">Tag</span>
-                    </td>
-                    {showContractColumn && <td />}
-                    <td>{tagDateDisplay(tag.tagDate)}</td>
-                    <td className="num">
-                      {tag.hoursTotal > 0
-                        ? tag.hoursTotal.toLocaleString(undefined, { maximumFractionDigits: 1 })
-                        : "—"}
-                    </td>
-                    <td className="num">{formatMoney((tag.laborAmount ?? 0) + (tag.materialAmount ?? 0))}</td>
-                    <td className="num">—</td>
-                    <td className="num">—</td>
-                    <td className="num">—</td>
-                    <td className="num">—</td>
-                    <td className="work-orders-status-col">—</td>
-                    <td className="work-orders-status-col">—</td>
-                    <td className="work-orders-updated">{formatUpdatedAt(tag.updatedAt)}</td>
-                    <td className="work-orders-chevron-col" />
-                  </tr>
-                ))}
               </tbody>
             </table>
           </div>
         </>
       )}
+      </div>
+      )}
 
-      {isAdmin && (
-        <div className="stack">
+      {isAdmin && section === "field" && (
+        <div
+          className="stack"
+          role="tabpanel"
+          id="work-orders-panel-field"
+          aria-labelledby="work-orders-tab-field"
+        >
+          {loading ? (
+            <p className="muted">Loading work orders…</p>
+          ) : (
+            <>
+          <ExtraWorkSignatureEmails project={project} projectId={projectId} />
           <div>
             <h3>Field tags</h3>
             <p className="muted small">
@@ -406,153 +811,21 @@ export function ProjectWorkOrdersPage() {
           {tags.length === 0 ? (
             <p className="muted">No field tags yet.</p>
           ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Tag #</th>
-                    <th>Date</th>
-                    <th>Area</th>
-                    <th>Description</th>
-                    <th>Hours</th>
-                    <th>Materials</th>
-                    <th className="num">Labor $</th>
-                    <th className="num">Material $</th>
-                    <th className="num">Total</th>
-                    <th>By</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tags.map((tag) => {
-                    const draft = priceDrafts[tag.id] ?? {
-                      labor: moneyDraft(tag.laborAmount),
-                      material: moneyDraft(tag.materialAmount),
-                    };
-                    const labor = parsePrice(draft.labor);
-                    const material = parsePrice(draft.material);
-                    const canSave = tag.status === "signed"
-                      && (draft.labor.trim() !== moneyDraft(tag.laborAmount)
-                        || draft.material.trim() !== moneyDraft(tag.materialAmount));
-                    return (
-                    <Fragment key={tag.id}>
-                    <tr>
-                      <td>{tag.tagNumber || "—"}</td>
-                      <td>{tag.tagDate || "—"}</td>
-                      <td>{tag.area || "—"}</td>
-                      <td>{tag.description || "—"}</td>
-                      <td>{tag.hoursLabel || "—"}</td>
-                      <td>{tag.materialsLabel || "—"}</td>
-                      <td className="num">
-                        {tag.status === "signed" ? (
-                          <input
-                            aria-label={`Labor price for tag ${tag.tagNumber}`}
-                            inputMode="decimal"
-                            value={draft.labor}
-                            onChange={(e) =>
-                              setPriceDrafts((current) => ({
-                                ...current,
-                                [tag.id]: { ...(current[tag.id] ?? draft), labor: e.target.value },
-                              }))
-                            }
-                            style={{ width: "7rem" }}
-                          />
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="num">
-                        {tag.status === "signed" ? (
-                          <input
-                            aria-label={`Material price for tag ${tag.tagNumber}`}
-                            inputMode="decimal"
-                            value={draft.material}
-                            onChange={(e) =>
-                              setPriceDrafts((current) => ({
-                                ...current,
-                                [tag.id]: { ...(current[tag.id] ?? draft), material: e.target.value },
-                              }))
-                            }
-                            style={{ width: "7rem" }}
-                          />
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="num">
-                        {tag.status === "signed" ? (
-                          <div className="stack" style={{ alignItems: "flex-end", gap: 6 }}>
-                            <span>{labor != null && material != null ? formatMoney(labor + material) : "—"}</span>
-                            {canSave ? (
-                              <button
-                                type="button"
-                                className="btn btn-primary btn-small"
-                                disabled={savingPriceId === tag.id}
-                                onClick={() => void savePrice(tag)}
-                              >
-                                {savingPriceId === tag.id ? "Saving…" : "Save"}
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td>{tag.submittedByName}</td>
-                      <td>
-                        {tag.status === "waiting"
-                          ? "Waiting for signature"
-                          : tag.status === "signed"
-                            ? "Signed"
-                            : tag.status === "refused"
-                              ? "Refused"
-                              : "Draft"}
-                      </td>
-                    </tr>
-                    {tag.photos.length > 0 || tag.signaturePng || tag.refusedNote || tag.pdfPath || tag.status === "signed" ? (
-                      <tr>
-                        <td colSpan={11}>
-                          <div className="stack">
-                            {tag.pdfPath ? (
-                              <ExtraWorkPdfActions path={tag.pdfPath} filename={tag.pdfFilename || `Extra work tag ${tag.tagNumber}.pdf`} />
-                            ) : tag.status === "signed" ? (
-                              <p className="muted small">The PDF is saved when the signed tag is emailed.</p>
-                            ) : null}
-                            {tag.signerName ? (
-                              <p className="small">
-                                {tag.status === "refused" ? "Refused by" : "Signed by"} {tag.signerName}
-                                {tag.signerCompany ? `, ${tag.signerCompany}` : ""}
-                                {tag.refusedNote ? ` — ${tag.refusedNote}` : ""}
-                              </p>
-                            ) : null}
-                            {tag.signaturePng ? (
-                              <img src={tag.signaturePng} alt="Signature" style={{ maxWidth: 280, background: "#fff" }} />
-                            ) : null}
-                            {tag.photos.length > 0 ? (
-                              <div className="row wrap" style={{ gap: 8 }}>
-                                {tag.photos.map((photo, index) => (
-                                  <img
-                                    key={index}
-                                    src={photo.startsWith("data:") ? photo : `data:image/jpeg;base64,${photo}`}
-                                    alt=""
-                                    style={{ width: 120, height: 90, objectFit: "cover" }}
-                                  />
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                    </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <FieldTagList
+              tags={tags}
+              priceDrafts={priceDrafts}
+              setPriceDrafts={setPriceDrafts}
+              savingPriceId={savingPriceId}
+              savedPriceId={savedPriceId}
+              clearSaved={() => setSavedPriceId(null)}
+              onSave={(tag) => void savePrice(tag)}
+            />
+          )}
+            </>
           )}
         </div>
       )}
     </section>
+    </div>
   );
 }

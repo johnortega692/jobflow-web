@@ -5,6 +5,7 @@ import { SegmentedControl } from "../components/SegmentedControl";
 import {
   addProjectNote,
   calendarDaysBetween,
+  formatNoteStamp,
   listProjectNotes,
   localIsoDate,
   shiftIsoDate,
@@ -365,8 +366,9 @@ export function NotesPage() {
                           {TYPE_LABEL[note.type]}
                         </span>
                       </td>
-                      <td className="project-notes-body" data-col="note">
-                        {note.body}
+                      <td data-col="note">
+                        <div className="project-notes-body">{note.body}</div>
+                        <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}</div>
                       </td>
                       <td className="project-notes-waiting-cell" data-col="waiting">
                         {note.waiting_on?.trim() ? note.waiting_on : "—"}

@@ -37,6 +37,19 @@ export type UpdateProjectNotePatch = {
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+/** When a note was written, without seconds. */
+export function formatNoteStamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function fail(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }

@@ -77,8 +77,13 @@ Deno.serve(async (req) => {
       signUrl: `${origin}/sign-tag/${token}`,
       expiresAt: String(linkRow?.expires_at ?? (link as { expires_at?: string }).expires_at ?? ""),
     });
+    const addresses = String(link.email)
+      .split(/[,;]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
     const sent = await sendJobFlowNotification({
-      to: link.email,
+      to: addresses[0] ?? link.email,
+      cc: addresses.slice(1).join(", "),
       subject: mail.subject,
       htmlBody: mail.html,
       text: mail.text,

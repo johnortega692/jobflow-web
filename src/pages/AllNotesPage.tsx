@@ -6,6 +6,7 @@ import { listDoneProjectIds } from "../lib/projectDone";
 import {
   addProjectNote,
   calendarDaysBetween,
+  formatNoteStamp,
   endOfCalendarWeek,
   listAllProjectNotes,
   localIsoDate,
@@ -480,8 +481,9 @@ export function AllNotesPage() {
                         <td data-col="type">
                           <span className={`project-notes-pill project-notes-pill--${note.type}`}>{TYPE_LABEL[note.type]}</span>
                         </td>
-                        <td className="project-notes-body" data-col="note">
-                          {note.body}
+                        <td data-col="note">
+                          <div className="project-notes-body">{note.body}</div>
+                          <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}</div>
                         </td>
                         <td className="project-notes-waiting-cell" data-col="waiting">
                           {note.waiting_on?.trim() ? note.waiting_on : "—"}

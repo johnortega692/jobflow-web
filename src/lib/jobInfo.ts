@@ -120,6 +120,7 @@ export function normalizeJobInfo(raw: unknown, project: Pick<Project, "contracto
     track_job_name: str(o.track_job_name),
     track_contract_amount: str(o.track_contract_amount),
     sample_share_url: str(o.sample_share_url).trim(),
+    extra_work_sign_emails: emailList(o.extra_work_sign_emails),
   };
 
   if (!info.job_city && !info.job_zip && project.job_address2?.trim()) {
@@ -142,6 +143,43 @@ export function icbiProjectManager(info: JobInfoData | undefined): string {
 /** ICBI PM email for Field Tools order CC. */
 export function icbiPmEmail(info: JobInfoData | undefined): string {
   return info?.icbi_pm_email?.trim() ?? "";
+}
+
+const SIGN_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+function emailList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of value) {
+    const email = String(item ?? "").trim().toLowerCase();
+    if (!SIGN_EMAIL_RE.test(email) || seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
+}
+
+/** Job contacts that can be copied onto an extra work signature email. */
+export function extraWorkSignatureContacts(info: JobInfoData | undefined): { label: string; email: string }[] {
+  if (!info) return [];
+  const rows: [string, string, string][] = [
+    ["GC PM", info.gc_pm, info.gc_pm_email],
+    ["GC superintendent", info.gc_superintendent, info.gc_super_email],
+    ["Project manager", info.icbi_pm, info.icbi_pm_email],
+    ["Superintendent", info.field_request_super, info.icbi_super_email],
+    ["Foreman", info.icbi_foreman, info.icbi_foreman_email],
+  ];
+  const seen = new Set<string>();
+  const out: { label: string; email: string }[] = [];
+  for (const [role, name, email] of rows) {
+    const clean = email.trim().toLowerCase();
+    if (!SIGN_EMAIL_RE.test(clean) || seen.has(clean)) continue;
+    seen.add(clean);
+    const who = name.trim();
+    out.push({ label: who ? `${role} · ${who}` : role, email: clean });
+  }
+  return out;
 }
 
 /** Internal trade / division. Prefers Job Info, then legacy Material Tracker Team. */

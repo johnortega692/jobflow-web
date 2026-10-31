@@ -21,6 +21,22 @@ export type OfficeExtraWorkTag = {
   pdfPath: string;
   pdfFilename: string;
   updatedAt: string;
+  signedAt: string;
+  hoursSummary: OfficeExtraWorkHours;
+  materialLines: OfficeExtraWorkMaterialLine[];
+};
+
+export type OfficeExtraWorkHours = {
+  people: number;
+  regular: number;
+  overtime: number;
+  doubleTime: number;
+  premium: number;
+};
+
+export type OfficeExtraWorkMaterialLine = {
+  name: string;
+  quantity: string;
 };
 
 function positiveHours(value: unknown): number {
@@ -86,6 +102,74 @@ function hoursTotal(value: unknown): number {
   return hourRows(value).reduce((sum, row) => sum + row.hours + row.overtime + row.doubleTime, 0);
 }
 
+function premiumHours(record: Record<string, unknown>): number {
+  return positiveHours(record.premium ?? record.premium_only ?? record.premiumOnly);
+}
+
+/** People and hour totals from the tag's saved hours, including premium-only time. */
+export function summarizeExtraWorkHours(value: unknown): OfficeExtraWorkHours {
+  const names = new Set<string>();
+  let regular = 0;
+  let overtime = 0;
+  let doubleTime = 0;
+  let premium = 0;
+  if (!Array.isArray(value)) return { people: 0, regular, overtime, doubleTime, premium };
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as Record<string, unknown>;
+    const name = String(record.name ?? "").trim();
+    const days = Array.isArray(record.days) ? record.days : [];
+    let hours = 0;
+    let ot = 0;
+    let dt = 0;
+    let prem = 0;
+    let countedDays = 0;
+    for (const day of days) {
+      if (!day || typeof day !== "object") continue;
+      const entry = day as Record<string, unknown>;
+      const date = String(entry.date ?? "").slice(0, 10);
+      const dayHours = positiveHours(entry.hours);
+      const dayOt = positiveHours(entry.overtime);
+      const dayDt = positiveHours(entry.double_time ?? entry.doubleTime);
+      const dayPrem = premiumHours(entry);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (dayHours <= 0 && dayOt <= 0 && dayDt <= 0 && dayPrem <= 0)) continue;
+      countedDays += 1;
+      hours += dayHours;
+      ot += dayOt;
+      dt += dayDt;
+      prem += dayPrem;
+    }
+    if (!countedDays) {
+      hours = positiveHours(record.hours);
+      ot = positiveHours(record.overtime);
+      dt = positiveHours(record.double_time ?? record.doubleTime);
+      prem = premiumHours(record);
+    }
+    if (!name || (hours <= 0 && ot <= 0 && dt <= 0 && prem <= 0)) continue;
+    names.add(name.toLowerCase());
+    regular += hours;
+    overtime += ot;
+    doubleTime += dt;
+    premium += prem;
+  }
+  return { people: names.size, regular, overtime, doubleTime, premium };
+}
+
+function materialLines(value: unknown): OfficeExtraWorkMaterialLine[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const record = row as Record<string, unknown>;
+    const name = String(record.name ?? "").trim();
+    const quantity = String(record.quantity ?? "").trim();
+    const source = record.source === "paint" ? "Paint" : record.source === "sundry" ? "Sundries" : "";
+    const category = String(record.category ?? "").trim();
+    const kind = source && category ? `${source} · ${category}` : source;
+    if (!name) return [];
+    return [{ name: kind ? `${kind} · ${name}` : name, quantity }];
+  });
+}
+
 function moneyAmount(value: unknown): number | null {
   if (value == null || value === "") return null;
   const amount = Number(value);
@@ -147,6 +231,9 @@ export async function loadExtraWorkTags(projectId: string): Promise<{
           })
         : [],
       updatedAt: String(record.updated_at ?? ""),
+      signedAt: String(record.signed_at ?? ""),
+      hoursSummary: summarizeExtraWorkHours(record.hours),
+      materialLines: materialLines(record.materials),
     };
   });
   return { tags, error: null };

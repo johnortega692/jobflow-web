@@ -1,7 +1,7 @@
 /** Extra-work tag emails. No hours or materials. */
 
 export const EXTRA_WORK_EMAIL_TIME_ZONE = "America/Los_Angeles";
-export const EXTRA_WORK_PRODUCTION_ORIGIN = "https://field-tools-rho.vercel.app";
+export const EXTRA_WORK_PRODUCTION_ORIGIN = "https://fieldtools.ortegabuilt.com";
 
 const FONT = "Arial, Helvetica, sans-serif";
 
@@ -45,8 +45,7 @@ export function extraWorkSignOrigin(requestOrigin: string, env: { publicUrl?: st
   const localRuntime = /localhost|127\.0\.0\.1/i.test(String(env.supabaseUrl ?? ""));
   const origin = requestOrigin.trim().replace(/\/$/, "");
   if (localRuntime && /^http:\/\/localhost:\d+$/.test(origin)) return origin;
-  if (configured && !/localhost|127\.0\.0\.1/i.test(configured)) return configured;
-  if (origin === EXTRA_WORK_PRODUCTION_ORIGIN) return origin;
+  if (configured && !/localhost|127\.0\.0\.1|vercel\.app/i.test(configured)) return configured;
   return EXTRA_WORK_PRODUCTION_ORIGIN;
 }
 
