@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
+import JSZip from "jszip";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -113,6 +114,20 @@ function photoSrc(photo: string): string {
   return photo.startsWith("data:") ? photo : `data:image/jpeg;base64,${photo}`;
 }
 
+function materialGroups(lines: { name: string; quantity: string }[]): { label: string; items: { name: string; quantity: string }[] }[] {
+  const groups: { label: string; items: { name: string; quantity: string }[] }[] = [];
+  for (const line of lines) {
+    const parts = line.name.split(" · ").map((part) => part.trim()).filter(Boolean);
+    const label = parts.length >= 2 ? parts.slice(0, -1).join(" · ") : "Misc";
+    const name = parts.length >= 2 ? parts[parts.length - 1] ?? line.name : line.name;
+    const found = groups.find((group) => group.label === label);
+    const item = { name, quantity: line.quantity };
+    if (found) found.items.push(item);
+    else groups.push({ label, items: [item] });
+  }
+  return groups;
+}
+
 function tagMatchesFilter(tag: OfficeExtraWorkTag, filter: TagFilter): boolean {
   if (filter === "needs") return tagNeedsPricing(tag);
   if (filter === "draft") return tag.status === "draft";
@@ -146,6 +161,99 @@ function ExtraWorkPdfActions({ path, filename }: { path: string; filename: strin
         {busy === "download" ? "Downloading…" : "Download PDF"}
       </button>
       {error ? <span className="muted small">{error}</span> : null}
+    </div>
+  );
+}
+
+function FieldTagPhotos({ photos, tagNumber }: { photos: string[]; tagNumber: string }) {
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+  const [zipping, setZipping] = useState(false);
+  const [zipError, setZipError] = useState("");
+
+  useEffect(() => {
+    if (viewIndex == null) return;
+    function onKey(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setViewIndex(null);
+      if (event.key === "ArrowRight") setViewIndex((current) => (current == null ? current : (current + 1) % photos.length));
+      if (event.key === "ArrowLeft") setViewIndex((current) => (current == null ? current : (current - 1 + photos.length) % photos.length));
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [photos.length, viewIndex]);
+
+  async function downloadZip() {
+    setZipping(true);
+    setZipError("");
+    try {
+      const zip = new JSZip();
+      for (let index = 0; index < photos.length; index += 1) {
+        const src = photoSrc(photos[index] ?? "");
+        const response = await fetch(src);
+        if (!response.ok) throw new Error("Could not read a photo.");
+        const blob = await response.blob();
+        const ext = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+        zip.file(`${String(index + 1).padStart(2, "0")}.${ext}`, blob);
+      }
+      const file = await zip.generateAsync({ type: "blob" });
+      const stem = tagNumber.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "field-tag";
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${stem}-photos.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setZipError(e instanceof Error ? e.message : "Could not download the photos.");
+    } finally {
+      setZipping(false);
+    }
+  }
+
+  const viewing = viewIndex != null ? photos[viewIndex] : "";
+
+  return (
+    <div>
+      <div className="field-tag-photo-head">
+        <div className="field-tag-block-label">Photos ({photos.length})</div>
+        <button type="button" className="btn btn-secondary btn-small" disabled={zipping} onClick={() => void downloadZip()}>
+          {zipping ? "Preparing…" : "Download zip"}
+        </button>
+      </div>
+      <div className="field-tag-photos">
+        {photos.map((photo, index) => (
+          <button key={index} type="button" onClick={() => setViewIndex(index)} aria-label={`View photo ${index + 1}`}>
+            <img src={photoSrc(photo)} alt="" />
+          </button>
+        ))}
+      </div>
+      {zipError ? <p className="muted small">{zipError}</p> : null}
+      {viewing ? (
+        <div className="field-tag-lightbox" role="dialog" aria-modal="true" aria-label={`Photo ${(viewIndex ?? 0) + 1} of ${photos.length}`} onClick={() => setViewIndex(null)}>
+          <div className="field-tag-lightbox-frame" onClick={(event) => event.stopPropagation()}>
+            <div className="field-tag-lightbox-bar">
+              <span>
+                {(viewIndex ?? 0) + 1} of {photos.length}
+              </span>
+              <span className="field-tag-lightbox-actions">
+                {photos.length > 1 ? (
+                  <>
+                    <button type="button" className="btn btn-secondary btn-small" onClick={() => setViewIndex((current) => (current == null ? 0 : (current - 1 + photos.length) % photos.length))}>
+                      Previous
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-small" onClick={() => setViewIndex((current) => (current == null ? 0 : (current + 1) % photos.length))}>
+                      Next
+                    </button>
+                  </>
+                ) : null}
+                <button type="button" className="btn btn-secondary btn-small" onClick={() => setViewIndex(null)}>
+                  Close
+                </button>
+              </span>
+            </div>
+            <img src={photoSrc(viewing)} alt={`Photo ${(viewIndex ?? 0) + 1}`} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -292,12 +400,12 @@ function FieldTagList({
 
   return (
     <div className="field-tags">
-      <div className="filter-chips" role="group" aria-label="Filter field tags">
+      <div className="field-tag-filters" role="group" aria-label="Filter field tags">
         {chips.map((chip) => (
           <button
             key={chip.id}
             type="button"
-            className={`filter-chip${filter === chip.id ? " filter-chip--active" : ""}`}
+            className="field-tag-filter"
             aria-pressed={filter === chip.id}
             onClick={() => setFilter(chip.id)}
           >
@@ -310,6 +418,13 @@ function FieldTagList({
         <p className="muted">No tags match this filter.</p>
       ) : (
         <div className="field-tag-list">
+          <div className="field-tag-head" aria-hidden="true">
+            <span>Tag</span>
+            <span>Title</span>
+            <span>Date</span>
+            <span>Status</span>
+            <span />
+          </div>
           {visible.map((tag) => {
             const open = openId === tag.id;
             const panelId = `field-tag-${tag.id}`;
@@ -323,14 +438,20 @@ function FieldTagList({
               && (draft.labor.trim() !== moneyDraft(tag.laborAmount)
                 || draft.material.trim() !== moneyDraft(tag.materialAmount));
             const hours = tag.hoursSummary;
-            const shownPhotos = tag.photos.slice(0, 4);
-            const extraPhotos = tag.photos.length - shownPhotos.length;
             const signedWhen = signedAtPhrase(tag.signedAt);
             const signedWho = [tag.signerName, tag.signerCompany].filter(Boolean).join(", ");
             const signedLine = [signedWho, signedWhen].filter(Boolean).join(", ");
             const amount = tag.status === "signed" && (tag.laborAmount != null || tag.materialAmount != null)
               ? formatMoney((tag.laborAmount ?? 0) + (tag.materialAmount ?? 0))
               : "";
+            const title = tag.area.trim();
+            const statusNote =
+              tag.status === "draft" || tag.status === "waiting"
+                ? "Not signed yet"
+                : tag.status === "signed" && tag.signerName.trim()
+                  ? `Signed by ${tag.signerName.trim()}`
+                  : amount;
+            const groups = materialGroups(tag.materialLines);
             return (
               <article key={tag.id} className={`field-tag${open ? " field-tag--open" : ""}`}>
                 <button
@@ -342,55 +463,77 @@ function FieldTagList({
                 >
                   <span className="field-tag-id">
                     <span className="field-tag-number">{tag.tagNumber || "—"}</span>
-                    <span className="field-tag-date">{tagDateDisplay(tag.tagDate)}</span>
-                  </span>
-                  <span className="field-tag-desc">
-                    <span className="field-tag-desc-text">{tag.description || "—"}</span>
                     <span className="field-tag-by">By {tag.submittedByName}</span>
                   </span>
-                  <span className="field-tag-side">
-                    <span className="field-tag-status">
+                  <span className={`field-tag-title${title ? "" : " field-tag-title--empty"}`}>{title || "No title"}</span>
+                  <span className="field-tag-when">{tagDateDisplay(tag.tagDate)}</span>
+                  <span className="field-tag-status">
+                    <span className="field-tag-badges">
                       <span className={`field-tag-badge field-tag-badge--${tagStatusTone(tag.status)}`}>
+                        <span className="field-tag-dot" aria-hidden="true" />
                         {tagStatusLabel(tag.status)}
                       </span>
-                      {tagNeedsPricing(tag) ? (
-                        <span className="field-tag-needs">Needs pricing</span>
-                      ) : amount ? (
-                        <span className="field-tag-amount">{amount}</span>
-                      ) : tag.status === "draft" || tag.status === "waiting" ? (
-                        <span className="field-tag-pending">Not signed yet</span>
-                      ) : null}
+                      {tagNeedsPricing(tag) ? <span className="field-tag-needs">Needs pricing</span> : null}
                     </span>
-                    <span className="field-tag-chevron" aria-hidden="true">›</span>
+                    {statusNote ? <span className="field-tag-pending">{statusNote}</span> : null}
+                  </span>
+                  <span className="field-tag-chevron" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M4 6.2 8 10l4-3.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                   </span>
                 </button>
                 <div id={panelId} className="field-tag-panel" hidden={!open}>
-                  <div className="field-tag-grid">
-                    <div>
+                  <div className="field-tag-detail">
+                    <div className="field-tag-desc-block">
+                      <div className="field-tag-block-label">Description</div>
+                      <div>{tag.description.trim() || "—"}</div>
+                    </div>
+                    <div className="field-tag-detail-grid">
+                    <div className="field-tag-detail-card">
                       <div className="field-tag-block-label">Hours</div>
-                      <div>{hours.people} people</div>
-                      <div className="muted small">
-                        {formatHourCount(hours.regular)} Reg, {formatHourCount(hours.overtime)} OT, {formatHourCount(hours.doubleTime)} DT
+                      <div className="field-tag-people">{hours.people === 1 ? "1 person" : `${hours.people} people`}</div>
+                      <div className="field-tag-stats">
+                        <div className="field-tag-stat">
+                          <span>Reg</span>
+                          <strong>{formatHourCount(hours.regular)}</strong>
+                        </div>
+                        <div className="field-tag-stat">
+                          <span>OT</span>
+                          <strong>{formatHourCount(hours.overtime)}</strong>
+                        </div>
+                        <div className="field-tag-stat">
+                          <span>DT</span>
+                          <strong>{formatHourCount(hours.doubleTime)}</strong>
+                        </div>
                       </div>
                       {hours.premium > 0 ? (
                         <div className="muted small">{formatHourCount(hours.premium)} premium only</div>
                       ) : null}
                     </div>
-                    <div>
+                    <div className="field-tag-detail-card">
                       <div className="field-tag-block-label">Materials ({tag.materialLines.length})</div>
-                      {tag.materialLines.length === 0 ? (
-                        <div className="muted small">None</div>
+                      {groups.length === 0 ? (
+                        <div className="muted small">No materials recorded</div>
                       ) : (
-                        tag.materialLines.map((line, index) => (
-                          <div key={`${line.name}-${index}`} className="muted small">
-                            {line.quantity ? `${line.name} (${line.quantity})` : line.name}
+                        groups.map((group) => (
+                          <div key={group.label} className="field-tag-material-group">
+                            <div className="field-tag-block-label">{group.label}</div>
+                            {group.items.map((item, index) => (
+                              <div key={`${item.name}-${index}`} className="field-tag-material-row">
+                                <span>{item.name}</span>
+                                {item.quantity ? <strong>× {item.quantity}</strong> : null}
+                              </div>
+                            ))}
                           </div>
                         ))
                       )}
                     </div>
-                    <div>
+                    <div className="field-tag-detail-card">
                       <div className="field-tag-block-label">Pricing</div>
                       {tag.status === "signed" ? (
+                        <>
+                          {tagNeedsPricing(tag) ? <p className="muted small">Signed. Ready for labor and material pricing.</p> : null}
                         <div className="field-tag-price">
                           <label>
                             Labor $
@@ -441,12 +584,20 @@ function FieldTagList({
                             ) : null}
                           </div>
                         </div>
+                        </>
                       ) : (
-                        <p className="muted small">Available after the tag is signed.</p>
+                        <p className="field-tag-locked muted small">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <rect x="3.25" y="7" width="9.5" height="6.5" rx="1.4" stroke="currentColor" strokeWidth="1.4" />
+                            <path d="M5.25 7V5.1a2.75 2.75 0 0 1 5.5 0V7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                          </svg>
+                          Available after the tag is signed.
+                        </p>
                       )}
                     </div>
+                    </div>
                     {tag.status === "signed" ? (
-                      <div>
+                      <div className="field-tag-detail-card">
                         <div className="field-tag-block-label">Files</div>
                         {tag.pdfPath ? (
                           <ExtraWorkPdfActions path={tag.pdfPath} filename={tag.pdfFilename || `Extra work tag ${tag.tagNumber}.pdf`} />
@@ -456,7 +607,7 @@ function FieldTagList({
                       </div>
                     ) : null}
                     {tag.status === "signed" ? (
-                      <div>
+                      <div className="field-tag-detail-card">
                         <div className="field-tag-block-label">Signed by</div>
                         {signedLine ? <p className="small">{signedLine}</p> : null}
                         {tag.signaturePng ? (
@@ -465,7 +616,7 @@ function FieldTagList({
                       </div>
                     ) : null}
                     {tag.status === "refused" && (tag.signerName || tag.refusedNote) ? (
-                      <div>
+                      <div className="field-tag-detail-card">
                         <div className="field-tag-block-label">Refused by</div>
                         <p className="small">
                           {tag.signerName}
@@ -474,19 +625,11 @@ function FieldTagList({
                         </p>
                       </div>
                     ) : null}
-                    <div>
-                      <div className="field-tag-block-label">Photos ({tag.photos.length})</div>
-                      {tag.photos.length === 0 ? (
-                        <div className="muted small">None</div>
-                      ) : (
-                        <div className="field-tag-photos">
-                          {shownPhotos.map((photo, index) => (
-                            <img key={index} src={photoSrc(photo)} alt="" />
-                          ))}
-                          {extraPhotos > 0 ? <span className="field-tag-photos-more">+{extraPhotos}</span> : null}
-                        </div>
-                      )}
-                    </div>
+                    {tag.photos.length > 0 ? (
+                      <div className="field-tag-detail-card field-tag-photos-card">
+                        <FieldTagPhotos photos={tag.photos} tagNumber={tag.tagNumber} />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -804,7 +947,7 @@ export function ProjectWorkOrdersPage() {
           <ExtraWorkSignatureEmails project={project} projectId={projectId} />
           <div>
             <h3>Field tags</h3>
-            <p className="muted small">
+            <p className="muted small field-tag-intro">
               Tags saved from Field Tools. They share this job&apos;s EWO numbers. Enter labor and materials after a tag is signed.
             </p>
           </div>
