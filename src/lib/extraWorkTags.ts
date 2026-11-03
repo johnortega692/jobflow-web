@@ -266,7 +266,7 @@ export async function saveExtraWorkTagPrice(
 
 const EXTRA_WORK_PDF_BUCKET = "extra-work-tag-pdfs";
 
-/** Office admins only. Removes the tag, its signature links, and its saved PDF. */
+/** Removes the tag, its signature links, and its saved PDF. */
 export async function deleteExtraWorkTag(id: string): Promise<string | null> {
   const { data, error } = await supabase.rpc("jobflow_delete_extra_work_tag" as never, { p_id: id } as never);
   if (error) return error.message;

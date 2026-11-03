@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
 import JSZip from "jszip";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
 import {
   allocateEwoNumber,
   deleteExtraWorkTag,
@@ -673,7 +672,6 @@ function StatusMark({ on, label }: { on: boolean; label: string }) {
 
 export function ProjectWorkOrdersPage() {
   const { project, projectId } = useOutletContext<Ctx>();
-  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<WorkOrderRow[]>([]);
   const [tags, setTags] = useState<OfficeExtraWorkTag[]>([]);
@@ -695,7 +693,7 @@ export function ProjectWorkOrdersPage() {
       .select("*")
       .eq("project_id", projectId)
       .order("updated_at", { ascending: false });
-    const tagsPromise = isAdmin ? loadExtraWorkTags(projectId) : Promise.resolve({ tags: [] as OfficeExtraWorkTag[], error: null });
+    const tagsPromise = loadExtraWorkTags(projectId);
     const [{ data, error: err }, tagResult] = await Promise.all([ordersPromise, tagsPromise]);
     if (err) setError(err.message);
     else setOrders((data ?? []) as WorkOrderRow[]);
@@ -706,7 +704,7 @@ export function ProjectWorkOrdersPage() {
 
   useEffect(() => {
     void load();
-  }, [projectId, isAdmin]);
+  }, [projectId]);
 
   useEffect(() => {
     const next: Record<string, { labor: string; material: string }> = {};
@@ -821,7 +819,6 @@ export function ProjectWorkOrdersPage() {
 
   return (
     <div className="stack work-orders-page">
-      {isAdmin && (
         <nav className="submittals-hub-tabs job-tracker-tabs" role="tablist" aria-label="Work order sections">
           <button
             type="button"
@@ -847,16 +844,15 @@ export function ProjectWorkOrdersPage() {
             {tags.length > 0 ? <span className="submittals-hub-tab-count">{tags.length}</span> : null}
           </button>
         </nav>
-      )}
     <section className="card stack">
       {error && <div className="banner banner-error">{error}</div>}
 
-      {(!isAdmin || section === "orders") && (
+      {section === "orders" && (
       <div
         className="stack"
-        role={isAdmin ? "tabpanel" : undefined}
-        id={isAdmin ? "work-orders-panel-orders" : undefined}
-        aria-labelledby={isAdmin ? "work-orders-tab-orders" : undefined}
+        role="tabpanel"
+        id="work-orders-panel-orders"
+        aria-labelledby="work-orders-tab-orders"
       >
       <div className="work-orders-toolbar">
         <ContractListFilter project={project} value={contractFilter} onChange={setContractFilter} />
@@ -964,7 +960,7 @@ export function ProjectWorkOrdersPage() {
       </div>
       )}
 
-      {isAdmin && section === "field" && (
+      {section === "field" && (
         <div
           className="stack"
           role="tabpanel"
