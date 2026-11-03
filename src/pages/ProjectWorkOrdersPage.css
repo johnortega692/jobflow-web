@@ -426,6 +426,11 @@
   white-space: nowrap;
 }
 
+.field-tag-delete {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .field-tag-locked {
   display: flex;
   align-items: center;

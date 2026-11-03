@@ -4,6 +4,7 @@ import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   allocateEwoNumber,
+  deleteExtraWorkTag,
   loadExtraWorkTags,
   openExtraWorkTagPdf,
   saveExtraWorkTagPrice,
@@ -371,6 +372,8 @@ function FieldTagList({
   savedPriceId,
   clearSaved,
   onSave,
+  deletingId,
+  onDelete,
 }: {
   tags: OfficeExtraWorkTag[];
   priceDrafts: Record<string, { labor: string; material: string }>;
@@ -379,6 +382,8 @@ function FieldTagList({
   savedPriceId: string | null;
   clearSaved: () => void;
   onSave: (tag: OfficeExtraWorkTag) => void;
+  deletingId: string | null;
+  onDelete: (tag: OfficeExtraWorkTag) => void;
 }) {
   const [filter, setFilter] = useState<TagFilter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -630,6 +635,16 @@ function FieldTagList({
                         <FieldTagPhotos photos={tag.photos} tagNumber={tag.tagNumber} />
                       </div>
                     ) : null}
+                    <div className="field-tag-delete">
+                      <button
+                        type="button"
+                        className="btn btn-danger-soft btn-small"
+                        disabled={deletingId === tag.id}
+                        onClick={() => onDelete(tag)}
+                      >
+                        {deletingId === tag.id ? "Deleting…" : "Delete tag"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -665,6 +680,7 @@ export function ProjectWorkOrdersPage() {
   const [priceDrafts, setPriceDrafts] = useState<Record<string, { labor: string; material: string }>>({});
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
   const [savedPriceId, setSavedPriceId] = useState<string | null>(null);
+  const [deletingTagId, setDeletingTagId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contractFilter, setContractFilter] = useState<ContractListFilterValue>("all");
@@ -761,6 +777,21 @@ export function ProjectWorkOrdersPage() {
       current.map((row) => (row.id === tag.id ? { ...row, laborAmount: labor, materialAmount: material } : row)),
     );
     setSavedPriceId(tag.id);
+  }
+
+  async function deleteTag(tag: OfficeExtraWorkTag) {
+    const label = tag.tagNumber || "this tag";
+    const signedNote = tag.status === "signed" ? " It is signed, so its signature and PDF are deleted too." : "";
+    if (!window.confirm(`Delete field tag ${label}?${signedNote} This can't be undone.`)) return;
+    setDeletingTagId(tag.id);
+    setError(null);
+    const message = await deleteExtraWorkTag(tag.id);
+    setDeletingTagId(null);
+    if (message) {
+      setError(message);
+      return;
+    }
+    setTags((current) => current.filter((row) => row.id !== tag.id));
   }
 
   async function createWorkOrder() {
@@ -962,6 +993,8 @@ export function ProjectWorkOrdersPage() {
               savedPriceId={savedPriceId}
               clearSaved={() => setSavedPriceId(null)}
               onSave={(tag) => void savePrice(tag)}
+              deletingId={deletingTagId}
+              onDelete={(tag) => void deleteTag(tag)}
             />
           )}
             </>

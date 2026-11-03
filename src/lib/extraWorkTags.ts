@@ -266,6 +266,17 @@ export async function saveExtraWorkTagPrice(
 
 const EXTRA_WORK_PDF_BUCKET = "extra-work-tag-pdfs";
 
+/** Office admins only. Removes the tag, its signature links, and its saved PDF. */
+export async function deleteExtraWorkTag(id: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("jobflow_delete_extra_work_tag" as never, { p_id: id } as never);
+  if (error) return error.message;
+  const payload = data as unknown as { ok?: boolean; error?: string; pdf_storage_path?: string } | null;
+  if (!payload?.ok) return payload?.error || "Could not delete the tag.";
+  const pdfPath = String(payload.pdf_storage_path ?? "").trim();
+  if (pdfPath) await supabase.storage.from(EXTRA_WORK_PDF_BUCKET).remove([pdfPath]);
+  return null;
+}
+
 export async function openExtraWorkTagPdf(path: string, filename: string, download: boolean): Promise<void> {
   const { data, error } = await supabase.storage.from(EXTRA_WORK_PDF_BUCKET).createSignedUrl(
     path,
