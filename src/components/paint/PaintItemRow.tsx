@@ -236,10 +236,19 @@ export function PaintItemRow({
 
         <div className="paint-col paint-col-color" role="cell">
           <div className={`paint-color-field${missingColor ? " paint-color-field--warn" : ""}`}>
+            {item.color_hex && item.color.trim() ? (
+              <span
+                className="paint-color-swatch"
+                style={{ background: item.color_hex }}
+                role="img"
+                aria-label={`${item.color.trim()} swatch`}
+                title={`${item.color_hex} (screen approximation)`}
+              />
+            ) : null}
             <input
               value={item.color}
               placeholder="SW7004 or color name"
-              onChange={(e) => onChange({ color: e.target.value })}
+              onChange={(e) => onChange(item.color_hex ? { color: e.target.value, color_hex: "" } : { color: e.target.value })}
               onKeyDown={onColorKeyDown}
               aria-label={`Color row ${index + 1}`}
               title={item.color.trim() || "Type a color number, then Enter, Tab, or search"}

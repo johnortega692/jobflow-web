@@ -35,6 +35,7 @@ const PREFIX_MAP: Record<string, string> = {
   SherwinWilliams: "SW",
   BenjaminMoore: "BM",
   Vista: "Vista",
+  KellyMoore: "KM",
 };
 
 const FIELD_TOOLS_VENDOR_TO_MFR: Record<string, string> = {
@@ -544,6 +545,7 @@ const QUERY_VENDOR_PREFIX: Record<string, string[]> = {
   ppg: ["PPG"],
   behr: ["BEHR"],
   vista: ["Vista", "VISTA"],
+  km: ["KellyMoore"],
 };
 
 /** Split "SW7004", "SW 7004", "DEW380" etc. into vendor keys + search term. */
@@ -556,7 +558,7 @@ export function parseColorLookupQuery(raw: string): {
   const full = trimmed.toLowerCase();
   if (!trimmed) return { vendorKeys: null, term: "", full: "" };
 
-  const m = trimmed.match(/^(SW|BM|DE|PPG|BEHR|Vista)\s*[-.]?\s*(.*)$/i);
+  const m = trimmed.match(/^(SW|BM|DE|PPG|BEHR|Vista|KM)\s*[-.]?\s*(.*)$/i);
   if (m) {
     const vendorKeys = QUERY_VENDOR_PREFIX[m[1]!.toLowerCase()] ?? null;
     const rest = (m[2] ?? "").trim();
@@ -574,7 +576,7 @@ function extractColorCodes(raw: string): { codes: string[]; name: string } {
   const standardCode =
     /\bPMS\s*\d{1,4}\s*C\b|\bRAL\s*\d{3,4}(?:-[A-Z0-9]{1,4})?\b|\bH\d{3}L\d{2}C\d{2}\b/gi;
   const vendorCode =
-    /\b(SW|BM|DE|PPG|BEHR|VISTA)\s*[-.]?\s*([A-Z0-9]*\d[A-Z0-9]*(?:-\d+)?)\b/gi;
+    /\b(SW|BM|DE|PPG|BEHR|VISTA|KM)\s*[-.]?\s*([A-Z0-9]*\d[A-Z0-9]*(?:-[A-Z0-9]+)?)\b/gi;
   const otherCode =
     /\b\d{2,4}[A-Z]-\d{1,3}\b|\b\d{3,5}-\d{1,3}\b|\b[A-Z]{1,3}-\d{1,4}\b|\b[A-Z]{2,4}\d{2,5}\b|\b\d{3,5}\b/gi;
   const codes: string[] = [];

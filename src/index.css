@@ -8680,6 +8680,14 @@ tr.budget-hours-pdf-hidden td {
   border-color: var(--warn);
 }
 
+.paint-color-swatch {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
 .paint-color-lookup-btn {
   flex-shrink: 0;
   margin-top: 0;
