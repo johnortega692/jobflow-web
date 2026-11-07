@@ -514,6 +514,14 @@ export function ProjectPoPage() {
                     </td>
                     <td className="po-tracker-action-col">
                       <div className="po-tracker-actions">
+                        {row.paperReceiptAt && !row.hasReceipt ? (
+                          <span
+                            className="po-tracker-paper-receipt"
+                            title={`Paper receipt at office${row.paperReceiptBy ? ` · marked by ${row.paperReceiptBy}` : ""}`}
+                          >
+                            Paper receipt
+                          </span>
+                        ) : null}
                         {(row.orderType === "last_min" || row.hasReceipt) && (
                           <button
                             type="button"
@@ -585,6 +593,13 @@ export function ProjectPoPage() {
           onToggleCompleted={(next) => void toggleRow(viewRow, "completed", next)}
           onClose={() => setViewOrder(null)}
           onReceiptCount={(count) => noteReceiptCount(viewOrder.orderId, count)}
+          onPaperReceipt={(paperReceiptAt, paperReceiptBy) =>
+            setRows((current) =>
+              current.map((row) =>
+                row.orderId === viewOrder.orderId ? { ...row, paperReceiptAt, paperReceiptBy } : row,
+              ),
+            )
+          }
         />
       )}
     </div>

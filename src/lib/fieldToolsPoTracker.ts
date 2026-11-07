@@ -26,6 +26,9 @@ export type FieldToolsPoDispatchRow = {
   completed: boolean;
   /** Store receipt photos uploaded in Field Tools for this order. */
   hasReceipt: boolean;
+  /** Paper receipt dropped off at the office, in place of a photo. */
+  paperReceiptAt: string | null;
+  paperReceiptBy: string;
 };
 
 type DispatchRecord = {
@@ -46,6 +49,8 @@ type DispatchRecord = {
     date_needed: string | null;
     created_at: string;
     payload: Record<string, unknown>;
+    paper_receipt_at: string | null;
+    paper_receipt_by: string | null;
   };
 };
 
@@ -156,7 +161,9 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         submitted_by_name,
         date_needed,
         created_at,
-        payload
+        payload,
+        paper_receipt_at,
+        paper_receipt_by
       )
     `,
     )
@@ -201,6 +208,8 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         receivedField: row.received_field,
         completed: row.completed,
         hasReceipt: receiptOrderIds.has(row.order.id),
+        paperReceiptAt: row.order.paper_receipt_at ?? null,
+        paperReceiptBy: row.order.paper_receipt_by ?? "",
       };
     });
 
@@ -226,6 +235,8 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
       receivedField: row.receivedField,
       completed: row.completed,
       hasReceipt: false,
+      paperReceiptAt: null,
+      paperReceiptBy: "",
     };
   });
 
@@ -289,6 +300,20 @@ export async function deleteOrderReceiptImage(receiptId: string): Promise<void> 
     p_receipt_id: receiptId,
   } as never);
   if (error) throw new Error(error.message);
+}
+
+/** Mark or clear "paper receipt at office" so the order stops asking for a receipt photo. */
+export async function setOrderPaperReceipt(
+  orderId: string,
+  onFile: boolean,
+): Promise<{ paperReceiptAt: string | null; paperReceiptBy: string }> {
+  const { data, error } = await supabase.rpc("jobflow_set_order_paper_receipt" as never, {
+    p_order_id: orderId,
+    p_on_file: onFile,
+  } as never);
+  if (error) throw new Error(error.message);
+  const result = (data ?? {}) as { paper_receipt_at?: string | null; paper_receipt_by?: string | null };
+  return { paperReceiptAt: result.paper_receipt_at ?? null, paperReceiptBy: result.paper_receipt_by ?? "" };
 }
 
 export async function getFieldToolsOrder(orderId: string): Promise<FieldToolsOrder | null> {

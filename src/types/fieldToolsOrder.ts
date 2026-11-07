@@ -22,4 +22,7 @@ export type FieldToolsOrder = {
   status: string;
   email_status?: string;
   created_at: string;
+  /** Set when the paper receipt was dropped off at the office instead of photographed. */
+  paper_receipt_at?: string | null;
+  paper_receipt_by?: string | null;
 };

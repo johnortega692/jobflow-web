@@ -5,6 +5,7 @@ import {
   deleteOrderReceiptImage,
   getFieldToolsOrder,
   listOrderReceiptImages,
+  setOrderPaperReceipt,
   type OrderReceiptImage,
 } from "../../lib/fieldToolsPoTracker";
 import {
@@ -30,7 +31,10 @@ type Props = {
   onToggleCompleted: (next: boolean) => void;
   onClose: () => void;
   onReceiptCount?: (count: number) => void;
+  onPaperReceipt?: (paperReceiptAt: string | null, paperReceiptBy: string) => void;
 };
+
+const RECEIPT_ORDER_TYPES = new Set(["field_request", "job_scope_kit", "last_min"]);
 
 function formatSubmittedAt(iso: string): string {
   const d = new Date(iso);
@@ -51,9 +55,12 @@ export function FieldToolsOrderViewModal({
   onToggleCompleted,
   onClose,
   onReceiptCount,
+  onPaperReceipt,
 }: Props) {
   const { isAdmin } = useAuth();
   const [order, setOrder] = useState<FieldToolsOrder | null>(null);
+  const [paperBusy, setPaperBusy] = useState(false);
+  const [paperError, setPaperError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [receipts, setReceipts] = useState<OrderReceiptImage[]>([]);
@@ -101,6 +108,23 @@ export function FieldToolsOrderViewModal({
       cancelled = true;
     };
   }, [orderId]);
+
+  async function togglePaperReceipt(next: boolean) {
+    if (!order || paperBusy) return;
+    setPaperBusy(true);
+    setPaperError(null);
+    try {
+      const saved = await setOrderPaperReceipt(order.id, next);
+      setOrder((current) =>
+        current ? { ...current, paper_receipt_at: saved.paperReceiptAt, paper_receipt_by: saved.paperReceiptBy } : current,
+      );
+      onPaperReceipt?.(saved.paperReceiptAt, saved.paperReceiptBy);
+    } catch (e) {
+      setPaperError(e instanceof Error ? e.message : "Could not update the paper receipt.");
+    } finally {
+      setPaperBusy(false);
+    }
+  }
 
   async function deleteReceipt(receiptId: string) {
     await deleteOrderReceiptImage(receiptId);
@@ -162,7 +186,25 @@ export function FieldToolsOrderViewModal({
             />
             <span>Completed</span>
           </label>
+          {order && RECEIPT_ORDER_TYPES.has(order.order_type) ? (
+            <label className="field-tools-order-tracking-check" title="The worker turned in the paper receipt instead of uploading a photo">
+              <input
+                type="checkbox"
+                checked={Boolean(order.paper_receipt_at)}
+                disabled={paperBusy}
+                onChange={(e) => void togglePaperReceipt(e.target.checked)}
+              />
+              <span>Paper receipt at office</span>
+            </label>
+          ) : null}
         </div>
+        {order?.paper_receipt_at ? (
+          <p className="muted small field-tools-paper-receipt-note">
+            Paper receipt marked {formatSubmittedAt(order.paper_receipt_at)}
+            {order.paper_receipt_by ? ` by ${order.paper_receipt_by}` : ""}. No receipt photo reminders for this order.
+          </p>
+        ) : null}
+        {paperError ? <div className="banner banner-error">{paperError}</div> : null}
 
         {order && !loading && (
           <>
@@ -216,7 +258,11 @@ export function FieldToolsOrderViewModal({
                 {expectReceipt && receiptsLoading && <p className="muted small">Loading receipt…</p>}
                 {receiptsError && <div className="banner banner-error">{receiptsError}</div>}
                 {expectReceipt && !receiptsLoading && !receiptsError && receipts.length === 0 && (
-                  <p className="muted small">No receipt was uploaded in Field Tools for this order.</p>
+                  <p className="muted small">
+                    {order.paper_receipt_at
+                      ? "The paper receipt is at the office."
+                      : "No receipt was uploaded in Field Tools for this order."}
+                  </p>
                 )}
                 <ReceiptImageViewer
                   receipts={receipts}

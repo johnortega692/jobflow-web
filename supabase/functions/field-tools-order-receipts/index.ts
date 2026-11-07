@@ -512,6 +512,7 @@ async function loadOrdersMissingReceipts(
       )
       .in("order_type", ["field_request", "job_scope_kit"])
       .in("status", ["submitted", "confirmed"])
+      .is("paper_receipt_at", null)
       .gte("created_at", RECEIPT_REQUIRED_FROM)
       .order("created_at", { ascending: true })
       .range(from, from + pageSize - 1);
