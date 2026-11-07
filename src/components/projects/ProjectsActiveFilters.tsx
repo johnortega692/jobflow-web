@@ -4,21 +4,17 @@ import {
 } from "../../lib/projectListFilters";
 
 type Props = {
-  shown: number;
-  total: number;
   filters: ProjectsListFilters;
   onRemove: (key: string) => void;
   onClear: () => void;
 };
 
-export function ProjectsActiveFilters({ shown, total, filters, onRemove, onClear }: Props) {
+export function ProjectsActiveFilters({ filters, onRemove, onClear }: Props) {
   const pills = projectsListActiveFilterPills(filters);
+  if (!pills.length) return null;
 
   return (
     <div className="projects-active-filters">
-      <span className="projects-active-filters-count">
-        Showing {shown} of {total} jobs
-      </span>
       {pills.map((pill) => (
         <button
           key={pill.key}
@@ -33,11 +29,9 @@ export function ProjectsActiveFilters({ shown, total, filters, onRemove, onClear
           </span>
         </button>
       ))}
-      {pills.length > 0 && (
-        <button type="button" className="projects-filters-clear" onClick={onClear}>
-          Clear all
-        </button>
-      )}
+      <button type="button" className="projects-filters-clear" onClick={onClear}>
+        Clear all
+      </button>
     </div>
   );
 }

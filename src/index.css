@@ -228,6 +228,58 @@ label {
   background: var(--surface2);
 }
 
+.projects-nav-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.topnav .projects-nav-menu > a {
+  padding-right: 0.3rem;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.projects-nav-caret {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 0.4rem;
+  border: none;
+  border-radius: 0 8px 8px 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.projects-nav-caret:hover,
+.projects-nav-caret[aria-expanded="true"] {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.projects-nav-caret:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.projects-nav-dropdown {
+  right: auto;
+  left: 0;
+  min-width: 11rem;
+}
+
+.topnav .projects-nav-dropdown a.user-account-menu-item {
+  display: flex;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0;
+  font-weight: 400;
+}
+
+.topnav .projects-nav-dropdown .user-account-menu-item:hover {
+  background: var(--surface2);
+}
+
 .topnav-badge {
   display: inline-flex;
   align-items: center;
@@ -687,14 +739,29 @@ label {
   margin-right: 0.15rem;
 }
 
-.projects-attention-card {
+.projects-top-row {
   display: flex;
   align-items: stretch;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+  container: projects-top / inline-size;
+}
+
+.projects-new-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.projects-attention-card {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
-  padding: 0.9rem 1.1rem;
-  border-radius: 12px;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
   border: 1px solid rgba(240, 180, 41, 0.35);
   background: linear-gradient(135deg, rgba(240, 180, 41, 0.08), rgba(34, 40, 54, 0.95));
   color: inherit;
@@ -725,6 +792,9 @@ label {
 }
 
 .projects-attention-card-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   min-width: 0;
   flex: 1;
 }
@@ -733,74 +803,74 @@ label {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  flex: none;
   color: #f0c96a;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  margin-bottom: 0.35rem;
-}
-
-.projects-attention-card-title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .projects-attention-card-title {
+  min-width: 0;
+  overflow: hidden;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.95rem;
   color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .projects-attention-card-flags-pill {
   display: inline-flex;
   align-items: center;
-  padding: 0.12rem 0.45rem;
+  flex: none;
+  padding: 0.1rem 0.45rem;
   border-radius: 999px;
-  background: rgba(240, 180, 41, 0.18);
+  border: 1px solid rgba(240, 180, 41, 0.45);
+  background: rgba(240, 180, 41, 0.12);
   color: #f0c96a;
   font-size: 0.7rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .projects-attention-card-meta {
-  margin-top: 0.25rem;
+  flex: none;
+  white-space: nowrap;
 }
 
 .projects-attention-card-stat {
+  display: flex;
   flex-shrink: 0;
-  text-align: right;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.15rem;
-}
-
-.projects-attention-card-stat-row {
-  display: flex;
   align-items: baseline;
-  justify-content: flex-end;
   gap: 0.4rem;
+  white-space: nowrap;
 }
 
 .projects-attention-card-stat-value {
-  font-size: 1.75rem;
+  font-size: 1.15rem;
   line-height: 1;
   font-weight: 700;
   color: var(--text);
 }
 
+/* Drop the stage/stale line before the job title gets squeezed. */
+@container projects-top (max-width: 860px) {
+  .projects-attention-card-meta {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .projects-attention-card {
-    flex-direction: column;
+    flex-wrap: wrap;
   }
 
-  .projects-attention-card-stat {
-    text-align: left;
-  }
-
-  .projects-attention-card-stat-row {
-    justify-content: flex-start;
+  .projects-attention-card-main {
+    flex-wrap: wrap;
+    gap: 0.35rem 0.6rem;
   }
 
   .projects-list-controls-sep {
@@ -1132,13 +1202,28 @@ label {
   font-weight: 600;
 }
 
+.projects-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.projects-chips-count {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .projects-status-chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.4rem;
-  margin-bottom: 0.55rem;
 }
 
 .projects-status-chip {
@@ -3332,8 +3417,136 @@ th {
   max-width: none;
 }
 
-.receipt-zoom-img + .receipt-zoom-img {
+.receipt-zoom-frame {
+  position: relative;
+  overflow: hidden;
+}
+
+.receipt-zoom-frame + .receipt-zoom-frame {
   border-top: 1px solid var(--border);
+}
+
+.receipt-rotate-btns {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.receipt-rotate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.receipt-modal-actions,
+.receipt-modal-print-slot {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.receipt-rotate-btn--text {
+  width: auto;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.receipt-edited-tag {
+  color: var(--accent);
+}
+
+.receipt-editor-backdrop {
+  z-index: 400;
+  align-items: center;
+}
+
+.receipt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(960px, 100%);
+  max-height: calc(100vh - 2rem);
+  margin: 0;
+}
+
+.receipt-editor-toolbar,
+.receipt-editor-modes,
+.receipt-editor-colors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.receipt-editor-toolbar {
+  justify-content: space-between;
+}
+
+.receipt-editor-swatch {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.receipt-editor-swatch.is-active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.receipt-editor-stage {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+
+.receipt-editor-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 13rem);
+  touch-action: none;
+}
+
+.receipt-editor-canvas--crop {
+  cursor: crosshair;
+}
+
+.receipt-editor-canvas--draw {
+  cursor: crosshair;
+}
+
+.receipt-editor-note {
+  margin-left: auto;
+}
+
+.receipt-rotate-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.receipt-rotate-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .receipt-zoom-meta {

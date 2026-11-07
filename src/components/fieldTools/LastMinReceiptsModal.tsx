@@ -19,6 +19,7 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose, onReceiptCoun
   const [receipts, setReceipts] = useState<OrderReceiptImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [printSlot, setPrintSlot] = useState<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,11 +58,16 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose, onReceiptCoun
         <div className="row-between wrap">
           <div>
             <h3 id="last-min-receipts-title">Receipt · PO# {poNumber}</h3>
-            <p className="muted small">Store receipt uploaded in Field Tools for this order.</p>
           </div>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Close
-          </button>
+          <div className="receipt-modal-actions">
+            <span ref={setPrintSlot} className="receipt-modal-print-slot" />
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Close" title="Close" onClick={onClose}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {loading && <p className="muted">Loading receipt…</p>}
@@ -75,6 +81,7 @@ export function LastMinReceiptsModal({ orderId, poNumber, onClose, onReceiptCoun
           receipts={receipts}
           poNumber={poNumber}
           onDelete={isAdmin ? deleteReceipt : undefined}
+          printTarget={printSlot}
         />
       </div>
     </div>

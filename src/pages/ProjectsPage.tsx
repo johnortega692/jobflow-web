@@ -1,12 +1,15 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import type { ProjectsRouteState } from "../components/ProjectsNavMenu";
 import { BrushoutsAddedPill } from "../components/projects/BrushoutsAddedPill";
 import { ProjectsActiveFilters } from "../components/projects/ProjectsActiveFilters";
 import { ProjectsFiltersMenu } from "../components/projects/ProjectsFiltersMenu";
 import { ProjectsListSortControl } from "../components/projects/ProjectsListSortControl";
 import { ProjectsStatusChips } from "../components/projects/ProjectsStatusChips";
 import { ProjectsAttentionCard } from "../components/projects/ProjectsAttentionCard";
-import { FollowUpsColumnPill, ProjectsFollowUpsCard } from "../components/projects/ProjectsFollowUpsCard";
+import { FollowUpsColumnPill } from "../components/projects/ProjectsFollowUpsCard";
+import { ProjectsNotesDock } from "../components/projects/ProjectsNotesDock";
+import type { QuickNoteProject } from "../components/projects/QuickNoteModal";
 import { ProjectStatusBadge } from "../components/projects/ProjectStatusBadge";
 import { SubmittalStagePill } from "../components/projects/SubmittalStagePill";
 import { StaffContactSelect } from "../components/projects/StaffContactSelect";
@@ -89,6 +92,7 @@ async function findDuplicateJobNumber(jobNumber: string): Promise<{
 
 export function ProjectsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAdmin, jobRole } = useAuth();
   const { profile } = useLetterhead();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -118,6 +122,8 @@ export function ProjectsPage() {
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [followUps, setFollowUps] = useState<OpenProjectFollowUp[]>([]);
   const [followUpsError, setFollowUpsError] = useState<string | null>(null);
+  const [hoveredJob, setHoveredJob] = useState<string | null>(null);
+  const [dockOverlay, setDockOverlay] = useState(false);
   const pmDefaultedRef = useRef(false);
 
   const summaries = useMemo(() => {
@@ -141,6 +147,14 @@ export function ProjectsPage() {
     [projects, doneIds],
   );
   const openProjectIds = useMemo(() => new Set(openProjects.map((project) => project.id)), [openProjects]);
+  const quickNoteProjects = useMemo<QuickNoteProject[]>(
+    () =>
+      openProjects
+        .map((project) => ({ id: project.id, jobNumber: project.job_number ?? "", jobName: project.job_name ?? "" }))
+        .sort((a, b) => a.jobNumber.localeCompare(b.jobNumber, undefined, { numeric: true, sensitivity: "base" })),
+    [openProjects],
+  );
+  const hoveredJobKey = hoveredJob ? normalizeJobNumber(hoveredJob) : "";
   const noteFlagCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const row of followUps) {
@@ -273,6 +287,13 @@ export function ProjectsPage() {
   }, []);
 
   useEffect(() => {
+    if (!(location.state as ProjectsRouteState)?.newProject) return;
+    setShowForm(true);
+    document.querySelector(".projects-dock-main")?.scrollTo({ top: 0 });
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
+
+  useEffect(() => {
     if (!showForm) return;
     setStaffLoading(true);
     setFieldStaffError(null);
@@ -378,27 +399,15 @@ export function ProjectsPage() {
   }
 
   return (
+    <div className={`projects-dock-layout${dockOverlay ? " projects-dock-layout--overlay" : ""}`}>
+    <div className="projects-dock-main">
     <div className="page">
-      <div className="page-header">
-        <div>
-          <h1>Projects</h1>
+      <h1 className="sr-only">Projects</h1>
+      {!loading && openProjects.length > 0 ? (
+        <div className="projects-top-row">
+          <ProjectsAttentionCard spotlight={attentionSpotlight} />
         </div>
-        <div className="page-header-actions">
-          <Link
-            to="/projects/by-gc"
-            className="btn btn-secondary"
-            title="Group this year's projects by GC with job count and contract amount"
-          >
-            Projects by GC
-          </Link>
-          <button type="button" className="btn btn-primary" onClick={() => {
-            if (showForm) resetCreateForm();
-            setShowForm((v) => !v);
-          }}>
-            {showForm ? "Cancel" : "New project"}
-          </button>
-        </div>
-      </div>
+      ) : null}
 
       {error && <div className="banner banner-error">{error}</div>}
 
@@ -507,9 +516,22 @@ export function ProjectsPage() {
               .
             </p>
           ) : null}
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? "Saving…" : "Create project"}
-          </button>
+          <div className="projects-new-actions">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? "Saving…" : "Create project"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={saving}
+              onClick={() => {
+                resetCreateForm();
+                setShowForm(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
 
@@ -521,14 +543,6 @@ export function ProjectsPage() {
         </div>
       ) : (
         <>
-          {openProjects.length > 0 && <ProjectsAttentionCard spotlight={attentionSpotlight} />}
-          {followUpsError ? (
-            <div className="banner banner-error" role="alert">
-              {followUpsError}
-            </div>
-          ) : null}
-          <ProjectsFollowUpsCard items={followUps} activeProjectIds={openProjectIds} onChange={setFollowUps} />
-
           <div className="projects-toolbar">
             <div className="projects-toolbar-search">
               <input
@@ -557,17 +571,20 @@ export function ProjectsPage() {
             />
           </div>
 
-          <ProjectsStatusChips
-            filters={listFilters}
-            counts={statusCounts}
-            total={statusPool.length}
-            onToggle={(id) => applyListFilters(toggleStatusFilter(listFilters, id))}
-            onClear={() => applyListFilters({ ...listFilters, stages: [] })}
-          />
+          <div className="projects-chips-row">
+            <ProjectsStatusChips
+              filters={listFilters}
+              counts={statusCounts}
+              total={statusPool.length}
+              onToggle={(id) => applyListFilters(toggleStatusFilter(listFilters, id))}
+              onClear={() => applyListFilters({ ...listFilters, stages: [] })}
+            />
+            <span className="projects-chips-count">
+              {filteredProjects.length} of {listUniverse.length}
+            </span>
+          </div>
 
           <ProjectsActiveFilters
-            shown={filteredProjects.length}
-            total={listUniverse.length}
             filters={listFilters}
             onRemove={(key) => applyListFilters(removeProjectsListFilterPill(listFilters, key))}
             onClear={() => applyListFilters(defaultProjectsListFilters())}
@@ -617,13 +634,12 @@ export function ProjectsPage() {
                             </th>,
                           ];
                         })}
-                        <th></th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProjects.length === 0 ? (
                         <tr>
-                          <td className="projects-table-empty" colSpan={8}>
+                          <td className="projects-table-empty" colSpan={7}>
                             No jobs match these filters.{" "}
                             <button
                               type="button"
@@ -641,8 +657,12 @@ export function ProjectsPage() {
                         return (
                           <tr
                             key={p.id}
-                            className="projects-table-row"
-                            onDoubleClick={() => navigate(`/projects/${p.id}`)}
+                            className={`projects-table-row${
+                              hoveredJobKey && normalizeJobNumber(p.job_number ?? "") === hoveredJobKey
+                                ? " projects-table-row--linked"
+                                : ""
+                            }`}
+                            onClick={() => navigate(`/projects/${p.id}`)}
                           >
                           <td>{p.job_number}</td>
                             <td className="projects-table-name" title={p.job_name ?? undefined}>
@@ -673,26 +693,6 @@ export function ProjectsPage() {
                                 </div>
                               )}
                             </td>
-                            <td className="projects-table-open-cell">
-                              <Link
-                                className="btn btn-icon btn-small projects-table-open"
-                                to={`/projects/${p.id}`}
-                                aria-label={`Open ${p.job_name || p.job_number || "project"}`}
-                                title="Open"
-                              >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  width="24"
-                                  height="24"
-                                  viewBox="0 0 24 24"
-                                  fill="currentColor"
-                                  aria-hidden
-                                >
-                                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                  <path d="M9.707 5.293l6 6a1 1 0 0 1 0 1.414l-6 6a1 1 0 1 1 -1.414 -1.414l5.293 -5.293l-5.293 -5.293a1 1 0 0 1 1.414 -1.414" />
-                                </svg>
-                              </Link>
-                            </td>
                           </tr>
                         );
                       })}
@@ -702,6 +702,18 @@ export function ProjectsPage() {
               </div>
         </>
       )}
+    </div>
+    </div>
+    <ProjectsNotesDock
+      items={followUps}
+      activeProjectIds={openProjectIds}
+      onChange={setFollowUps}
+      loading={loading}
+      loadError={followUpsError}
+      projects={quickNoteProjects}
+      onHoverJob={setHoveredJob}
+      onOverlayChange={setDockOverlay}
+    />
     </div>
   );
 }
