@@ -23,6 +23,7 @@ import {
   loadFieldViewSession,
   loginFieldViewWithPin,
   logoutFieldView,
+  verifyFieldViewDeviceCode,
   noteFieldViewSessionFailure,
   subscribeFieldViewReauth,
   validateFieldViewSession,
@@ -76,6 +77,17 @@ function FieldViewPinLogin({
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [maskedEmail, setMaskedEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [trustDevice, setTrustDevice] = useState(true);
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (!challengeId || resendIn <= 0) return;
+    const timer = window.setTimeout(() => setResendIn((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [challengeId, resendIn]);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -84,14 +96,131 @@ function FieldViewPinLogin({
     setBusy(true);
     setError(null);
     try {
-      const session = await loginFieldViewWithPin(clean);
+      const result = await loginFieldViewWithPin(clean);
+      if ("kind" in result && result.kind === "admin") {
+        setError(result.error);
+        return;
+      }
+      if ("kind" in result && result.kind === "code") {
+        setChallengeId(result.challengeId);
+        setMaskedEmail(result.maskedEmail);
+        setCode("");
+        setTrustDevice(true);
+        setResendIn(60);
+        setError(null);
+        return;
+      }
       setPin("");
-      onLogin(session);
+      onLogin(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function verify() {
+    if (!challengeId || code.length !== 6) {
+      setError("That code is wrong or no longer valid.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await verifyFieldViewDeviceCode({ challengeId, code, trust: trustDevice });
+      onLogin(session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That code is wrong or no longer valid.");
+      setCode("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    if (resendIn > 0 || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await loginFieldViewWithPin(pin.trim());
+      if ("kind" in result && result.kind === "code") {
+        setChallengeId(result.challengeId);
+        setMaskedEmail(result.maskedEmail);
+        setCode("");
+        setResendIn(60);
+        return;
+      }
+      if ("kind" in result && result.kind === "admin") {
+        setChallengeId(null);
+        setError(result.error);
+        return;
+      }
+      onLogin(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That code is wrong or no longer valid.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (challengeId) {
+    return (
+      <div className={`field-dashboard${darkMode ? " field-dashboard--dark" : ""}`}>
+        <div className="field-login-shell">
+          <div className="field-login-card">
+            <div className="company-name">{companyName}</div>
+            <h1>Check your email</h1>
+            <p>We sent a 6-digit code to {maskedEmail}</p>
+            <input
+              className="field-login-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              aria-label="6-digit code"
+              maxLength={6}
+              value={code}
+              disabled={busy}
+              onChange={(event) => {
+                setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                setError(null);
+              }}
+            />
+            {error && <p className="field-login-error">{error}</p>}
+            <label className="field-login-trust">
+              <input
+                type="checkbox"
+                checked={trustDevice}
+                onChange={(event) => setTrustDevice(event.target.checked)}
+                disabled={busy}
+              />
+              <span>Trust this device for 90 days</span>
+            </label>
+            <button
+              type="button"
+              className="nav-button active field-login-button"
+              onClick={() => void verify()}
+              disabled={busy || code.length !== 6}
+            >
+              {busy ? "Verifying…" : "Verify"}
+            </button>
+            <button
+              type="button"
+              className="field-login-resend"
+              onClick={() => void resend()}
+              disabled={busy || resendIn > 0}
+            >
+              {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+            </button>
+            <button
+              type="button"
+              className="nav-button nav-button-toggle"
+              onClick={() => setDarkMode(!darkMode)}
+            >
+              {darkMode ? "Light mode" : "Dark mode"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -113,6 +242,11 @@ function FieldViewPinLogin({
             autoFocus
           />
           {error && <div className="banner banner-error">{error}</div>}
+          {error === "Ask your admin to approve this device" && (
+            <button type="button" className="nav-button active field-login-button" onClick={() => void submit({ preventDefault() {} } as FormEvent<HTMLFormElement>)} disabled={busy || !pin.trim()}>
+              {busy ? "Checking…" : "Check again"}
+            </button>
+          )}
           <button type="submit" className="nav-button active field-login-button" disabled={busy || !pin.trim()}>
             {busy ? "Signing in..." : "Sign in"}
           </button>

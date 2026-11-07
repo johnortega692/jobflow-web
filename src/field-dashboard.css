@@ -504,6 +504,58 @@
   min-height: 44px;
 }
 
+.field-dashboard .field-login-code {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  letter-spacing: 0.35em;
+  font-size: 1.5rem;
+  font-weight: 700;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--fd-border);
+  background: var(--fd-surface2);
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-login-error {
+  color: #d93025;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.field-dashboard.field-dashboard--dark .field-login-error {
+  color: #f28b82;
+}
+
+.field-dashboard .field-login-trust {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  font-size: 0.95rem;
+  color: var(--fd-text);
+}
+
+.field-dashboard .field-login-trust input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.field-dashboard .field-login-resend {
+  justify-self: center;
+  border: none;
+  background: none;
+  color: var(--fd-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.field-dashboard .field-login-resend:disabled {
+  cursor: default;
+}
+
 .field-dashboard .company-name {
   font-size: 12px;
   font-weight: 600;

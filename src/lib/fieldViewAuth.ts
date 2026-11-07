@@ -90,23 +90,144 @@ export function clearFieldViewSession(): void {
   localStorage.removeItem(FIELD_VIEW_SESSION_KEY);
 }
 
-export async function loginFieldViewWithPin(pin: string): Promise<FieldViewSession> {
-  const { data, error } = await supabase.rpc("field_tools_login_pin" as never, { p_pin: pin } as never);
-  if (error) throw new Error(error.message);
+const FIELD_VIEW_DEVICE_TOKEN_KEY = "jobflow_field_view_device_token";
+const FIELD_VIEW_SHARED_IDLE_KEY = "jobflow_field_view_shared_idle_minutes";
 
-  const result = data as {
-    ok?: boolean;
-    error?: string;
-    session_token?: string;
-    profile?: { id?: string; name?: string; role?: string };
-  };
+export type FieldViewCodeChallenge = {
+  kind: "code";
+  challengeId: string;
+  maskedEmail: string;
+};
+
+export type FieldViewAdminApproval = {
+  kind: "admin";
+  error: string;
+};
+
+export type FieldViewPinResult = FieldViewSession | FieldViewCodeChallenge | FieldViewAdminApproval;
+
+type DeviceLoginBody = {
+  ok?: boolean;
+  error?: string;
+  needs_code?: boolean;
+  needs_admin?: boolean;
+  challenge_id?: string;
+  masked_email?: string;
+  session_token?: string;
+  device_token?: string;
+  idle_timeout_minutes?: number;
+  profile?: { id?: string; name?: string; role?: string; safety_pin?: boolean };
+};
+
+function readFieldViewDeviceToken(): string | null {
+  try {
+    return localStorage.getItem(FIELD_VIEW_DEVICE_TOKEN_KEY)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function storeFieldViewDeviceToken(token: string | undefined): void {
+  const value = token?.trim();
+  if (!value) return;
+  try {
+    localStorage.setItem(FIELD_VIEW_DEVICE_TOKEN_KEY, value);
+  } catch {
+    /* private mode */
+  }
+}
+
+let idleTimer = 0;
+let idleLimitMs = 0;
+let idleLast = 0;
+let idleListening = false;
+
+function clearFieldViewIdleWatch(): void {
+  if (idleTimer) window.clearTimeout(idleTimer);
+  idleTimer = 0;
+  idleLimitMs = 0;
+}
+
+function signOutFieldViewForIdle(): void {
+  const session = loadFieldViewSession();
+  clearFieldViewIdleWatch();
+  try {
+    localStorage.removeItem(FIELD_VIEW_SHARED_IDLE_KEY);
+  } catch {
+    /* ignore */
+  }
+  void logoutFieldView(session);
+  forceFieldViewReauth();
+}
+
+function scheduleFieldViewIdleCheck(): void {
+  if (!idleLimitMs) return;
+  if (idleTimer) window.clearTimeout(idleTimer);
+  const wait = Math.max(1000, idleLimitMs - (Date.now() - idleLast));
+  idleTimer = window.setTimeout(() => {
+    if (Date.now() - idleLast >= idleLimitMs) signOutFieldViewForIdle();
+    else scheduleFieldViewIdleCheck();
+  }, wait);
+}
+
+function noteFieldViewIdleActivity(): void {
+  if (!idleLimitMs) return;
+  idleLast = Date.now();
+  scheduleFieldViewIdleCheck();
+}
+
+function armFieldViewSharedIdle(minutes: number): void {
+  idleLimitMs = minutes * 60 * 1000;
+  idleLast = Date.now();
+  if (!idleListening && typeof window !== "undefined") {
+    idleListening = true;
+    for (const event of ["pointerdown", "keydown", "touchstart", "scroll"] as const) {
+      window.addEventListener(event, noteFieldViewIdleActivity, { passive: true });
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") scheduleFieldViewIdleCheck();
+    });
+  }
+  scheduleFieldViewIdleCheck();
+}
+
+function rememberFieldViewSharedIdle(minutes: number | undefined, sessionToken: string): void {
+  if (!minutes || minutes <= 0 || !sessionToken) {
+    clearFieldViewIdleWatch();
+    try {
+      localStorage.removeItem(FIELD_VIEW_SHARED_IDLE_KEY);
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  try {
+    localStorage.setItem(FIELD_VIEW_SHARED_IDLE_KEY, String(minutes));
+  } catch {
+    /* ignore */
+  }
+  armFieldViewSharedIdle(minutes);
+}
+
+function resumeFieldViewSharedIdle(): void {
+  if (typeof window === "undefined" || !loadFieldViewSession()) return;
+  try {
+    const minutes = Number(localStorage.getItem(FIELD_VIEW_SHARED_IDLE_KEY));
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    armFieldViewSharedIdle(minutes);
+  } catch {
+    /* ignore */
+  }
+}
+
+function sessionFromDeviceLogin(result: DeviceLoginBody | null): FieldViewSession {
   if (!result?.ok || !result.profile?.id) {
     throw new Error(result?.error ?? "Login failed");
   }
-
   const token = result.session_token?.trim();
   if (!token) throw new Error("Login succeeded but no session was issued.");
-
+  storeFieldViewDeviceToken(result.device_token);
+  rememberFieldViewSharedIdle(result.idle_timeout_minutes, token);
   const session: FieldViewSession = {
     profileId: result.profile.id,
     sessionToken: token,
@@ -118,12 +239,62 @@ export async function loginFieldViewWithPin(pin: string): Promise<FieldViewSessi
   return session;
 }
 
+export async function loginFieldViewWithPin(pin: string): Promise<FieldViewPinResult> {
+  const { data, error } = await supabase.functions.invoke("field-tools-device-login", {
+    body: { pin, device_token: readFieldViewDeviceToken() },
+  });
+  if (error) throw new Error("Sign in failed. Try again.");
+  const result = data as DeviceLoginBody | null;
+  if (result?.ok && result.profile?.safety_pin === true) {
+    return sessionFromDeviceLogin(result);
+  }
+  if (result?.needs_admin) {
+    storeFieldViewDeviceToken(result.device_token);
+    return { kind: "admin", error: result.error?.trim() || "Ask your admin to approve this device" };
+  }
+  if (result?.needs_code && result.challenge_id) {
+    return {
+      kind: "code",
+      challengeId: result.challenge_id,
+      maskedEmail: result.masked_email?.trim() || "",
+    };
+  }
+  return sessionFromDeviceLogin(result);
+}
+
+export async function verifyFieldViewDeviceCode(input: {
+  challengeId: string;
+  code: string;
+  trust: boolean;
+}): Promise<FieldViewSession> {
+  const { data, error } = await supabase.functions.invoke("field-tools-device-verify", {
+    body: {
+      challenge_id: input.challengeId,
+      code: input.code,
+      trust: input.trust,
+      device_token: readFieldViewDeviceToken(),
+    },
+  });
+  if (error) throw new Error("That code is wrong or no longer valid.");
+  return sessionFromDeviceLogin(data as DeviceLoginBody | null);
+}
+
 export async function logoutFieldView(session: FieldViewSession | null): Promise<void> {
+  clearFieldViewIdleWatch();
+  try {
+    localStorage.removeItem(FIELD_VIEW_SHARED_IDLE_KEY);
+  } catch {
+    /* ignore */
+  }
   clearFieldViewSession();
   const token = session?.sessionToken?.trim();
   if (token) {
     await supabase.rpc("field_tools_revoke_session" as never, { p_session_token: token } as never);
   }
+}
+
+if (typeof window !== "undefined") {
+  resumeFieldViewSharedIdle();
 }
 
 export function fieldViewRpcAuthArgs(session: FieldViewSession | null): {

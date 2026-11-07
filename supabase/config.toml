@@ -34,3 +34,15 @@ verify_jwt = false
 
 [functions.field-tools-extra-work-pdf]
 verify_jwt = false
+
+[functions.field-tools-device-login]
+verify_jwt = false
+
+[functions.field-tools-device-verify]
+verify_jwt = false
+
+[functions.field-tools-device-admin]
+verify_jwt = false
+
+[functions.field-tools-device-alert-action]
+verify_jwt = false
