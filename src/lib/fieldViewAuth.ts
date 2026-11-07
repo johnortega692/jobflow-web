@@ -241,7 +241,7 @@ function sessionFromDeviceLogin(result: DeviceLoginBody | null): FieldViewSessio
 
 export async function loginFieldViewWithPin(pin: string): Promise<FieldViewPinResult> {
   const { data, error } = await supabase.functions.invoke("field-tools-device-login", {
-    body: { pin, device_token: readFieldViewDeviceToken() },
+    body: { pin, device_token: readFieldViewDeviceToken(), app: "field_view" },
   });
   if (error) throw new Error("Sign in failed. Try again.");
   const result = data as DeviceLoginBody | null;
@@ -273,6 +273,7 @@ export async function verifyFieldViewDeviceCode(input: {
       code: input.code,
       trust: input.trust,
       device_token: readFieldViewDeviceToken(),
+      app: "field_view",
     },
   });
   if (error) throw new Error("That code is wrong or no longer valid.");

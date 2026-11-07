@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { sendJobFlowNotification } from "../sendJobFlowEmail.ts";
+import { appSource, noteDeviceIdentity } from "./deviceIdentity.ts";
 import { adminEmails, alertLink, deviceMail, sendDeviceNotice, stamp } from "./mail.ts";
 
 const corsHeaders = {
@@ -26,6 +27,20 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+async function finishLogin(
+  supabase: Parameters<typeof noteDeviceIdentity>[0],
+  body: unknown,
+  userAgent: string | null,
+  app: ReturnType<typeof appSource>,
+  status = 200,
+) {
+  const token = body && typeof body === "object" && typeof (body as { device_token?: unknown }).device_token === "string"
+    ? (body as { device_token: string }).device_token
+    : "";
+  if (token) await noteDeviceIdentity(supabase, token, userAgent, app);
+  return jsonResponse(body, status);
 }
 
 function textField(value: unknown, max: number): string {
@@ -88,6 +103,7 @@ export async function handleDeviceAuth(req: Request, action: "login" | "verify")
 
   const ip = clientIp(req);
   const userAgent = req.headers.get("user-agent")?.slice(0, 512) ?? null;
+  const app = appSource(body.app);
   const supabase = createClient(supabaseUrl, serviceKey);
 
   if (action === "verify") {
@@ -154,7 +170,7 @@ export async function handleDeviceAuth(req: Request, action: "login" | "verify")
         // Keep the lockout response even if the notice email fails.
       }
     }
-    return jsonResponse(verified ?? { ok: false, error: "That code is wrong or no longer valid." });
+    return finishLogin(supabase, verified ?? { ok: false, error: "That code is wrong or no longer valid." }, userAgent, app);
   }
 
   const pin = textField(body.pin, 12);
@@ -197,14 +213,16 @@ export async function handleDeviceAuth(req: Request, action: "login" | "verify")
         // The pending request is already saved. Return the screen even if mail fails.
       }
     }
-    return jsonResponse({
+    return finishLogin(supabase, {
       ok: false,
       needs_admin: true,
       error: result.error || "Ask your admin to approve this device",
       device_token: result.device_token,
-    });
+    }, userAgent, app);
   }
-  if (!result?.needs_code) return jsonResponse(result ?? { ok: false, error: "Sign in failed. Try again." });
+  if (!result?.needs_code) {
+    return finishLogin(supabase, result ?? { ok: false, error: "Sign in failed. Try again." }, userAgent, app);
+  }
 
   const userId = textField(result.user_id, 36);
   const { data: created, error: createError } = await supabase.rpc("field_tools_create_device_challenge", {

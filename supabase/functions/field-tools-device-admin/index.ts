@@ -60,6 +60,14 @@ Deno.serve(async (req) => {
       fn: "device_admin_set_shared",
       args: { p_device_id: id, p_shared: body.shared === true, p_admin_id: callerId },
     },
+    rename: {
+      fn: "device_admin_rename",
+      args: {
+        p_device_id: id,
+        p_nickname: typeof body.nickname === "string" ? body.nickname : "",
+        p_admin_id: callerId,
+      },
+    },
     unlock: { fn: "device_admin_unlock", args: { p_user_id: userId, p_admin_id: callerId } },
     update_settings: {
       fn: "device_admin_update_settings",
