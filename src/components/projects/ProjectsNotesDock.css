@@ -296,14 +296,6 @@
   background: var(--surface2);
 }
 
-.notes-dock-row input[type="checkbox"] {
-  flex: none;
-  width: 1.05rem;
-  height: 1.05rem;
-  margin: 0.2rem 0 0;
-  accent-color: var(--accent);
-}
-
 .notes-dock-row-main {
   flex: 1;
   min-width: 0;
@@ -315,6 +307,7 @@
   color: var(--text);
   font-size: 0.88rem;
   font-weight: 600;
+  line-height: 1.35rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -327,6 +320,7 @@
   overflow: hidden;
   color: var(--muted);
   font-size: 0.78rem;
+  line-height: 1.2rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -347,9 +341,75 @@
   gap: 0.3rem;
 }
 
+/* Checkmark lines up with the title line, bell with the job line. */
+.notes-dock-row-lead {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  width: 1.3rem;
+}
+
+.notes-dock-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #8a9099;
+  cursor: pointer;
+}
+
+.notes-dock-check:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--ok) 70%, #8a9099);
+}
+
+.notes-dock-check.is-done,
+.notes-dock-check.is-done:disabled {
+  color: var(--ok);
+}
+
+.notes-dock-check:disabled {
+  cursor: default;
+}
+
+.notes-dock-check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .notes-dock-row .projects-followups-snooze {
   margin-left: 0;
   visibility: hidden;
+}
+
+.notes-dock-row .projects-followups-snooze-btn {
+  min-width: 0;
+  min-height: 0;
+  width: 1.3rem;
+  height: 1.2rem;
+  padding: 0;
+  border: none;
+  color: #8a9099;
+}
+
+.notes-dock-row .projects-followups-snooze-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.notes-dock-row .projects-followups-snooze-btn:hover,
+.notes-dock-row .projects-followups-snooze-btn[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.notes-dock-row .projects-followups-snooze-menu {
+  right: auto;
+  left: 0;
 }
 
 .notes-dock-row:hover .projects-followups-snooze,
@@ -384,74 +444,8 @@
 }
 
 .quick-note-job {
-  position: relative;
   display: grid;
   gap: 0.35rem;
-}
-
-.quick-note-job-list {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  left: 0;
-  z-index: 5;
-  max-height: 16rem;
-  margin: 0;
-  padding: 0.25rem 0;
-  overflow-y: auto;
-  list-style: none;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px color-mix(in srgb, black 35%, transparent);
-}
-
-.quick-note-job-option {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.45rem 0.75rem;
-  cursor: pointer;
-}
-
-.quick-note-job-option.is-active {
-  background: var(--surface2);
-}
-
-.quick-note-job-option[aria-selected="true"] .quick-note-job-number {
-  color: var(--accent);
-}
-
-.quick-note-job-number {
-  flex: none;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.quick-note-job-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-note-job-empty {
-  padding: 0.5rem 0.75rem;
-  color: var(--muted);
-}
-
-/* Footer */
-.notes-dock-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0.6rem 1rem 0.75rem;
-  border-top: 1px solid var(--border);
-}
-
-.notes-dock-all {
-  font-size: 0.82rem;
-  font-weight: 600;
 }
 
 @media (prefers-reduced-motion: reduce) {

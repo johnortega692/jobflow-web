@@ -17,7 +17,6 @@ export const NOTES_DOCK_RESIZE_MAX = 760;
 export const NOTES_DOCK_WIDE_AT = 520;
 
 const STORAGE_KEY = "jobflow.projects.notesDock.v1";
-const TOGGLE_EVENT = "jobflow:notes-dock-toggle";
 
 export function widthForMode(mode: NotesDockOpenMode): number {
   return mode === "wide" ? NOTES_DOCK_WIDE_WIDTH : NOTES_DOCK_STD_WIDTH;
@@ -54,14 +53,4 @@ export function saveNotesDockState(state: NotesDockState): void {
   } catch {
     // Private mode or full storage: the panel still works for this visit.
   }
-}
-
-/** The top-nav Notes link calls this while the Projects page is open. */
-export function requestNotesDockToggle(): void {
-  window.dispatchEvent(new Event(TOGGLE_EVENT));
-}
-
-export function subscribeNotesDockToggle(listener: () => void): () => void {
-  window.addEventListener(TOGGLE_EVENT, listener);
-  return () => window.removeEventListener(TOGGLE_EVENT, listener);
 }

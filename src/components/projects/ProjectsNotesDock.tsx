@@ -24,7 +24,6 @@ import {
   NOTES_DOCK_MIN_WIDTH,
   NOTES_DOCK_RESIZE_MAX,
   saveNotesDockState,
-  subscribeNotesDockToggle,
   widthForMode,
   type NotesDockState,
 } from "../../lib/notesDockState";
@@ -133,10 +132,24 @@ export function ProjectsNotesDock({
   const panelRef = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<Tab>("followups");
   const [filter, setFilter] = useState<FilterId>("all");
-  const { error: actionError, pushing, busyIds, onToggle, onSnooze, onPushOverdue } = useFollowUpActions(onChange);
+  const { error: actionError, busyIds, onToggle, onSnooze } = useFollowUpActions(onChange);
   const [latest, setLatest] = useState<ProjectNoteWithJob[] | null>(null);
   const [latestError, setLatestError] = useState<string | null>(null);
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
+  const [completing, setCompleting] = useState<ReadonlySet<string>>(() => new Set());
+
+  async function markDone(row: OpenProjectFollowUp) {
+    setCompleting((current) => new Set(current).add(row.id));
+    try {
+      await onToggle(row);
+    } finally {
+      setCompleting((current) => {
+        const next = new Set(current);
+        next.delete(row.id);
+        return next;
+      });
+    }
+  }
   const today = localIsoDate();
   const wide = dock.mode === "wide";
 
@@ -162,8 +175,6 @@ export function ProjectsNotesDock({
       return { mode: next, last: next, width: widthForMode(next) };
     });
   }, []);
-
-  useEffect(() => subscribeNotesDockToggle(toggleMin), [toggleMin]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -284,29 +295,28 @@ export function ProjectsNotesDock({
 
   if (dock.mode === "min") {
     return (
-      <aside ref={panelRef} className={className} style={{ width: panelWidth }} aria-label="Notes and follow-ups">
+      <aside ref={panelRef} className={className} style={{ width: panelWidth }} aria-label="Action items">
         <button
           type="button"
           className="notes-dock-strip"
-          aria-label={`Show follow-ups and notes (${visible.length} open)`}
+          aria-label={`Show action items (${visible.length} open)`}
           aria-expanded={false}
           onClick={toggleMin}
         >
-          <BellIcon />
           {visible.length > 0 ? <span className="notes-dock-strip-badge">{visible.length}</span> : null}
-          <span className="notes-dock-strip-label">Follow-ups &amp; notes</span>
+          <span className="notes-dock-strip-label">Action items</span>
         </button>
       </aside>
     );
   }
 
   return (
-    <aside ref={panelRef} className={className} style={{ width: panelWidth }} aria-label="Notes and follow-ups">
+    <aside ref={panelRef} className={className} style={{ width: panelWidth }} aria-label="Action items">
       <div
         className="notes-dock-handle"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize notes panel"
+        aria-label="Resize action items panel"
         aria-valuemin={300}
         aria-valuemax={NOTES_DOCK_RESIZE_MAX}
         aria-valuenow={dock.width}
@@ -320,7 +330,7 @@ export function ProjectsNotesDock({
       />
       <div className="notes-dock-inner">
         <div className="notes-dock-head">
-          <h2>Notes &amp; follow-ups</h2>
+          <h2>Action Items</h2>
           <button
             type="button"
             className="btn btn-ghost btn-icon btn-small"
@@ -333,15 +343,6 @@ export function ProjectsNotesDock({
           <button
             type="button"
             className="btn btn-ghost btn-icon btn-small"
-            aria-label={wide ? "Narrow panel" : "Widen panel"}
-            title={wide ? "Narrow" : "Widen"}
-            onClick={toggleWide}
-          >
-            {wide ? <NarrowIcon /> : <WidenIcon />}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-icon btn-small"
             aria-label="Collapse panel"
             title="Collapse ( ] )"
             onClick={toggleMin}
@@ -350,7 +351,7 @@ export function ProjectsNotesDock({
           </button>
         </div>
 
-        <div className="notes-dock-tabs" role="tablist" aria-label="Notes panel">
+        <div className="notes-dock-tabs" role="tablist" aria-label="Action items">
           <DockTab id="followups" current={tab} onSelect={setTab} label="Follow-ups" count={visible.length} />
           <DockTab id="flags" current={tab} onSelect={setTab} label="Flags" count={counts.flagged} />
           <DockTab id="latest" current={tab} onSelect={setTab} label="Latest notes" />
@@ -383,14 +384,6 @@ export function ProjectsNotesDock({
                       </button>
                     ))}
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-small"
-                    disabled={pushing || counts.overdue === 0}
-                    onClick={() => void onPushOverdue(visible.filter((row) => bucketFor(row, today) === "overdue"))}
-                  >
-                    {pushing ? "Pushing…" : "Push overdue → tomorrow"}
-                  </button>
                 </div>
 
                 {groups.length === 0 ? <p className="notes-dock-empty">All clear</p> : null}
@@ -416,13 +409,23 @@ export function ProjectsNotesDock({
                             onMouseEnter={() => onHoverJob(row.jobNumber)}
                             onClick={(event) => openFromRow(event, `/projects/${row.projectId}/notes`)}
                           >
-                            <input
-                              type="checkbox"
-                              checked={false}
-                              disabled={busy}
-                              aria-label={`Mark “${label}” done`}
-                              onChange={() => void onToggle(row)}
-                            />
+                            <div className="notes-dock-row-lead">
+                              <button
+                                type="button"
+                                role="checkbox"
+                                aria-checked={completing.has(row.id)}
+                                className={`notes-dock-check${completing.has(row.id) ? " is-done" : ""}`}
+                                disabled={busy}
+                                aria-label={`Mark “${label}” done`}
+                                title="Mark done"
+                                onClick={() => void markDone(row)}
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                  <path d="M5 12.5 10 17.5 19 7" />
+                                </svg>
+                              </button>
+                              <SnoozeControl label={label} disabled={busy} onSnooze={(amount) => void onSnooze(row, amount)} />
+                            </div>
                             <div className="notes-dock-row-main">
                               <Link className="notes-dock-row-title" to={`/projects/${row.projectId}/notes`} title={label}>
                                 {title}
@@ -436,7 +439,6 @@ export function ProjectsNotesDock({
                               ) : (
                                 <span className="projects-followups-date projects-followups-date--none">—</span>
                               )}
-                              <SnoozeControl label={label} disabled={busy} onSnooze={(amount) => void onSnooze(row, amount)} />
                             </div>
                           </li>
                         );
@@ -509,11 +511,6 @@ export function ProjectsNotesDock({
           ) : null}
         </div>
 
-        <div className="notes-dock-footer">
-          <Link className="notes-dock-all" to="/notes">
-            All notes →
-          </Link>
-        </div>
       </div>
       {quickNoteOpen ? <QuickNoteModal projects={projects} onClose={() => setQuickNoteOpen(false)} /> : null}
     </aside>
@@ -542,38 +539,11 @@ function DockTab({
   );
 }
 
-function BellIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
-
-function WidenIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <polyline points="11 17 6 12 11 7" />
-      <polyline points="18 17 13 12 18 7" />
-    </svg>
-  );
-}
-
-function NarrowIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <polyline points="13 17 18 12 13 7" />
-      <polyline points="6 17 11 12 6 7" />
     </svg>
   );
 }

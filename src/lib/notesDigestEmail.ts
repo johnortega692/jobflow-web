@@ -140,7 +140,7 @@ export function buildNotesDigestModel(rows: NoteRow[], todayIso: string): NotesD
       projectFor(row).dueToday.push(line(row, null));
       continue;
     }
-    if (row.type === "flag") {
+    if (row.type === "flag" && !date) {
       projectFor(row).flags.push(line(row, null));
       continue;
     }

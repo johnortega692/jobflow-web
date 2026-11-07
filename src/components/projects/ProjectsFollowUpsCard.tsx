@@ -1,12 +1,9 @@
 import { useEffect, useId, useRef, useState, type SetStateAction } from "react";
 import {
   calendarDaysBetween,
-  listOpenProjectFollowUps,
   localIsoDate,
-  shiftIsoDate,
   snoozeProjectNote,
   toggleProjectNoteDone,
-  updateProjectNote,
   type OpenProjectFollowUp,
   type ProjectNoteSnooze,
 } from "../../lib/projectNotes";
@@ -86,10 +83,9 @@ export function FollowUpsColumnPill({ rows }: { rows: readonly OpenProjectFollow
   );
 }
 
-/** Complete, snooze, and push-overdue handlers for the Projects follow-ups list. */
+/** Complete and snooze handlers for the Projects follow-ups list. */
 export function useFollowUpActions(onChange: (items: SetStateAction<OpenProjectFollowUp[]>) => void) {
   const [error, setError] = useState<string | null>(null);
-  const [pushing, setPushing] = useState(false);
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
   const busyRef = useRef<Set<string>>(new Set());
 
@@ -134,28 +130,7 @@ export function useFollowUpActions(onChange: (items: SetStateAction<OpenProjectF
     }
   }
 
-  async function onPushOverdue(overdue: readonly OpenProjectFollowUp[]) {
-    if (!overdue.length || pushing) return;
-    setPushing(true);
-    setError(null);
-    const tomorrow = shiftIsoDate(localIsoDate(), 1);
-    const ids = new Set(overdue.map((row) => row.id));
-    try {
-      await Promise.all(overdue.map((row) => updateProjectNote(row.id, { followUpDate: tomorrow })));
-      onChange((current) => current.map((row) => (ids.has(row.id) ? { ...row, followUpDate: tomorrow } : row)));
-    } catch (err) {
-      setError(errorMessage(err));
-      try {
-        onChange(await listOpenProjectFollowUps());
-      } catch {
-        // Keep the rows we have; the banner already explains the failure.
-      }
-    } finally {
-      setPushing(false);
-    }
-  }
-
-  return { error, pushing, busyIds, onToggle, onSnooze, onPushOverdue };
+  return { error, busyIds, onToggle, onSnooze };
 }
 
 export function SnoozeControl({
@@ -199,15 +174,19 @@ export function SnoozeControl({
     >
       <button
         type="button"
-        className="btn btn-small"
+        className="btn btn-ghost btn-icon btn-small projects-followups-snooze-btn"
         aria-label={`Snooze “${label}”`}
+        title="Snooze"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
       >
-        Snooze
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
       </button>
       {open ? (
         <div ref={menuRef} id={menuId} className="projects-followups-snooze-menu" role="menu" aria-label={`Snooze “${label}”`}>

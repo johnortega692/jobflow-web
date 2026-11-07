@@ -16,6 +16,7 @@ import {
   type ProjectNoteType,
 } from "../lib/projectNotes";
 import type { ProjectForm } from "../types/database";
+import { FollowUpHelp } from "../components/notes/FollowUpHelp";
 import "./NotesPage.css";
 
 type Ctx = { project: ProjectForm; projectId: string };
@@ -23,16 +24,16 @@ type Ctx = { project: ProjectForm; projectId: string };
 type NoteFilter = "open" | "done" | "follow_ups" | "flagged";
 type DatePick = "tomorrow" | "plus3" | "nextWeek" | "custom";
 
+/** A flag is a follow-up marked as a problem; it is picked with the Flag as problem toggle. */
 const TYPE_OPTIONS: { value: ProjectNoteType; label: string }[] = [
   { value: "note", label: "Note" },
   { value: "follow_up", label: "Follow-up" },
-  { value: "flag", label: "Flag" },
 ];
 
 const TYPE_LABEL: Record<ProjectNoteType, string> = {
   note: "Note",
   follow_up: "Follow-up",
-  flag: "Flag",
+  flag: "Flagged",
 };
 
 const FILTERS: { id: NoteFilter; label: string }[] = [
@@ -45,7 +46,7 @@ const FILTERS: { id: NoteFilter; label: string }[] = [
 function matchesFilter(note: ProjectNote, filter: NoteFilter): boolean {
   if (filter === "open") return note.status === "open";
   if (filter === "done") return note.status === "done";
-  if (filter === "follow_ups") return note.type === "follow_up";
+  if (filter === "follow_ups") return note.type !== "note";
   return note.type === "flag";
 }
 
@@ -103,6 +104,7 @@ export function NotesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState<ProjectNoteType>("note");
+  const [problem, setProblem] = useState(false);
   const [body, setBody] = useState("");
   const [waitingOn, setWaitingOn] = useState("");
   const [datePick, setDatePick] = useState<DatePick | null>(null);
@@ -174,13 +176,14 @@ export function NotesPage() {
     try {
       const created = await addProjectNote(projectId, {
         body,
-        type,
+        type: type === "follow_up" && problem ? "flag" : type,
         followUpDate: resolvedDate(),
         waitingOn,
       });
       setNotes((rows) => [created, ...rows]);
       setBody("");
       setWaitingOn("");
+      setProblem(false);
       setDatePick(null);
       setCustomDate("");
       if (!matchesFilter(created, filter)) setFilter("open");
@@ -238,6 +241,15 @@ export function NotesPage() {
         </div>
         {showSchedule ? (
           <div className="project-notes-meta">
+            <button
+              type="button"
+              className={`filter-chip project-notes-flag-toggle${problem ? " project-notes-flag-toggle--on" : ""}`}
+              aria-pressed={problem}
+              title="Marks the job as having a problem; it counts toward the job's attention"
+              onClick={() => setProblem((current) => !current)}
+            >
+              ⚑ Flag as problem
+            </button>
             <div className="project-notes-dates" role="group" aria-label="Follow-up date">
               <button
                 type="button"
@@ -293,6 +305,7 @@ export function NotesPage() {
                 onChange={(event) => setWaitingOn(event.target.value)}
               />
             </label>
+            <FollowUpHelp />
           </div>
         ) : null}
       </form>

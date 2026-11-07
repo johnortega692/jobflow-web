@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useLetterhead } from "../contexts/LetterheadContext";
-import { requestNotesDockToggle } from "../lib/notesDockState";
 import { countOpenOverdueNotes, listAllProjectNotes, subscribeProjectNotesChanged } from "../lib/projectNotes";
 import { ProjectsNavMenu } from "./ProjectsNavMenu";
 import { UserAccountMenu } from "./UserAccountMenu";
@@ -38,9 +37,6 @@ export function Layout() {
   const { user, signOut, isAdmin, roleLoading } = useAuth();
   const { profile } = useLetterhead();
   const overdueNotes = useOverdueNoteCount();
-  const location = useLocation();
-  const onProjectsPage = location.pathname === "/projects";
-
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -54,15 +50,7 @@ export function Layout() {
         <nav className="topnav">
           <ProjectsNavMenu />
           <Link to="/workload">Workload</Link>
-          <NavLink
-            to="/notes"
-            end
-            onClick={(event) => {
-              if (!onProjectsPage) return;
-              event.preventDefault();
-              requestNotesDockToggle();
-            }}
-          >
+          <NavLink to="/notes" end>
             Notes
             {overdueNotes > 0 ? (
               <span className="topnav-badge">

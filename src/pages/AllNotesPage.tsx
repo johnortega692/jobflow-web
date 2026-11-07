@@ -19,6 +19,8 @@ import {
   type ProjectNoteWithJob,
 } from "../lib/projectNotes";
 import { supabase } from "../lib/supabase";
+import { JobSearchCombo } from "../components/projects/JobSearchCombo";
+import { FollowUpHelp } from "../components/notes/FollowUpHelp";
 import "./NotesPage.css";
 import "./AllNotesPage.css";
 
@@ -32,16 +34,16 @@ type NoteProject = {
   jobName: string;
 };
 
+/** A flag is a follow-up marked as a problem; it is picked with the Flag as problem toggle. */
 const TYPE_OPTIONS: { value: ProjectNoteType; label: string }[] = [
   { value: "note", label: "Note" },
   { value: "follow_up", label: "Follow-up" },
-  { value: "flag", label: "Flag" },
 ];
 
 const TYPE_LABEL: Record<ProjectNoteType, string> = {
   note: "Note",
   follow_up: "Follow-up",
-  flag: "Flag",
+  flag: "Flagged",
 };
 
 const FILTERS: { id: NoteFilter; label: string }[] = [
@@ -68,7 +70,7 @@ function noteLabel(body: string): string {
 function matchesFilter(note: ProjectNoteWithJob, filter: NoteFilter, today: string, weekEnd: string): boolean {
   if (filter === "open") return note.status === "open";
   if (filter === "done") return note.status === "done";
-  if (filter === "follow_ups") return note.type === "follow_up";
+  if (filter === "follow_ups") return note.type !== "note";
   if (filter === "flagged") return note.type === "flag";
   if (note.status !== "open" || note.type === "note" || !note.follow_up_date) return false;
   if (filter === "overdue") return note.follow_up_date < today;
@@ -150,6 +152,7 @@ export function AllNotesPage() {
   const [error, setError] = useState<string | null>(null);
   const [projectId, setProjectId] = useState("");
   const [type, setType] = useState<ProjectNoteType>("note");
+  const [problem, setProblem] = useState(false);
   const [body, setBody] = useState("");
   const [waitingOn, setWaitingOn] = useState("");
   const [datePick, setDatePick] = useState<DatePick | null>(null);
@@ -163,6 +166,7 @@ export function AllNotesPage() {
   const busyRef = useRef<Set<string>>(new Set());
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null);
   const customDateRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLInputElement>(null);
   const today = localIsoDate();
   const weekEnd = endOfCalendarWeek(today);
   const showSchedule = type === "follow_up" || type === "flag";
@@ -233,7 +237,7 @@ export function AllNotesPage() {
     try {
       const created = await addProjectNote(projectId, {
         body,
-        type,
+        type: type === "follow_up" && problem ? "flag" : type,
         followUpDate: resolvedDate(),
         waitingOn,
       });
@@ -246,6 +250,7 @@ export function AllNotesPage() {
       setNotes((rows) => [row, ...rows.filter((note) => note.id !== row.id)]);
       setBody("");
       setWaitingOn("");
+      setProblem(false);
       setDatePick(null);
       setCustomDate("");
       if (!matchesFilter(row, filter, today, weekEnd)) setFilter("open");
@@ -289,21 +294,19 @@ export function AllNotesPage() {
 
       <form className="card stack" onSubmit={(event) => void onAdd(event)}>
         <div className="all-notes-add">
-          <select
+          <JobSearchCombo
             className="all-notes-project"
-            aria-label="Project"
+            ariaLabel="Project"
+            placeholder="Search project…"
+            projects={projects}
             value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-          >
-            <option value="">Project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {jobLabel(project.jobNumber, project.jobName)}
-              </option>
-            ))}
-          </select>
+            onChange={setProjectId}
+            onPicked={() => bodyRef.current?.focus()}
+            disabled={saving}
+          />
           <SegmentedControl aria-label="Note type" options={TYPE_OPTIONS} value={type} onChange={setType} />
           <input
+            ref={bodyRef}
             className="all-notes-body-input"
             type="text"
             value={body}
@@ -317,6 +320,15 @@ export function AllNotesPage() {
         </div>
         {showSchedule ? (
           <div className="project-notes-meta">
+            <button
+              type="button"
+              className={`filter-chip project-notes-flag-toggle${problem ? " project-notes-flag-toggle--on" : ""}`}
+              aria-pressed={problem}
+              title="Marks the job as having a problem; it counts toward the job's attention"
+              onClick={() => setProblem((current) => !current)}
+            >
+              ⚑ Flag as problem
+            </button>
             <div className="project-notes-dates" role="group" aria-label="Follow-up date">
               <button
                 type="button"
@@ -372,6 +384,7 @@ export function AllNotesPage() {
                 onChange={(event) => setWaitingOn(event.target.value)}
               />
             </label>
+            <FollowUpHelp />
           </div>
         ) : null}
       </form>
