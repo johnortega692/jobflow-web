@@ -50,6 +50,9 @@ export function ProjectsNavMenu() {
           <Link to="/projects/by-gc" role="menuitem" className="user-account-menu-item" onClick={() => setOpen(false)}>
             Projects by GC
           </Link>
+          <Link to="/projects/materials" role="menuitem" className="user-account-menu-item" onClick={() => setOpen(false)}>
+            Materials
+          </Link>
           <button
             type="button"
             role="menuitem"

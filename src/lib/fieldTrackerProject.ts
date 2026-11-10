@@ -20,7 +20,9 @@ import {
   normalizePaintTrackerState,
   normalizeWcTrackerLines,
   normalizeWcTrackerState,
+  trackerLineTrade,
   type PaintTrackerState,
+  type TrackerLineTrade,
   type WcTrackerLineState,
   type WcTrackerState,
 } from "../types/fieldTracker.js";
@@ -28,6 +30,7 @@ import {
   normalizePaintSubmittal,
   normalizeWallcoveringSubmittal,
   parseProjectTradeData,
+  type PaintItem,
   type PaintSubmittalData,
   type ProjectTradeData,
   type SubmittalHistoryEntry,
@@ -139,6 +142,7 @@ function linesFromSubmittal(items: WallcoveringItem[]): WcTrackerLineState[] {
     .filter((i) => !isApsTrackItem(i) && (i.label.trim() || i.product.trim() || i.manufacturer.trim()))
     .map((item, index) => ({
       id: `submittal-${index}`,
+      trade: "wallcovering" as const,
       label: item.label.trim(),
       wallcoveringName: wcNameFromItem(item) || item.product.trim(),
       ...defaults,
@@ -174,14 +178,17 @@ function indexOfWcTrackerMatch(
   label: string,
   name: string,
   skip: Set<number>,
+  trade: TrackerLineTrade = "wallcovering",
 ): number {
   const labelKey = normalizeWcMatchKey(label);
   const nameKey = normalizeWcMatchKey(name);
+  const sameTrade = (line: WcTrackerLineState) => trackerLineTrade(line) === trade;
 
   if (labelKey && nameKey) {
     const byBoth = lines.findIndex(
       (l, i) =>
         !skip.has(i) &&
+        sameTrade(l) &&
         normalizeWcMatchKey(l.label) === labelKey &&
         normalizeWcMatchKey(l.wallcoveringName) === nameKey,
     );
@@ -190,14 +197,14 @@ function indexOfWcTrackerMatch(
 
   if (nameKey) {
     const byName = lines.findIndex(
-      (l, i) => !skip.has(i) && normalizeWcMatchKey(l.wallcoveringName) === nameKey,
+      (l, i) => !skip.has(i) && sameTrade(l) && normalizeWcMatchKey(l.wallcoveringName) === nameKey,
     );
     if (byName >= 0) return byName;
   }
 
   if (labelKey) {
     return lines.findIndex((l, i) => {
-      if (skip.has(i) || normalizeWcMatchKey(l.label) !== labelKey) return false;
+      if (skip.has(i) || !sameTrade(l) || normalizeWcMatchKey(l.label) !== labelKey) return false;
       const existingName = normalizeWcMatchKey(l.wallcoveringName);
       if (nameKey && existingName && nameKey !== existingName) return false;
       return true;
@@ -211,6 +218,7 @@ function lineFromSubmittalItem(item: WallcoveringItem, index: number): WcTracker
   const wallcoveringName = wcNameFromItem(item) || item.product.trim();
   return {
     id: `wc-${Date.now().toString(36)}-${index}`,
+    trade: "wallcovering" as const,
     label,
     wallcoveringName,
     ...defaultWcTrackerLineFields(),
@@ -379,6 +387,150 @@ export async function updateWcTrackerFromSubmittalItems(
   return { error: saveErr, added, updated, total: lines.length };
 }
 
+function paintNameFromItem(item: PaintItem): string {
+  return [item.manufacturer, item.product, item.color, item.sheen].filter((part) => part.trim()).join(" ").trim();
+}
+
+function paintItemHasContent(item: PaintItem): boolean {
+  return Boolean(item.label.trim() || item.product.trim() || item.manufacturer.trim() || item.color.trim());
+}
+
+function lineFromPaintItem(item: PaintItem, index: number): WcTrackerLineState {
+  const label = item.label.trim();
+  const wallcoveringName = paintNameFromItem(item) || item.product.trim();
+  return {
+    id: `paint-${Date.now().toString(36)}-${index}`,
+    trade: "paint",
+    label,
+    wallcoveringName,
+    ...defaultWcTrackerLineFields(),
+    manufacturer: item.manufacturer.trim(),
+    product: item.product.trim(),
+    color: item.color.trim(),
+    orderUnit: "GAL",
+  };
+}
+
+function updatedPaintLineFromMatch(match: WcTrackerLineState, item: PaintItem): WcTrackerLineState {
+  const label = item.label.trim();
+  const wallcoveringName = paintNameFromItem(item) || item.product.trim();
+  return {
+    ...match,
+    trade: "paint",
+    label: label || match.label,
+    wallcoveringName: wallcoveringName || match.wallcoveringName,
+    manufacturer: item.manufacturer.trim() || match.manufacturer,
+    product: item.product.trim() || match.product,
+    color: item.color.trim() || match.color,
+  };
+}
+
+function paintTrackerLineChanged(before: WcTrackerLineState, after: WcTrackerLineState): boolean {
+  return (
+    after.label !== before.label ||
+    after.wallcoveringName !== before.wallcoveringName ||
+    after.manufacturer !== before.manufacturer ||
+    after.product !== before.product ||
+    after.color !== before.color
+  );
+}
+
+/** Add or refresh special-order paint finishes. Lead times, dates, and quantities stay put. */
+export function mergePaintTrackerLinesFromSubmittal(
+  existing: WcTrackerLineState[],
+  items: PaintItem[],
+): MergeWcTrackerFromSubmittalResult {
+  const specials = items.filter((item) => item.special_order && paintItemHasContent(item));
+  if (!specials.length) {
+    return { lines: existing, added: 0, updated: 0, unchanged: existing.length };
+  }
+
+  const skip = new Set<number>();
+  const appended: WcTrackerLineState[] = [];
+  const next = existing.map((line) => ({ ...line }));
+  let updated = 0;
+
+  for (let index = 0; index < specials.length; index += 1) {
+    const item = specials[index]!;
+    const label = item.label.trim();
+    const name = paintNameFromItem(item) || item.product.trim();
+    const labelKey = normalizeWcMatchKey(label);
+    const byLabel = labelKey
+      ? next.findIndex(
+          (line, i) => !skip.has(i) && trackerLineTrade(line) === "paint" && normalizeWcMatchKey(line.label) === labelKey,
+        )
+      : -1;
+    const matchAt = byLabel >= 0 ? byLabel : indexOfWcTrackerMatch(next, label, name, skip, "paint");
+    if (matchAt >= 0) {
+      skip.add(matchAt);
+      const match = next[matchAt]!;
+      const refreshed = updatedPaintLineFromMatch(match, item);
+      if (paintTrackerLineChanged(match, refreshed)) updated += 1;
+      next[matchAt] = refreshed;
+      continue;
+    }
+    appended.push(lineFromPaintItem(item, index));
+  }
+
+  return {
+    lines: [...next, ...appended],
+    added: appended.length,
+    updated,
+    unchanged: existing.length - updated,
+  };
+}
+
+export async function updatePaintTrackerFromSpecialOrders(
+  projectId: string,
+  items: PaintItem[],
+): Promise<{ error: string | null; added: number; updated: number; total: number; marked: number }> {
+  const marked = items.filter((item) => item.special_order && paintItemHasContent(item)).length;
+  if (!marked) return { error: null, added: 0, updated: 0, total: 0, marked: 0 };
+
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return { error, added: 0, updated: 0, total: 0, marked };
+
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const existing = normalizeWcTrackerLines(trade.wc_tracker_lines);
+  const { lines, added, updated } = mergePaintTrackerLinesFromSubmittal(existing, items);
+  if (added === 0 && updated === 0) {
+    return { error: null, added: 0, updated: 0, total: lines.length, marked };
+  }
+
+  const summaryParts = [added ? `added ${added}` : null, updated ? `updated ${updated}` : null].filter(Boolean);
+  const summary = `Material Tracker paint special orders (${summaryParts.join(", ")})`;
+  const saveErr = await saveWcTrackerLines(projectId, lines, summary);
+  return { error: saveErr, added, updated, total: lines.length, marked };
+}
+
+/** Drop the Material Tracker row for one paint finish. Other trades stay. */
+export async function removePaintSpecialOrderFromTracker(
+  projectId: string,
+  item: PaintItem,
+): Promise<{ error: string | null; removed: number }> {
+  const { data, error } = await loadProjectDataForField(projectId);
+  if (error) return { error, removed: 0 };
+
+  const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const existing = normalizeWcTrackerLines(trade.wc_tracker_lines);
+  const labelKey = normalizeWcMatchKey(item.label.trim());
+  const name = paintNameFromItem(item) || item.product.trim();
+  let removeAt = labelKey
+    ? existing.findIndex(
+        (line) => trackerLineTrade(line) === "paint" && normalizeWcMatchKey(line.label) === labelKey,
+      )
+    : -1;
+  if (removeAt < 0) {
+    removeAt = indexOfWcTrackerMatch(existing, item.label.trim(), name, new Set(), "paint");
+  }
+  if (removeAt < 0) return { error: null, removed: 0 };
+
+  const next = existing.filter((_, index) => index !== removeAt);
+  const label = item.label.trim() || item.color.trim() || "Paint";
+  const saveErr = await saveWcTrackerLines(projectId, next, `Material Tracker removed paint special order ${label}`);
+  return { error: saveErr, removed: saveErr ? 0 : 1 };
+}
+
 export function resolvePaintTracker(trade: ProjectTradeData): PaintTrackerState {
   const stored = normalizePaintTrackerState(trade.paint_tracker);
   const vendor = trade.paint_submittal?.paint_vendor?.trim();
@@ -532,7 +684,7 @@ export function buildFieldPaintRow(project: ProjectForm): FieldPaintRow {
 export function buildFieldWcRows(project: ProjectForm): FieldWcItemRow[] {
   if (!projectHasWallcovering(project.jobInfo)) return [];
   const trade = parseProjectTradeData(project.data as Json);
-  const lines = resolveWcTrackerLines(trade);
+  const lines = resolveWcTrackerLines(trade).filter((line) => trackerLineTrade(line) === "wallcovering");
   const j = project.jobInfo;
   const jobNumber = wcTrackerJobNumber(project);
   const jobName = wcTrackerJobName(project);
@@ -696,17 +848,23 @@ export async function saveWcTrackerLines(
   projectId: string,
   lines: WcTrackerLineState[],
   summary = "Wallcovering tracker updated",
+  options?: { replaceTrades?: TrackerLineTrade[] },
 ): Promise<string | null> {
   const { data, error } = await loadProjectDataForField(projectId);
   if (error) return error;
   const trade = parseProjectTradeData(parseProjectDataBlob(data as Json) as Json);
+  const stored = normalizeWcTrackerLines(trade.wc_tracker_lines);
+  const replace = options?.replaceTrades;
+  const nextLines = replace?.length
+    ? [...stored.filter((line) => !replace.includes(trackerLineTrade(line))), ...lines]
+    : lines;
   const submittal = normalizeWallcoveringSubmittal(trade.wallcovering_submittal);
-  const items = syncItemImageUrlsFromTracker(submittal.items, lines);
+  const items = syncItemImageUrlsFromTracker(submittal.items, nextLines);
   const imageChanged = items.some((item, index) => item.image_url !== submittal.items[index]?.image_url);
   return patchProjectData(
     projectId,
     {
-      wc_tracker_lines: lines,
+      wc_tracker_lines: nextLines,
       ...(imageChanged ? { wallcovering_submittal: { ...submittal, items } } : {}),
     },
     { action: "wc_tracker_saved", summary },

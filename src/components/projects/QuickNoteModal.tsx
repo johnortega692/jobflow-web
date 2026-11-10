@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { addProjectNote } from "../../lib/projectNotes";
+import { addProjectNote, localIsoDate, shiftIsoDate, type ProjectNoteType } from "../../lib/projectNotes";
 import { JobSearchCombo, type JobSearchProject } from "./JobSearchCombo";
+
+type DatePick = "tomorrow" | "plus3" | "nextWeek" | "custom";
 
 export type QuickNoteProject = JobSearchProject;
 
@@ -13,10 +15,17 @@ type Props = {
 export function QuickNoteModal({ projects, onClose }: Props) {
   const [projectId, setProjectId] = useState("");
   const [body, setBody] = useState("");
+  const [followUp, setFollowUp] = useState(false);
+  const [flag, setFlag] = useState(false);
+  const [datePick, setDatePick] = useState<DatePick | null>(null);
+  const [customDate, setCustomDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
+  const customDateRef = useRef<HTMLInputElement>(null);
   const jobInputId = useId();
+  const today = localIsoDate();
+  const scheduled = followUp || flag;
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -26,13 +35,49 @@ export function QuickNoteModal({ projects, onClose }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, saving]);
 
+  useEffect(() => {
+    if (datePick === "custom") customDateRef.current?.focus();
+  }, [datePick]);
+
+  function resolvedDate(): string | null {
+    if (!scheduled || !datePick) return null;
+    if (datePick === "tomorrow") return shiftIsoDate(today, 1);
+    if (datePick === "plus3") return shiftIsoDate(today, 3);
+    if (datePick === "nextWeek") return shiftIsoDate(today, 7);
+    return customDate.trim() || null;
+  }
+
+  function chooseDate(pick: DatePick) {
+    setDatePick((current) => (current === pick ? null : pick));
+  }
+
+  function toggleFollowUp() {
+    setFollowUp((current) => {
+      if (current) setFlag(false);
+      return !current;
+    });
+  }
+
+  function toggleFlag() {
+    setFlag((current) => {
+      const next = !current;
+      if (next) setFollowUp(true);
+      return next;
+    });
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (saving || !projectId || !body.trim()) return;
+    const type: ProjectNoteType = flag ? "flag" : followUp ? "follow_up" : "note";
     setSaving(true);
     setError(null);
     try {
-      await addProjectNote(projectId, { body, type: "note" });
+      await addProjectNote(projectId, {
+        body,
+        type,
+        followUpDate: type === "note" ? null : resolvedDate(),
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the note.");
@@ -82,6 +127,78 @@ export function QuickNoteModal({ projects, onClose }: Props) {
             disabled={saving}
           />
         </label>
+        <div className="quick-note-toggles" role="group" aria-label="Follow-up and flag">
+          <button
+            type="button"
+            className={`filter-chip${followUp ? " filter-chip--active" : ""}`}
+            aria-pressed={followUp}
+            disabled={saving}
+            onClick={toggleFollowUp}
+          >
+            Follow-up
+          </button>
+          <button
+            type="button"
+            className={`filter-chip quick-note-flag${flag ? " quick-note-flag--on" : ""}`}
+            aria-pressed={flag}
+            disabled={saving}
+            title="Marks the job as having a problem"
+            onClick={toggleFlag}
+          >
+            ⚑ Flag
+          </button>
+        </div>
+        {scheduled ? (
+          <div className="quick-note-dates" role="group" aria-label="Follow-up date">
+            <button
+              type="button"
+              className={`filter-chip${datePick === "tomorrow" ? " filter-chip--active" : ""}`}
+              aria-pressed={datePick === "tomorrow"}
+              disabled={saving}
+              onClick={() => chooseDate("tomorrow")}
+            >
+              Tomorrow
+            </button>
+            <button
+              type="button"
+              className={`filter-chip${datePick === "plus3" ? " filter-chip--active" : ""}`}
+              aria-pressed={datePick === "plus3"}
+              disabled={saving}
+              onClick={() => chooseDate("plus3")}
+            >
+              +3 days
+            </button>
+            <button
+              type="button"
+              className={`filter-chip${datePick === "nextWeek" ? " filter-chip--active" : ""}`}
+              aria-pressed={datePick === "nextWeek"}
+              disabled={saving}
+              onClick={() => chooseDate("nextWeek")}
+            >
+              Next week
+            </button>
+            <button
+              type="button"
+              className={`filter-chip${datePick === "custom" ? " filter-chip--active" : ""}`}
+              aria-pressed={datePick === "custom"}
+              disabled={saving}
+              onClick={() => chooseDate("custom")}
+            >
+              Custom
+            </button>
+            {datePick === "custom" ? (
+              <input
+                ref={customDateRef}
+                className="quick-note-custom-date"
+                type="date"
+                value={customDate}
+                aria-label="Custom follow-up date"
+                disabled={saving}
+                onChange={(event) => setCustomDate(event.target.value)}
+              />
+            ) : null}
+          </div>
+        ) : null}
         <div className="row-gap wrap">
           <button type="submit" className="btn btn-primary" disabled={saving || !projectId || !body.trim()}>
             {saving ? "Saving…" : "Save note"}

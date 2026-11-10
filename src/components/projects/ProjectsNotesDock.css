@@ -448,6 +448,27 @@
   gap: 0.35rem;
 }
 
+.quick-note-toggles,
+.quick-note-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.quick-note-flag--on,
+.quick-note-flag--on:hover {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.quick-note-custom-date {
+  width: auto;
+  max-width: 11rem;
+  margin-top: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notes-dock,
   .notes-dock-handle::after {

@@ -4,7 +4,7 @@ import { formatDateDisplay } from "../../lib/dateInputUtils";
 import { applyWcDateOrdered, applyWcLineStage, type WcFieldStatus } from "../../lib/fieldTrackerStatus";
 import { panelFabricationBlocked } from "../../lib/wcComponents";
 import { FlagSwitch, StageStepper } from "./StageStepper";
-import type { WcTrackerLineState } from "../../types/fieldTracker";
+import type { TrackerLineTrade, WcTrackerLineState } from "../../types/fieldTracker";
 import { WcComponentEditor } from "../wallcovering/WcComponentEditor";
 
 /** Append "MM/DD/YYYY Delivered" on its own line. Skip if that stamp is already present. */
@@ -28,6 +28,7 @@ const STEPPER_STAGES: { status: WcFieldStatus; label: string; flag: keyof WcTrac
 
 type Props = {
   line: WcTrackerLineState;
+  kind?: TrackerLineTrade;
   mode: "add" | "edit";
   saving: boolean;
   onChange: (line: WcTrackerLineState) => void;
@@ -40,6 +41,7 @@ type Props = {
 /** Inline (in-table) editor for a wallcovering tracker line. */
 export function WcTrackerLineInlineEditor({
   line,
+  kind = "wallcovering",
   mode,
   saving,
   onChange,
@@ -50,6 +52,7 @@ export function WcTrackerLineInlineEditor({
 }: Props) {
   const deliveryNotesId = useId();
   const [gateNote, setGateNote] = useState<string | null>(null);
+  const paint = kind === "paint";
 
   function patch(p: Partial<WcTrackerLineState>) {
     onChange({ ...line, ...p });
@@ -71,7 +74,7 @@ export function WcTrackerLineInlineEditor({
           }))}
           onSelect={(key) => {
             const stage = key as WcFieldStatus;
-            if ((stage === "Material Ordered" || stage === "Delivered") && panelFabricationBlocked(line)) {
+            if (!paint && (stage === "Material Ordered" || stage === "Delivered") && panelFabricationBlocked(line)) {
               setGateNote("Fabric has to reach the fabricator before these panels can start fabrication.");
               return;
             }
@@ -84,11 +87,11 @@ export function WcTrackerLineInlineEditor({
 
       <div className="wc-tracker-editor-grid">
         <label>
-          Label / WC label
+          {paint ? "Label" : "Label / WC label"}
           <input value={line.label} onChange={(e) => patch({ label: e.target.value })} />
         </label>
         <label className="wc-col-3">
-          Wallcovering name
+          {paint ? "Paint" : "Wallcovering name"}
           <input
             value={line.wallcoveringName}
             onChange={(e) => patch({ wallcoveringName: e.target.value })}
@@ -116,14 +119,18 @@ export function WcTrackerLineInlineEditor({
       </div>
 
       <div className="wc-tracker-editor-flags">
-        <FlagSwitch
-          label="Field measure"
-          tone="ok"
-          checked={line.fieldMeasurement}
-          onChange={(v) => patch({ fieldMeasurement: v })}
-        />
-        <FlagSwitch label="Shops" tone="ok" checked={line.shops} onChange={(v) => patch({ shops: v })} />
-        <FlagSwitch label="Panels" tone="accent" checked={line.panels} onChange={(v) => patch({ panels: v })} />
+        {paint ? null : (
+          <>
+            <FlagSwitch
+              label="Field measure"
+              tone="ok"
+              checked={line.fieldMeasurement}
+              onChange={(v) => patch({ fieldMeasurement: v })}
+            />
+            <FlagSwitch label="Shops" tone="ok" checked={line.shops} onChange={(v) => patch({ shops: v })} />
+            <FlagSwitch label="Panels" tone="accent" checked={line.panels} onChange={(v) => patch({ panels: v })} />
+          </>
+        )}
         <FlagSwitch
           label="Needs revision"
           tone="warn"
@@ -201,7 +208,7 @@ export function WcTrackerLineInlineEditor({
               <textarea
                 rows={3}
                 value={line.revisionNotes}
-                placeholder="Required while this wallcovering needs revision"
+                placeholder={paint ? "Required while this paint needs revision" : "Required while this wallcovering needs revision"}
                 onChange={(e) => patch({ revisionNotes: e.target.value })}
               />
             </label>
@@ -209,17 +216,19 @@ export function WcTrackerLineInlineEditor({
         </div>
       </details>
 
-      <WcComponentEditor
-        parentLabel={line.label}
-        components={line.components ?? []}
-        mode="tracker"
-        panels={line.panels}
-        fabricatedAssembly={line.fabricatedAssembly}
-        shopDrawings={line.shopDrawings}
-        e84ClassA={line.e84ClassA}
-        onChange={(components) => patch({ components })}
-        onPanelFlags={(flags) => patch(flags)}
-      />
+      {paint ? null : (
+        <WcComponentEditor
+          parentLabel={line.label}
+          components={line.components ?? []}
+          mode="tracker"
+          panels={line.panels}
+          fabricatedAssembly={line.fabricatedAssembly}
+          shopDrawings={line.shopDrawings}
+          e84ClassA={line.e84ClassA}
+          onChange={(components) => patch({ components })}
+          onPanelFlags={(flags) => patch(flags)}
+        />
+      )}
 
       <div className="row-between wrap wc-tracker-inline-editor-footer">
         <div className="row-gap wrap">

@@ -42,7 +42,7 @@ import {
 } from "../lib/paintPackageLink";
 import { formatSubmittalNumberDisplay } from "../lib/printCore";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
-import { patchPaintTrackerSubmittalOrdered, paintVendorSnapshot, reloadProject, resolvePaintTracker } from "../lib/fieldTrackerProject";
+import { patchPaintTrackerSubmittalOrdered, paintVendorSnapshot, reloadProject, removePaintSpecialOrderFromTracker, resolvePaintTracker, updatePaintTrackerFromSpecialOrders } from "../lib/fieldTrackerProject";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
@@ -110,6 +110,7 @@ export function PaintSubmittalsPage() {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const itemsActionsRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [trackerBusy, setTrackerBusy] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const [dragOverScope, setDragOverScope] = useState<PaintItemSpecScope | null>(null);
@@ -541,7 +542,53 @@ export function PaintSubmittalsPage() {
     return enabled ? applyPaintAutoLabels(items) : items;
   }
 
+  async function applyTrackToMaterialTracker(next: PaintSubmittalData, index: number, on: boolean) {
+    const item = next.items[index];
+    const name = [item?.label, item?.color].filter((part) => part?.trim()).join(" ") || "Finish";
+    setError(null);
+    if (on) {
+      const result = await updatePaintTrackerFromSpecialOrders(projectId, next.items);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (!result.marked) {
+        setStatus("Add a color or product on this finish, then turn Track on again.");
+        return;
+      }
+      setStatus(`${name} is on Material Tracker, under Paint → Special orders.`);
+    } else if (item) {
+      const result = await removePaintSpecialOrderFromTracker(projectId, item);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setStatus(result.removed ? `${name} was taken off Material Tracker.` : "Special order cleared.");
+    }
+    const updated = await reloadProject(projectId);
+    if (updated) setProject(updated);
+  }
+
   function patchItem(index: number, patch: Partial<PaintItem>) {
+    if (Object.keys(patch).length === 1 && "special_order" in patch) {
+      const on = patch.special_order === true;
+      const next = {
+        ...draft,
+        items: draft.items.map((item, i) => (i === index ? { ...item, special_order: on } : item)),
+      };
+      setDraft(next);
+      void (async () => {
+        if (draftLocked) {
+          const ok = await persist(next, history);
+          if (!ok) {
+            setDraft(draft);
+            return;
+          }
+        }
+        await applyTrackToMaterialTracker(next, index, on);
+      })();
+      return;
+    }
     updateDraft((d) => {
       const enabled = d.auto_label !== false;
       const items = d.items.map((item, i) => {
@@ -672,6 +719,40 @@ export function PaintSubmittalsPage() {
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF download failed");
+    }
+  }
+
+  async function onAddToMaterialTracker() {
+    const marked = draft.items.some((item) => item.special_order);
+    if (!marked) {
+      setError("Mark Track on the paint finishes that are special orders.");
+      setStatus(null);
+      return;
+    }
+    setTrackerBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const result = await updatePaintTrackerFromSpecialOrders(projectId, draft.items);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (!result.added && !result.updated) {
+        setStatus("Those special orders are already on Material Tracker.");
+        return;
+      }
+      const parts = [
+        result.added ? `added ${result.added}` : null,
+        result.updated ? `updated ${result.updated}` : null,
+      ].filter(Boolean);
+      setStatus(`Material Tracker ${parts.join(", ")}. Lead times, dates, and quantities were kept. The finishes stay on this paint package.`);
+      const next = await reloadProject(projectId);
+      if (next) setProject(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add the special orders to Material Tracker.");
+    } finally {
+      setTrackerBusy(false);
     }
   }
 
@@ -857,6 +938,14 @@ export function PaintSubmittalsPage() {
         </div>
 
         <div className="paint-toolbar-end">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={trackerBusy}
+            onClick={() => void onAddToMaterialTracker()}
+          >
+            {trackerBusy ? "Adding…" : "Material Tracker"}
+          </button>
           <button type="button" className="btn btn-secondary paint-toolbar-history" onClick={() => setHistoryOpen(true)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <circle cx="12" cy="12" r="8" />

@@ -26,8 +26,16 @@ export type WcTrackerState = {
   followUp: string;
 };
 
+export type TrackerLineTrade = "wallcovering" | "paint";
+
+export function trackerLineTrade(line: { trade?: string | null }): TrackerLineTrade {
+  return line.trade === "paint" ? "paint" : "wallcovering";
+}
+
 export type WcTrackerLineState = {
   id: string;
+  /** Missing on older rows, which are wallcovering. */
+  trade?: TrackerLineTrade;
   label: string;
   wallcoveringName: string;
   panels: boolean;
@@ -160,6 +168,7 @@ export function normalizeWcTrackerLine(raw: unknown, fallbackId: string): WcTrac
   const defaults = defaultWcTrackerLineFields();
   return {
     id: String(o.id ?? fallbackId),
+    trade: o.trade === "paint" ? "paint" : "wallcovering",
     label,
     wallcoveringName,
     panels: Boolean(o.panels),
@@ -222,11 +231,13 @@ export function normalizeWcTrackerLines(raw: unknown): WcTrackerLineState[] {
     .filter((l): l is WcTrackerLineState => l !== null);
 }
 
-export function createEmptyWcTrackerLine(): WcTrackerLineState {
+export function createEmptyWcTrackerLine(trade: TrackerLineTrade = "wallcovering"): WcTrackerLineState {
   return {
     id: `line-${Date.now()}`,
+    trade,
     label: "",
     wallcoveringName: "",
     ...defaultWcTrackerLineFields(),
+    ...(trade === "paint" ? { orderUnit: "GAL" } : {}),
   };
 }

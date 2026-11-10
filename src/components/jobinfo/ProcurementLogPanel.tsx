@@ -6,6 +6,7 @@ import { downloadProcurementLogPdf } from "../../lib/procurementLogPrint";
 import { procurementLogFilename } from "../../lib/pdfFilenames";
 import { projectHasWallcovering, wcTrackerJobName, wcTrackerJobNumber } from "../../lib/jobInfo";
 import { resolveWcTrackerLines } from "../../lib/fieldTrackerProject";
+import { trackerLineTrade } from "../../types/fieldTracker";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
 import type { ProjectForm, Json } from "../../types/database";
 
@@ -14,7 +15,7 @@ type Props = {
   projectId: string;
 };
 
-/** Read-only procurement log built from wallcovering tracker lines, with branded PDF export. */
+/** Read-only procurement log built from tracker lines, with branded PDF export. */
 export function ProcurementLogPanel({ project, projectId }: Props) {
   const { branding } = useLetterhead();
   const [printing, setPrinting] = useState(false);
@@ -33,6 +34,7 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
   }, [project.data]);
 
   const logRows = useMemo(() => buildProcurementLogRowsFromLines(trackerLines), [trackerLines]);
+  const hasPaintOrders = trackerLines.some((line) => trackerLineTrade(line) === "paint");
   const pdfFilename = procurementLogFilename(jobName, jobNumber);
   const lastUpdateLabel = loadedAt
     ? `${loadedAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}, ${loadedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · ${logRows.length} material${logRows.length === 1 ? "" : "s"}`
@@ -57,7 +59,7 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
 
   async function onExportPdf() {
     if (!logRows.length) {
-      setError("No materials to export. Add wallcovering lines in the Wallcovering tab first.");
+      setError("No materials to export. Add a paint special order or a wallcovering line first.");
       return;
     }
     setPrinting(true);
@@ -77,7 +79,7 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
     }
   }
 
-  if (!hasWallcovering) {
+  if (!hasWallcovering && !hasPaintOrders) {
     return (
       <p className="banner banner-warn">
         Enable <strong>Wallcovering</strong> in{" "}
@@ -128,8 +130,7 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
         <h2 className="procurement-log-table-title">Procurement Log</h2>
         {logRows.length === 0 ? (
           <p className="muted procurement-log-empty">
-            No wallcovering materials yet. Add lines in the <strong>Wallcovering</strong> tab, or copy from the
-            submittal.
+            No materials yet. Turn on Track for a paint finish, or add lines in the <strong>Wallcovering</strong> tab.
           </p>
         ) : (
           <div

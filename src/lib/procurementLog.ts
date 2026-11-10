@@ -36,7 +36,7 @@ export function buildProcurementNotesFromLine(line: WcTrackerLineState): string 
   return `${autoNotes.join("; ")} | ${existing}`;
 }
 
-function lineRow(line: WcTrackerLineState): ProcurementLogRow {
+export function procurementLogRowFromLine(line: WcTrackerLineState): ProcurementLogRow {
   return {
     finish: line.label.trim(),
     product: line.wallcoveringName.trim(),
@@ -53,7 +53,7 @@ export function buildProcurementLogRowsFromLines(lines: WcTrackerLineState[]): P
   return lines
     .filter((line) => line.wallcoveringName.trim() !== INTERNAL_TRACKING_PRODUCT && !isApsTrackItem({ product: line.wallcoveringName, manufacturer: line.manufacturer }))
     .flatMap((line) => [
-      lineRow(line),
+      procurementLogRowFromLine(line),
       ...(line.components ?? []).map((component) => ({
         finish: [line.label.trim(), WC_COMPONENT_TYPE_LABEL[component.type]].filter(Boolean).join(" · "),
         product: [component.item, component.finish].filter((part) => part.trim()).join(", "),

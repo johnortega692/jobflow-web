@@ -53,7 +53,7 @@ import {
   wcOrderDisplayFromTrackerLine,
 } from "../lib/fieldTrackerProject";
 import { applyWcLineStage } from "../lib/fieldTrackerStatus";
-import type { WcTrackerLineState } from "../types/fieldTracker";
+import { trackerLineTrade, type WcTrackerLineState } from "../types/fieldTracker";
 import type { MaterialVendor } from "../types/contactDirectory";
 import type { ProjectForm } from "../types/database";
 import {
@@ -76,7 +76,7 @@ import {
 
 type Ctx = { project: ProjectForm; projectId: string };
 
-type OrderScope = "wallcovering" | "frp";
+type OrderScope = "wallcovering" | "frp" | "paint";
 type ScopeFilter = "all" | OrderScope;
 
 type UnifiedOrderRow = {
@@ -104,6 +104,7 @@ type EmailOrderMode = "material" | "fwp";
 
 function scopeLabel(scope: OrderScope): string {
   if (scope === "wallcovering") return "WC";
+  if (scope === "paint") return "Paint";
   return "FRP";
 }
 
@@ -237,6 +238,22 @@ function buildUnifiedRows(
     const pool = collectWallcoveringItemsFromPackages(wc, wcHistory);
     wcLines.forEach((line, index) => {
       if (!line.label.trim() && !line.wallcoveringName.trim()) return;
+      if (trackerLineTrade(line) === "paint") {
+        rows.push({
+          scope: "paint",
+          index,
+          lineId: line.id,
+          label: line.label,
+          product: line.product,
+          manufacturer: line.manufacturer,
+          color: line.color,
+          qty: line.orderQty,
+          unit: line.orderUnit.trim() || "GAL",
+          notes: line.orderNotes,
+          order: Boolean(line.orderSelected),
+        });
+        return;
+      }
       const display = wcOrderDisplayFromTrackerLine(line, pool);
       rows.push({
         scope: "wallcovering",
@@ -459,6 +476,10 @@ export function ProjectOrdersPage() {
   }
 
   function setOrder(scope: OrderScope, index: number, order: boolean) {
+    if (scope === "paint") {
+      patchWcTrackerLine(index, { orderSelected: order });
+      return;
+    }
     if (scope === "wallcovering") {
       if (wcOrdersFromTracker) {
         patchWcTrackerLine(index, { orderSelected: order });
@@ -478,7 +499,7 @@ export function ProjectOrdersPage() {
 
   function setVisibleOrders(order: boolean) {
     const wcIndexes = new Set(
-      visibleRows.filter((r) => r.scope === "wallcovering").map((r) => r.index),
+      visibleRows.filter((r) => r.scope === "wallcovering" || r.scope === "paint").map((r) => r.index),
     );
     const frpIndexes = new Set(visibleRows.filter((r) => r.scope === "frp").map((r) => r.index));
     if (wcIndexes.size) {
@@ -505,7 +526,7 @@ export function ProjectOrdersPage() {
   async function toggleOrderComplete(row: UnifiedOrderRow, complete: boolean) {
     const line = findWcTrackerLine(wcLines, row);
     if (!line) {
-      setError("No matching wallcovering line in Material Tracker for this item.");
+      setError("No matching Material Tracker line for this item.");
       return;
     }
     const nextLine = complete
@@ -537,6 +558,10 @@ export function ProjectOrdersPage() {
 
   function setQty(scope: OrderScope, index: number, qty: string) {
     const next = qtyNumericOnly(qty);
+    if (scope === "paint") {
+      patchWcTrackerLine(index, { orderQty: next });
+      return;
+    }
     if (scope === "wallcovering") {
       if (wcOrdersFromTracker) {
         patchWcTrackerLine(index, { orderQty: next });
@@ -555,6 +580,10 @@ export function ProjectOrdersPage() {
   }
 
   function setUnit(scope: OrderScope, index: number, unit: MaterialOrderUnit) {
+    if (scope === "paint") {
+      patchWcTrackerLine(index, { orderUnit: unit });
+      return;
+    }
     if (scope === "wallcovering") {
       if (wcOrdersFromTracker) {
         patchWcTrackerLine(index, { orderUnit: unit });
@@ -573,6 +602,10 @@ export function ProjectOrdersPage() {
   }
 
   function setNotes(scope: OrderScope, index: number, notes: string) {
+    if (scope === "paint") {
+      patchWcTrackerLine(index, { orderNotes: notes });
+      return;
+    }
     if (scope === "wallcovering") {
       if (wcOrdersFromTracker) {
         patchWcTrackerLine(index, { orderNotes: notes });
@@ -593,11 +626,13 @@ export function ProjectOrdersPage() {
   async function removeOrderRow(row: UnifiedOrderRow) {
     const name = row.label.trim() || row.product.trim() || `${scopeLabel(row.scope)} line`;
     const source =
-      row.scope === "wallcovering"
-        ? wcOrdersFromTracker
-          ? "Material Tracker (and the open wallcovering package if this line is on it)"
-          : "wallcovering submittal"
-        : "FRP submittal";
+      row.scope === "paint"
+        ? "Material Tracker. The finish stays on the paint submittal"
+        : row.scope === "wallcovering"
+          ? wcOrdersFromTracker
+            ? "Material Tracker (and the open wallcovering package if this line is on it)"
+            : "wallcovering submittal"
+          : "FRP submittal";
     if (
       !window.confirm(
         `Remove ${name} from this order list? This also removes it from the ${source}.`,
@@ -608,7 +643,10 @@ export function ProjectOrdersPage() {
     let nextWc = wcDraft;
     let nextFrp = frpDraft;
     let nextLines = wcLines;
-    if (row.scope === "wallcovering") {
+    if (row.scope === "paint") {
+      nextLines = wcLines.filter((line) => line.id !== row.lineId);
+      setWcLines(nextLines);
+    } else if (row.scope === "wallcovering") {
       if (wcOrdersFromTracker) {
         const line = wcLines[row.index];
         nextLines = wcLines.filter((_, i) => i !== row.index);
@@ -991,6 +1029,7 @@ export function ProjectOrdersPage() {
           [
             ["all", "All"],
             ["wallcovering", "Wallcovering"],
+            ["paint", "Paint"],
             ["frp", "FRP"],
           ] as const
         ).map(([id, label]) => (
@@ -1141,7 +1180,7 @@ export function ProjectOrdersPage() {
                     />
                   </td>
                   <td className="project-orders-complete-cell">
-                    {row.scope === "wallcovering" ? (
+                    {row.scope === "wallcovering" || row.scope === "paint" ? (
                       (() => {
                         const line = findWcTrackerLine(wcLines, row);
                         return (

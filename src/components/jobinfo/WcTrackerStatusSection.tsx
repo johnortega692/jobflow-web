@@ -7,6 +7,7 @@ import {
   reloadProject,
   resolveWcTrackerLines,
   saveWcTrackerLines,
+  updatePaintTrackerFromSpecialOrders,
 } from "../../lib/fieldTrackerProject";
 import {
   applyWcLineStage,
@@ -18,8 +19,8 @@ import {
   type WcFieldStatus,
 } from "../../lib/fieldTrackerStatus";
 import { installReady, installReadyCount, panelFabricationBlocked } from "../../lib/wcComponents";
-import { parseProjectTradeData } from "../../types/tradeDocuments";
-import { createEmptyWcTrackerLine, type WcTrackerLineState } from "../../types/fieldTracker";
+import { normalizePaintSubmittal, parseProjectTradeData } from "../../types/tradeDocuments";
+import { createEmptyWcTrackerLine, trackerLineTrade, type TrackerLineTrade, type WcTrackerLineState } from "../../types/fieldTracker";
 import { ensurePackageShareToken } from "../../lib/materialPackageLabel";
 import type { ProjectForm, Json } from "../../types/database";
 import { PackageLabelDialog } from "./PackageLabelDialog";
@@ -32,6 +33,8 @@ type Props = {
   onProjectUpdate?: (project: ProjectForm) => void;
   /** Ask before Paint / Log (or another row) discards an unsaved line. */
   onRegisterLeave?: (guard: ((proceed: () => void) => void) | null) => void;
+  /** Paint rows are special orders. They stay on the paint submittal and share procurement fields. */
+  lineTrade?: TrackerLineTrade;
 };
 
 function formatListDate(value: string): string {
@@ -52,7 +55,10 @@ export function WcTrackerStatusSection({
   onOpenJobSetup,
   onProjectUpdate,
   onRegisterLeave,
+  lineTrade = "wallcovering",
 }: Props) {
+  const paint = lineTrade === "paint";
+  const materialName = paint ? "paint" : "wallcovering";
   const [lines, setLines] = useState<WcTrackerLineState[]>([]);
   const [loading, setLoading] = useState(true);
   const [lineSaving, setLineSaving] = useState(false);
@@ -67,13 +73,30 @@ export function WcTrackerStatusSection({
 
   const resolved = useMemo(() => {
     const trade = parseProjectTradeData(project.data as Json);
-    return resolveWcTrackerLines(trade);
-  }, [project.data]);
+    return resolveWcTrackerLines(trade).filter((line) => trackerLineTrade(line) === lineTrade);
+  }, [lineTrade, project.data]);
 
   useEffect(() => {
     setLines(resolved);
     setLoading(false);
   }, [resolved]);
+
+  useEffect(() => {
+    if (!paint) return;
+    let cancelled = false;
+    void (async () => {
+      const trade = parseProjectTradeData(project.data as Json);
+      const items = normalizePaintSubmittal(trade.paint_submittal).items;
+      if (!items.some((item) => item.special_order)) return;
+      const result = await updatePaintTrackerFromSpecialOrders(projectId, items);
+      if (cancelled || result.error || (!result.added && !result.updated)) return;
+      const next = await reloadProject(projectId);
+      if (!cancelled && next) onProjectUpdate?.(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [onProjectUpdate, paint, project.data, projectId]);
 
   const overallStatus = useMemo(() => wcOverallStatus(lines), [lines]);
   const ready = useMemo(() => installReadyCount(lines), [lines]);
@@ -83,7 +106,7 @@ export function WcTrackerStatusSection({
       setLineSaving(true);
       setError(null);
 
-      const cloudErr = await saveWcTrackerLines(projectId, nextLines, summary);
+      const cloudErr = await saveWcTrackerLines(projectId, nextLines, summary, { replaceTrades: [lineTrade] });
 
       setLineSaving(false);
       if (cloudErr) {
@@ -95,7 +118,7 @@ export function WcTrackerStatusSection({
       if (next) onProjectUpdate?.(next);
       return true;
     },
-    [onProjectUpdate, projectId],
+    [lineTrade, onProjectUpdate, projectId],
   );
 
   const isDirty = editing != null && baselineRef.current !== JSON.stringify(editing.line);
@@ -125,7 +148,7 @@ export function WcTrackerStatusSection({
 
   function openAdd() {
     const start = () => {
-      beginEdit("add", createEmptyWcTrackerLine());
+      beginEdit("add", createEmptyWcTrackerLine(lineTrade));
     };
     if (editing && isDirty) requestLeave(start);
     else start();
@@ -153,11 +176,11 @@ export function WcTrackerStatusSection({
     const label = draftLine.label.trim();
     const name = draftLine.wallcoveringName.trim();
     if (!label && !name) {
-      setError("Enter a label or wallcovering name.");
+      setError(`Enter a label or ${materialName} name.`);
       return false;
     }
     if (draftLine.revision && !draftLine.revisionNotes.trim()) {
-      setError("Enter revision notes for this wallcovering before saving.");
+      setError(`Enter revision notes for this ${materialName} before saving.`);
       return false;
     }
 
@@ -169,8 +192,8 @@ export function WcTrackerStatusSection({
     const lineLabel = draftLine.label.trim() || draftLine.wallcoveringName.trim() || "Line";
     const summary =
       editing.mode === "add"
-        ? `Added wallcovering line: ${lineLabel}`
-        : `Updated wallcovering line: ${lineLabel}`;
+        ? `Added ${materialName} line: ${lineLabel}`
+        : `Updated ${materialName} line: ${lineLabel}`;
 
     const ok = await persistLines(nextLines, summary);
     if (ok) {
@@ -186,11 +209,11 @@ export function WcTrackerStatusSection({
     const label = draftLine.label.trim();
     const name = draftLine.wallcoveringName.trim();
     if (!label && !name) {
-      setError("Enter a label or wallcovering name.");
+      setError(`Enter a label or ${materialName} name.`);
       return;
     }
     if (draftLine.revision && !draftLine.revisionNotes.trim()) {
-      setError("Enter revision notes for this wallcovering before saving.");
+      setError(`Enter revision notes for this ${materialName} before saving.`);
       return;
     }
     const nextLines =
@@ -228,7 +251,7 @@ export function WcTrackerStatusSection({
         const saved = lines.find((l) => l.id === line.id);
         baselineRef.current = JSON.stringify(saved ?? line);
         setEditing({ mode: "edit", line: nextLine });
-        setError("Add revision notes for this wallcovering, then save the line.");
+        setError(`Add revision notes for this ${materialName}, then save the line.`);
       };
       if (editing && isDirty && editing.line.id !== line.id) {
         requestLeave(openForNotes);
@@ -239,7 +262,7 @@ export function WcTrackerStatusSection({
     }
     const nextLines = lines.map((l) => (l.id === line.id ? nextLine : l));
     const label = line.label.trim() || line.wallcoveringName.trim() || "Line";
-    await persistLines(nextLines, `Wallcovering line status: ${label} → ${wcStatusLabel(stage)}`);
+    await persistLines(nextLines, `${paint ? "Paint" : "Wallcovering"} line status: ${label} → ${wcStatusLabel(stage)}`);
   }
 
   async function onEditorDelete() {
@@ -257,23 +280,24 @@ export function WcTrackerStatusSection({
 
   const editorRow = editing ? (
     <tr className="wc-tracker-editor-row is-open">
-      <td colSpan={7}>
+      <td colSpan={paint ? 6 : 7}>
         <WcTrackerLineInlineEditor
           line={editing.line}
           mode={editing.mode}
           saving={lineSaving}
-          onChange={(next) => setEditing((cur) => (cur ? { ...cur, line: next } : cur))}
+          kind={lineTrade}
+          onChange={(next) => setEditing((cur) => (cur ? { ...cur, line: { ...next, trade: lineTrade } } : cur))}
           onSave={() => void onEditorSave()}
           onCancel={closeEditor}
           onDelete={editing.mode === "edit" ? () => void onEditorDelete() : undefined}
-          onPrintLabels={() => void onPrintPackages()}
+          onPrintLabels={paint ? undefined : () => void onPrintPackages()}
         />
       </td>
     </tr>
   ) : null;
 
   let body: ReactNode;
-  if (!jobNumber) {
+  if (!paint && !jobNumber) {
     body = (
       <p className="muted small">
         Add a wallcovering job number in{" "}
@@ -302,8 +326,17 @@ export function WcTrackerStatusSection({
         {!lines.length && !isAdding ? (
           <>
             <p className="muted small">
-              No wallcovering materials yet. Add lines here or copy from the{" "}
-              <Link to={`/projects/${projectId}/submittals/wallcovering`}>Wallcovering</Link> submittal.
+              {paint ? (
+                <>
+                  No special-order paint yet. Turn on Track for a finish in the{" "}
+                  <Link to={`/projects/${projectId}/submittals/paint`}>Paint</Link> submittal and it shows up here.
+                </>
+              ) : (
+                <>
+                  No wallcovering materials yet. Add lines here or copy from the{" "}
+                  <Link to={`/projects/${projectId}/submittals/wallcovering`}>Wallcovering</Link> submittal.
+                </>
+              )}
             </p>
             <div className="row-gap wrap paint-tracker-toolbar">
               <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>
@@ -334,9 +367,9 @@ export function WcTrackerStatusSection({
                 <thead>
                   <tr>
                     <th>Label</th>
-                    <th>Wallcovering</th>
+                    <th>{paint ? "Paint" : "Wallcovering"}</th>
                     <th>Status</th>
-                    <th>Install ready</th>
+                    {paint ? null : <th>Install ready</th>}
                     <th>Install</th>
                     <th>Ordered</th>
                     <th aria-label="Actions" />
@@ -376,13 +409,15 @@ export function WcTrackerStatusSection({
                               ))}
                             </select>
                           </td>
-                          <td>
-                            {readyState.ready
-                              ? "Ready"
-                              : readyState.waiting
-                                ? `Waiting: ${readyState.waiting}`
-                                : "—"}
-                          </td>
+                          {paint ? null : (
+                            <td>
+                              {readyState.ready
+                                ? "Ready"
+                                : readyState.waiting
+                                  ? `Waiting: ${readyState.waiting}`
+                                  : "—"}
+                            </td>
+                          )}
                           <td>{formatListDate(displayLine.installDate)}</td>
                           <td>{formatListDate(displayLine.dateOrdered)}</td>
                           <td className="wc-tracker-list-actions">
@@ -448,6 +483,7 @@ export function WcTrackerStatusSection({
 
   return (
     <div className="stack paint-tracker-section paint-tracker-section--dashboard">
+      {paint ? <h3 className="job-dashboard-section-title">Special orders</h3> : null}
       {error && <div className="banner banner-error">{error}</div>}
       {body}
       {labelLine ? (
@@ -455,7 +491,7 @@ export function WcTrackerStatusSection({
       ) : null}
       {leavePrompt && (
         <UnsavedChangesDialog
-          targetLabel="this wallcovering line"
+          targetLabel={paint ? "this paint line" : "this wallcovering line"}
           saving={lineSaving}
           stayHint="keep editing"
           onSave={() => void confirmLeaveSave()}

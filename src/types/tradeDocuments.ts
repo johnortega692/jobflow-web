@@ -60,6 +60,8 @@ export type PaintItem = {
   primer_override_id?: string | null;
   /** When true, the row stays on the submittal but is left out of the downloaded PDF. */
   pdf_hidden?: boolean;
+  /** PM special order. Stays on this paint package and gets a Material Tracker procurement row. */
+  special_order?: boolean;
 };
 
 /** Stored primer_override_id when the finish is explicitly self-priming. */
@@ -972,6 +974,7 @@ export function emptyPaintItem(): PaintItem {
     spec_scope: "primary",
     primer_override_id: null,
     pdf_hidden: false,
+    special_order: false,
   };
 }
 
@@ -1393,6 +1396,7 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
     spec_scope: i.spec_scope === "secondary" ? ("secondary" as const) : ("primary" as const),
     primer_override_id: normalizePrimerOverrideId(i.primer_override_id),
     pdf_hidden: i.pdf_hidden === true,
+    special_order: i.special_order === true,
   }));
   const auto_label =
     typeof raw.auto_label === "boolean" ? raw.auto_label : paintItemsSuggestAutoLabel(items);

@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { paintTrackerJobLabel, projectHasWallcovering, wcTrackerJobLabel } from "../../lib/jobInfo";
-import type { ProjectForm } from "../../types/database";
+import { resolveWcTrackerLines } from "../../lib/fieldTrackerProject";
+import { trackerLineTrade } from "../../types/fieldTracker";
+import type { ProjectForm, Json } from "../../types/database";
+import { parseProjectTradeData } from "../../types/tradeDocuments";
 import { PaintTrackerStatusSection } from "./PaintTrackerStatusSection";
 import { WcTrackerStatusSection } from "./WcTrackerStatusSection";
 import { ProcurementLogPanel } from "./ProcurementLogPanel";
@@ -31,6 +34,10 @@ export function JobTrackerPanel({
   onTabChange,
 }: Props) {
   const hasWc = projectHasWallcovering(project.jobInfo);
+  const hasPaintOrders = resolveWcTrackerLines(parseProjectTradeData(project.data as Json)).some(
+    (line) => trackerLineTrade(line) === "paint",
+  );
+  const showLog = Boolean(editorMode) && (hasWc || hasPaintOrders);
   const [tab, setTab] = useState<TrackerTab>(initialTab ?? "paint");
   const leaveWallcoveringRef = useRef<(proceed: () => void) => void>((proceed) => proceed());
   const registerWallcoveringLeave = useCallback((guard: ((proceed: () => void) => void) | null) => {
@@ -38,7 +45,7 @@ export function JobTrackerPanel({
   }, []);
 
   const activeTab: TrackerTab =
-    tab === "wallcovering" && hasWc ? "wallcovering" : tab === "log" && hasWc && editorMode ? "log" : "paint";
+    tab === "wallcovering" && hasWc ? "wallcovering" : tab === "log" && showLog ? "log" : "paint";
 
   function selectTab(next: TrackerTab) {
     const apply = () => {
@@ -88,7 +95,7 @@ export function JobTrackerPanel({
         </div>
       )}
 
-      {editorMode && hasWc && (
+      {editorMode && (hasWc || showLog) && (
         <div className="job-tracker-tabs job-tracker-tabs--underline" role="tablist" aria-label="Tracker sheet">
           <button
             type="button"
@@ -101,6 +108,7 @@ export function JobTrackerPanel({
           >
             Paint
           </button>
+          {hasWc ? (
           <button
             type="button"
             role="tab"
@@ -112,6 +120,8 @@ export function JobTrackerPanel({
           >
             Wallcovering
           </button>
+          ) : null}
+          {showLog ? (
           <button
             type="button"
             role="tab"
@@ -123,6 +133,7 @@ export function JobTrackerPanel({
           >
             Procurement Log
           </button>
+          ) : null}
         </div>
       )}
 
@@ -142,6 +153,14 @@ export function JobTrackerPanel({
             showStatusPills={!editorMode}
             editorMode={editorMode}
           />
+          {editorMode ? (
+            <WcTrackerStatusSection
+              project={project}
+              projectId={projectId}
+              onProjectUpdate={onProjectUpdate}
+              lineTrade="paint"
+            />
+          ) : null}
         </div>
       ) : activeTab === "wallcovering" ? (
         <div id="job-tracker-panel-wc" role="tabpanel" aria-labelledby="job-tracker-tab-wc">

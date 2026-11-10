@@ -363,6 +363,24 @@ export function PaintItemRow({
           </button>
           <button
             type="button"
+            className={`paint-pdf-toggle${item.special_order ? " is-on" : ""}`}
+            aria-pressed={Boolean(item.special_order)}
+            title={
+              item.special_order
+                ? "On Material Tracker under Paint → Special orders. Click to remove it."
+                : "Add this finish to Material Tracker as a special order."
+            }
+            aria-label={
+              item.special_order
+                ? `Special order on for row ${index + 1}`
+                : `Mark row ${index + 1} as a special order`
+            }
+            onClick={() => onChange({ special_order: !item.special_order })}
+          >
+            Track
+          </button>
+          <button
+            type="button"
             className="btn btn-icon btn-small btn-danger-soft"
             disabled={total <= 1}
             onClick={onRemove}
