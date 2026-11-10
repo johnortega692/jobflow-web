@@ -372,8 +372,8 @@ export function FrpSubmittalsPage() {
 
   const submittalPdfFilename = useMemo(
     () =>
-      frpSubmittalFilename(frpPrint.job_name, frpPrint.job_number, draft.submittal_number, draft.spec_section),
-    [frpPrint.job_name, frpPrint.job_number, draft.submittal_number, draft.spec_section],
+      frpSubmittalFilename(frpPrint.job_name, frpPrint.job_number, draft.submittal_number, draft.spec_section, draft.revision_number),
+    [frpPrint.job_name, frpPrint.job_number, draft.submittal_number, draft.spec_section, draft.revision_number],
   );
 
   if (loading || catalogLoading) return <p className="muted">Loading FRP submittal…</p>;

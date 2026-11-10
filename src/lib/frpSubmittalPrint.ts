@@ -109,6 +109,7 @@ export async function downloadFrpSubmittal(
     project.job_number,
     data.submittal_number,
     data.spec_section,
+    data.revision_number,
   );
   await downloadTradeSubmittalPdf({
     filename,

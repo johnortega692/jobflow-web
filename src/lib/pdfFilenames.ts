@@ -26,28 +26,30 @@ export function transmittalFilename(
   return `${projectPart} - Transmittal ${numPart}.pdf`;
 }
 
-/** Company format: `ICBI - 1151 - Crusoe 2nd Floor - 003 - 09 91 23 - Interior Painting.pdf` */
+/** Company format: `ICBI - 1151 - Crusoe 2nd Floor - 001 Rev 1 - 09 91 23 - Interior Painting.pdf` */
 export function paintSubmittalFilename(
   jobName: string,
   jobNumber: string,
   submittalNumber: number,
   _submittalType: TradeSubmittalType,
   specSection?: string,
+  revisionNumber = 0,
 ): string {
-  const base = companySpecSubmittalFilename(submittalNumber, specSection ?? "");
+  const base = companySpecSubmittalFilename(submittalNumber, specSection ?? "", revisionNumber);
   const prefix = companyJobFilenamePrefix(jobNumber, jobName);
   return `${IRONWOOD_SHORT_COMPANY_NAME} - ${prefix ? `${prefix} - ${base}` : base}`;
 }
 
-/** Company format: `ICBI - 1151 - Crusoe 2nd Floor - 002 - 09 72 00 - Wall Coverings.pdf` */
+/** Company format: `ICBI - 1151 - Crusoe 2nd Floor - 002 Rev 1 - 09 72 00 - Wall Coverings.pdf` */
 export function wallcoveringSubmittalFilename(
   jobName: string,
   jobNumber: string,
   submittalNumber: number,
   _submittalType: TradeSubmittalType,
   specSection?: string,
+  revisionNumber = 0,
 ): string {
-  const base = companySpecSubmittalFilename(submittalNumber, specSection ?? "");
+  const base = companySpecSubmittalFilename(submittalNumber, specSection ?? "", revisionNumber);
   const prefix = companyJobFilenamePrefix(jobNumber, jobName);
   return `${IRONWOOD_SHORT_COMPANY_NAME} - ${prefix ? `${prefix} - ${base}` : base}`;
 }
@@ -96,14 +98,15 @@ export function wallcoveringOrderFormFilename(
     : `${projectPart}_Wallcovering_Order_Form.pdf`;
 }
 
-/** Company format: `ICBI - 001 - 06 60 00 - Plastic Fabrications (FRP).pdf` */
+/** Company format: `ICBI - 001 Rev 1 - 06 60 00 - Plastic Fabrications (FRP).pdf` */
 export function frpSubmittalFilename(
   _jobName: string,
   _jobNumber: string,
   submittalNumber: number,
   specSection?: string,
+  revisionNumber = 0,
 ): string {
-  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "")}`;
+  return `${IRONWOOD_SHORT_COMPANY_NAME} - ${companySpecSubmittalFilename(submittalNumber, specSection ?? "", revisionNumber)}`;
 }
 
 export function frpOrderFormFilename(jobName: string, jobNumber: string, poNumber?: string): string {

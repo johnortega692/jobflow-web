@@ -228,22 +228,27 @@ export function companyJobFilenamePrefix(jobNumber: string, jobName: string): st
 
 /**
  * Company format: `{Submittal #} - {Spec Section #} - {Spec Name}.pdf`
- * e.g. `003 - 09 91 23 - Interior Painting.pdf`
+ * Rev 0 keeps the number alone. Later revisions insert `Rev N` after it.
+ * e.g. `001 - 09 91 23 - Interior Painting.pdf`
+ * e.g. `001 Rev 1 - 09 91 23 - Interior Painting.pdf`
  */
 export function companySpecSubmittalFilename(
   submittalNumber: number,
   specSection: string,
+  revisionNumber = 0,
 ): string {
   const num = packetPackageNumber(submittalNumber);
+  const rev = Number.isFinite(revisionNumber) ? Math.floor(revisionNumber) : 0;
+  const packagePart = rev > 0 ? `${num} Rev ${rev}` : num;
   const raw = specSection.trim().replace(/^Spec\s*Section\s*:?\s*/i, "");
   const split = raw.match(/^(.+?)\s*[-–—]\s*(.+)$/);
   const code = sanitizeCompanyFilenamePart(split?.[1] ?? "");
   const name = sanitizeCompanyFilenamePart(split?.[2] ?? (split ? "" : raw));
 
-  if (code && name) return `${num} - ${code} - ${name}.pdf`;
-  if (code) return `${num} - ${code}.pdf`;
-  if (name) return `${num} - ${name}.pdf`;
-  return `${num} - Submittal.pdf`;
+  if (code && name) return `${packagePart} - ${code} - ${name}.pdf`;
+  if (code) return `${packagePart} - ${code}.pdf`;
+  if (name) return `${packagePart} - ${name}.pdf`;
+  return `${packagePart} - Submittal.pdf`;
 }
 
 export function sdsPacketFilename(

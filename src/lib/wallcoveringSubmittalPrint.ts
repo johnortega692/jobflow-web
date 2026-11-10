@@ -265,6 +265,7 @@ export async function downloadWallcoveringSubmittal(
     data.submittal_number,
     data.submittal_type,
     data.spec_section,
+    data.revision_number,
   );
   await downloadTradeSubmittalPdf({
     filename,

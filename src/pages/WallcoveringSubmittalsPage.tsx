@@ -758,8 +758,9 @@ export function WallcoveringSubmittalsPage() {
         draft.submittal_number,
         draft.submittal_type,
         draft.spec_section,
+        draft.revision_number,
       ),
-    [wcPrint.job_name, wcPrint.job_number, draft.submittal_number, draft.submittal_type, draft.spec_section],
+    [wcPrint.job_name, wcPrint.job_number, draft.submittal_number, draft.submittal_type, draft.spec_section, draft.revision_number],
   );
 
   if (loading) return <p className="muted">Loading wallcovering submittal…</p>;

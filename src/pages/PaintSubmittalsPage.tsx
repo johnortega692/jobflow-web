@@ -827,8 +827,9 @@ export function PaintSubmittalsPage() {
         draft.submittal_number,
         draft.submittal_type,
         draft.spec_section,
+        draft.revision_number,
       ),
-    [project.job_name, project.job_number, draft.submittal_number, draft.submittal_type, draft.spec_section],
+    [project.job_name, project.job_number, draft.submittal_number, draft.submittal_type, draft.spec_section, draft.revision_number],
   );
 
   if (loading) return <p className="muted">Loading paint submittal…</p>;
