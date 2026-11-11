@@ -107,6 +107,7 @@ type LogDataJson = {
   transmittal_number?: string;
   notes?: string;
   revises_line?: string;
+  revision_number?: number;
   trade_submittal_number?: string;
   linked_files?: string[];
   log_id?: string;
@@ -131,6 +132,7 @@ export function normalizeLogRow(raw: Partial<SubmittalLogRow> | null | undefined
     transmittal_number: raw.transmittal_number?.trim() ?? "",
     notes: raw.notes?.trim() ?? "",
     revises_line: raw.revises_line?.trim() ?? "",
+    revision_number: logRevisionNumber(raw.revision_number),
     trade_submittal_number: raw.trade_submittal_number?.trim() ?? "",
     linked_files: [...(raw.linked_files ?? [])],
   };
@@ -152,6 +154,7 @@ export function dbRowToLog(row: Submittal): SubmittalLogRow {
     transmittal_number: data.transmittal_number ?? "",
     notes: data.notes ?? row.description ?? "",
     revises_line: data.revises_line ?? "",
+    revision_number: data.revision_number,
     trade_submittal_number: data.trade_submittal_number ?? "",
     linked_files: data.linked_files ?? [],
   });
@@ -170,6 +173,7 @@ export function logRowToDbPayload(
     transmittal_number: row.transmittal_number,
     notes: row.notes,
     revises_line: row.revises_line,
+    revision_number: logRevisionNumber(row.revision_number),
     trade_submittal_number: row.trade_submittal_number,
     linked_files: row.linked_files,
   };
@@ -220,6 +224,7 @@ export function buildAutoLogRow(
     notes?: string;
     trade_submittal_number?: string;
     revises_line?: string;
+    revision_number?: number;
     submit_today?: boolean;
     status?: string;
     linked_files?: string[];
@@ -239,6 +244,7 @@ export function buildAutoLogRow(
     notes: params.notes ?? "",
     trade_submittal_number: params.trade_submittal_number ?? "",
     revises_line: params.revises_line ?? "",
+    revision_number: logRevisionNumber(params.revision_number),
     linked_files: params.linked_files ?? [],
   });
 }
@@ -264,17 +270,23 @@ export function paintLogRowFromSubmittal(submittalNumber: number): SubmittalLogR
   });
 }
 
-export function buildRevisionRow(source: SubmittalLogRow, existing: SubmittalLogRow[]): SubmittalLogRow {
-  const line = suggestNextLineNumber(existing.map((r) => r.line_number));
+/** First issue is 0 and displays blank. Later revisions are 1, 2, … */
+export function logRevisionNumber(value: number | null | undefined): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+export function formatLogRevision(value: number | null | undefined): string {
+  const n = logRevisionNumber(value);
+  return n > 0 ? String(n) : "";
+}
+
+/** Same log line, next revision. Spec, dates, status, and notes stay put. */
+export function buildRevisionRow(source: SubmittalLogRow): SubmittalLogRow {
   return normalizeLogRow({
-    line_number: line,
-    spec: source.spec,
-    scope: source.scope,
-    section: source.section,
-    submittal_type: source.submittal_type,
-    revises_line: source.line_number,
-    notes: `Revises #${source.line_number}`,
-    status: "Draft",
+    ...source,
+    revision_number: logRevisionNumber(source.revision_number) + 1,
   });
 }
 

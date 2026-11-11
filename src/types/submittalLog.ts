@@ -14,6 +14,8 @@ export type SubmittalLogRow = {
   transmittal_number: string;
   notes: string;
   revises_line: string;
+  /** 0 is the first issue and stays blank on the log. */
+  revision_number: number;
   trade_submittal_number: string;
   linked_files: string[];
 };
@@ -33,6 +35,7 @@ export function emptySubmittalLogRow(lineNumber = "01"): SubmittalLogRow {
     transmittal_number: "",
     notes: "",
     revises_line: "",
+    revision_number: 0,
     trade_submittal_number: "",
     linked_files: [],
   };

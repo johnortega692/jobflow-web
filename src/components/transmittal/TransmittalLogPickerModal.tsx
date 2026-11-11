@@ -4,12 +4,15 @@ import type { SubmittalLogRow } from "../../types/submittalLog";
 type Props = {
   rows: SubmittalLogRow[];
   labelFor: (row: SubmittalLogRow) => string;
+  initiallyPicked?: string[];
   onAdd: (rows: SubmittalLogRow[]) => void;
   onClose: () => void;
 };
 
-export function TransmittalLogPickerModal({ rows, labelFor, onAdd, onClose }: Props) {
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(rows.map((row) => row.id)));
+export function TransmittalLogPickerModal({ rows, labelFor, initiallyPicked, onAdd, onClose }: Props) {
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set(initiallyPicked ?? rows.map((row) => row.id)),
+  );
 
   function toggle(id: string) {
     setPicked((prev) => {
@@ -32,9 +35,9 @@ export function TransmittalLogPickerModal({ rows, labelFor, onAdd, onClose }: Pr
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="transmittal-log-picker-title">From the submittal log</h3>
-        <p className="muted small">Select the Ready log rows to add as enclosures.</p>
+        <p className="muted small">Select log rows to add as enclosures.</p>
         {!rows.length ? (
-          <p className="muted">No Ready log rows are waiting to be added.</p>
+          <p className="muted">The submittal log has no rows yet.</p>
         ) : (
           <ul className="transmittal-sheet-pick-list">
             <li>

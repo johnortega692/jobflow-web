@@ -1046,7 +1046,7 @@ export function TransmittalPage() {
                   <path d="M8 6h13M8 12h13M8 18h13" />
                   <path d="M3 6h.01M3 12h.01M3 18h.01" />
                 </svg>
-                From log{readyLogRows.length ? ` (${readyLogRows.length})` : ""}
+                From log{logRows.length ? ` (${logRows.length})` : ""}
               </button>
               <button type="button" className="btn btn-secondary btn-small transmittal-enc-add-btn" onClick={() => setCustomLineOpen(true)}>
                 + Add item
@@ -1054,6 +1054,9 @@ export function TransmittalPage() {
             </div>
           </div>
         </div>
+        <p className="muted small">
+          Add item stays on this transmittal only. Add the row on the Log tab, leave it Ready, then use From log. Downloading the transmittal marks it Submitted.
+        </p>
 
         {queue.length > 0 && (
           <div className="transmittal-pending-strip">
@@ -1199,8 +1202,15 @@ export function TransmittalPage() {
 
       {logPickerOpen ? (
         <TransmittalLogPickerModal
-          rows={readyLogRows}
-          labelFor={(row) => logRowSuggestionLabel(row, productPackageNumberForLogRow(row, productPackets))}
+          rows={logRows}
+          initiallyPicked={logRows
+            .filter((row) => row.id && !draft.enclosures.some((enc) => enc.log_row_id === row.id))
+            .map((row) => row.id)}
+          labelFor={(row) => {
+            const label = logRowSuggestionLabel(row, productPackageNumberForLogRow(row, productPackets));
+            const status = row.status.trim();
+            return status ? `${label} · ${status}` : label;
+          }}
           onAdd={(rows) => void onAddLogRows(rows)}
           onClose={() => setLogPickerOpen(false)}
         />

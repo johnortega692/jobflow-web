@@ -16214,7 +16214,9 @@ a.job-tracker-tab {
 
 .submittal-log-table {
   font-size: 0.82rem;
-  min-width: 960px;
+  min-width: 72rem;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .submittal-log-table th,
@@ -16225,12 +16227,76 @@ a.job-tracker-tab {
   text-overflow: ellipsis;
 }
 
+.submittal-log-table th:nth-child(-n + 4),
+.submittal-log-table td:nth-child(-n + 4) {
+  position: sticky;
+  z-index: 2;
+  box-sizing: border-box;
+  background: var(--surface);
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.submittal-log-table thead th:nth-child(-n + 4) {
+  z-index: 3;
+  background: var(--surface2);
+}
+
+.submittal-log-table th:nth-child(1),
+.submittal-log-table td:nth-child(1) {
+  left: 0;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+}
+
+.submittal-log-table th:nth-child(2),
+.submittal-log-table td:nth-child(2) {
+  left: 2.75rem;
+  width: 5.5rem;
+  min-width: 5.5rem;
+  max-width: 5.5rem;
+}
+
+.submittal-log-table th:nth-child(3),
+.submittal-log-table td:nth-child(3) {
+  left: 8.25rem;
+  width: 4.25rem;
+  min-width: 4.25rem;
+  max-width: 4.25rem;
+  padding-right: 0.3rem;
+}
+
+.submittal-log-table th:nth-child(4),
+.submittal-log-table td:nth-child(4) {
+  left: 12.5rem;
+  width: 14rem;
+  min-width: 14rem;
+  max-width: 14rem;
+  padding-left: 0.3rem;
+  box-shadow: 8px 0 10px -8px rgba(0, 0, 0, 0.45);
+}
+
 .submittal-log-table td:last-child {
   max-width: 18rem;
 }
 
-.submittal-log-check {
-  width: 2rem;
+.submittal-log-row {
+  cursor: pointer;
+}
+
+.submittal-log-table tbody tr.submittal-log-row:hover td {
+  background: var(--surface2);
+}
+
+.submittal-log-table tbody tr.submittal-log-row.selected td,
+.submittal-log-table tbody tr.submittal-log-row.selected:hover td {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+}
+
+.submittal-log-rev {
+  width: 2.75rem;
+  max-width: 2.75rem;
   text-align: center;
 }
 

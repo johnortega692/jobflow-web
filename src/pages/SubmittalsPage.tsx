@@ -6,6 +6,7 @@ import { exportSubmittalLogExcel } from "../lib/submittalLogExport";
 import {
   buildRevisionRow,
   filterSubmittalLogByContract,
+  formatLogRevision,
   suggestNextLineNumber,
 } from "../lib/submittalLogHelpers";
 import {
@@ -34,13 +35,11 @@ type EditorState =
 export function SubmittalsPage() {
   const { project, projectId } = useOutletContext<Ctx>();
   const [rows, setRows] = useState<SubmittalLogRow[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(null);
-  const [transPromptOpen, setTransPromptOpen] = useState(false);
-  const [transNumber, setTransNumber] = useState("");
   const [viewContract, setViewContract] = useState<ContractListFilterValue>("all");
 
   const showContractSwitch = hasTransmittalContractSwitch(project);
@@ -52,11 +51,11 @@ export function SubmittalsPage() {
 
   useEffect(() => {
     setViewContract("all");
-    setSelected(new Set());
+    setSelectedId(null);
   }, [projectId]);
 
   useEffect(() => {
-    setSelected(new Set());
+    setSelectedId(null);
   }, [viewContract]);
 
   const reload = useCallback(async () => {
@@ -76,23 +75,10 @@ export function SubmittalsPage() {
     void reload();
   }, [reload]);
 
-  const selectedRows = useMemo(
-    () => rows.filter((r) => selected.has(r.id)),
-    [rows, selected],
+  const selectedRow = useMemo(
+    () => rows.find((r) => r.id === selectedId) ?? null,
+    [rows, selectedId],
   );
-
-  function toggleSelect(id: string, on: boolean) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
-
-  function toggleAll(on: boolean) {
-    setSelected(on ? new Set(visibleRows.map((r) => r.id)) : new Set());
-  }
 
   async function onAddSave(row: SubmittalLogRow) {
     await insertSubmittalLogRow(projectId, row);
@@ -108,27 +94,19 @@ export function SubmittalsPage() {
     await reload();
   }
 
-  async function onDelete() {
-    if (!selectedRows.length) {
-      setError("Select one or more rows to delete.");
-      return;
-    }
-    if (!window.confirm(`Delete ${selectedRows.length} row(s) from the submittal log?`)) return;
-    await deleteSubmittalLogRows(projectId, selectedRows.map((r) => r.id));
-    setSelected(new Set());
-    setStatus(`Deleted ${selectedRows.length} row(s).`);
+  async function onDeleteRow(row: SubmittalLogRow) {
+    if (!row.id) return;
+    await deleteSubmittalLogRows(projectId, [row.id]);
+    setSelectedId((current) => (current === row.id ? null : current));
+    setEditor(null);
+    setStatus(`Deleted row #${row.line_number}.`);
     await reload();
   }
 
-  async function confirmMarkSubmitted() {
-    if (!selectedRows.length) {
-      setError("Select one or more rows to mark submitted.");
-      return;
-    }
-    await markRowsSubmitted(projectId, selectedRows, transNumber);
-    setTransPromptOpen(false);
-    setTransNumber("");
-    setStatus(`Marked ${selectedRows.length} row(s) submitted.`);
+  async function onMarkSubmitted(row: SubmittalLogRow) {
+    await markRowsSubmitted(projectId, [row], row.transmittal_number);
+    setEditor(null);
+    setStatus(`Marked row #${row.line_number} submitted.`);
     await reload();
   }
 
@@ -175,10 +153,9 @@ export function SubmittalsPage() {
         <button
           type="button"
           className="btn btn-secondary"
-          disabled={selectedRows.length !== 1}
+          disabled={!selectedRow}
           onClick={() => {
-            const row = selectedRows[0];
-            if (row) setEditor({ mode: "edit", row });
+            if (selectedRow) setEditor({ mode: "edit", row: selectedRow });
           }}
         >
           Edit
@@ -186,26 +163,9 @@ export function SubmittalsPage() {
         <button
           type="button"
           className="btn btn-secondary"
-          disabled={!selectedRows.length}
-          onClick={() => void onDelete()}
-        >
-          Delete
-        </button>
-        <button
-          type="button"
-          className="btn btn-warning"
-          disabled={!selectedRows.length}
-          onClick={() => setTransPromptOpen(true)}
-        >
-          Mark Submitted
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={selectedRows.length !== 1}
+          disabled={!selectedRow}
           onClick={() => {
-            const src = selectedRows[0];
-            if (src) setEditor({ mode: "revision", row: buildRevisionRow(src, rows) });
+            if (selectedRow) setEditor({ mode: "revision", row: buildRevisionRow(selectedRow) });
           }}
         >
           Create Revision
@@ -215,6 +175,9 @@ export function SubmittalsPage() {
           Export to Excel
         </button>
       </div>
+      <p className="muted small">
+        Product data and SDS are built on the Package tab. Downloading that PDF adds the log row and suggests it on the Transmittal.
+      </p>
 
       <ContractListFilter project={project} value={viewContract} onChange={setViewContract} />
 
@@ -235,22 +198,11 @@ export function SubmittalsPage() {
           <table className="data-table submittal-log-table">
             <thead>
               <tr>
-                <th className="submittal-log-check">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all rows"
-                    checked={
-                      visibleRows.length > 0 &&
-                      visibleRows.every((row) => selected.has(row.id))
-                    }
-                    onChange={(e) => toggleAll(e.target.checked)}
-                  />
-                </th>
                 <th>#</th>
-                <th>SPEC</th>
-                <th>SCOPE</th>
                 <th>SECTION</th>
+                <th>SCOPE</th>
                 <th>SUBMITTAL</th>
+                <th>Rev</th>
                 <th>SUBMIT</th>
                 <th>RETURN</th>
                 <th>RESULT</th>
@@ -262,20 +214,21 @@ export function SubmittalsPage() {
             </thead>
             <tbody>
               {visibleRows.map((row) => (
-                  <tr key={row.id} className={selected.has(row.id) ? "selected" : undefined}>
-                    <td className="submittal-log-check">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(row.id)}
-                        onChange={(e) => toggleSelect(row.id, e.target.checked)}
-                        aria-label={`Select row ${row.line_number}`}
-                      />
-                    </td>
+                  <tr
+                    key={row.id}
+                    className={selectedId === row.id ? "selected submittal-log-row" : "submittal-log-row"}
+                    title="Click to select. Double-click to edit."
+                    onClick={() => setSelectedId(row.id)}
+                    onDoubleClick={() => {
+                      setSelectedId(row.id);
+                      setEditor({ mode: "edit", row });
+                    }}
+                  >
                     <td>{row.line_number}</td>
-                    <td>{row.spec}</td>
-                    <td>{row.scope}</td>
                     <td>{row.section}</td>
+                    <td>{row.scope}</td>
                     <td>{row.submittal_type}</td>
+                    <td className="submittal-log-rev">{formatLogRevision(row.revision_number)}</td>
                     <td>{row.submit_date}</td>
                     <td>{row.return_date}</td>
                     <td>{row.result}</td>
@@ -316,40 +269,21 @@ export function SubmittalsPage() {
           row={editor.row}
           existingRows={rows.filter((r) => r.id !== editor.row.id)}
           onSave={(row) => void onEditSave(row)}
+          onDelete={(row) => void onDeleteRow(row)}
+          onMarkSubmitted={(row) => void onMarkSubmitted(row)}
           onClose={() => setEditor(null)}
         />
       )}
       {editor?.mode === "revision" && (
         <SubmittalLogRowEditor
-          title="New revision row"
+          title="Revise this row"
           row={editor.row}
-          existingRows={rows}
-          onSave={(row) => void onAddSave(row)}
+          existingRows={rows.filter((r) => r.id !== editor.row.id)}
+          onSave={(row) => void onEditSave(row)}
+          onDelete={(row) => void onDeleteRow(row)}
+          onMarkSubmitted={(row) => void onMarkSubmitted(row)}
           onClose={() => setEditor(null)}
         />
-      )}
-
-      {transPromptOpen && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setTransPromptOpen(false)}>
-          <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
-            <h3>Mark submitted</h3>
-            <p className="muted small">
-              Stamp today&apos;s date and Submitted status on {selectedRows.length} selected row(s).
-            </p>
-            <label>
-              Transmittal # (optional)
-              <input value={transNumber} onChange={(e) => setTransNumber(e.target.value)} />
-            </label>
-            <div className="row-gap wrap">
-              <button type="button" className="btn btn-primary" onClick={() => void confirmMarkSubmitted()}>
-                Mark submitted
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setTransPromptOpen(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </section>
   );

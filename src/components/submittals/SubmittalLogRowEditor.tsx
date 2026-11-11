@@ -6,7 +6,7 @@ import {
   SUBMITTAL_STATUSES,
   SUBMITTAL_TYPES,
 } from "../../types/database";
-import { lineNumberInUse, normalizeLogRow } from "../../lib/submittalLogHelpers";
+import { formatLogRevision, lineNumberInUse, logRevisionNumber, normalizeLogRow } from "../../lib/submittalLogHelpers";
 import type { SubmittalLogRow } from "../../types/submittalLog";
 
 type Props = {
@@ -15,9 +15,19 @@ type Props = {
   existingRows: SubmittalLogRow[];
   onSave: (row: SubmittalLogRow) => void;
   onClose: () => void;
+  onDelete?: (row: SubmittalLogRow) => void;
+  onMarkSubmitted?: (row: SubmittalLogRow) => void;
 };
 
-export function SubmittalLogRowEditor({ title, row, existingRows, onSave, onClose }: Props) {
+export function SubmittalLogRowEditor({
+  title,
+  row,
+  existingRows,
+  onSave,
+  onClose,
+  onDelete,
+  onMarkSubmitted,
+}: Props) {
   const [draft, setDraft] = useState(() => normalizeLogRow(row));
   const [error, setError] = useState<string | null>(null);
 
@@ -25,17 +35,33 @@ export function SubmittalLogRowEditor({ title, row, existingRows, onSave, onClos
     setDraft((d) => normalizeLogRow({ ...d, ...partial, id: d.id }));
   }
 
-  function submit() {
+  function validatedRow(): SubmittalLogRow | null {
     const normalized = normalizeLogRow({ ...draft, id: row.id || draft.id });
     if (!normalized.line_number.trim()) {
       setError("Line # is required.");
-      return;
+      return null;
     }
     if (lineNumberInUse(existingRows, normalized.line_number, row.id || undefined)) {
       setError(`Line #${normalized.line_number} is already used.`);
-      return;
+      return null;
     }
-    onSave(normalized);
+    return normalized;
+  }
+
+  function submit() {
+    const normalized = validatedRow();
+    if (normalized) onSave(normalized);
+  }
+
+  function markSubmitted() {
+    const normalized = validatedRow();
+    if (normalized) onMarkSubmitted?.(normalized);
+  }
+
+  function remove() {
+    const normalized = normalizeLogRow({ ...draft, id: row.id || draft.id });
+    if (!window.confirm(`Delete log row #${normalized.line_number}?`)) return;
+    onDelete?.(normalized);
   }
 
   return (
@@ -54,8 +80,8 @@ export function SubmittalLogRowEditor({ title, row, existingRows, onSave, onClos
             <input value={draft.line_number} onChange={(e) => patch({ line_number: e.target.value })} />
           </label>
           <label>
-            SPEC
-            <input value={draft.spec} onChange={(e) => patch({ spec: e.target.value })} />
+            SECTION
+            <input value={draft.section} onChange={(e) => patch({ section: e.target.value })} />
           </label>
           <label>
             SCOPE
@@ -66,10 +92,6 @@ export function SubmittalLogRowEditor({ title, row, existingRows, onSave, onClos
                 </option>
               ))}
             </select>
-          </label>
-          <label>
-            SECTION
-            <input value={draft.section} onChange={(e) => patch({ section: e.target.value })} />
           </label>
           <label>
             SUBMITTAL
@@ -83,6 +105,16 @@ export function SubmittalLogRowEditor({ title, row, existingRows, onSave, onClos
                 </option>
               ))}
             </select>
+          </label>
+          <label>
+            Rev
+            <input
+              value={formatLogRevision(draft.revision_number)}
+              onChange={(e) =>
+                patch({ revision_number: logRevisionNumber(Number.parseInt(e.target.value, 10)) })
+              }
+              inputMode="numeric"
+            />
           </label>
           <label>
             Status
@@ -143,6 +175,16 @@ export function SubmittalLogRowEditor({ title, row, existingRows, onSave, onClos
           <button type="button" className="btn btn-primary" onClick={submit}>
             Save row
           </button>
+          {onMarkSubmitted && (
+            <button type="button" className="btn btn-warning" onClick={markSubmitted}>
+              Mark Submitted
+            </button>
+          )}
+          {onDelete && (
+            <button type="button" className="btn btn-secondary" onClick={remove}>
+              Delete
+            </button>
+          )}
           <button type="button" className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>

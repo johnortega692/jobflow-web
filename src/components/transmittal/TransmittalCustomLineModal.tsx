@@ -22,6 +22,9 @@ export function TransmittalCustomLineModal({ showForColumn, onAdd, onClose }: Pr
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div className="modal card stack" onClick={(e) => e.stopPropagation()}>
         <h3>Add custom enclosure line</h3>
+        <p className="muted small">
+          This line stays on the transmittal only. Add it on the Log tab and leave it Ready, then use From log.
+        </p>
         <label>
           Description
           <input value={description} onChange={(e) => setDescription(e.target.value)} autoFocus />

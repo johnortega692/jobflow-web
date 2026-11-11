@@ -3,6 +3,8 @@ import { supabase } from "./supabase";
 import {
   buildAutoLogRow,
   dbRowToLog,
+  formatLogRevision,
+  logRevisionNumber,
   logRowToDbPayload,
   normalizeLogRow,
   sortLogRows,
@@ -32,7 +34,9 @@ export async function insertSubmittalLogRow(
   await logProjectActivityEvent({
     projectId,
     action: "submittal_log_added",
-    summary: `Submittal log row #${saved.line_number} added`,
+    summary: formatLogRevision(saved.revision_number)
+      ? `Submittal log row #${saved.line_number} Rev ${formatLogRevision(saved.revision_number)} added`
+      : `Submittal log row #${saved.line_number} added`,
   });
   return saved;
 }
@@ -85,9 +89,8 @@ export async function deleteSubmittalLogRows(projectId: string, ids: string[]): 
 }
 
 /**
- * Auto-logs a submittal package's first PDF download as a new log line.
- * Re-downloading the same package (e.g. reprinting) must not create a
- * second line — reuse the row already logged for this trade submittal number.
+ * One log line per submittal package. The first PDF creates the line.
+ * A later revision updates Rev on that same line and does not add another.
  */
 export async function recordPdfLogRow(
   projectId: string,
@@ -96,14 +99,26 @@ export async function recordPdfLogRow(
   const existing = await loadSubmittalLogRows(projectId);
   const tradeNumber = params.trade_submittal_number?.trim();
   const scope = params.scope ?? "Paint";
-  const already = tradeNumber
+  const revision = logRevisionNumber(params.revision_number);
+  const current = tradeNumber
     ? existing.find(
-        (row) => row.trade_submittal_number.trim() === tradeNumber && row.scope === scope && !row.revises_line,
+        (row) =>
+          row.trade_submittal_number.trim() === tradeNumber &&
+          row.scope === scope &&
+          !row.revises_line.trim(),
       )
     : undefined;
-  if (already) return already;
-  const row = buildAutoLogRow(existing, params);
-  return insertSubmittalLogRow(projectId, row);
+  if (current) {
+    if (revision <= logRevisionNumber(current.revision_number)) return current;
+    return updateSubmittalLogRow(
+      projectId,
+      normalizeLogRow({ ...current, revision_number: revision }),
+    );
+  }
+  return insertSubmittalLogRow(
+    projectId,
+    buildAutoLogRow(existing, { ...params, revision_number: revision }),
+  );
 }
 
 export async function markRowsSubmitted(

@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { TRANSMITTAL_CONTRACT_LABELS } from "./jobInfo";
-import { formatLineNumberDisplay, scopeToContract } from "./submittalLogHelpers";
+import { formatLineNumberDisplay, formatLogRevision, scopeToContract } from "./submittalLogHelpers";
 import type { SubmittalLogRow } from "../types/submittalLog";
 
 export type SubmittalLogExportOptions = {
@@ -17,10 +17,10 @@ export function exportSubmittalLogExcel(
   const sheetRows = rows.map((r) => {
     const base = {
       "#": formatLineNumberDisplay(r.line_number),
-      SPEC: r.spec,
-      SCOPE: r.scope,
       SECTION: r.section,
+      SCOPE: r.scope,
       SUBMITTAL: r.submittal_type,
+      Rev: formatLogRevision(r.revision_number),
       SUBMIT: r.submit_date,
       RETURN: r.return_date,
       RESULT: r.result,

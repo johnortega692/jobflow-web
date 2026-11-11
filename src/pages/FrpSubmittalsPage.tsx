@@ -296,6 +296,7 @@ export function FrpSubmittalsPage() {
           section: parsed.section || draft.spec_section,
           notes: `FRP submittal #${draft.submittal_number}`,
           trade_submittal_number: String(draft.submittal_number),
+          revision_number: draft.revision_number,
           status: "Ready",
         });
       } catch {
