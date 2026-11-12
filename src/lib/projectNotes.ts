@@ -1,5 +1,5 @@
-import { listDoneProjectIds } from "./projectDone";
-import { supabase } from "./supabase";
+import { listDoneProjectIds } from "./projectDone.js";
+import { supabase } from "./supabase.js";
 
 export type ProjectNoteType = "note" | "follow_up" | "flag";
 export type ProjectNoteStatus = "open" | "done";

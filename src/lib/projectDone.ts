@@ -1,5 +1,5 @@
-import { logProjectActivityEvent } from "./projectActivity";
-import { supabase } from "./supabase";
+import { logProjectActivityEvent } from "./projectActivity.js";
+import { supabase } from "./supabase.js";
 
 export async function fetchProjectIsDone(projectId: string): Promise<{
   isDone: boolean;
