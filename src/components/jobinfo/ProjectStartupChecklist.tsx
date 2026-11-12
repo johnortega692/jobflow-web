@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   JOB_INFO_STARTUP_STEP,
@@ -23,6 +23,7 @@ import {
   defaultStartupItems,
   loadDefaultStartupItems,
   parseStartupItems,
+  startupItemsProgress,
   toggleStartupItemComplete,
   withSubmitBrushoutsFromMaterialTracker,
   type StartupChecklistGroup,
@@ -30,7 +31,10 @@ import {
 } from "../../lib/projectStartupItems";
 import { supabase } from "../../lib/supabase";
 import type { ProjectForm } from "../../types/database";
+import { DashboardProjectNotes } from "./DashboardProjectNotes";
 import { ProjectStartupItemsCard } from "./ProjectStartupItemsCard";
+
+type PanelTab = "startup" | "notes";
 
 type Props = {
   project: ProjectForm;
@@ -75,6 +79,9 @@ export function ProjectStartupChecklist({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [manualTab, setManualTab] = useState<PanelTab | null>(null);
+  const [openNoteCount, setOpenNoteCount] = useState(0);
+  const tabRefs = useRef<Partial<Record<PanelTab, HTMLButtonElement | null>>>({});
 
   const hasWallcovering = projectHasWallcovering(project.jobInfo);
   const displayChecklist = useMemo(
@@ -258,16 +265,92 @@ export function ProjectStartupChecklist({
 
   const activeStep = steps.find((s) => s.key === activeKey) ?? steps.find((s) => !s.done) ?? steps[0];
   const activeBusy = Boolean(activeStep?.manualId && savingId === activeStep.manualId);
+  const startupProgress = startupItemsProgress(startupItems);
+  const startupComplete = !loading && startupProgress.done === startupProgress.total;
+  const tabOrder: PanelTab[] = startupComplete ? ["notes", "startup"] : ["startup", "notes"];
+  const activeTab: PanelTab = focus ? "startup" : (manualTab ?? (startupComplete ? "notes" : "startup"));
+
+  const rememberStartupFocus = useCallback(() => {
+    setManualTab("startup");
+    onFocusHandled?.();
+  }, [onFocusHandled]);
+
+  function selectTab(next: PanelTab, focusTab = false) {
+    setManualTab(next);
+    if (focusTab) tabRefs.current[next]?.focus();
+  }
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: PanelTab) {
+    const index = tabOrder.indexOf(current);
+    let nextIndex = index;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabOrder.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabOrder.length) % tabOrder.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = tabOrder.length - 1;
+    else return;
+    event.preventDefault();
+    const next = tabOrder[nextIndex];
+    if (next) selectTab(next, true);
+  }
+
+  const startupBadge = `${startupProgress.done}/${startupProgress.total}`;
 
   return (
     <section className="card job-startup-checklist" id="startup-checklist">
       {error && <div className="banner banner-error job-startup-banner">{error}</div>}
 
+      <div
+        className="submittals-hub-tabs job-tracker-tabs job-tracker-tabs--underline"
+        role="tablist"
+        aria-label="Project notes and startup"
+      >
+        {tabOrder.map((tab) => {
+          const selected = activeTab === tab;
+          const label = tab === "startup" ? "Project startup" : "Notes";
+          const badge =
+            tab === "startup" ? (
+              <span
+                className={`submittals-hub-tab-count${startupComplete ? " job-startup-group-count--done" : ""}`}
+              >
+                {startupBadge}
+              </span>
+            ) : (
+              <span className="submittals-hub-tab-count">{openNoteCount} open</span>
+            );
+          return (
+            <button
+              key={tab}
+              ref={(node) => {
+                tabRefs.current[tab] = node;
+              }}
+              type="button"
+              role="tab"
+              id={`dashboard-panel-tab-${tab}`}
+              className={`job-tracker-tab${selected ? " job-tracker-tab--active" : ""}`}
+              aria-selected={selected}
+              aria-controls={`dashboard-panel-${tab}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => selectTab(tab)}
+              onKeyDown={(event) => onTabKeyDown(event, tab)}
+            >
+              {label}
+              {badge}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        role="tabpanel"
+        id="dashboard-panel-startup"
+        aria-labelledby="dashboard-panel-tab-startup"
+        hidden={activeTab !== "startup"}
+      >
       <ProjectStartupItemsCard
         items={startupItems}
         jobInfo={project.jobInfo}
         focus={focus}
-        onFocusHandled={onFocusHandled}
+        onFocusHandled={rememberStartupFocus}
         onOpenJobSetup={onOpenJobSetup}
         onConfigureStartup={onConfigureStartup}
         onToggleManualItem={(itemId, complete) => void onToggleManualItem(itemId, complete)}
@@ -385,6 +468,16 @@ export function ProjectStartupChecklist({
             )}
           </div>
         )}
+      </div>
+      </div>
+
+      <div
+        role="tabpanel"
+        id="dashboard-panel-notes"
+        aria-labelledby="dashboard-panel-tab-notes"
+        hidden={activeTab !== "notes"}
+      >
+        <DashboardProjectNotes projectId={projectId} onOpenCount={setOpenNoteCount} />
       </div>
     </section>
   );

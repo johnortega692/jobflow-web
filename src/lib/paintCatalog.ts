@@ -899,7 +899,8 @@ export function effectivePaintPrimer(item: PaintPrimerItemRef, products: PaintPr
   const pairedId =
     catalog?.paired_primer_id && primerIds.has(catalog.paired_primer_id) ? catalog.paired_primer_id : null;
   const overrideId = raw && !explicitNone && primerIds.has(raw) ? raw : null;
-  const catalogSelfPriming = Boolean(catalog) && !catalog?.paired_primer_id;
+  // A catalog finish with no pair needs no primer. Self-priming is only the explicit menu choice.
+  const catalogHasNoPrimer = Boolean(catalog) && !pairedId;
   if (explicitNone) {
     return {
       isPrimerProduct: false,
@@ -930,13 +931,13 @@ export function effectivePaintPrimer(item: PaintPrimerItemRef, products: PaintPr
       missing: false,
     };
   }
-  const missing = !catalogSelfPriming && finishHasContent(item);
+  const missing = !catalogHasNoPrimer && finishHasContent(item);
   return {
     isPrimerProduct: false,
     overridden: false,
     primerId: null,
     primerName: "",
-    selfPriming: catalogSelfPriming,
+    selfPriming: false,
     missing,
   };
 }

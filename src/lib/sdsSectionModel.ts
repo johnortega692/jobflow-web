@@ -38,7 +38,8 @@ export type SdsFileAttachment = {
   filename: string;
 };
 
-export type SdsSectionAttachments = Partial<Record<SdsAttachmentKind, SdsFileAttachment>>;
+/** Each type holds zero or more PDFs. Older packets stored one object, or sometimes a path string. */
+export type SdsSectionAttachments = Partial<Record<SdsAttachmentKind, SdsFileAttachment[]>>;
 
 export const SDS_ATTACHMENT_KINDS: {
   kind: SdsAttachmentKind;
@@ -54,25 +55,59 @@ export const SDS_ATTACHMENT_KINDS: {
   { kind: "maintenance", label: "Maintenance Data", short: "Maint", stamp: "Maintenance" },
 ];
 
-type LegacySection = Partial<SdsSection> & {
+type LegacyAttachmentValue = string | SdsFileAttachment | Array<string | SdsFileAttachment>;
+
+type LegacyAttachmentBag = Partial<Record<SdsAttachmentKind, LegacyAttachmentValue>>;
+
+type LegacySection = Partial<Omit<SdsSection, "attachments">> & {
   sheen_type?: string;
   material?: string;
   tds_path?: string;
   sds_path?: string;
   tds_filename?: string;
   sds_filename?: string;
+  attachments?: LegacyAttachmentBag;
 };
+
+function fileFromUnknown(value: unknown): SdsFileAttachment | null {
+  if (typeof value === "string") {
+    const path = value.trim();
+    if (!path) return null;
+    const filename = path.split(/[/\\]/).pop() || path;
+    return { path, filename };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const path = "path" in value && typeof value.path === "string" ? value.path.trim() : "";
+  if (!path) return null;
+  const filename = "filename" in value && typeof value.filename === "string" ? value.filename.trim() : "";
+  return { path, filename };
+}
+
+function fileListFromUnknown(value: unknown): SdsFileAttachment[] {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  const out: SdsFileAttachment[] = [];
+  for (const item of items) {
+    const file = fileFromUnknown(item);
+    if (file) out.push(file);
+  }
+  return out;
+}
 
 export function normalizeSdsSection(raw: LegacySection | null | undefined): SdsSection {
   const base = emptySdsSectionInternal();
   if (!raw) return base;
 
-  const attachments: SdsSectionAttachments = { ...(raw.attachments ?? {}) };
-  if (raw.tds_path?.trim() && !attachments.product_data) {
-    attachments.product_data = { path: raw.tds_path.trim(), filename: raw.tds_filename?.trim() || "" };
+  const legacy = raw.attachments;
+  const attachments: SdsSectionAttachments = {};
+  for (const { kind } of SDS_ATTACHMENT_KINDS) {
+    const files = fileListFromUnknown(legacy?.[kind]);
+    if (files.length) attachments[kind] = files;
   }
-  if (raw.sds_path?.trim() && !attachments.sds) {
-    attachments.sds = { path: raw.sds_path.trim(), filename: raw.sds_filename?.trim() || "" };
+  if (raw.tds_path?.trim() && !attachments.product_data?.length) {
+    attachments.product_data = [{ path: raw.tds_path.trim(), filename: raw.tds_filename?.trim() || "" }];
+  }
+  if (raw.sds_path?.trim() && !attachments.sds?.length) {
+    attachments.sds = [{ path: raw.sds_path.trim(), filename: raw.sds_filename?.trim() || "" }];
   }
 
   const category = normalizeCategory(raw.category);
@@ -227,12 +262,17 @@ function normalizeCategory(value: string | undefined): SdsSectionCategory {
   return "Misc Finish";
 }
 
+/** Files for one type, in attachment order. */
+export function sectionAttachmentFiles(section: SdsSection, kind: SdsAttachmentKind): SdsFileAttachment[] {
+  return (section.attachments[kind] ?? []).filter((file) => file.path?.trim());
+}
+
 export function sectionHasAttachment(section: SdsSection, kind: SdsAttachmentKind): boolean {
-  return Boolean(section.attachments[kind]?.path?.trim());
+  return sectionAttachmentFiles(section, kind).length > 0;
 }
 
 export function sectionAttachmentCount(section: SdsSection): number {
-  return SDS_ATTACHMENT_KINDS.filter((k) => sectionHasAttachment(section, k.kind)).length;
+  return SDS_ATTACHMENT_KINDS.reduce((total, kind) => total + sectionAttachmentFiles(section, kind.kind).length, 0);
 }
 
 export function sectionHasAnyAttachment(section: SdsSection): boolean {
@@ -345,7 +385,12 @@ export function sectionAttachmentKinds(section: SdsSection): SdsAttachmentKind[]
 }
 
 export function countSectionPdfPages(section: SdsSection): number {
-  return sectionAttachmentKinds(section).length;
+  return sectionAttachmentCount(section);
+}
+
+function attachmentFileStem(file: SdsFileAttachment): string {
+  const stem = file.filename.replace(/\.pdf$/i, "").replace(/\s+/g, " ").trim();
+  return stem.length > 72 ? `${stem.slice(0, 71)}…` : stem;
 }
 
 export const SDS_DIVIDER_DOCUMENT_LABELS: Record<SdsAttachmentKind, string> = {
@@ -361,13 +406,34 @@ export function dividerDocumentLabel(kind: SdsAttachmentKind): string {
   return SDS_DIVIDER_DOCUMENT_LABELS[kind];
 }
 
-export function sectionIncludedDocuments(
-  section: SdsSection,
-): { kind: SdsAttachmentKind; label: string }[] {
-  return sectionAttachmentKinds(section).map((kind) => ({
-    kind,
-    label: dividerDocumentLabel(kind),
-  }));
+export type IncludedSectionDocument = {
+  kind: SdsAttachmentKind;
+  fileIndex: number;
+  /** Divider line. A second SDS uses its file name so Part A and Part B stay distinct. */
+  label: string;
+  tocLabel: string;
+  stamp: string;
+};
+
+export function sectionIncludedDocuments(section: SdsSection): IncludedSectionDocument[] {
+  const docs: IncludedSectionDocument[] = [];
+  for (const kind of sectionAttachmentKinds(section)) {
+    const files = sectionAttachmentFiles(section, kind);
+    files.forEach((file, fileIndex) => {
+      const single = files.length === 1;
+      const stem = attachmentFileStem(file);
+      const base = dividerDocumentLabel(kind);
+      const toc = tocAttachmentLabel(kind);
+      docs.push({
+        kind,
+        fileIndex,
+        label: single || !stem ? (single ? base : `${base} ${fileIndex + 1}`) : stem,
+        tocLabel: single || !stem ? (single ? toc : `${toc} ${fileIndex + 1}`) : stem,
+        stamp: single ? attachmentStampLabel(kind) : `${attachmentStampLabel(kind)} ${fileIndex + 1}`,
+      });
+    });
+  }
+  return docs;
 }
 
 export function tocSectionTitle(section: SdsSection): string {

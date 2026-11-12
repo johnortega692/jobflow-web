@@ -17,7 +17,7 @@ import {
 
 export type PaintSystemRow = {
   finishName: string;
-  /** Second line under the finish: "over {primer}", "self-priming", or "No primer". */
+  /** Second line under the finish. Blank when the catalog finish has no paired primer. */
   primerLine: string;
   sheen: string;
   items: string;
@@ -120,9 +120,9 @@ export function buildPaintSystemSchedule(
       ? `override:${effect.selfPriming ? "none" : effect.primerId}`
       : effect.primerId
         ? `paired:${effect.primerId}`
-        : effect.selfPriming
-          ? "self"
-          : "missing";
+        : effect.missing
+          ? "missing"
+          : "none";
     const key = [norm(item.manufacturer), norm(item.product), primerKey, norm(item.sheen)].join("|");
     let index = indexByKey.get(key);
     if (index === undefined) {
@@ -132,7 +132,9 @@ export function buildPaintSystemSchedule(
         ? `over ${effect.primerName}`
         : effect.selfPriming
           ? "self-priming"
-          : "No primer";
+          : effect.missing
+            ? "No primer"
+            : "";
       groups.push({
         key,
         finishName: item.product.trim(),

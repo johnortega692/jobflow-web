@@ -418,7 +418,7 @@ export function NotesPage() {
   );
 }
 
-function SnoozeButton({
+export function SnoozeButton({
   label,
   open,
   disabled,

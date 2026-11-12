@@ -6018,51 +6018,150 @@ th {
   margin: 0;
 }
 
-.sds-attachments-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
+.sds-attachment-stack,
+.sds-other-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
-.sds-file-slot {
+.sds-other-docs-label {
+  margin: 0.15rem 0 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sds-attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sds-attachment-chip {
+  margin: 0;
+  padding: 0.28rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.sds-attachment-chip:hover {
+  border-color: var(--border-strong, var(--accent));
+  color: var(--text);
+}
+
+.sds-attach-card {
+  display: flex;
+  flex-direction: column;
   gap: 0.45rem;
-  padding: 0.65rem 0.7rem;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
-  transition: border-color 0.15s ease, background 0.15s ease, outline 0.15s ease;
 }
 
-.sds-file-slot--filled {
-  border: 1px solid var(--border);
-}
-
-.sds-file-slot--empty {
-  border: 1px dashed var(--border);
-}
-
-.sds-file-slot--required-empty {
-  border: 1px dashed color-mix(in srgb, #c69000 55%, var(--border));
-  background: color-mix(in srgb, #f5c518 10%, var(--bg-elevated));
-}
-
-.sds-file-slot--dragover {
+.sds-attach-card--dragover {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
-  outline: 2px dashed var(--accent);
-  outline-offset: -2px;
 }
 
-.sds-file-slot-top {
+.sds-attach-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.4rem;
+  gap: 0.6rem;
 }
 
-.sds-file-slot-label {
+.sds-attach-head-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.sds-attach-label {
   font-size: 0.82rem;
   font-weight: 650;
   line-height: 1.25;
+}
+
+.sds-attach-count {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.sds-attach-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.sds-attach-add.is-disabled {
+  pointer-events: none;
+}
+
+.sds-attach-empty {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sds-attach-empty--required {
+  border-color: color-mix(in srgb, #c69000 55%, var(--border));
+  background: color-mix(in srgb, #f5c518 10%, var(--bg-elevated));
+}
+
+.sds-attach-files {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sds-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.sds-attach-row + .sds-attach-row {
+  border-top: 1px solid var(--border);
+}
+
+.sds-attach-pdf {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.sds-attach-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.sds-attach-remove {
+  flex-shrink: 0;
 }
 
 .sds-file-slot-required {
@@ -6075,19 +6174,6 @@ th {
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.01em;
-}
-
-.sds-file-slot-name {
-  margin: 0;
-  min-height: 2.4em;
-  line-height: 1.35;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-.sds-file-slot-actions {
-  margin-top: auto;
-  align-items: center;
 }
 
 .sds-section-editor-footer {
@@ -6114,10 +6200,6 @@ th {
 }
 
 @media (max-width: 560px) {
-  .sds-attachments-grid {
-    grid-template-columns: 1fr;
-  }
-
   .sds-section-editor-header-row {
     flex-direction: column;
     align-items: stretch;
@@ -13825,6 +13907,57 @@ a.job-tracker-tab {
 .job-startup-checklist {
   padding: 0.75rem 0.85rem 0.65rem;
   overflow: hidden;
+}
+
+.job-startup-checklist > .submittals-hub-tabs {
+  margin: -0.15rem -0.15rem 0.75rem;
+}
+
+.dashboard-notes {
+  gap: 0.7rem;
+}
+
+.dashboard-notes-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.dashboard-notes-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-notes-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.dashboard-notes-row input[type="checkbox"] {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.dashboard-notes-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-notes-row--done .project-notes-body {
+  color: var(--muted);
+}
+
+.dashboard-notes-empty {
+  margin: 0;
+}
+
+.dashboard-notes-all {
+  font-size: 0.86rem;
 }
 
 .job-startup-items-card {

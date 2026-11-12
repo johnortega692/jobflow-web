@@ -8,8 +8,9 @@ export async function uploadSdsPdf(
   sectionId: string,
   kind: SdsAttachmentKind,
   file: File,
+  storagePath?: string,
 ): Promise<{ path: string; filename: string }> {
-  const path = `${projectId}/${sectionId}/${kind}.pdf`;
+  const path = storagePath?.trim() || `${projectId}/${sectionId}/${kind}.pdf`;
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
     upsert: true,

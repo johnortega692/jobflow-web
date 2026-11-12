@@ -1,6 +1,7 @@
 import type { SdsPacketType } from "./sdsPacketPresets";
 import {
   SDS_ATTACHMENT_KINDS,
+  sectionAttachmentFiles,
   sectionHasAttachment,
   type SdsAttachmentKind,
 } from "./sdsSectionModel";
@@ -57,9 +58,14 @@ export function sectionAttachmentBadges(
   const badges: AttachmentBadgeState[] = [];
 
   for (const meta of SDS_ATTACHMENT_KINDS) {
-    const has = sectionHasAttachment(section, meta.kind);
+    const count = sectionAttachmentFiles(section, meta.kind).length;
+    const has = count > 0;
     if (has) {
-      badges.push({ kind: meta.kind, state: "attached", label: meta.short });
+      badges.push({
+        kind: meta.kind,
+        state: "attached",
+        label: count > 1 ? `${meta.short} ×${count}` : meta.short,
+      });
       continue;
     }
     if (required.has(meta.kind)) {

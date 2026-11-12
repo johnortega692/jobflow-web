@@ -1,17 +1,30 @@
-import { useId, useState, type DragEvent } from "react";
+import { useId, useRef, useState } from "react";
 import type { SdsPacketType } from "../../lib/sdsPacketPresets";
 import { requiredAttachmentsForSection } from "../../lib/sdsPacketRequirements";
 import { parseSdsFilename, removeSdsPdf, uploadSdsPdf } from "../../lib/sdsFileStorage";
 import { downloadProductSheet, searchProductSheets, type ProductSheetHit } from "../../lib/productSheetSearch";
 import {
-  SDS_ATTACHMENT_KINDS,
   intendedUseHasSelfPriming,
   sanitizeFinishType,
+  sectionAttachmentFiles,
   setSelfPrimingNote,
   type SdsAttachmentKind,
 } from "../../lib/sdsSectionModel";
 import type { SdsSection } from "../../types/tradeDocuments";
 import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
+import { AttachmentGroup } from "./AttachmentGroup";
+
+const PRIMARY_ATTACHMENTS: { kind: SdsAttachmentKind; label: string }[] = [
+  { kind: "product_data", label: "Product Data / TDS" },
+  { kind: "sds", label: "SDS" },
+];
+
+const OPTIONAL_ATTACHMENTS: { kind: SdsAttachmentKind; label: string; chip: string }[] = [
+  { kind: "warranty", label: "Warranty", chip: "Warranty" },
+  { kind: "leed_hpd", label: "LEED / HPD / EPD", chip: "LEED / HPD / EPD" },
+  { kind: "test_report", label: "Test report", chip: "Test report" },
+  { kind: "maintenance", label: "Maintenance data", chip: "Maintenance data" },
+];
 
 type Props = {
   mode: "add" | "edit";
@@ -33,7 +46,9 @@ export function SdsSectionEditorModal({
   onClose,
 }: Props) {
   const [section, setSection] = useState<SdsSection>({ ...initial });
-  const [uploading, setUploading] = useState<SdsAttachmentKind | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [openedOptional, setOpenedOptional] = useState<Set<SdsAttachmentKind>>(() => new Set());
+  const addInputs = useRef<Partial<Record<SdsAttachmentKind, HTMLInputElement | null>>>({});
   const [finding, setFinding] = useState(false);
   const [sheetHits, setSheetHits] = useState<ProductSheetHit[] | null>(null);
   const [sheetNote, setSheetNote] = useState<string | null>(null);
@@ -49,29 +64,75 @@ export function SdsSectionEditorModal({
     setSection((s) => ({ ...s, ...patch }));
   }
 
-  async function onUploadFile(kind: SdsAttachmentKind, file: File | null, applyName = true) {
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Only PDF files are supported.");
-      return;
-    }
-    setUploading(kind);
+  function kindBusy(kind: SdsAttachmentKind): boolean {
+    return uploading?.startsWith(`${kind}|`) ?? false;
+  }
+
+  function kindReplacingIndex(kind: SdsAttachmentKind): number | null {
+    if (!uploading?.startsWith(`${kind}|`)) return null;
+    const rest = uploading.slice(kind.length + 1);
+    if (rest === "add") return null;
+    const index = Number(rest);
+    return Number.isInteger(index) ? index : null;
+  }
+
+  async function addFiles(kind: SdsAttachmentKind, incoming: File[], applyName: boolean) {
+    const pdfs = incoming.filter((file) => file.name.toLowerCase().endsWith(".pdf"));
+    if (!pdfs.length) return false;
+    const existing = sectionAttachmentFiles(section, kind);
+    setUploading(`${kind}|add`);
     setError(null);
+    const uploaded: { path: string; filename: string }[] = [];
     try {
-      const meta = applyName ? parseSdsFilename(file.name) : null;
-      const { path, filename } = await uploadSdsPdf(projectId, section.id, kind, file);
-      const attachments = {
-        ...section.attachments,
-        [kind]: { path, filename },
-      };
-      const next: SdsSection = {
+      for (let i = 0; i < pdfs.length; i++) {
+        const file = pdfs[i]!;
+        const storagePath =
+          existing.length + i === 0 ? undefined : `${projectId}/${section.id}/${kind}-${crypto.randomUUID()}.pdf`;
+        uploaded.push(await uploadSdsPdf(projectId, section.id, kind, file, storagePath));
+      }
+      const fillNames =
+        applyName &&
+        existing.length === 0 &&
+        !section.manufacturer.trim() &&
+        !section.product.trim();
+      const meta = fillNames ? parseSdsFilename(pdfs[0]!.name) : null;
+      setSection({
         ...section,
-        attachments,
+        attachments: { ...section.attachments, [kind]: [...existing, ...uploaded] },
         ...(meta?.manufacturer ? { manufacturer: meta.manufacturer } : {}),
         ...(meta?.product ? { product: meta.product } : {}),
         ...(meta?.finish_type ? { finish_type: meta.finish_type } : {}),
-      };
-      setSection(next);
+      });
+    } catch (e) {
+      if (uploaded.length) {
+        setSection({
+          ...section,
+          attachments: { ...section.attachments, [kind]: [...existing, ...uploaded] },
+        });
+      }
+      setError(e instanceof Error ? e.message : "Upload failed");
+      return false;
+    } finally {
+      setUploading(null);
+    }
+    return true;
+  }
+
+  async function replaceFile(kind: SdsAttachmentKind, index: number, file: File) {
+    if (!file.name.toLowerCase().endsWith(".pdf")) return false;
+    const files = sectionAttachmentFiles(section, kind);
+    const existing = files[index];
+    if (!existing) return false;
+    setUploading(`${kind}|${index}`);
+    setError(null);
+    try {
+      const uploaded = await uploadSdsPdf(projectId, section.id, kind, file, existing.path);
+      const nextFiles = [...files];
+      nextFiles[index] = uploaded;
+      setSection({
+        ...section,
+        attachments: { ...section.attachments, [kind]: nextFiles },
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
       return false;
@@ -79,6 +140,40 @@ export function SdsSectionEditorModal({
       setUploading(null);
     }
     return true;
+  }
+
+  async function removeFile(kind: SdsAttachmentKind, index: number) {
+    const files = sectionAttachmentFiles(section, kind);
+    const target = files[index];
+    if (!target) return;
+    try {
+      if (target.path) await removeSdsPdf(target.path);
+    } catch {
+      /* ignore */
+    }
+    const next = files.filter((_, fileIndex) => fileIndex !== index);
+    const attachments = { ...section.attachments };
+    if (next.length) attachments[kind] = next;
+    else delete attachments[kind];
+    patch({ attachments });
+    if (!next.length) {
+      setOpenedOptional((open) => {
+        if (!open.has(kind)) return open;
+        const copy = new Set(open);
+        copy.delete(kind);
+        return copy;
+      });
+    }
+  }
+
+  function openOptional(kind: SdsAttachmentKind) {
+    setOpenedOptional((open) => {
+      if (open.has(kind)) return open;
+      const copy = new Set(open);
+      copy.add(kind);
+      return copy;
+    });
+    addInputs.current[kind]?.click();
   }
 
   const canSearch = Boolean(section.manufacturer.trim() || section.product.trim());
@@ -116,25 +211,13 @@ export function SdsSectionEditorModal({
     setError(null);
     try {
       const file = await downloadProductSheet(hit);
-      const attached = await onUploadFile(hit.kind, file, false);
+      const attached = await addFiles(hit.kind, [file], false);
       if (attached) setAttachedUrls((urls) => [...urls, hit.url]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not attach that PDF.");
     } finally {
       setUsingUrl(null);
     }
-  }
-
-  async function clearFile(kind: SdsAttachmentKind) {
-    const attachment = section.attachments[kind];
-    try {
-      if (attachment?.path) await removeSdsPdf(attachment.path);
-    } catch {
-      /* ignore */
-    }
-    const attachments = { ...section.attachments };
-    delete attachments[kind];
-    patch({ attachments });
   }
 
   return (
@@ -173,7 +256,7 @@ export function SdsSectionEditorModal({
             </div>
           </div>
           <p className="muted small sds-section-editor-intro">
-            Attach PDFs per type — drop onto a slot or Browse.
+            Attach one or more PDFs per type. Drop them on a card or use Add file.
           </p>
         </header>
 
@@ -292,22 +375,73 @@ export function SdsSectionEditorModal({
                 })}
               </ul>
             ) : null}
-            <div className="sds-attachments-grid">
-              {SDS_ATTACHMENT_KINDS.map(({ kind, label }) => {
-                const filename = section.attachments[kind]?.filename ?? "";
-                const required = requiredKinds.has(kind);
-                return (
-                  <FilePickSlot
+            <div className="sds-attachment-stack">
+              {PRIMARY_ATTACHMENTS.map(({ kind, label }) => (
+                <AttachmentGroup
+                  key={kind}
+                  label={label}
+                  files={sectionAttachmentFiles(section, kind)}
+                  required={requiredKinds.has(kind)}
+                  busy={kindBusy(kind)}
+                  replacingIndex={kindReplacingIndex(kind)}
+                  onAdd={(files) => void addFiles(kind, files, true)}
+                  onReplace={(index, file) => void replaceFile(kind, index, file)}
+                  onRemove={(index) => void removeFile(kind, index)}
+                />
+              ))}
+              <div className="sds-other-docs">
+                <p className="sds-other-docs-label">Other documents</p>
+                {OPTIONAL_ATTACHMENTS.filter(
+                  ({ kind }) => sectionAttachmentFiles(section, kind).length > 0 || openedOptional.has(kind),
+                ).map(({ kind, label }) => (
+                  <AttachmentGroup
                     key={kind}
                     label={label}
-                    filename={filename}
-                    required={required}
-                    busy={uploading === kind}
-                    onPick={(f) => void onUploadFile(kind, f)}
-                    onClear={() => void clearFile(kind)}
+                    files={sectionAttachmentFiles(section, kind)}
+                    required={requiredKinds.has(kind)}
+                    busy={kindBusy(kind)}
+                    replacingIndex={kindReplacingIndex(kind)}
+                    onAdd={(files) => void addFiles(kind, files, true)}
+                    onReplace={(index, file) => void replaceFile(kind, index, file)}
+                    onRemove={(index) => void removeFile(kind, index)}
                   />
-                );
-              })}
+                ))}
+                {OPTIONAL_ATTACHMENTS.map(({ kind }) => (
+                  <input
+                    key={`${kind}-pick`}
+                    ref={(node) => {
+                      addInputs.current[kind] = node;
+                    }}
+                    type="file"
+                    accept="application/pdf"
+                    multiple
+                    className="sr-only"
+                    onChange={(event) => {
+                      const picked = [...(event.target.files ?? [])];
+                      event.target.value = "";
+                      if (picked.length) void addFiles(kind, picked, true);
+                    }}
+                  />
+                ))}
+                {OPTIONAL_ATTACHMENTS.some(
+                  ({ kind }) => sectionAttachmentFiles(section, kind).length === 0 && !openedOptional.has(kind),
+                ) ? (
+                  <div className="sds-attachment-chips">
+                    {OPTIONAL_ATTACHMENTS.filter(
+                      ({ kind }) => sectionAttachmentFiles(section, kind).length === 0 && !openedOptional.has(kind),
+                    ).map(({ kind, chip }) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        className="sds-attachment-chip"
+                        onClick={() => openOptional(kind)}
+                      >
+                        + {chip}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -332,98 +466,6 @@ export function SdsSectionEditorModal({
             </button>
           </div>
         </footer>
-      </div>
-    </div>
-  );
-}
-
-function FilePickSlot({
-  label,
-  filename,
-  required,
-  busy,
-  onPick,
-  onClear,
-}: {
-  label: string;
-  filename: string;
-  required: boolean;
-  busy: boolean;
-  onPick: (file: File | null) => void;
-  onClear: () => void;
-}) {
-  const [dragOver, setDragOver] = useState(false);
-  const hasFile = Boolean(filename.trim());
-  const emptyRequired = required && !hasFile;
-
-  function pickPdfFromDataTransfer(dataTransfer: DataTransfer | null) {
-    if (!dataTransfer?.files.length || busy) return;
-    const file = [...dataTransfer.files].find((f) => f.name.toLowerCase().endsWith(".pdf"));
-    if (file) onPick(file);
-  }
-
-  function onDragEnter(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!busy) setDragOver(true);
-  }
-
-  function onDragOver(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!busy) e.dataTransfer.dropEffect = "copy";
-  }
-
-  function onDragLeave(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false);
-  }
-
-  function onDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    pickPdfFromDataTransfer(e.dataTransfer);
-  }
-
-  const stateClass = hasFile
-    ? "sds-file-slot--filled"
-    : emptyRequired
-      ? "sds-file-slot--required-empty"
-      : "sds-file-slot--empty";
-
-  return (
-    <div
-      className={`sds-file-slot stack${stateClass}${dragOver ? " sds-file-slot--dragover" : ""}`}
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      <div className="sds-file-slot-top">
-        <span className={`sds-file-slot-label${hasFile ? "" : " muted"}`}>{label}</span>
-        {required && <span className="sds-file-slot-required">Required</span>}
-      </div>
-      <p className={`sds-file-slot-name small${hasFile ? "" : " muted"}`}>
-        {hasFile ? filename : "Drop PDF here"}
-      </p>
-      <div className="row-gap wrap sds-file-slot-actions">
-        <label className="btn btn-secondary btn-small">
-          {busy ? "Uploading…" : "Browse"}
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            className="sr-only"
-            disabled={busy}
-            onChange={(e) => onPick(e.target.files?.[0] ?? null)}
-          />
-        </label>
-        {hasFile && (
-          <button type="button" className="btn btn-ghost btn-small" disabled={busy} onClick={onClear}>
-            Clear
-          </button>
-        )}
       </div>
     </div>
   );

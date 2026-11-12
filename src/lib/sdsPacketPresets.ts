@@ -226,6 +226,22 @@ export function companyJobFilenamePrefix(jobNumber: string, jobName: string): st
   return [jobNo, jobNm].filter(Boolean).join(" - ");
 }
 
+/** CSI number only. A bare "09 91 13" counts; a title with no number does not. */
+function specCodeForPacketFilename(specSection: string): string {
+  const { code, name } = splitCompanySpecSection(specSection);
+  if (code) return code;
+  if (name && /^[\d\s]+$/.test(name)) return name;
+  return "";
+}
+
+function splitCompanySpecSection(specSection: string): { code: string; name: string } {
+  const raw = specSection.trim().replace(/^Spec\s*Section\s*:?\s*/i, "");
+  const split = raw.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  const code = sanitizeCompanyFilenamePart(split?.[1] ?? "");
+  const name = sanitizeCompanyFilenamePart(split?.[2] ?? (split ? "" : raw));
+  return { code, name };
+}
+
 /**
  * Company format: `{Submittal #} - {Spec Section #} - {Spec Name}.pdf`
  * Rev 0 keeps the number alone. Later revisions insert `Rev N` after it.
@@ -240,10 +256,7 @@ export function companySpecSubmittalFilename(
   const num = packetPackageNumber(submittalNumber);
   const rev = Number.isFinite(revisionNumber) ? Math.floor(revisionNumber) : 0;
   const packagePart = rev > 0 ? `${num} Rev ${rev}` : num;
-  const raw = specSection.trim().replace(/^Spec\s*Section\s*:?\s*/i, "");
-  const split = raw.match(/^(.+?)\s*[-–—]\s*(.+)$/);
-  const code = sanitizeCompanyFilenamePart(split?.[1] ?? "");
-  const name = sanitizeCompanyFilenamePart(split?.[2] ?? (split ? "" : raw));
+  const { code, name } = splitCompanySpecSection(specSection);
 
   if (code && name) return `${packagePart} - ${code} - ${name}.pdf`;
   if (code) return `${packagePart} - ${code}.pdf`;
@@ -251,6 +264,20 @@ export function companySpecSubmittalFilename(
   return `${packagePart} - Submittal.pdf`;
 }
 
+/** Dropdown label for the PDF name. Custom uses the cover title. Slashes are stripped. */
+function packetTypeFilenameLabel(packetType: SdsPacketType, coverTitle: string): string {
+  if (packetType === "Custom") {
+    const label = sanitizeCompanyFilenamePart(coverTitle).slice(0, 40).trim();
+    return label || "Custom";
+  }
+  return sanitizeCompanyFilenamePart(packetType) || "Package";
+}
+
+/**
+ * Package PDF keeps the submittal prefix and swaps the spec title for the packet type.
+ * One CSI: `ICBI - 1156 - 2460 and 2480 Exterior Paint - 001 - 09 91 13 - Product Information.pdf`
+ * Zero or several CSIs: the spec code is left off.
+ */
 export function sdsPacketFilename(
   jobName: string,
   jobNumber: string,
@@ -270,10 +297,13 @@ export function sdsPacketFilename(
     seen.add(value);
     unique.push(value);
   }
-  // Exactly one CSI → include; 0 or 2+ → blank (no fake lead).
+  // Exactly one CSI → include its code; 0 or 2+ → blank (no fake lead).
   const specForName =
     unique.length === 1 ? unique[0]! : unique.length === 0 ? (packet.spec_section?.trim() ?? "") : "";
-  const base = companySpecSubmittalFilename(packet.submittal_number, specForName);
+  const specCode = specCodeForPacketFilename(specForName);
+  const typeLabel = packetTypeFilenameLabel(packet.packet_type, packet.cover_title);
+  const num = packetPackageNumber(packet.submittal_number);
+  const base = `${[num, specCode, typeLabel].filter(Boolean).join(" - ")}.pdf`;
   const prefix = companyJobFilenamePrefix(jobNumber, jobName);
   return `${IRONWOOD_SHORT_COMPANY_NAME} - ${prefix ? `${prefix} - ${base}` : base}`;
 }

@@ -10,17 +10,15 @@ import type { PaintItem, SdsPacketData, SdsSection, WallcoveringItem } from "../
 import { companyLetterheadLine, formatSubmittalNumberDisplay, type PrintBranding } from "./printCore";
 import { downloadSdsPdf } from "./sdsFileStorage";
 import {
-  attachmentStampLabel,
   countSectionPdfPages,
   notesFromAttachments,
   packetDocumentCount,
   packetProductCount,
-  sectionAttachmentKinds,
+  sectionAttachmentFiles,
   sectionIncludedDocuments,
   sectionHasAnyAttachment,
   sdsPacketSpecSectionsLabel,
   sortSdsSectionsBySpec,
-  tocAttachmentLabel,
   tocSectionTitle,
   type SdsAttachmentKind,
 } from "./sdsSectionModel";
@@ -51,6 +49,7 @@ type DividerDocLink = {
   pageIndex: number;
   rect: RowRect;
   kind: SdsAttachmentKind;
+  fileIndex: number;
 };
 
 type WcDividerCard = {
@@ -1319,6 +1318,7 @@ async function addSectionDivider(
         pageIndex,
         rect: [margin + 4, y - 3, labelX + labelW + 4, y + 10],
         kind: docItem.kind,
+        fileIndex: docItem.fileIndex,
       });
     }
     y -= 14;
@@ -1710,7 +1710,9 @@ function addPaintSystemSchedule(
     const sheenWidth = Math.max(8, systemWidths[1]! - 8);
     const itemsWidth = Math.max(8, systemWidths[2]! - 8);
     const finishLines = wrapCellLines(system.finishName, ctx.bold, 8, finishWidth);
-    const primerLines = wrapCellLines(system.primerLine, ctx.font, 7.5, finishWidth);
+    const primerLines = system.primerLine.trim()
+      ? wrapCellLines(system.primerLine, ctx.font, 7.5, finishWidth)
+      : [];
     const sheenLines = wrapCellLines(system.sheen || "—", ctx.font, 8, sheenWidth);
     const itemLines = wrapCellLines(system.items || "—", ctx.font, 8, itemsWidth);
     const lineCount = Math.max(finishLines.length + primerLines.length, sheenLines.length, itemLines.length, 1);
@@ -1985,32 +1987,31 @@ export async function buildSdsPacketPdf(
 
     const stamp = `Section ${num}: ${sectionTitle(section)}`;
     const attachmentOutlines: PdfOutlineItem[] = [];
-    const attachmentPages = new Map<SdsAttachmentKind, number>();
-    for (const kind of sectionAttachmentKinds(section)) {
-      const attachment = section.attachments[kind];
+    const attachmentPages = new Map<string, number>();
+    const docKey = (kind: SdsAttachmentKind, fileIndex: number) => `${kind}:${fileIndex}`;
+    for (const doc of sectionIncludedDocuments(section)) {
+      const attachment = sectionAttachmentFiles(section, doc.kind)[doc.fileIndex];
       const path = attachment?.path?.trim();
       if (!path) continue;
       if (paintSchedule && seenDocPaths.has(path)) {
         const first = pathFirstPage.get(path);
-        if (first !== undefined) attachmentPages.set(kind, first);
+        if (first !== undefined) attachmentPages.set(docKey(doc.kind, doc.fileIndex), first);
         continue;
       }
-      const label = attachmentStampLabel(kind);
       const attachmentPage = pageCount();
       pathFirstPage.set(path, attachmentPage);
       if (paintSchedule) seenDocPaths.add(path);
-      attachmentPages.set(kind, attachmentPage);
-      const bookmark = tocAttachmentLabel(kind);
+      attachmentPages.set(docKey(doc.kind, doc.fileIndex), attachmentPage);
       if (packet.include_toc) {
-        tocEntries.push({ level: 2, label: bookmark, pageIndex: attachmentPage });
+        tocEntries.push({ level: 2, label: doc.tocLabel, pageIndex: attachmentPage });
       }
-      attachmentOutlines.push({ title: bookmark, to: attachmentPage });
-      tick(`Section ${num} ${label}`);
+      attachmentOutlines.push({ title: doc.tocLabel, to: attachmentPage });
+      tick(`Section ${num} ${doc.stamp}`);
       const bytes = await downloadSdsPdf(path);
-      await appendPdfWithStamp(ctx, bytes, `${stamp} — ${label}`, packet.include_stamp);
+      await appendPdfWithStamp(ctx, bytes, `${stamp} — ${doc.stamp}`, packet.include_stamp);
     }
     for (const link of dividerLinks) {
-      const target = attachmentPages.get(link.kind);
+      const target = attachmentPages.get(docKey(link.kind, link.fileIndex));
       if (target === undefined) continue;
       dividerDocLinks.push({ pageIndex: link.pageIndex, rect: link.rect, target });
     }

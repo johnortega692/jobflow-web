@@ -137,11 +137,14 @@ function notesForScope(notes: string, payload: Record<string, unknown>, scope: P
   if (scope !== "paint" && scope !== "sundries") return notes;
   const sundriesLoc = asString(payload.sundriesStoreLocation);
   if (!sundriesLoc) return notes;
-  const time = notes.match(/\| Pick-up Time: (.+)$/)?.[1]?.trim() ?? "";
+  const timeMatch = notes.match(/\| Pick-up Time: (.+?)(?: \| Notes: (.*))?$/s);
+  const time = timeMatch?.[1]?.trim() ?? "";
   if (!time) return notes;
   const loc = scope === "sundries" ? sundriesLoc : asString(payload.storeLocation);
   if (!loc) return notes;
-  return `[WILL CALL] Store Location: ${loc} | Pick-up Time: ${time}`;
+  const extra = timeMatch?.[2]?.trim() ?? "";
+  const text = `[WILL CALL] Store Location: ${loc} | Pick-up Time: ${time}`;
+  return extra ? `${text} | Notes: ${extra}` : text;
 }
 
 export function buildOrderDetailGroups(order: FieldToolsOrder, scope: PoViewScope = "all"): OrderCartGroup[] {
