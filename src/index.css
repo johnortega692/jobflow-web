@@ -13933,14 +13933,24 @@ a.job-tracker-tab {
 .dashboard-notes-row {
   display: flex;
   align-items: flex-start;
+  justify-content: flex-start;
   gap: 0.5rem;
   padding: 0.45rem 0;
   border-top: 1px solid var(--border);
 }
 
 .dashboard-notes-row input[type="checkbox"] {
-  margin-top: 0.2rem;
-  flex-shrink: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.dashboard-notes-row .project-notes-pill {
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
 }
 
 .dashboard-notes-copy {
