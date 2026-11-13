@@ -28,7 +28,17 @@ export type MeetingJobLine = {
   id: string;
   company: string;
   job: string;
+  /** Discussion column. */
   notes: string;
+  /** Updates / Action Item column. */
+  action: string;
+};
+
+export type MeetingTopicItem = {
+  id: string;
+  title: string;
+  notes: string;
+  action: string;
 };
 
 export type MeetingSort = "entered" | "company" | "job" | "name";
@@ -43,7 +53,7 @@ export type MeetingGroup = {
 export type MeetingTopic = {
   id: string;
   title: string;
-  body: string;
+  items: MeetingTopicItem[];
 };
 
 export type PaintMeetingContent = {
@@ -72,7 +82,11 @@ export function emptyAttendee(): MeetingAttendee {
 }
 
 export function emptyJobLine(): MeetingJobLine {
-  return { id: newId(), company: "", job: "", notes: "" };
+  return { id: newId(), company: "", job: "", notes: "", action: "" };
+}
+
+export function emptyTopicItem(): MeetingTopicItem {
+  return { id: newId(), title: "", notes: "", action: "" };
 }
 
 export function blankMeetingContent(date = localMeetingDate()): PaintMeetingContent {
@@ -85,7 +99,7 @@ export function blankMeetingContent(date = localMeetingDate()): PaintMeetingCont
     attendeeSort: "entered",
     attendees: [emptyAttendee()],
     groups: MEETING_GROUP_TITLES.map((title) => ({ id: newId(), title, sort: "entered" as const, lines: [emptyJobLine()] })),
-    topics: MEETING_TOPIC_TITLES.map((title) => ({ id: newId(), title, body: "" })),
+    topics: MEETING_TOPIC_TITLES.map((title) => ({ id: newId(), title, items: [emptyTopicItem()] })),
   };
 }
 
@@ -144,8 +158,36 @@ function asJobLine(value: unknown): MeetingJobLine | null {
     id: asString(row.id) || newId(),
     company: asString(row.company),
     job: asString(row.job),
-    notes: asString(row.notes),
+    notes: asString((row as { discussion?: unknown }).discussion) || asString(row.notes),
+    action: asString(row.action),
   };
+}
+
+function asTopicItem(value: unknown): MeetingTopicItem | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<MeetingTopicItem>;
+  return {
+    id: asString(row.id) || newId(),
+    title: asString(row.title),
+    notes: asString(row.notes),
+    action: asString(row.action),
+  };
+}
+
+/** Older meetings stored a topic as one text box. The first line of each block is the item title. */
+function itemsFromBody(body: string): MeetingTopicItem[] {
+  const blocks = body
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  if (!blocks.length) return [emptyTopicItem()];
+  return blocks.map((block) => {
+    const [first, ...rest] = block.split(/\n/);
+    const title = (first ?? "").trim();
+    const notes = rest.join("\n").trim();
+    if (title.length <= 60 && (notes || title.length <= 40)) return { id: newId(), title, notes, action: "" };
+    return { id: newId(), title: "", notes: block, action: "" };
+  });
 }
 
 export function normalizeMeetingContent(value: unknown, fallbackDate = ""): PaintMeetingContent {
@@ -171,10 +213,12 @@ export function normalizeMeetingContent(value: unknown, fallbackDate = ""): Pain
   const incomingTopics = Array.isArray(raw.topics) ? raw.topics : [];
   const topics = MEETING_TOPIC_TITLES.map((title) => {
     const found = incomingTopics.find((topic) => topic && typeof topic === "object" && asString((topic as MeetingTopic).title) === title);
+    const raw = found as { id?: unknown; items?: unknown; body?: unknown } | undefined;
+    const stored = raw && Array.isArray(raw.items) ? raw.items.map(asTopicItem).filter((item) => item !== null) : [];
     return {
-      id: found ? asString((found as MeetingTopic).id) || newId() : newId(),
+      id: raw ? asString(raw.id) || newId() : newId(),
       title,
-      body: found ? asString((found as MeetingTopic).body) : "",
+      items: stored.length ? stored : itemsFromBody(raw ? asString(raw.body) : ""),
     };
   });
   return {
@@ -196,7 +240,7 @@ function jobNumber(job: string): number {
 }
 
 function filledJob(line: MeetingJobLine): boolean {
-  return Boolean(line.company.trim() || line.job.trim() || line.notes.trim());
+  return Boolean(line.company.trim() || line.job.trim() || line.notes.trim() || line.action.trim());
 }
 
 /** Reorder a section. Empty rows stay at the bottom. "As entered" keeps the current order. */
@@ -279,7 +323,7 @@ export function meetingExportLines(content: PaintMeetingContent): MeetingExportL
 
   for (const group of content.groups) {
     lines.push({ text: group.title, kind: "heading" });
-    const jobs = group.lines.filter((line) => line.company.trim() || line.job.trim() || line.notes.trim());
+    const jobs = group.lines.filter(filledJob);
     if (!jobs.length) {
       lines.push({ text: "None.", kind: "body" });
       continue;
@@ -294,19 +338,25 @@ export function meetingExportLines(content: PaintMeetingContent): MeetingExportL
           if (text) lines.push({ text, kind: "body" });
         }
       }
+      const action = job.action.trim();
+      if (action) lines.push({ text: action, kind: "body" });
     }
   }
 
   for (const topic of content.topics) {
     lines.push({ text: topic.title, kind: "heading" });
-    const body = topic.body.trim();
-    if (!body) {
+    const items = topic.items.filter((item) => item.title.trim() || item.notes.trim() || item.action.trim());
+    if (!items.length) {
       lines.push({ text: "None.", kind: "body" });
       continue;
     }
-    for (const note of body.split(/\r?\n/)) {
-      const text = note.trim();
-      if (text) lines.push({ text, kind: "body" });
+    for (const item of items) {
+      if (item.title.trim()) lines.push({ text: item.title.trim(), kind: "subhead" });
+      for (const note of item.notes.split(/\r?\n/)) {
+        const text = note.trim();
+        if (text) lines.push({ text, kind: "body" });
+      }
+      if (item.action.trim()) lines.push({ text: item.action.trim(), kind: "body" });
     }
   }
 

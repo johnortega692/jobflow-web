@@ -4,11 +4,13 @@ import {
   copyMeetingForNextWeek,
   emptyAttendee,
   emptyJobLine,
+  emptyTopicItem,
   meetingContentOf,
   sortAttendees,
   sortMeetingLines,
   type MeetingAttendee,
   type MeetingJobLine,
+  type MeetingTopicItem,
   type MeetingSort,
   type PaintMeetingContent,
 } from "../lib/paintMeeting";
@@ -171,8 +173,11 @@ export function MeetingEditorPage() {
           <h1>Meeting</h1>
         </div>
         <div className="paint-meetings-actions">
-          <button type="button" className="btn" onClick={() => setAllSections(collapsed.size > 0)}>
-            {collapsed.size > 0 ? "Expand sections" : "Collapse sections"}
+          <button type="button" className="btn" onClick={() => setAllSections(true)} disabled={collapsed.size === 0}>
+            Expand all
+          </button>
+          <button type="button" className="btn" onClick={() => setAllSections(false)} disabled={collapsed.size > 0 && collapsed.size === 1 + content.groups.length + content.topics.length}>
+            Collapse all
           </button>
           <button type="button" className="btn" onClick={() => void onCopyNextWeek()} disabled={copying || saving}>
             {copying ? "Copying…" : "Copy for next week"}
@@ -289,7 +294,7 @@ export function MeetingEditorPage() {
 
       {content.groups.map((group) => {
         const open = sectionOpen(group.id);
-        const jobCount = group.lines.filter((line) => line.company.trim() || line.job.trim() || line.notes.trim()).length;
+        const jobCount = group.lines.filter((line) => line.company.trim() || line.job.trim() || line.notes.trim() || line.action.trim()).length;
         return (
         <div key={group.id} className="card stack">
           <div className="row-between wrap gap">
@@ -357,13 +362,28 @@ export function MeetingEditorPage() {
                   Remove
                 </button>
               </div>
-              <textarea
-                aria-label="Job notes"
-                rows={3}
-                placeholder="Updates for this job"
-                value={line.notes}
-                onChange={(event) => patchLine(group.id, line.id, { notes: event.target.value })}
-              />
+              <div className="paint-meeting-columns">
+                <label>
+                  Discussion
+                  <textarea
+                    aria-label="Discussion"
+                    rows={4}
+                    placeholder="Discussion"
+                    value={line.notes}
+                    onChange={(event) => patchLine(group.id, line.id, { notes: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Updates / Action Item
+                  <textarea
+                    aria-label="Updates / Action Item"
+                    rows={4}
+                    placeholder="Updates / Action Item"
+                    value={line.action}
+                    onChange={(event) => patchLine(group.id, line.id, { action: event.target.value })}
+                  />
+                </label>
+              </div>
             </div>
           )) : null}
         </div>
@@ -372,27 +392,95 @@ export function MeetingEditorPage() {
 
       {content.topics.map((topic) => {
         const open = sectionOpen(topic.id);
+        const filled = topic.items.filter((item) => item.title.trim() || item.notes.trim() || item.action.trim()).length;
+        function patchItem(itemId: string, partial: Partial<MeetingTopicItem>) {
+          if (!content) return;
+          patch({
+            topics: content.topics.map((item) =>
+              item.id === topic.id
+                ? { ...item, items: item.items.map((row) => (row.id === itemId ? { ...row, ...partial } : row)) }
+                : item,
+            ),
+          });
+        }
         return (
         <div key={topic.id} className="card stack">
-          <button
-            type="button"
-            className="paint-meeting-toggle"
-            aria-expanded={open}
-            onClick={() => toggleSection(topic.id)}
-          >
-            <span aria-hidden="true">{open ? "▾" : "▸"}</span>
-            <h2>{topic.title}</h2>
-            {open ? null : <span className="muted small">{topic.body.trim() ? "Has notes" : "Empty"}</span>}
-          </button>
-          {open ? <textarea
-            aria-label={topic.title}
-            rows={5}
-            placeholder="Notes"
-            value={topic.body}
-            onChange={(event) =>
-              patch({ topics: content.topics.map((item) => (item.id === topic.id ? { ...item, body: event.target.value } : item)) })
-            }
-            /> : null}
+          <div className="row-between wrap gap">
+            <button
+              type="button"
+              className="paint-meeting-toggle"
+              aria-expanded={open}
+              onClick={() => toggleSection(topic.id)}
+            >
+              <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+              <h2>{topic.title}</h2>
+              {open ? null : <span className="muted small">{filled === 1 ? "1 item" : `${filled} items`}</span>}
+            </button>
+            {open ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  patch({
+                    topics: content.topics.map((item) =>
+                      item.id === topic.id ? { ...item, items: [...item.items, emptyTopicItem()] } : item,
+                    ),
+                  })
+                }
+              >
+                Add item
+              </button>
+            ) : null}
+          </div>
+          {open
+            ? topic.items.map((item) => (
+                <div key={item.id} className="paint-meeting-job">
+                  <div className="paint-meeting-topic-head">
+                    <input
+                      aria-label="Item title"
+                      placeholder="Item title"
+                      value={item.title}
+                      onChange={(event) => patchItem(item.id, { title: event.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() =>
+                        patch({
+                          topics: content.topics.map((row) =>
+                            row.id === topic.id ? { ...row, items: row.items.filter((entry) => entry.id !== item.id) } : row,
+                          ),
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="paint-meeting-columns">
+                    <label>
+                      Discussion
+                      <textarea
+                        aria-label="Discussion"
+                        rows={4}
+                        placeholder="Discussion"
+                        value={item.notes}
+                        onChange={(event) => patchItem(item.id, { notes: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Updates / Action Item
+                      <textarea
+                        aria-label="Updates / Action Item"
+                        rows={4}
+                        placeholder="Updates / Action Item"
+                        value={item.action}
+                        onChange={(event) => patchItem(item.id, { action: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))
+            : null}
         </div>
         );
       })}

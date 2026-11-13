@@ -123,10 +123,40 @@
   border-top: 1px solid var(--border);
 }
 
+.paint-meeting-columns {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 0.5rem;
+}
+
+.paint-meeting-columns label {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.paint-meeting-columns textarea {
+  margin-top: 0;
+}
+
+.paint-meeting-topic-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.paint-meeting-topic-head input {
+  margin-top: 0;
+}
+
 @media (max-width: 900px) {
   .paint-meeting-meta,
   .paint-meeting-attendee,
-  .paint-meeting-job-head {
+  .paint-meeting-job-head,
+  .paint-meeting-columns {
     grid-template-columns: 1fr;
   }
 }

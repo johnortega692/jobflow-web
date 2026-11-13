@@ -13,16 +13,26 @@ import {
 } from "./paintMeeting.js";
 
 const NAVY = "002060";
+const BLUE = "0070C0";
 const GRAY = "D9D9D9";
 const ATTENDEE_WIDTHS = [2070, 1170, 2070, 1530, 3330, 1350];
 const AGENDA_WIDTHS = [1350, 7380, 2340];
 
-type Align = "left" | "center";
+type Align = "left" | "center" | "right";
+
+type Run = {
+  text: string;
+  size: number;
+  bold?: boolean;
+  color?: string;
+};
 
 type Block = {
   text: string;
   /** Bold prefix on the same line. The rest of `text` stays regular. */
   boldLead?: string;
+  /** Mixed runs on one line, used for the right-aligned next-meeting line. */
+  runs?: Run[];
   /** Half-points, matching Word. */
   size: number;
   bold?: boolean;
@@ -49,6 +59,7 @@ type Row = {
 
 const black = rgb(0, 0, 0);
 const navy = rgb(0, 32 / 255, 96 / 255);
+const blue = rgb(0, 112 / 255, 192 / 255);
 const gray = rgb(217 / 255, 217 / 255, 217 / 255);
 
 function xmlEscape(value: string): string {
@@ -72,27 +83,21 @@ function whenLine(content: PaintMeetingContent): string {
 }
 
 function filledJob(line: MeetingJobLine): boolean {
-  return Boolean(line.company.trim() || line.job.trim() || line.notes.trim());
+  return Boolean(line.company.trim() || line.job.trim() || line.notes.trim() || line.action.trim());
 }
 
 function jobsOf(group: MeetingGroup): MeetingJobLine[] {
   const rows = sortMeetingLines(group.lines, group.sort).filter(filledJob);
-  return rows.length ? rows : [{ id: "", company: "", job: "", notes: "" }];
+  return rows.length ? rows : [{ id: "", company: "", job: "", notes: "", action: "" }];
 }
 
-function topicBlocks(body: string): { title: string; notes: string }[] {
-  const blocks = body
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-  if (!blocks.length) return [{ title: "", notes: "" }];
-  return blocks.map((block) => {
-    const [first, ...rest] = block.split(/\n/);
-    const title = (first ?? "").trim();
-    const notes = rest.join("\n").trim();
-    if (title.length <= 60 && (notes || title.length <= 40)) return { title, notes };
-    return { title: "", notes: block };
-  });
+function nextMeetingRuns(value: string): Run[] {
+  const match = /^(.*?)(\s*@\s*\S[\s\S]*)$/.exec(value.trim());
+  if (!match) return [{ text: value.trim(), size: 20 }];
+  return [
+    { text: `${match[1]}`, size: 24 },
+    { text: match[2] ?? "", size: 20, bold: true, color: BLUE },
+  ];
 }
 
 function block(text: string, size: number, extra: Partial<Block> = {}): Block {
@@ -111,23 +116,35 @@ function buildAgenda(content: PaintMeetingContent): { preface: Block[]; attendee
   const when = whenLine(content);
   const preface: Block[] = [
     block(content.title.trim() || "Meeting Agenda – ICBI Paint Division", 28, { bold: true, after: 200, line: 240 }),
+    block("", 20, { line: 360 }),
     block(when, 20, { boldLead: "Meeting Date: ", line: 360 }),
   ];
   if (content.purpose.trim()) preface.push(block(content.purpose.trim(), 20, { boldLead: "Meeting Purpose: ", line: 360 }));
-  if (content.nextMeeting.trim()) preface.push(block(content.nextMeeting.trim(), 20, { boldLead: "Next Meeting Scheduled: ", line: 360 }));
-  preface.push(block("Attendees", 20, { bold: true, before: 80, line: 240 }));
+  preface.push(block("", 20, { line: 240 }));
+  if (content.nextMeeting.trim()) {
+    preface.push(block("", 20, {
+      align: "right",
+      line: 360,
+      boldLead: "Next Meeting Scheduled: ",
+      runs: nextMeetingRuns(content.nextMeeting),
+    }));
+  }
+  preface.push(block("", 20, { line: 240 }));
+  preface.push(block("", 20, { line: 240 }));
+  preface.push(block("Attendees", 20, { bold: true, line: 240 }));
 
   const people = sortAttendees(content.attendees, content.attendeeSort).filter(
     (person) => person.name.trim() || person.company.trim() || person.email.trim(),
   );
   const attendees: Row[] = [
     {
-      minTwips: 289,
+      minTwips: 300,
       cells: ["Name", "Company", "Position", "Phone", "Email", "Present"].map((label, index) =>
         headerCell(ATTENDEE_WIDTHS[index] ?? 1000, label),
       ),
     },
     ...people.map((person) => ({
+      minTwips: 498,
       cells: [person.name, person.company, person.position, person.phone, person.email, person.present ? "Present" : "Absent"].map(
         (value, index) =>
           cell(ATTENDEE_WIDTHS[index] ?? 1000, [block(value.trim(), 18, { align: index === 0 ? "left" : "center" })], {
@@ -139,14 +156,24 @@ function buildAgenda(content: PaintMeetingContent): { preface: Block[]; attendee
 
   const agenda: Row[] = [];
   let section = 0;
-  const sections: { title: string; rows: { company: string; title: string; notes: string }[] }[] = [
+  const sections: { title: string; rows: { company: string; title: string; notes: string; action: string }[] }[] = [
     ...content.groups.map((group) => ({
       title: group.title,
-      rows: jobsOf(group).map((job) => ({ company: job.company.trim(), title: job.job.trim(), notes: job.notes.trim() })),
+      rows: jobsOf(group).map((job) => ({
+        company: job.company.trim(),
+        title: job.job.trim(),
+        notes: job.notes.trim(),
+        action: job.action.trim(),
+      })),
     })),
     ...content.topics.map((topic) => ({
       title: topic.title,
-      rows: topicBlocks(topic.body).map((item) => ({ company: "", title: item.title, notes: item.notes })),
+      rows: (topic.items.length ? topic.items : [{ title: "", notes: "", action: "" }]).map((item) => ({
+        company: "",
+        title: item.title.trim(),
+        notes: item.notes.trim(),
+        action: item.action.trim(),
+      })),
     })),
   ];
 
@@ -162,8 +189,8 @@ function buildAgenda(content: PaintMeetingContent): { preface: Block[]; attendee
     });
     part.rows.forEach((row, index) => {
       const middle: Block[] = [];
-      if (row.title) middle.push(block(row.title, 22, { bold: true, color: NAVY, underline: true, before: 40, after: 60 }));
-      if (row.notes) middle.push(block(row.notes, 18, { after: 40 }));
+      if (row.title) middle.push(block(row.title, 22, { bold: true, color: NAVY, underline: true, before: 20, after: 40 }));
+      if (row.notes) middle.push(block(row.notes, 18, { after: 20 }));
       agenda.push({
         cells: [
           cell(AGENDA_WIDTHS[0], [
@@ -171,7 +198,7 @@ function buildAgenda(content: PaintMeetingContent): { preface: Block[]; attendee
             block(row.company, 18, { align: "center", after: 40 }),
           ]),
           cell(AGENDA_WIDTHS[1], middle),
-          cell(AGENDA_WIDTHS[2], [block("", 18)]),
+          cell(AGENDA_WIDTHS[2], [block(row.action, 18)]),
         ],
       });
     });
@@ -204,9 +231,12 @@ function runXml(text: string, item: Block, bold = Boolean(item.bold)): string {
 
 function paragraphXml(item: Block): string {
   const spacing = `<w:spacing w:before="${item.before ?? 0}" w:after="${item.after ?? 0}" w:line="${item.line ?? 240}" w:lineRule="auto"/>`;
-  const align = item.align === "center" ? `<w:jc w:val="center"/>` : "";
+  const align = item.align === "center" ? `<w:jc w:val="center"/>` : item.align === "right" ? `<w:jc w:val="right"/>` : "";
   const lead = item.boldLead ? runXml(item.boldLead, item, true) : "";
-  return `<w:p><w:pPr>${spacing}${align}</w:pPr>${lead}${runXml(item.text, item)}</w:p>`;
+  const body = item.runs
+    ? item.runs.map((run) => runXml(run.text, { ...item, size: run.size, color: run.color, underline: false }, Boolean(run.bold))).join("")
+    : runXml(item.text, item);
+  return `<w:p><w:pPr>${spacing}${align}</w:pPr>${lead}${body}</w:p>`;
 }
 
 function cellXml(item: Cell): string {
@@ -259,6 +289,11 @@ function footerXml(): string {
 <w:ftr ${WORD_NS}><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r>${run}<w:t xml:space="preserve">Page </w:t></w:r>${field("PAGE", "1")}<w:r>${run}<w:t xml:space="preserve"> of </w:t></w:r>${field("NUMPAGES", "1")}</w:p></w:ftr>`;
 }
 
+function emptyFooterXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr ${WORD_NS}><w:p/></w:ftr>`;
+}
+
 async function loadLogo(): Promise<Uint8Array> {
   const response = await fetch(logoUrl);
   if (!response.ok) throw new Error("Could not load the meeting logo.");
@@ -271,10 +306,11 @@ export async function meetingDocxBytes(content: PaintMeetingContent): Promise<Ui
   const body = [
     ...doc.preface.map(paragraphXml),
     tableXml(doc.attendees, 11520, -635),
+    `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`,
     tableXml(doc.agenda, 11070, -545),
   ].join("");
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document ${WORD_NS}><w:body>${body}<w:sectPr><w:headerReference w:type="default" r:id="rId2"/><w:headerReference w:type="first" r:id="rId3"/><w:footerReference w:type="default" r:id="rId4"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1008" w:right="1080" w:bottom="864" w:left="1080" w:header="288" w:footer="720" w:gutter="0"/><w:titlePg/></w:sectPr></w:body></w:document>`;
+<w:document ${WORD_NS}><w:body>${body}<w:sectPr><w:headerReference w:type="default" r:id="rId2"/><w:headerReference w:type="first" r:id="rId3"/><w:footerReference w:type="default" r:id="rId4"/><w:footerReference w:type="first" r:id="rId6"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1008" w:right="1080" w:bottom="864" w:left="1080" w:header="288" w:footer="720" w:gutter="0"/><w:titlePg/></w:sectPr></w:body></w:document>`;
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -287,6 +323,7 @@ export async function meetingDocxBytes(content: PaintMeetingContent): Promise<Ui
   <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
   <Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
   <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
+  <Override PartName="/word/footer2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
   <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
 </Types>`,
   );
@@ -304,6 +341,7 @@ export async function meetingDocxBytes(content: PaintMeetingContent): Promise<Ui
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/>
   <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+  <Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/>
   <Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
 </Relationships>`,
   );
@@ -318,6 +356,7 @@ export async function meetingDocxBytes(content: PaintMeetingContent): Promise<Ui
   zip.file("word/header1.xml", columnHeaderXml());
   zip.file("word/header2.xml", logoHeaderXml());
   zip.file("word/footer1.xml", footerXml());
+  zip.file("word/footer2.xml", emptyFooterXml());
   zip.file(
     "word/settings.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -329,29 +368,51 @@ export async function meetingDocxBytes(content: PaintMeetingContent): Promise<Ui
 
 type Face = { font: PDFFont; size: number };
 
+const PAGE_WIDTH = 612;
+const PAGE_HEIGHT = 792;
+const BODY_LEFT = 54;
+const BODY_RIGHT = 558;
+const ATTENDEE_LEFT = 22.25;
+const AGENDA_LEFT = 26.75;
+const FOOTER_TOP = 46;
+
 function wrap(text: string, face: Face, maxWidth: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (!words.length) return [""];
+  const source = text.split(/\n/);
   const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (face.font.widthOfTextAtSize(next, face.size) <= maxWidth) {
-      current = next;
+  for (const paragraph of source) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push("");
       continue;
     }
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (face.font.widthOfTextAtSize(next, face.size) <= maxWidth) {
+        current = next;
+        continue;
+      }
+      if (current) lines.push(current);
+      current = word;
+    }
     if (current) lines.push(current);
-    current = word;
   }
-  if (current) lines.push(current);
-  return lines;
+  return lines.length ? lines : [""];
 }
 
 function ink(color?: string): RGB {
-  return color === NAVY ? navy : black;
+  if (color === NAVY) return navy;
+  if (color === BLUE) return blue;
+  return black;
 }
 
-type LaidLine = { text: string; size: number; bold: boolean; color: RGB; underline: boolean; align: Align };
+function leading(size: number): number {
+  if (size >= 13) return 16;
+  if (size >= 11) return 15.5;
+  return 10.4;
+}
+
+type LaidLine = { text: string; size: number; bold: boolean; color: RGB; underline: boolean; align: Align; gapBefore: number };
 type LaidCell = { width: number; fill?: RGB; valign?: "center"; lines: LaidLine[]; contentHeight: number };
 type LaidRow = { cells: LaidCell[]; height: number };
 
@@ -360,65 +421,64 @@ function layoutRow(row: Row, regular: PDFFont, boldFont: PDFFont): LaidRow {
     const width = item.twips / 20;
     const inner = Math.max(12, width - 8);
     const lines: LaidLine[] = [];
+    let after = 0;
     for (const part of item.blocks) {
       const size = part.size / 2;
-      const face = { font: part.bold ? boldFont : regular, size };
-      const wrapped = wrap(part.text, face, inner);
-      if (part.before) lines.push({ text: "", size: part.before / 20, bold: false, color: black, underline: false, align: "left" });
+      const face = { font: part.bold || part.boldLead ? boldFont : regular, size };
+      const wrapped = part.text.trim() ? wrap(part.text, face, inner) : [];
       wrapped.forEach((text, index) => {
         lines.push({
           text,
           size,
           bold: Boolean(part.bold),
           color: ink(part.color),
-          underline: Boolean(part.underline && index === 0),
+          underline: Boolean(part.underline),
           align: part.align ?? "left",
+          gapBefore: index === 0 ? (part.before ?? 0) / 20 : 0,
         });
       });
-      if (part.underline && wrapped.length > 1) {
-        for (let index = 1; index < wrapped.length; index += 1) lines[lines.length - wrapped.length + index]!.underline = true;
-      }
-      if (part.after) lines.push({ text: "", size: part.after / 20, bold: false, color: black, underline: false, align: "left" });
+      after += (part.after ?? 0) / 20;
     }
-    const contentHeight = lines.reduce((sum, line) => sum + line.size + 2, 0);
+    const contentHeight = lines.reduce((sum, line) => sum + line.gapBefore + leading(line.size), 0) + after;
     return { width, fill: item.fill ? gray : undefined, valign: item.valign, lines, contentHeight };
   });
   const min = (row.minTwips ?? 0) / 20;
-  const height = Math.max(min, ...cells.map((item) => item.contentHeight + 6));
+  const height = Math.max(min, 16, ...cells.map((item) => item.contentHeight + 2));
   return { cells, height };
 }
 
-function drawRow(page: PDFPage, row: LaidRow, x: number, top: number, regular: PDFFont, boldFont: PDFFont) {
+function drawRow(page: PDFPage, row: LaidRow, x: number, top: number, regular: PDFFont, boldFont: PDFFont, drawTop: boolean) {
   let cursor = x;
   for (const cellItem of row.cells) {
     if (cellItem.fill) {
       page.drawRectangle({ x: cursor, y: top - row.height, width: cellItem.width, height: row.height, color: cellItem.fill });
     }
-    const spare = row.height - 6 - cellItem.contentHeight;
-    let y = top - 4 - (cellItem.valign === "center" && spare > 0 ? spare / 2 : 0);
+    const spare = row.height - cellItem.contentHeight;
+    let textTop = top - (cellItem.valign === "center" && spare > 0 ? spare / 2 : 3.2);
     for (const line of cellItem.lines) {
-      y -= line.size;
+      textTop -= line.gapBefore;
+      const font = line.bold ? boldFont : regular;
+      const baseline = textTop - line.size * 0.78;
       if (line.text) {
-        const font = line.bold ? boldFont : regular;
         const textWidth = font.widthOfTextAtSize(line.text, line.size);
         const textX = line.align === "center" ? cursor + (cellItem.width - textWidth) / 2 : cursor + 4;
-        page.drawText(line.text, { x: textX, y, size: line.size, font, color: line.color });
+        page.drawText(line.text, { x: textX, y: baseline, size: line.size, font, color: line.color });
         if (line.underline) {
           page.drawLine({
-            start: { x: textX, y: y - 1.2 },
-            end: { x: textX + textWidth, y: y - 1.2 },
+            start: { x: textX, y: baseline - 1.4 },
+            end: { x: textX + textWidth, y: baseline - 1.4 },
             thickness: 0.6,
             color: line.color,
           });
         }
       }
-      y -= 2;
+      textTop -= leading(line.size);
     }
     cursor += cellItem.width;
   }
   const width = row.cells.reduce((sum, item) => sum + item.width, 0);
-  const stroke = { thickness: 0.6, color: black };
-  page.drawLine({ start: { x, y: top }, end: { x: x + width, y: top }, ...stroke });
+  const stroke = { thickness: 0.5, color: black };
+  if (drawTop) page.drawLine({ start: { x, y: top }, end: { x: x + width, y: top }, ...stroke });
   page.drawLine({ start: { x, y: top - row.height }, end: { x: x + width, y: top - row.height }, ...stroke });
   let edge = x;
   for (const cellItem of row.cells) {
@@ -428,32 +488,45 @@ function drawRow(page: PDFPage, row: LaidRow, x: number, top: number, regular: P
   page.drawLine({ start: { x: edge, y: top }, end: { x: edge, y: top - row.height }, ...stroke });
 }
 
-function drawPreface(page: PDFPage, lines: Block[], x: number, y: number, maxWidth: number, regular: PDFFont, boldFont: PDFFont): number {
-  let cursor = y;
+function drawBaseline(page: PDFPage, text: string, x: number, top: number, size: number, font: PDFFont, color: RGB): number {
+  const width = font.widthOfTextAtSize(text, size);
+  page.drawText(text, { x, y: PAGE_HEIGHT - top - size * 0.78, size, font, color });
+  return width;
+}
+
+function drawPreface(page: PDFPage, lines: Block[], regular: PDFFont, boldFont: PDFFont): number {
+  let top = 115.7;
   for (const line of lines) {
-    const size = line.size / 2;
-    const font = line.bold ? boldFont : regular;
-    cursor -= (line.before ?? 0) / 20 + size;
-    if (line.boldLead) {
-      const leadWidth = boldFont.widthOfTextAtSize(line.boldLead, size);
-      page.drawText(line.boldLead, { x, y: cursor, size, font: boldFont, color: black });
-      const rest = wrap(line.text, { font: regular, size }, Math.max(40, maxWidth - leadWidth));
-      if (rest[0]) page.drawText(rest[0], { x: x + leadWidth, y: cursor, size, font: regular, color: black });
-      for (const text of rest.slice(1)) {
-        cursor -= size + 4;
-        page.drawText(text, { x, y: cursor, size, font: regular, color: black });
-      }
-    } else {
-      const wrapped = wrap(line.text, { font, size }, maxWidth);
-      page.drawText(wrapped[0] ?? "", { x, y: cursor, size, font, color: black });
-      for (const text of wrapped.slice(1)) {
-        cursor -= size + 3;
-        page.drawText(text, { x, y: cursor, size, font, color: black });
-      }
+    if (!line.text && !line.boldLead && !line.runs) {
+      top += line.line === 360 ? 17.3 : 11.5;
+      continue;
     }
-    cursor -= (line.after ?? 40) / 20 + 2;
+    const size = line.size / 2;
+    if (line.runs || line.align === "right") {
+      const runs: { text: string; size: number; font: PDFFont; color: RGB }[] = [];
+      if (line.boldLead) runs.push({ text: line.boldLead, size, font: boldFont, color: black });
+      for (const run of line.runs ?? []) {
+        runs.push({ text: run.text, size: run.size / 2, font: run.bold ? boldFont : regular, color: ink(run.color) });
+      }
+      const width = runs.reduce((sum, run) => sum + run.font.widthOfTextAtSize(run.text, run.size), 0);
+      let x = BODY_RIGHT - width;
+      for (const run of runs) {
+        drawBaseline(page, run.text, x, top, run.size, run.font, run.color);
+        x += run.font.widthOfTextAtSize(run.text, run.size);
+      }
+      top += 17.3;
+      continue;
+    }
+    const font = line.bold ? boldFont : regular;
+    let x = BODY_LEFT;
+    if (line.boldLead) {
+      const lead = `${line.boldLead} `;
+      x += drawBaseline(page, lead, x, top, size, boldFont, black);
+    }
+    drawBaseline(page, line.text, x, top, size, font, black);
+    top += line.bold ? 16.5 : 17.3;
   }
-  return cursor - 4;
+  return PAGE_HEIGHT - top;
 }
 
 export async function meetingPdfBytes(content: PaintMeetingContent): Promise<Uint8Array> {
@@ -463,81 +536,57 @@ export async function meetingPdfBytes(content: PaintMeetingContent): Promise<Uin
   const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
   const logo = await doc.embedJpg(logoBytes);
   const model = buildAgenda(content);
-  const pageWidth = 612;
-  const pageHeight = 792;
-  const bottom = 52;
   const pages: PDFPage[] = [];
 
   function addPage(first: boolean): { page: PDFPage; y: number } {
-    const page = doc.addPage([pageWidth, pageHeight]);
+    const page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     pages.push(page);
     if (first) {
       const logoW = 154.8;
       const logoH = 87.1;
-      page.drawImage(logo, { x: (pageWidth - logoW) / 2, y: pageHeight - 16 - logoH, width: logoW, height: logoH });
-      return { page, y: pageHeight - 16 - logoH - 10 };
+      page.drawImage(logo, { x: (PAGE_WIDTH - logoW) / 2, y: PAGE_HEIGHT - 14.4 - logoH, width: logoW, height: logoH });
+      return { page, y: PAGE_HEIGHT - 115.7 };
     }
     const header = layoutRow(
       {
-        minTwips: 478,
-        cells: ["Item", "Discussion", "Updates / Action Item"].map((label, index) => headerCell(AGENDA_WIDTHS[index] ?? 1000, label)),
+        minTwips: 488,
+        cells: ["Item", "Discussion", "Updates / Action Item"].map((label, index) =>
+          cell(AGENDA_WIDTHS[index] ?? 1000, [block(label, 20, { bold: true, align: "center" })], { valign: "center" }),
+        ),
       },
       regular,
       boldFont,
     );
-    drawRow(page, header, 54 - 545 / 20, pageHeight - 18, regular, boldFont);
-    return { page, y: pageHeight - 50.4 };
+    drawRow(page, header, AGENDA_LEFT, PAGE_HEIGHT - 14.4, regular, boldFont, true);
+    return { page, y: PAGE_HEIGHT - 54.1 };
   }
 
   let current = addPage(true);
-  current.y = drawPreface(current.page, model.preface, 54, current.y, pageWidth - 108, regular, boldFont);
+  current.y = drawPreface(current.page, model.preface, regular, boldFont) + 8;
 
-  function splitToFit(row: Row, room: number): Row[] {
-    const laid = layoutRow(row, regular, boldFont);
-    if (laid.height <= room) return [row];
-    const middle = row.cells[1];
-    const note = middle?.blocks.find((item) => item.size === 18 && item.text.trim().length > 40);
-    if (!middle || !note) return [row];
-    const words = note.text.split(/\s+/).filter(Boolean);
-    if (words.length < 8) return [row];
-    const mid = Math.ceil(words.length / 2);
-    const firstText = words.slice(0, mid).join(" ");
-    const restText = words.slice(mid).join(" ");
-    const first: Row = {
-      ...row,
-      cells: row.cells.map((item, index) =>
-        index === 1 ? { ...item, blocks: item.blocks.map((part) => (part === note ? { ...part, text: firstText } : part)) } : item,
-      ),
-    };
-    const rest: Row = {
-      cells: row.cells.map((item, index) =>
-        index === 1 ? { ...item, blocks: [{ ...note, text: restText, before: 0 }] } : { ...item, blocks: [block("", 18)] },
-      ),
-    };
-    return [...splitToFit(first, room), ...splitToFit(rest, room)];
-  }
-
-  function paintTable(rows: Row[], indentTwips: number) {
-    const x = 54 + indentTwips / 20;
-    for (const source of rows) {
-      const room = Math.max(180, current.y - bottom);
-      for (const row of splitToFit(source, room)) {
-        const laid = layoutRow(row, regular, boldFont);
-        if (current.y - laid.height < bottom) current = addPage(false);
-        drawRow(current.page, laid, x, current.y, regular, boldFont);
-        current.y -= laid.height;
+  function paintTable(rows: Row[], x: number) {
+    let drawTop = true;
+    for (const row of rows) {
+      const laid = layoutRow(row, regular, boldFont);
+      if (current.y - laid.height < FOOTER_TOP) {
+        current = addPage(false);
+        drawTop = true;
       }
+      drawRow(current.page, laid, x, current.y, regular, boldFont, drawTop);
+      drawTop = false;
+      current.y -= laid.height;
     }
   }
 
-  paintTable(model.attendees, -635);
-  current.y -= 8;
-  paintTable(model.agenda, -545);
+  paintTable(model.attendees, ATTENDEE_LEFT);
+  current = addPage(false);
+  paintTable(model.agenda, AGENDA_LEFT);
 
   pages.forEach((page, index) => {
+    if (index === 0) return;
     const label = `Page ${index + 1} of ${pages.length}`;
     const width = regular.widthOfTextAtSize(label, 10);
-    page.drawText(label, { x: pageWidth - 54 - width, y: 28, size: 10, font: regular, color: black });
+    page.drawText(label, { x: 561 - width, y: 41, size: 10, font: regular, color: black });
   });
   return doc.save();
 }
