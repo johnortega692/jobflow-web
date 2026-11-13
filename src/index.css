@@ -9803,6 +9803,23 @@ tr.budget-hours-pdf-hidden td {
   font-weight: 600;
 }
 
+.paint-estimates-product-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 12rem;
+}
+
+.paint-estimates-product-pick .paint-field-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.paint-estimates-table td .paint-field-select {
+  width: 100%;
+  min-width: 7.5rem;
+}
+
 .paint-estimates-tag {
   padding: 1px 8px;
   border-radius: 999px;

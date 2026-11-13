@@ -509,6 +509,36 @@ export type Database = {
           },
         ];
       };
+      paint_meetings: {
+        Row: {
+          id: string;
+          title: string;
+          meeting_on: string | null;
+          content: Json;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title?: string;
+          meeting_on?: string | null;
+          content?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          meeting_on?: string | null;
+          content?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       project_notes: {
         Row: {
           id: string;

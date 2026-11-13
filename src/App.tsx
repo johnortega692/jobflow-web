@@ -23,6 +23,8 @@ import { BillingPage } from "./pages/BillingPage";
 import { ProjectWorkOrdersPage } from "./pages/ProjectWorkOrdersPage";
 import { MaterialTrackerPage } from "./pages/MaterialTrackerPage";
 import { AllNotesPage } from "./pages/AllNotesPage";
+import { MeetingEditorPage } from "./pages/MeetingEditorPage";
+import { MeetingsPage } from "./pages/MeetingsPage";
 import { NotesPage } from "./pages/NotesPage";
 import { AhaPage } from "./pages/AhaPage";
 import { ToolboxTalksPage } from "./pages/ToolboxTalksPage";
@@ -67,6 +69,8 @@ export default function App() {
             <Route path="/projects/materials" element={<PmMaterialsPage />} />
             <Route path="/workload" element={<CompanyWorkloadPage />} />
             <Route path="/brush-out-request" element={<BrushOutRequestPage />} />
+            <Route path="/meetings" element={<MeetingsPage />} />
+            <Route path="/meetings/:meetingId" element={<MeetingEditorPage />} />
             <Route path="/notes" element={<AllNotesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/projects/:projectId" element={<ProjectLayout />}>

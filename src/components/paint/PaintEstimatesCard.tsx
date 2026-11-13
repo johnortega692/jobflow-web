@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PaintProductSelect } from "./PaintFieldSelects";
+import { useAuth } from "../../contexts/AuthContext";
 import type { ApprovedBrushoutDraft } from "../../lib/approvedBrushouts";
+import {
+  getProductDisplay,
+  loadPaintProducts,
+  loadPaintSheens,
+  sheensForPaintProduct,
+  type PaintProduct,
+} from "../../lib/paintCatalog";
 import {
   gallonsLabel,
   lastMinUncountedLabel,
@@ -11,6 +20,7 @@ import {
   savePaintEstimates,
   type LastMinUncounted,
   type PaintEstimateDraft,
+  type PaintEstimateRole,
 } from "../../lib/paintEstimates";
 
 type Props = {
@@ -21,14 +31,18 @@ type Props = {
 };
 
 type SavedRows = Awaited<ReturnType<typeof loadPaintEstimates>>;
-type Edit = { gallons: string; notes: string; adjustment: string };
+type Edit = { gallons: string; notes: string; adjustment: string; product?: string; sheen?: string; role?: PaintEstimateRole };
 
 let customSeq = 0;
 
-function emptyCustomRow(): PaintEstimateDraft {
+function isUnsavedRow(key: string): boolean {
+  return key.startsWith("custom-") || key.startsWith("typed-");
+}
+
+function emptyCustomRow(typed = false): PaintEstimateDraft {
   customSeq += 1;
   return {
-    key: `custom-${customSeq}`,
+    key: `${typed ? "typed" : "custom"}-${customSeq}`,
     product: "",
     sheen: "",
     role: "custom",
@@ -50,6 +64,9 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [lastMin, setLastMin] = useState<LastMinUncounted>({ count: 0, amount: 0 });
+  const [products, setProducts] = useState<PaintProduct[]>([]);
+  const [sheens, setSheens] = useState<string[]>([]);
+  const { user } = useAuth();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +91,25 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([loadPaintProducts(user?.id, { includeHidden: true }), loadPaintSheens(user?.id)])
+      .then(([nextProducts, nextSheens]) => {
+        if (cancelled) return;
+        setProducts(nextProducts);
+        setSheens(nextSheens);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProducts([]);
+          setSheens([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const rows = useMemo(() => {
     const merged = mergePaintEstimates(brushoutRows, saved)
@@ -100,7 +136,7 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
 
   function edit(row: PaintEstimateDraft, patch: Partial<Edit>) {
     setStatus(null);
-    if (row.key.startsWith("custom-")) {
+    if (isUnsavedRow(row.key)) {
       setCustom((prev) => prev.map((item) => (item.key === row.key ? { ...item, ...patch } : item)));
       return;
     }
@@ -113,14 +149,48 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
     }));
   }
 
-  function editCustom(key: string, patch: Partial<Pick<PaintEstimateDraft, "product" | "sheen">>) {
+  function editCustom(key: string, patch: Partial<Pick<PaintEstimateDraft, "product" | "sheen" | "role">>) {
     setStatus(null);
     setCustom((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)));
   }
 
+  function catalogRole(productName: string): PaintEstimateRole {
+    const name = productName.trim().toLowerCase();
+    const match = products.find((product) => product.product.trim().toLowerCase() === name);
+    return match?.is_primer ? "primer" : "custom";
+  }
+
+  function sheenChoices(row: PaintEstimateDraft): string[] {
+    const options = sheensForPaintProduct(products, row.product, sheens);
+    const current = row.sheen.trim();
+    if (current && !options.some((option) => option.toLowerCase() === current.toLowerCase())) {
+      return [current, ...options];
+    }
+    return options;
+  }
+
+  function setCatalogProduct(row: PaintEstimateDraft, productName: string) {
+    const options = sheensForPaintProduct(products, productName, sheens);
+    const kept = options.some((option) => option.toLowerCase() === row.sheen.trim().toLowerCase()) ? row.sheen : "";
+    const role = catalogRole(productName);
+    if (isUnsavedRow(row.key)) {
+      editCustom(row.key, { product: productName, sheen: kept, role });
+      return;
+    }
+    edit(row, { product: productName, sheen: kept, role });
+  }
+
+  function setCatalogSheen(row: PaintEstimateDraft, sheen: string) {
+    if (isUnsavedRow(row.key)) {
+      editCustom(row.key, { sheen });
+      return;
+    }
+    edit(row, { sheen });
+  }
+
   function remove(row: PaintEstimateDraft) {
     setStatus(null);
-    if (row.key.startsWith("custom-")) {
+    if (isUnsavedRow(row.key)) {
       setCustom((prev) => prev.filter((item) => item.key !== row.key));
       return;
     }
@@ -176,6 +246,14 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
           </button>
           <button
             type="button"
+            className="btn ghost"
+            onClick={() => setCustom((prev) => [...prev, emptyCustomRow(true)])}
+            disabled={busy || loading}
+          >
+            + Custom product
+          </button>
+          <button
+            type="button"
             className={`btn${dirty ? " btn-primary" : " btn-secondary"}`}
             onClick={() => void onSave()}
             disabled={busy || loading || !dirty}
@@ -185,13 +263,18 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
         </div>
       </div>
 
+      <datalist id="paint-estimate-sheens">
+        {sheens.map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
       {error && <div className="banner banner-error">{error}</div>}
       {status && !error && <div className="banner banner-ok">{status}</div>}
 
       {loading ? (
         <p className="muted">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="muted small">Add brush-out lines above, or use + Add product.</p>
+        <p className="muted small">Add brush-out lines above, or add a catalog or custom product.</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table paint-estimates-table">
@@ -212,37 +295,70 @@ export function PaintEstimatesCard({ projectId, jobNumber, brushoutRows, updated
                 const estimate = parseEstimateGallons(row.gallons);
                 const adjustment = parseAdjustmentGallons(row.adjustment) ?? 0;
                 const left = estimate === null ? null : estimate - row.orderedGallons - adjustment;
-                const isNew = row.key.startsWith("custom-");
+                const isNew = isUnsavedRow(row.key);
+                const isTyped = row.key.startsWith("typed-");
+                const canPick = isNew || row.offList;
+                const productLabel = row.product ? getProductDisplay(products, row.product) : "";
+                const inCatalog = products.some(
+                  (product) => product.product.trim().toLowerCase() === row.product.trim().toLowerCase(),
+                );
+                const showTyped = isTyped || (products.length > 0 && row.offList && !inCatalog);
                 return (
                   <tr key={row.key} className={left !== null && left < 0 ? "paint-estimates-over" : undefined}>
                     <td>
-                      {isNew ? (
+                      {showTyped ? (
                         <input
                           className="input"
                           value={row.product}
-                          placeholder="Product"
-                          aria-label="Product"
-                          onChange={(e) => editCustom(row.key, { product: e.target.value })}
+                          placeholder="Custom product"
+                          aria-label="Custom product"
+                          onChange={(e) => edit(row, { product: e.target.value, role: "custom" })}
                         />
-                      ) : (
-                        <span className="paint-estimates-product">
-                          {row.product}
+                      ) : canPick ? (
+                        <div className="paint-estimates-product-pick">
+                          <PaintProductSelect
+                            value={productLabel}
+                            products={products}
+                            ariaLabel="Product"
+                            onChange={(productName) => setCatalogProduct(row, productName)}
+                          />
                           {row.role === "primer" ? <span className="paint-estimates-tag">Primer</span> : null}
                           {row.offList ? (
                             <span className="paint-estimates-tag paint-estimates-tag--muted">Not on brush-outs</span>
                           ) : null}
+                        </div>
+                      ) : (
+                        <span className="paint-estimates-product">
+                          {row.product}
+                          {row.role === "primer" ? <span className="paint-estimates-tag">Primer</span> : null}
                         </span>
                       )}
                     </td>
                     <td>
-                      {isNew ? (
+                      {showTyped ? (
                         <input
                           className="input"
                           value={row.sheen}
                           placeholder="Sheen"
                           aria-label="Sheen"
-                          onChange={(e) => editCustom(row.key, { sheen: e.target.value })}
+                          list="paint-estimate-sheens"
+                          onChange={(e) => edit(row, { sheen: e.target.value })}
                         />
+                      ) : canPick ? (
+                        <select
+                          className="paint-field-select"
+                          value={row.sheen}
+                          aria-label="Sheen"
+                          title={row.sheen || "Any sheen"}
+                          onChange={(e) => setCatalogSheen(row, e.target.value)}
+                        >
+                          <option value="">Any</option>
+                          {sheenChoices(row).map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
                         row.sheen || <span className="muted">Any</span>
                       )}
