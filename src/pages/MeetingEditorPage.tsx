@@ -26,6 +26,7 @@ export function MeetingEditorPage() {
   const [copying, setCopying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -127,6 +128,27 @@ export function MeetingEditorPage() {
     }
   }
 
+  function sectionOpen(id: string): boolean {
+    return !collapsed.has(id);
+  }
+
+  function toggleSection(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function setAllSections(open: boolean) {
+    if (!content || open) {
+      setCollapsed(new Set());
+      return;
+    }
+    setCollapsed(new Set(["attendees", ...content.groups.map((group) => group.id), ...content.topics.map((topic) => topic.id)]));
+  }
+
   if (loading) return <p className="muted">Loading meeting…</p>;
   if (!content) {
     return (
@@ -136,6 +158,8 @@ export function MeetingEditorPage() {
       </section>
     );
   }
+
+  const attendeeCount = content.attendees.filter((person) => person.name.trim() || person.email.trim()).length;
 
   return (
     <section className="stack paint-meetings">
@@ -147,6 +171,9 @@ export function MeetingEditorPage() {
           <h1>Meeting</h1>
         </div>
         <div className="paint-meetings-actions">
+          <button type="button" className="btn" onClick={() => setAllSections(collapsed.size > 0)}>
+            {collapsed.size > 0 ? "Expand sections" : "Collapse sections"}
+          </button>
           <button type="button" className="btn" onClick={() => void onCopyNextWeek()} disabled={copying || saving}>
             {copying ? "Copying…" : "Copy for next week"}
           </button>
@@ -199,8 +226,19 @@ export function MeetingEditorPage() {
 
       <div className="card stack">
         <div className="row-between wrap gap">
-          <h2>Attendees</h2>
-          <div className="paint-meeting-section-actions">
+          <button
+            type="button"
+            className="paint-meeting-toggle"
+            aria-expanded={sectionOpen("attendees")}
+            onClick={() => toggleSection("attendees")}
+          >
+            <span aria-hidden="true">{sectionOpen("attendees") ? "▾" : "▸"}</span>
+            <h2>Attendees</h2>
+            {sectionOpen("attendees") ? null : (
+              <span className="muted small">{attendeeCount === 1 ? "1 person" : `${attendeeCount} people`}</span>
+            )}
+          </button>
+          {sectionOpen("attendees") ? <div className="paint-meeting-section-actions">
             <label className="paint-meeting-sort">
               Sort
               <select
@@ -219,9 +257,9 @@ export function MeetingEditorPage() {
             <button type="button" className="btn" onClick={() => patch({ attendees: [...content.attendees, emptyAttendee()] })}>
               Add person
             </button>
-          </div>
+          </div> : null}
         </div>
-        <div className="paint-meeting-attendees">
+        {sectionOpen("attendees") ? <div className="paint-meeting-attendees">
           {content.attendees.map((person) => (
             <div key={person.id} className="paint-meeting-attendee">
               <input aria-label="Name" placeholder="Name" value={person.name} onChange={(event) => patchAttendee(person.id, { name: event.target.value })} />
@@ -246,14 +284,26 @@ export function MeetingEditorPage() {
               </button>
             </div>
           ))}
-        </div>
+        </div> : null}
       </div>
 
-      {content.groups.map((group) => (
+      {content.groups.map((group) => {
+        const open = sectionOpen(group.id);
+        const jobCount = group.lines.filter((line) => line.company.trim() || line.job.trim() || line.notes.trim()).length;
+        return (
         <div key={group.id} className="card stack">
           <div className="row-between wrap gap">
-            <h2>{group.title}</h2>
-            <div className="paint-meeting-section-actions">
+            <button
+              type="button"
+              className="paint-meeting-toggle"
+              aria-expanded={open}
+              onClick={() => toggleSection(group.id)}
+            >
+              <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+              <h2>{group.title}</h2>
+              {open ? null : <span className="muted small">{jobCount === 1 ? "1 job" : `${jobCount} jobs`}</span>}
+            </button>
+            {open ? <div className="paint-meeting-section-actions">
               <label className="paint-meeting-sort">
                 Sort
                 <select
@@ -286,9 +336,9 @@ export function MeetingEditorPage() {
               >
                 Add job
               </button>
-            </div>
+            </div> : null}
           </div>
-          {group.lines.map((line) => (
+          {open ? group.lines.map((line) => (
             <div key={line.id} className="paint-meeting-job">
               <div className="paint-meeting-job-head">
                 <input aria-label="Company" placeholder="GC" value={line.company} onChange={(event) => patchLine(group.id, line.id, { company: event.target.value })} />
@@ -315,14 +365,26 @@ export function MeetingEditorPage() {
                 onChange={(event) => patchLine(group.id, line.id, { notes: event.target.value })}
               />
             </div>
-          ))}
+          )) : null}
         </div>
-      ))}
+        );
+      })}
 
-      {content.topics.map((topic) => (
+      {content.topics.map((topic) => {
+        const open = sectionOpen(topic.id);
+        return (
         <div key={topic.id} className="card stack">
-          <h2>{topic.title}</h2>
-          <textarea
+          <button
+            type="button"
+            className="paint-meeting-toggle"
+            aria-expanded={open}
+            onClick={() => toggleSection(topic.id)}
+          >
+            <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+            <h2>{topic.title}</h2>
+            {open ? null : <span className="muted small">{topic.body.trim() ? "Has notes" : "Empty"}</span>}
+          </button>
+          {open ? <textarea
             aria-label={topic.title}
             rows={5}
             placeholder="Notes"
@@ -330,9 +392,10 @@ export function MeetingEditorPage() {
             onChange={(event) =>
               patch({ topics: content.topics.map((item) => (item.id === topic.id ? { ...item, body: event.target.value } : item)) })
             }
-          />
+            /> : null}
         </div>
-      ))}
+        );
+      })}
 
       <div>
         <button type="button" className="btn" onClick={() => void onDelete()}>

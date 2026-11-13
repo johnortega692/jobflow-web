@@ -517,6 +517,15 @@ export function PaintSubmittalsPage() {
               clearDragState();
             }}
             onDragEnd={clearDragState}
+            onDuplicate={() =>
+              updateDraft((d) => {
+                const source = d.items[index];
+                if (!source) return d;
+                const copy = { ...source, special_order: false };
+                const items = [...d.items.slice(0, index + 1), copy, ...d.items.slice(index + 1)];
+                return { ...d, items: withMaybeAutoLabels(items, d.auto_label !== false) };
+              })
+            }
             onRemove={() =>
               updateDraft((d) => {
                 const filtered =

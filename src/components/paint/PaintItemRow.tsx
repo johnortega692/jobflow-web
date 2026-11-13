@@ -42,6 +42,7 @@ type Props = {
   dragOver: boolean;
   onChange: (patch: Partial<PaintItem>) => void;
   onRemove: () => void;
+  onDuplicate?: () => void;
   onDragStart: () => void;
   onDragOver: (e: DragEvent) => void;
   onDragLeave: () => void;
@@ -127,6 +128,7 @@ export function PaintItemRow({
   dragOver,
   onChange,
   onRemove,
+  onDuplicate,
   onDragStart,
   onDragOver,
   onDragLeave,
@@ -379,6 +381,17 @@ export function PaintItemRow({
           >
             Track
           </button>
+          {onDuplicate ? (
+            <button
+              type="button"
+              className="paint-pdf-toggle"
+              title="Duplicate this row"
+              aria-label={`Duplicate row ${index + 1}`}
+              onClick={onDuplicate}
+            >
+              Copy
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn-icon btn-small btn-danger-soft"
