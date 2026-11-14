@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  MEETING_GROUP_TITLES,
   copyMeetingForNextWeek,
   emptyAttendee,
   emptyJobLine,
   emptyTopicItem,
   meetingContentOf,
+  meetingDateLine,
+  meetingFileStem,
   sortAttendees,
   sortMeetingLines,
   type MeetingAttendee,
@@ -16,8 +19,38 @@ import {
   type PaintMeetingContent,
 } from "../lib/paintMeeting";
 import { downloadMeetingDocx, downloadMeetingPdf } from "../lib/paintMeetingExport";
+import { openEmailCompose } from "../lib/paintVendorEmail";
+import { loadPaintUserSettings, type ComposeEmailMethod } from "../lib/paintUserSettings";
+import { useAuth } from "../contexts/AuthContext";
 import { createPaintMeeting, deletePaintMeeting, getPaintMeeting, savePaintMeeting } from "../lib/paintMeetingStorage";
+import { gcCompanyName } from "../lib/gcCompanyName";
+import { listDoneProjectIds } from "../lib/projectDone";
+import { supabase } from "../lib/supabase";
+import { UnsavedChangesDialog } from "../components/UnsavedChangesDialog";
 import "./MeetingsPage.css";
+
+const AGENDA_SUGGEST_ID = "agenda-suggest";
+
+const MOVE_TO_ACTIVE_TITLES = new Set([
+  "Next Starting Projects",
+  "Upcoming Projects",
+  "Incoming Projects",
+]);
+
+const GROUP_ADD_LABELS: Record<(typeof MEETING_GROUP_TITLES)[number], string> = {
+  "Active Projects": "Add to Active",
+  "Next Starting Projects": "Add to Next starting",
+  "Upcoming Projects": "Add to Upcoming",
+  "Recent Completed Projects": "Add to Completed",
+  "Incoming Projects": "Add to Incoming",
+};
+
+type AgendaProject = {
+  id: string;
+  jobNumber: string;
+  jobName: string;
+  company: string;
+};
 
 function moveActionToDiscussion(notes: string, action: string): string {
   const update = action.trim();
@@ -26,20 +59,42 @@ function moveActionToDiscussion(notes: string, action: string): string {
   return discussion ? `${discussion}\n${update}` : update;
 }
 
-const CLOSED_TOPIC_TITLES = new Set([
-  "Manpower / Labor / Hours",
-  "Tools / Equipment / Material",
-  "Office Paperwork",
-  "Clients and Emails",
-  "Safety Issues",
-]);
-
 const PROJECT_SECTION_IDS: Record<string, string> = {
   "Next Starting Projects": "meeting-next-starting",
   "Upcoming Projects": "meeting-upcoming",
   "Recent Completed Projects": "meeting-completed",
   "Incoming Projects": "meeting-incoming",
 };
+
+function attendeeRecipients(content: PaintMeetingContent): { name: string; email: string }[] {
+  const seen = new Set<string>();
+  const rows: { name: string; email: string }[] = [];
+  for (const person of content.attendees) {
+    const email = person.email.trim();
+    if (!email.includes("@")) continue;
+    const key = email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ name: person.name.trim() || email, email });
+  }
+  return rows;
+}
+
+function meetingEmailSubject(content: PaintMeetingContent): string {
+  const title = content.title.trim() || "Meeting agenda";
+  const when = meetingDateLine(content);
+  return when ? `${title} — ${when}` : title;
+}
+
+function meetingEmailBody(content: PaintMeetingContent, fileName: string): string {
+  const when = meetingDateLine(content);
+  const lines = ["Hello,", "", "The paint meeting agenda is attached as a PDF.", ""];
+  if (when) lines.push(`Meeting: ${when}`);
+  if (content.purpose.trim()) lines.push(`Purpose: ${content.purpose.trim()}`);
+  if (content.nextMeeting.trim()) lines.push(`Next meeting: ${content.nextMeeting.trim()}`);
+  lines.push("", `Attachment: ${fileName}`, "", "Thank you,");
+  return lines.join("\n");
+}
 
 function projectSectionId(title: string): string | undefined {
   return PROJECT_SECTION_IDS[title];
@@ -79,6 +134,11 @@ function nextMeetingIso(nextMeeting: string, meetingDate: string): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function agendaJobKey(job: string): string {
+  const number = splitJobLabel(job).number || job;
+  return number.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function splitJobLabel(job: string): { number: string; name: string } {
   const trimmed = job.trim();
   const match = /^(\d+[A-Za-z0-9-]*)\s*[—–-]?\s*(.*)$/.exec(trimmed);
@@ -97,6 +157,7 @@ function projectRowStatus(line: MeetingJobLine): { tone: "blue" | "amber" | "gre
 export function MeetingEditorPage() {
   const { meetingId = "" } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [content, setContent] = useState<PaintMeetingContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -104,11 +165,22 @@ export function MeetingEditorPage() {
   const [copying, setCopying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [leaveTo, setLeaveTo] = useState<string | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailSkipped, setEmailSkipped] = useState<Set<string>>(() => new Set());
+  const [openingEmail, setOpeningEmail] = useState(false);
+  const [composeMethod, setComposeMethod] = useState<ComposeEmailMethod>("gmail");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [rosterOpen, setRosterOpen] = useState(false);
   const [openJobs, setOpenJobs] = useState<Set<string>>(() => new Set());
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [agendaProjects, setAgendaProjects] = useState<AgendaProject[]>([]);
+  const [agendaReady, setAgendaReady] = useState(false);
+  const [agendaError, setAgendaError] = useState<string | null>(null);
+  const [projectQuery, setProjectQuery] = useState("");
+  const [addTarget, setAddTarget] = useState<Record<string, string>>({});
   const [headerEditing, setHeaderEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [purposeDraft, setPurposeDraft] = useState("");
@@ -124,6 +196,8 @@ export function MeetingEditorPage() {
     setOpenJobs(new Set());
     setHeaderEditing(false);
     setMoreOpen(false);
+    setDirty(false);
+    setLeaveTo(null);
     void getPaintMeeting(meetingId)
       .then((row) => {
         if (cancelled) return;
@@ -134,7 +208,13 @@ export function MeetingEditorPage() {
         }
         const next = meetingContentOf(row);
         setContent(next);
-        setCollapsed(new Set(next.topics.filter((topic) => CLOSED_TOPIC_TITLES.has(topic.title)).map((topic) => topic.id)));
+        setCollapsed(
+          new Set([
+            AGENDA_SUGGEST_ID,
+            ...next.groups.map((group) => group.id),
+            ...next.topics.map((topic) => topic.id),
+          ]),
+        );
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load the meeting.");
@@ -142,6 +222,39 @@ export function MeetingEditorPage() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [meetingId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAgendaReady(false);
+    setAgendaError(null);
+    void Promise.all([
+      supabase.from("projects").select("id, job_number, job_name, contractor"),
+      listDoneProjectIds(),
+    ]).then(([projectsRes, doneRes]) => {
+      if (cancelled) return;
+      if (projectsRes.error) {
+        setAgendaError(projectsRes.error.message);
+        setAgendaReady(true);
+        return;
+      }
+      const done = new Set(doneRes.ids);
+      const rows = (projectsRes.data ?? [])
+        .filter((project) => !done.has(project.id))
+        .map((project) => ({
+          id: project.id,
+          jobNumber: (project.job_number ?? "").trim(),
+          jobName: (project.job_name ?? "").trim(),
+          company: gcCompanyName(project.contractor ?? ""),
+        }))
+        .filter((project) => project.jobNumber || project.jobName)
+        .sort((a, b) => a.jobNumber.localeCompare(b.jobNumber, undefined, { numeric: true, sensitivity: "base" }));
+      setAgendaProjects(rows);
+      setAgendaReady(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -181,8 +294,55 @@ export function MeetingEditorPage() {
     };
   }, [moreOpen]);
 
+  const headerDirty = headerEditing && content != null && (titleDraft !== content.title || purposeDraft !== content.purpose);
+  const unsaved = dirty || headerDirty;
+
+  useEffect(() => {
+    if (!unsaved) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [unsaved]);
+
+  useEffect(() => {
+    if (!unsaved) return;
+    function onClick(event: MouseEvent) {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element | null)?.closest("a");
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      event.preventDefault();
+      setLeaveTo(`${url.pathname}${url.search}${url.hash}`);
+    }
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [unsaved]);
+
+  useEffect(() => {
+    if (!emailOpen || !user?.id) return;
+    let cancelled = false;
+    void loadPaintUserSettings(user.id)
+      .then((settings) => {
+        if (!cancelled) setComposeMethod(settings.compose_email_method);
+      })
+      .catch(() => {
+        if (!cancelled) setComposeMethod("gmail");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [emailOpen, user?.id]);
+
   function patch(partial: Partial<PaintMeetingContent>) {
     setSaved(false);
+    setDirty(true);
     setContent((current) => (current ? { ...current, ...partial } : current));
   }
 
@@ -202,17 +362,22 @@ export function MeetingEditorPage() {
     });
   }
 
-  async function onSave() {
-    if (!content || saving) return;
+  async function onSave(): Promise<boolean> {
+    if (!content || saving) return false;
+    const next = headerEditing ? { ...content, title: titleDraft, purpose: purposeDraft } : content;
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
-      const savedRow = await savePaintMeeting(meetingId, content);
+      const savedRow = await savePaintMeeting(meetingId, next);
       setContent(meetingContentOf(savedRow));
+      setHeaderEditing(false);
+      setDirty(false);
       setSaved(true);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the meeting.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -229,6 +394,28 @@ export function MeetingEditorPage() {
       setError(err instanceof Error ? err.message : "Could not download the meeting.");
     } finally {
       setExporting(null);
+    }
+  }
+
+  async function openMeetingEmail() {
+    if (!content || openingEmail) return;
+    setOpeningEmail(true);
+    const recipients = attendeeRecipients(content).filter((person) => !emailSkipped.has(person.email.toLowerCase()));
+    const result = openEmailCompose(
+      recipients.map((person) => person.email),
+      [],
+      meetingEmailSubject(content),
+      meetingEmailBody(content, `${meetingFileStem(content)}.pdf`),
+      composeMethod,
+    );
+    try {
+      await downloadMeetingPdf(content);
+      setEmailOpen(false);
+      if (result.warning) setError(result.warning);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not download the PDF.");
+    } finally {
+      setOpeningEmail(false);
     }
   }
 
@@ -277,7 +464,7 @@ export function MeetingEditorPage() {
       setOpenJobs(new Set(lineIds));
       return;
     }
-    setCollapsed(new Set(["attendees", ...content.groups.map((group) => group.id), ...content.topics.map((topic) => topic.id)]));
+    setCollapsed(new Set(["attendees", AGENDA_SUGGEST_ID, ...content.groups.map((group) => group.id), ...content.topics.map((topic) => topic.id)]));
     setOpenJobs(new Set());
   }
 
@@ -301,7 +488,89 @@ export function MeetingEditorPage() {
   }
 
   const attendeeCount = content.attendees.filter((person) => person.name.trim() || person.email.trim()).length;
-  const sectionIds = ["attendees", ...content.groups.map((group) => group.id), ...content.topics.map((topic) => topic.id)];
+  const sectionIds = ["attendees", AGENDA_SUGGEST_ID, ...content.groups.map((group) => group.id), ...content.topics.map((topic) => topic.id)];
+  const agendaKeys = new Set(
+    content.groups.flatMap((group) => group.lines.map((line) => agendaJobKey(line.job))).filter(Boolean),
+  );
+  const query = projectQuery.trim().toLowerCase();
+  const missingProjects = agendaProjects.filter((project) => {
+    const key = agendaJobKey(project.jobNumber);
+    return !(key && agendaKeys.has(key));
+  });
+  const availableProjects = missingProjects.filter((project) => {
+    if (!query) return true;
+    return `${project.jobNumber} ${project.jobName} ${project.company}`.toLowerCase().includes(query);
+  });
+
+  function addAgendaProject(project: AgendaProject, groupTitle: string) {
+    if (!content) return;
+    const group = content.groups.find((item) => item.title === groupTitle);
+    if (!group) return;
+    const line: MeetingJobLine = {
+      ...emptyJobLine(),
+      company: project.company,
+      job: [project.jobNumber, project.jobName].filter(Boolean).join(" "),
+    };
+    setOpenJobs((prev) => new Set(prev).add(line.id));
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.delete(group.id);
+      return next;
+    });
+    patch({
+      groups: content.groups.map((item) =>
+        item.id === group.id ? { ...item, lines: sortMeetingLines([...item.lines, line], item.sort) } : item,
+      ),
+    });
+  }
+
+  function moveLineToActive(groupId: string, line: MeetingJobLine) {
+    if (!content) return;
+    const active = content.groups.find((item) => item.title === "Active Projects");
+    if (!active || active.id === groupId) return;
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.delete(active.id);
+      return next;
+    });
+    patch({
+      groups: content.groups.map((item) => {
+        if (item.id === groupId) return { ...item, lines: item.lines.filter((row) => row.id !== line.id) };
+        if (item.id === active.id) return { ...item, lines: sortMeetingLines([...item.lines, line], item.sort) };
+        return item;
+      }),
+    });
+  }
+  function openJump(hash: string) {
+    if (!content) return;
+    const ids: string[] = [];
+    if (hash === "meeting-attendees") ids.push("attendees");
+    const groupTitle: Record<string, string> = {
+      "meeting-projects": "Active Projects",
+      "meeting-next-starting": "Next Starting Projects",
+      "meeting-upcoming": "Upcoming Projects",
+      "meeting-completed": "Recent Completed Projects",
+      "meeting-incoming": "Incoming Projects",
+    };
+    const match = content.groups.find((group) => group.title === groupTitle[hash]);
+    if (match) ids.push(match.id);
+    if (hash === "meeting-other") {
+      ids.push(...content.topics.filter((topic) => topic.title !== "Safety Issues").map((topic) => topic.id));
+    }
+    if (hash === "meeting-safety") {
+      ids.push(...content.topics.filter((topic) => topic.title === "Safety Issues").map((topic) => topic.id));
+    }
+    const keep = new Set(ids);
+    setCollapsed(
+      new Set(
+        ["attendees", AGENDA_SUGGEST_ID, ...content.groups.map((group) => group.id), ...content.topics.map((topic) => topic.id)].filter(
+          (id) => !keep.has(id),
+        ),
+      ),
+    );
+    setOpenJobs(new Set());
+    document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   const allSectionsClosed = sectionIds.every((id) => collapsed.has(id)) && openJobs.size === 0;
   const safetyTopics = content.topics.filter((topic) => topic.title === "Safety Issues");
   const otherTopics = content.topics.filter((topic) => topic.title !== "Safety Issues");
@@ -337,6 +606,17 @@ export function MeetingEditorPage() {
                 </button>
                 <button type="button" role="menuitem" onClick={() => { setDownloadOpen(false); void onExport("docx"); }}>
                   Word
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setDownloadOpen(false);
+                    setEmailSkipped(new Set());
+                    setEmailOpen(true);
+                  }}
+                >
+                  Email PDF
                 </button>
               </div>
             ) : null}
@@ -387,14 +667,14 @@ export function MeetingEditorPage() {
 
       <div className="paint-meeting-jump-row">
         <nav className="paint-meeting-jump" aria-label="Meeting sections">
-          <a href="#meeting-attendees">Attendees</a>
-          <a href="#meeting-projects">Projects</a>
-          <a href="#meeting-next-starting">Next Starting</a>
-          <a href="#meeting-upcoming">Upcoming</a>
-          <a href="#meeting-completed">Completed</a>
-          <a href="#meeting-incoming">Incoming</a>
-          <a href="#meeting-other">Other sections</a>
-          <a href="#meeting-safety">Safety</a>
+          <a href="#meeting-attendees" onClick={(event) => { event.preventDefault(); openJump("meeting-attendees"); }}>Attendees</a>
+          <a href="#meeting-projects" onClick={(event) => { event.preventDefault(); openJump("meeting-projects"); }}>Projects</a>
+          <a href="#meeting-next-starting" onClick={(event) => { event.preventDefault(); openJump("meeting-next-starting"); }}>Next Starting</a>
+          <a href="#meeting-upcoming" onClick={(event) => { event.preventDefault(); openJump("meeting-upcoming"); }}>Upcoming</a>
+          <a href="#meeting-completed" onClick={(event) => { event.preventDefault(); openJump("meeting-completed"); }}>Completed</a>
+          <a href="#meeting-incoming" onClick={(event) => { event.preventDefault(); openJump("meeting-incoming"); }}>Incoming</a>
+          <a href="#meeting-other" onClick={(event) => { event.preventDefault(); openJump("meeting-other"); }}>Other sections</a>
+          <a href="#meeting-safety" onClick={(event) => { event.preventDefault(); openJump("meeting-safety"); }}>Safety</a>
         </nav>
         <button type="button" className="paint-meeting-jump-toggle" onClick={() => setAllSections(allSectionsClosed)}>
           {allSectionsClosed ? "Expand all" : "Collapse all"}
@@ -551,8 +831,10 @@ export function MeetingEditorPage() {
                 type="button"
                 className={person.present ? "paint-meeting-chip" : "paint-meeting-chip is-absent"}
                 aria-pressed={person.present}
+                aria-label={`${person.name.trim() || person.email.trim()}, ${person.present ? "present" : "absent"}`}
                 onClick={() => patchAttendee(person.id, { present: !person.present })}
               >
+                <span className={person.present ? "paint-meeting-chip-dot is-present" : "paint-meeting-chip-dot is-absent"} aria-hidden="true" />
                 {person.name.trim() || person.email.trim()}
               </button>
             ))}
@@ -587,6 +869,63 @@ export function MeetingEditorPage() {
       </div>
 
       <div id="meeting-projects">
+      <div className="card stack">
+        <button
+          type="button"
+          className="paint-meeting-toggle"
+          aria-expanded={sectionOpen(AGENDA_SUGGEST_ID)}
+          onClick={() => toggleSection(AGENDA_SUGGEST_ID)}
+        >
+          <span aria-hidden="true">{sectionOpen(AGENDA_SUGGEST_ID) ? "▾" : "▸"}</span>
+          <h2>Not on this agenda</h2>
+          {sectionOpen(AGENDA_SUGGEST_ID) ? null : (
+            <span className="muted small">
+              {!agendaReady ? "…" : missingProjects.length === 1 ? "1 job" : `${missingProjects.length} jobs`}
+            </span>
+          )}
+        </button>
+        {sectionOpen(AGENDA_SUGGEST_ID) ? (
+          <>
+            <p className="muted small paint-meeting-suggest-note">
+              Open JobFlow jobs that are not on this meeting. Adding one puts it on the agenda. The job stays in JobFlow either way.
+            </p>
+            <input
+              aria-label="Find a job"
+              placeholder="Find a job"
+              value={projectQuery}
+              onChange={(event) => setProjectQuery(event.target.value)}
+            />
+            {availableProjects.map((project) => {
+              const section = addTarget[project.id] ?? "Active Projects";
+              return (
+                <div key={project.id} className="paint-meeting-suggest">
+                  <span className="paint-meeting-project-number">{project.jobNumber || "—"}</span>
+                  <span className="paint-meeting-project-name">{project.jobName || "Untitled job"}</span>
+                  <span className="muted small">{project.company}</span>
+                  <select
+                    aria-label={`Agenda section for ${project.jobNumber || project.jobName}`}
+                    value={section}
+                    onChange={(event) => setAddTarget((prev) => ({ ...prev, [project.id]: event.target.value }))}
+                  >
+                    {MEETING_GROUP_TITLES.map((title) => (
+                      <option key={title} value={title}>
+                        {GROUP_ADD_LABELS[title]}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn" onClick={() => addAgendaProject(project, section)}>
+                    Add
+                  </button>
+                </div>
+              );
+            })}
+            {agendaError ? <p className="muted small">{agendaError}</p> : null}
+            {agendaReady && !agendaError && availableProjects.length === 0 ? (
+              <p className="muted small">{query ? "No matching jobs." : "Every open job is already on this agenda."}</p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
       {content.groups.map((group) => {
         const open = sectionOpen(group.id);
         const jobCount = group.lines.filter((line) => line.company.trim() || line.job.trim() || line.notes.trim() || line.action.trim()).length;
@@ -649,12 +988,84 @@ export function MeetingEditorPage() {
 
       <div id="meeting-other">{renderTopics(otherTopics)}</div>
       <div id="meeting-safety">{renderTopics(safetyTopics)}</div>
+      {leaveTo ? (
+        <UnsavedChangesDialog
+          targetLabel="this meeting"
+          saving={saving}
+          onSave={() => {
+            void onSave().then((ok) => {
+              if (!ok || !leaveTo) return;
+              const to = leaveTo;
+              setLeaveTo(null);
+              void navigate(to);
+            });
+          }}
+          onDiscard={() => {
+            const to = leaveTo;
+            setDirty(false);
+            setLeaveTo(null);
+            if (to) void navigate(to);
+          }}
+          onCancel={() => setLeaveTo(null)}
+        />
+      ) : null}
+      {emailOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setEmailOpen(false)}>
+          <div
+            className="modal card stack paint-meeting-email"
+            role="dialog"
+            aria-labelledby="meeting-email-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 id="meeting-email-title">Recipients</h3>
+            {attendeeRecipients(content).filter((person) => !emailSkipped.has(person.email.toLowerCase())).length ? (
+              <ul className="paint-meeting-email-people">
+                {attendeeRecipients(content)
+                  .filter((person) => !emailSkipped.has(person.email.toLowerCase()))
+                  .map((person) => (
+                    <li key={person.email}>
+                      <span>
+                        {person.name} <span className="muted">{person.email}</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="paint-meeting-remove"
+                        aria-label={`Remove ${person.email}`}
+                        onClick={() =>
+                          setEmailSkipped((prev) => {
+                            const next = new Set(prev);
+                            next.add(person.email.toLowerCase());
+                            return next;
+                          })
+                        }
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                          <path d="M6 6l12 12M18 6 6 18" />
+                        </svg>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="muted small">No recipients left. The draft will open with an empty To line.</p>
+            )}
+            <div className="row-gap wrap">
+              <button type="button" className="btn btn-primary" disabled={openingEmail} onClick={() => void openMeetingEmail()}>
+                {openingEmail ? "Opening…" : "Open email draft"}
+              </button>
+              <button type="button" className="btn" disabled={openingEmail} onClick={() => setEmailOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 
   function renderProjectRow(group: PaintMeetingContent["groups"][number], line: MeetingJobLine) {
     if (!content) return null;
-    const status = projectRowStatus(line);
+    const status = line.skipNext ? { tone: "grey" as const, label: "Won't carry", updated: "" } : projectRowStatus(line);
     const jobLabel = splitJobLabel(line.job);
     const expanded = openJobs.has(line.id);
     return (
@@ -671,19 +1082,38 @@ export function MeetingEditorPage() {
             <div className="paint-meeting-job-head">
               <input aria-label="Company" placeholder="GC" value={line.company} onChange={(event) => patchLine(group.id, line.id, { company: event.target.value })} />
               <input aria-label="Job" placeholder="Job number and name" value={line.job} onChange={(event) => patchLine(group.id, line.id, { job: event.target.value })} />
-              <button
-                type="button"
-                className="btn"
-                onClick={() =>
-                  patch({
-                    groups: content.groups.map((item) =>
-                      item.id === group.id ? { ...item, lines: item.lines.filter((row) => row.id !== line.id) } : item,
-                    ),
-                  })
-                }
-              >
-                Remove
-              </button>
+              <div className="paint-meeting-line-actions">
+                {MOVE_TO_ACTIVE_TITLES.has(group.title) ? (
+                  <button type="button" className="btn" onClick={() => moveLineToActive(group.id, line)}>
+                    Move to Active
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn"
+                  title="Stays on this meeting. Copy for next week leaves it off. The job stays in JobFlow."
+                  onClick={() => patchLine(group.id, line.id, { skipNext: !line.skipNext })}
+                >
+                  {line.skipNext ? "Keep for next week" : "Done talking"}
+                </button>
+                <button
+                  type="button"
+                  className="paint-meeting-remove"
+                  aria-label="Remove from meeting"
+                  title="Takes this job off the agenda. It stays in JobFlow."
+                  onClick={() =>
+                    patch({
+                      groups: content.groups.map((item) =>
+                        item.id === group.id ? { ...item, lines: item.lines.filter((row) => row.id !== line.id) } : item,
+                      ),
+                    })
+                  }
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6 6 18" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div className="paint-meeting-columns">
               <label>
@@ -691,16 +1121,18 @@ export function MeetingEditorPage() {
                 <textarea aria-label="Discussion" rows={4} placeholder="Discussion" value={line.notes} onChange={(event) => patchLine(group.id, line.id, { notes: event.target.value })} />
               </label>
               <label>
-                Updates / Action Item
+                <span className="paint-meeting-field-label">
+                  Updates / Action Item
+                  <button
+                    type="button"
+                    className="paint-meeting-move"
+                    disabled={!line.action.trim()}
+                    onClick={() => patchLine(group.id, line.id, { notes: moveActionToDiscussion(line.notes, line.action), action: "" })}
+                  >
+                    Move to discussion
+                  </button>
+                </span>
                 <textarea aria-label="Updates / Action Item" rows={4} placeholder="Updates / Action Item" value={line.action} onChange={(event) => patchLine(group.id, line.id, { action: event.target.value })} />
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={!line.action.trim()}
-                  onClick={() => patchLine(group.id, line.id, { notes: moveActionToDiscussion(line.notes, line.action), action: "" })}
-                >
-                  Move to discussion
-                </button>
               </label>
             </div>
           </div>
@@ -789,7 +1221,22 @@ export function MeetingEditorPage() {
                       />
                     </label>
                     <label>
-                      Updates / Action Item
+                      <span className="paint-meeting-field-label">
+                        Updates / Action Item
+                        <button
+                          type="button"
+                          className="paint-meeting-move"
+                          disabled={!item.action.trim()}
+                          onClick={() =>
+                            patchItem(item.id, {
+                              notes: moveActionToDiscussion(item.notes, item.action),
+                              action: "",
+                            })
+                          }
+                        >
+                          Move to discussion
+                        </button>
+                      </span>
                       <textarea
                         aria-label="Updates / Action Item"
                         rows={4}
@@ -797,19 +1244,6 @@ export function MeetingEditorPage() {
                         value={item.action}
                         onChange={(event) => patchItem(item.id, { action: event.target.value })}
                       />
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={!item.action.trim()}
-                        onClick={() =>
-                          patchItem(item.id, {
-                            notes: moveActionToDiscussion(item.notes, item.action),
-                            action: "",
-                          })
-                        }
-                      >
-                        Move to discussion
-                      </button>
                     </label>
                   </div>
                 </div>

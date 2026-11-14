@@ -32,6 +32,8 @@ export type MeetingJobLine = {
   notes: string;
   /** Updates / Action Item column. */
   action: string;
+  /** Stays on this meeting, including PDF and Word. Copy for next week leaves it off. */
+  skipNext?: boolean;
 };
 
 export type MeetingTopicItem = {
@@ -112,11 +114,14 @@ export function copyMeetingForNextWeek(content: PaintMeetingContent, today = loc
     nextMeeting: "",
     groups: content.groups.map((group) => ({
       ...group,
-      lines: group.lines.map((line) => ({
-        ...line,
-        notes: carriedDiscussion(line.notes, line.action, fromLabel),
-        action: "",
-      })),
+      lines: group.lines
+        .filter((line) => !line.skipNext)
+        .map((line) => ({
+          ...line,
+          skipNext: false,
+          notes: carriedDiscussion(line.notes, line.action, fromLabel),
+          action: "",
+        })),
     })),
     topics: content.topics.map((topic) => ({
       ...topic,
@@ -202,6 +207,7 @@ function asJobLine(value: unknown): MeetingJobLine | null {
     job: asString(row.job),
     notes: asString((row as { discussion?: unknown }).discussion) || asString(row.notes),
     action: asString(row.action),
+    skipNext: row.skipNext === true,
   };
 }
 

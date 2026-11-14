@@ -240,7 +240,77 @@
 }
 
 .paint-meeting-job-head {
-  grid-template-columns: 8rem 1fr auto;
+  grid-template-columns: 8rem minmax(0, 1fr) auto;
+}
+
+.paint-meeting-line-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.paint-meeting-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.paint-meeting-remove:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.paint-meeting-email {
+  width: min(36rem, 100%);
+}
+
+.paint-meeting-email-people {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.paint-meeting-email-people li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.25rem 0.35rem 0.25rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.paint-meeting-suggest {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+
+.paint-meeting-suggest select {
+  width: auto;
+  margin: 0;
+  padding: 0.3rem 0.45rem;
+}
+
+.paint-meeting-suggest .btn {
+  width: auto;
 }
 
 .paint-meeting-attendee input,
@@ -330,6 +400,38 @@
   font-size: 0.8rem;
 }
 
+.paint-meeting-field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.paint-meeting-move {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.paint-meeting-move:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.paint-meeting-move:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .paint-meeting-columns textarea {
   margin-top: 0;
 }
@@ -360,6 +462,17 @@
   margin: 0;
   padding: 0.55rem 0;
   background: var(--bg);
+}
+
+#meeting-attendees,
+#meeting-projects,
+#meeting-next-starting,
+#meeting-upcoming,
+#meeting-completed,
+#meeting-incoming,
+#meeting-other,
+#meeting-safety {
+  scroll-margin-top: 3.25rem;
 }
 
 .paint-meeting-jump {
@@ -409,6 +522,9 @@
 }
 
 .paint-meeting-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   width: auto;
   margin: 0;
   border: 1px solid var(--border);
@@ -420,8 +536,23 @@
   font: inherit;
 }
 
+.paint-meeting-chip-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.paint-meeting-chip-dot.is-present {
+  background: var(--ok);
+}
+
+.paint-meeting-chip-dot.is-absent {
+  background: var(--danger);
+}
+
 .paint-meeting-chip.is-absent {
-  opacity: 0.45;
+  color: var(--muted);
 }
 
 .paint-meeting-project {
@@ -490,6 +621,7 @@
 
 @media (max-width: 900px) {
   .paint-meeting-attendee,
+  .paint-meeting-suggest,
   .paint-meeting-job-head,
   .paint-meeting-columns,
   .paint-meeting-project-row {
