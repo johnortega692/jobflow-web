@@ -23,6 +23,9 @@ type Body = {
   session_token?: string;
   order_id?: string;
   image_base64?: string;
+  /** Save the photo and leave the PM email for email_receipts. */
+  skip_email?: boolean;
+  receipt_ids?: string[];
   secret?: string;
   /** send_test only. Any other address is refused. */
   to?: string;
@@ -420,19 +423,45 @@ async function sendReceiptDigest(
   return mailed;
 }
 
+async function receiptPhotosPdf(jpegs: Uint8Array[]): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  for (const jpeg of jpegs) {
+    const image = await doc.embedJpg(jpeg);
+    const page = doc.addPage([612, 792]);
+    const margin = 36;
+    const maxW = 612 - margin * 2;
+    const maxH = 792 - margin * 2;
+    const scale = Math.min(maxW / image.width, maxH / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    page.drawImage(image, {
+      x: (612 - width) / 2,
+      y: (792 - height) / 2,
+      width,
+      height,
+    });
+  }
+  return await doc.save();
+}
+
 function receiptEmailHtml(opts: {
   companyName: string;
   jobLabel: string;
   poNumber: string;
   uploadedBy: string;
   pm: string;
+  count?: number;
 }): string {
+  const count = opts.count ?? 1;
+  const attached = count === 1
+    ? "<p>A receipt photo is attached.</p>"
+    : `<p>${count} receipt photos are attached.</p>`;
   const lines = [
     opts.poNumber ? `<p><strong>PO Number:</strong> ${escapeHtml(opts.poNumber)}</p>` : "",
     `<p><strong>Project:</strong> ${escapeHtml(opts.jobLabel)}</p>`,
     opts.pm ? `<p><strong>PM:</strong> ${escapeHtml(opts.pm)}</p>` : "",
     `<p><strong>Uploaded by:</strong> ${escapeHtml(opts.uploadedBy)}</p>`,
-    "<p>A receipt photo is attached.</p>",
+    attached,
   ].filter(Boolean).join("");
 
   return `<!DOCTYPE html>
@@ -697,6 +726,108 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: "Receipt reminders go out Friday morning." }, 400);
     }
 
+    if (action === "email_receipts") {
+      if ((order.order_type ?? "") === "haul_off") {
+        return jsonResponse({ ok: false, error: "Haul Out orders do not use receipts" }, 400);
+      }
+      const ids = [...new Set((body.receipt_ids ?? []).map((id) => String(id).trim()).filter(Boolean))];
+      if (!ids.length) return jsonResponse({ ok: false, error: "receipt_ids are required" }, 400);
+
+      const { data: rows, error: rowErr } = await supabase
+        .from("field_tools_order_receipts")
+        .select("id, storage_path, email_status, created_at")
+        .eq("order_id", order.id)
+        .in("id", ids)
+        .order("created_at", { ascending: true });
+      if (rowErr) return jsonResponse({ ok: false, error: rowErr.message }, 500);
+      const pending = (rows ?? []) as { id: string; storage_path: string; email_status: string }[];
+      if (pending.length !== ids.length) {
+        return jsonResponse({ ok: false, error: "Receipt not found" }, 404);
+      }
+
+      const jpegs: Uint8Array[] = [];
+      for (const row of pending) {
+        const downloaded = await supabase.storage.from(BUCKET).download(row.storage_path);
+        if (downloaded.error || !downloaded.data) {
+          return jsonResponse({ ok: false, error: downloaded.error?.message ?? "Could not read a receipt photo" }, 500);
+        }
+        jpegs.push(new Uint8Array(await downloaded.data.arrayBuffer()));
+      }
+
+      const payload = order.payload ?? {};
+      const projectId = strField(payload.projectId ?? payload.project_id);
+      const { pm, pmEmail } = await loadPmEmail(supabase, order.job_number, order.job_name ?? "", projectId);
+      const jobLabel = [order.job_number, order.job_name].filter(Boolean).join(" ");
+      const poNumber = strField(order.po_number);
+      const count = jpegs.length;
+      let emailStatus = "pending";
+      let emailedTo = "";
+      let emailedAt: string | null = null;
+      let emailError = "";
+
+      if (!pmEmail) {
+        emailStatus = "skipped";
+        emailError = "No PM email on this job";
+      } else {
+        const onePhoto = count === 1 ? jpegs[0] : null;
+        const attachmentName = onePhoto
+          ? [
+              sanitizeAttachmentPart(order.job_number) || "order",
+              sanitizeAttachmentPart(poNumber.replace(/^PO[-#]?\s*/i, ""))
+                ? `PO-${sanitizeAttachmentPart(poNumber.replace(/^PO[-#]?\s*/i, ""))}`
+                : "receipt",
+              "receipt",
+            ].filter(Boolean).join(" ") + ".jpg"
+          : [
+              sanitizeAttachmentPart(order.job_number) || "order",
+              "receipts",
+            ].filter(Boolean).join(" ") + ".pdf";
+        const attachmentBytes = onePhoto ?? await receiptPhotosPdf(jpegs);
+        const mailed = await sendGasEmail({
+          to: pmEmail,
+          cc: session.profile.email,
+          subject: count === 1
+            ? `Receipt — ${jobLabel}${poNumber ? ` — ${poNumber}` : ""}`
+            : `Receipts — ${jobLabel}${poNumber ? ` — ${poNumber}` : ""} (${count})`,
+          htmlBody: receiptEmailHtml({
+            companyName,
+            jobLabel,
+            poNumber,
+            uploadedBy: session.profile.name,
+            pm,
+            count,
+          }),
+          attachmentName,
+          attachmentBase64: bytesToBase64(attachmentBytes),
+          senderName,
+        });
+        if (mailed.ok) {
+          emailStatus = "sent";
+          emailedTo = pmEmail;
+          emailedAt = new Date().toISOString();
+        } else {
+          emailStatus = "failed";
+          emailedTo = pmEmail;
+          emailError = mailed.message;
+        }
+      }
+
+      const { error: updateErr } = await supabase
+        .from("field_tools_order_receipts")
+        .update({ email_status: emailStatus, emailed_to: emailedTo, emailed_at: emailedAt, email_error: emailError })
+        .eq("order_id", order.id)
+        .in("id", ids);
+      if (updateErr) return jsonResponse({ ok: false, error: updateErr.message }, 500);
+
+      const receipts = await receiptsWithUrls(supabase, order.id);
+      const message = emailStatus === "sent"
+        ? count === 1 ? "Receipt saved and emailed to the PM." : `${count} receipts emailed to the PM.`
+        : emailStatus === "skipped"
+          ? "Receipts saved. This job has no PM email."
+          : `Receipts saved, but the PM email did not send. ${emailError}`;
+      return jsonResponse({ ok: true, message, email_status: emailStatus, receipts });
+    }
+
     if (action !== "upload") {
       return jsonResponse({ ok: false, error: "Unknown action" }, 400);
     }
@@ -753,8 +884,11 @@ Deno.serve(async (req) => {
     let emailedTo = "";
     let emailedAt: string | null = null;
     let emailError = "";
+    const skipEmail = body.skip_email === true;
 
-    if (!pmEmail) {
+    if (skipEmail) {
+      emailStatus = "pending";
+    } else if (!pmEmail) {
       emailStatus = "skipped";
       emailError = "No PM email on this job";
     } else {
