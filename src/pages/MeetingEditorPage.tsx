@@ -18,6 +18,13 @@ import { downloadMeetingDocx, downloadMeetingPdf } from "../lib/paintMeetingExpo
 import { createPaintMeeting, deletePaintMeeting, getPaintMeeting, savePaintMeeting } from "../lib/paintMeetingStorage";
 import "./MeetingsPage.css";
 
+function moveActionToDiscussion(notes: string, action: string): string {
+  const update = action.trim();
+  if (!update) return notes;
+  const discussion = notes.trim();
+  return discussion ? `${discussion}\n${update}` : update;
+}
+
 export function MeetingEditorPage() {
   const { meetingId = "" } = useParams();
   const navigate = useNavigate();
@@ -382,6 +389,19 @@ export function MeetingEditorPage() {
                     value={line.action}
                     onChange={(event) => patchLine(group.id, line.id, { action: event.target.value })}
                   />
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!line.action.trim()}
+                    onClick={() =>
+                      patchLine(group.id, line.id, {
+                        notes: moveActionToDiscussion(line.notes, line.action),
+                        action: "",
+                      })
+                    }
+                  >
+                    Move to discussion
+                  </button>
                 </label>
               </div>
             </div>
@@ -476,6 +496,19 @@ export function MeetingEditorPage() {
                         value={item.action}
                         onChange={(event) => patchItem(item.id, { action: event.target.value })}
                       />
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={!item.action.trim()}
+                        onClick={() =>
+                          patchItem(item.id, {
+                            notes: moveActionToDiscussion(item.notes, item.action),
+                            action: "",
+                          })
+                        }
+                      >
+                        Move to discussion
+                      </button>
                     </label>
                   </div>
                 </div>

@@ -2,6 +2,7 @@
 
 export const SETTINGS_TABS = [
   { id: "profile", label: "My Profile", menuGroup: "user" as const },
+  { id: "storage", label: "File storage", menuGroup: "user" as const },
   { id: "delivery", label: "Delivery" },
   { id: "users", label: "User approvals", adminOnly: true as const },
   { id: "completed-projects", label: "Completed projects", adminOnly: true as const },
@@ -24,12 +25,12 @@ export type SettingsTabId = SettingsTab["id"];
 export type SettingsMenuGroup = "user" | "admin";
 export type GrantableSettingsTabId = Exclude<
   SettingsTabId,
-  "profile" | "users" | "completed-projects" | "project-staff" | "google" | "budget"
+  "profile" | "users" | "storage" | "completed-projects" | "project-staff" | "google" | "budget"
 >;
 
 export const GRANTABLE_SETTINGS_TABS = SETTINGS_TABS.filter(
   (tab): tab is Extract<SettingsTab, { id: GrantableSettingsTabId }> =>
-    !("adminOnly" in tab && tab.adminOnly) && tab.id !== "profile",
+    !("adminOnly" in tab && tab.adminOnly) && tab.id !== "profile" && tab.id !== "storage",
 );
 
 const GRANTABLE_ID_SET = new Set<string>(GRANTABLE_SETTINGS_TABS.map((tab) => tab.id));
@@ -69,7 +70,7 @@ export function isSettingsTabVisible(
 ): boolean {
   if (isAdmin) return true;
   if ("adminOnly" in tab && tab.adminOnly) return false;
-  if (tab.id === "profile") return true;
+  if (tab.id === "profile" || tab.id === "storage") return true;
   const granted = grantedTabs ?? defaultGrantableSettingsTabIds();
   return granted.includes(tab.id);
 }

@@ -4657,6 +4657,63 @@ th {
   margin: 0;
 }
 
+.storage-usage-summary {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.storage-usage-total {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.storage-usage-total .muted,
+.storage-usage-left {
+  font-size: 0.9rem;
+}
+
+.storage-usage-quota {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.storage-usage-quota > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.storage-usage-size {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 8rem;
+}
+
+.storage-usage-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.storage-usage-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.storage-usage-subhead {
+  margin: 0.4rem 0 0;
+  font-size: 1rem;
+}
+
 .settings-pdf-field {
   display: flex;
   flex-direction: column;

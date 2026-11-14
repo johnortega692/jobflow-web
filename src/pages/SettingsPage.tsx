@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { CompletedProjectsSettingsSection } from "../components/settings/CompletedProjectsSettingsSection";
+import { StorageSettingsSection } from "../components/settings/StorageSettingsSection";
 import { BudgetCatalogSettingsSection } from "../components/settings/BudgetCatalogSettingsSection";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
@@ -795,6 +796,13 @@ export function SettingsPage() {
         aria-hidden={activeTab !== "users"}
       >
         <UserApprovalsSettingsSection />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "storage" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "storage"}
+      >
+        <StorageSettingsSection />
       </div>
 
       <div

@@ -141,6 +141,11 @@
   margin-top: 0;
 }
 
+.paint-meeting-columns .btn {
+  justify-self: start;
+  width: auto;
+}
+
 .paint-meeting-topic-head {
   display: grid;
   grid-template-columns: 1fr auto;
