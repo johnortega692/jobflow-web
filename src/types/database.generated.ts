@@ -518,6 +518,7 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          locked: boolean;
         };
         Insert: {
           id?: string;
@@ -527,6 +528,7 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          locked?: boolean;
         };
         Update: {
           id?: string;
@@ -536,6 +538,7 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          locked?: boolean;
         };
         Relationships: [];
       };
@@ -552,6 +555,8 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          updated_by: string | null;
+          updated_by_name: string | null;
         };
         Insert: {
           id?: string;
@@ -565,6 +570,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          updated_by?: string | null;
+          updated_by_name?: string | null;
         };
         Update: {
           id?: string;
@@ -578,6 +585,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          updated_by?: string | null;
+          updated_by_name?: string | null;
         };
         Relationships: [
           {

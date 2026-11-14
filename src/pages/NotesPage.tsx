@@ -381,7 +381,7 @@ export function NotesPage() {
                       </td>
                       <td data-col="note">
                         <div className="project-notes-body">{note.body}</div>
-                        <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}</div>
+                        <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}{note.updated_by_name?.trim() ? ` · Edited ${formatNoteStamp(note.updated_at)} · ${note.updated_by_name.trim()}` : ""}</div>
                       </td>
                       <td className="project-notes-waiting-cell" data-col="waiting">
                         {note.waiting_on?.trim() ? note.waiting_on : "—"}

@@ -76,7 +76,7 @@ export function MeetingsPage() {
             <li key={meeting.id} className="card paint-meetings-row">
               <Link className="paint-meetings-card" to={`/meetings/${meeting.id}`}>
                 <strong>{meeting.title || "Meeting Agenda"}</strong>
-                <span className="muted">{meetingDateLine(meeting) || formatMeetingDate(meeting.meetingDate) || "Date not set"}</span>
+                <span className="muted">{meetingDateLine(meeting) || formatMeetingDate(meeting.meetingDate) || "Date not set"}{meeting.locked ? " · Locked" : ""}</span>
                 <span>{meeting.purpose}</span>
               </Link>
               <button type="button" className="btn" disabled={busy} onClick={() => void startMeeting(meeting)}>

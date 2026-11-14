@@ -1,4 +1,3 @@
-import { listDoneProjectIds } from "./projectDone.js";
 import { supabase } from "./supabase.js";
 
 export type ProjectNoteType = "note" | "follow_up" | "flag";
@@ -17,6 +16,8 @@ export type ProjectNote = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  updated_by: string | null;
+  updated_by_name: string | null;
 };
 
 export type AddProjectNoteInput = {
@@ -157,6 +158,8 @@ function mapNote(row: {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  updated_by?: string | null;
+  updated_by_name?: string | null;
 }): ProjectNote {
   return {
     id: row.id,
@@ -170,6 +173,8 @@ function mapNote(row: {
     created_by: row.created_by,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    updated_by: row.updated_by ?? null,
+    updated_by_name: row.updated_by_name?.trim() || null,
   };
 }
 
@@ -222,21 +227,26 @@ export type ProjectNoteWithJob = ProjectNote & {
   jobName: string;
 };
 
+async function doneProjectIdSet(): Promise<Set<string>> {
+  const { data, error } = await supabase.rpc("list_done_project_ids" as never);
+  if (error) throw new Error(error.message);
+  const raw = data as unknown;
+  return new Set(Array.isArray(raw) ? raw.map((id) => String(id)) : []);
+}
+
 /**
  * Every note on active (not done) jobs, with the job number and name.
  * Same project join as {@link listOpenProjectFollowUps}. Done jobs are left out.
  */
 export async function listAllProjectNotes(): Promise<ProjectNoteWithJob[]> {
-  const [{ data, error }, done] = await Promise.all([
+  const [{ data, error }, doneIds] = await Promise.all([
     supabase
       .from("project_notes")
       .select("*, projects(job_number, job_name)")
       .order("created_at", { ascending: false }),
-    listDoneProjectIds(),
+    doneProjectIdSet(),
   ]);
   fail(error);
-  if (done.error) throw new Error(done.error);
-  const doneIds = new Set(done.ids);
   const rows: ProjectNoteWithJob[] = [];
   for (const row of data ?? []) {
     if (doneIds.has(row.project_id)) continue;
@@ -308,8 +318,15 @@ export async function updateProjectNote(id: string, patch: UpdateProjectNotePatc
   if (patch.followUpDate !== undefined) row.follow_up_date = cleanDate(patch.followUpDate);
   if (patch.waitingOn !== undefined) row.waiting_on = cleanWaitingOn(patch.waitingOn);
   if (patch.completedAt !== undefined) row.completed_at = patch.completedAt;
+  const { resolveActivityUser } = await import("./projectActivity.js");
+  const actor = await resolveActivityUser();
+  const stamped = {
+    ...row,
+    updated_by: actor.userId,
+    updated_by_name: actor.userName,
+  };
 
-  const { data, error } = await supabase.from("project_notes").update(row).eq("id", id).select("*").single();
+  const { data, error } = await supabase.from("project_notes").update(stamped).eq("id", id).select("*").single();
   fail(error);
   if (!data) throw new Error("Note was not found.");
   const note = mapNote(data);

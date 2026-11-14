@@ -225,7 +225,7 @@ export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
                 <span className={`project-notes-pill project-notes-pill--${note.type}`}>{TYPE_LABEL[note.type]}</span>
                 <div className="dashboard-notes-copy">
                   <div className="project-notes-body">{note.body}</div>
-                  <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}</div>
+                  <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}{note.updated_by_name?.trim() ? ` · Edited ${formatNoteStamp(note.updated_at)} · ${note.updated_by_name.trim()}` : ""}</div>
                 </div>
                 {pill ? (
                   <span className={`project-notes-pill project-notes-pill--${pill.tone}`}>{pill.text}</span>

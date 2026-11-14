@@ -1,7 +1,6 @@
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
 import { jobflowPublicOrigin } from "./jobflowPublicUrl.js";
 import { calendarDaysBetween, isIsoDate, localIsoDate } from "./projectNotes.js";
-import { listDoneProjectIds } from "./projectDone.js";
 import { sendVendorEmailAsOrderEmailDirect } from "./sendOrderEmailGasDirect.js";
 import type { GasEmailPost } from "./sendVendorEmailGasDirect.js";
 import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
@@ -344,8 +343,10 @@ async function doneProjectIds(): Promise<Set<string>> {
     if (error) throw new Error(error.message);
     return new Set(((data ?? []) as { project_id: string }[]).map((row) => row.project_id));
   }
-  const { ids, error } = await listDoneProjectIds();
-  if (error) throw new Error(error);
+  const { data, error } = await supabase.rpc("list_done_project_ids" as never);
+  if (error) throw new Error(error.message);
+  const raw = data as unknown;
+  const ids = Array.isArray(raw) ? raw.map((id) => String(id)) : [];
   return new Set(ids);
 }
 

@@ -499,7 +499,11 @@ export function ProjectsNotesDock({
                           {title}
                         </Link>
                         <div className="notes-dock-row-job">
-                          {[note.jobNumber || note.jobName || "Untitled job", relativeTime(note.created_at)].filter(Boolean).join(" · ")}
+                          {[
+                            note.jobNumber || note.jobName || "Untitled job",
+                            relativeTime(note.created_at),
+                            note.updated_by_name?.trim() ? `edited by ${note.updated_by_name.trim()}` : "",
+                          ].filter(Boolean).join(" · ")}
                         </div>
                         {wide && note.body.trim() !== title ? <p className="notes-dock-row-body">{note.body.trim()}</p> : null}
                       </div>

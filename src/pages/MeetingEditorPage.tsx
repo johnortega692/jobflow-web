@@ -22,7 +22,7 @@ import { downloadMeetingDocx, downloadMeetingPdf } from "../lib/paintMeetingExpo
 import { openEmailCompose } from "../lib/paintVendorEmail";
 import { loadPaintUserSettings, type ComposeEmailMethod } from "../lib/paintUserSettings";
 import { useAuth } from "../contexts/AuthContext";
-import { createPaintMeeting, deletePaintMeeting, getPaintMeeting, savePaintMeeting } from "../lib/paintMeetingStorage";
+import { createPaintMeeting, deletePaintMeeting, getPaintMeeting, savePaintMeeting, unlockPaintMeeting } from "../lib/paintMeetingStorage";
 import { gcCompanyName } from "../lib/gcCompanyName";
 import { listDoneProjectIds } from "../lib/projectDone";
 import { supabase } from "../lib/supabase";
@@ -157,7 +157,7 @@ function projectRowStatus(line: MeetingJobLine): { tone: "blue" | "amber" | "gre
 export function MeetingEditorPage() {
   const { meetingId = "" } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [content, setContent] = useState<PaintMeetingContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -182,6 +182,8 @@ export function MeetingEditorPage() {
   const [projectQuery, setProjectQuery] = useState("");
   const [addTarget, setAddTarget] = useState<Record<string, string>>({});
   const [headerEditing, setHeaderEditing] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [locking, setLocking] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [purposeDraft, setPurposeDraft] = useState("");
   const downloadRef = useRef<HTMLDivElement>(null);
@@ -195,6 +197,7 @@ export function MeetingEditorPage() {
     setRosterOpen(false);
     setOpenJobs(new Set());
     setHeaderEditing(false);
+    setLocked(false);
     setMoreOpen(false);
     setDirty(false);
     setLeaveTo(null);
@@ -208,6 +211,7 @@ export function MeetingEditorPage() {
         }
         const next = meetingContentOf(row);
         setContent(next);
+        setLocked(row.locked);
         setCollapsed(
           new Set([
             AGENDA_SUGGEST_ID,
@@ -341,6 +345,7 @@ export function MeetingEditorPage() {
   }, [emailOpen, user?.id]);
 
   function patch(partial: Partial<PaintMeetingContent>) {
+    if (locked) return;
     setSaved(false);
     setDirty(true);
     setContent((current) => (current ? { ...current, ...partial } : current));
@@ -363,7 +368,7 @@ export function MeetingEditorPage() {
   }
 
   async function onSave(): Promise<boolean> {
-    if (!content || saving) return false;
+    if (!content || saving || locked) return false;
     const next = headerEditing ? { ...content, title: titleDraft, purpose: purposeDraft } : content;
     setSaving(true);
     setError(null);
@@ -371,6 +376,7 @@ export function MeetingEditorPage() {
     try {
       const savedRow = await savePaintMeeting(meetingId, next);
       setContent(meetingContentOf(savedRow));
+      setLocked(savedRow.locked);
       setHeaderEditing(false);
       setDirty(false);
       setSaved(true);
@@ -416,6 +422,41 @@ export function MeetingEditorPage() {
       setError(err instanceof Error ? err.message : "Could not download the PDF.");
     } finally {
       setOpeningEmail(false);
+    }
+  }
+
+  async function onLock() {
+    if (!content || locking || locked) return;
+    if (!window.confirm("Lock this meeting? Edits stop until an admin unlocks it. Copy for next week still works.")) return;
+    setLocking(true);
+    setError(null);
+    try {
+      const next = headerEditing ? { ...content, title: titleDraft, purpose: purposeDraft } : content;
+      const savedRow = await savePaintMeeting(meetingId, next, { lock: true });
+      setContent(meetingContentOf(savedRow));
+      setLocked(true);
+      setHeaderEditing(false);
+      setDirty(false);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not lock the meeting.");
+    } finally {
+      setLocking(false);
+    }
+  }
+
+  async function onUnlock() {
+    if (!isAdmin || !locked || locking) return;
+    if (!window.confirm("Unlock this meeting so it can be edited again?")) return;
+    setLocking(true);
+    setError(null);
+    try {
+      const savedRow = await unlockPaintMeeting(meetingId);
+      setLocked(savedRow.locked);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not unlock the meeting.");
+    } finally {
+      setLocking(false);
     }
   }
 
@@ -576,7 +617,7 @@ export function MeetingEditorPage() {
   const otherTopics = content.topics.filter((topic) => topic.title !== "Safety Issues");
 
   return (
-    <section className="stack paint-meetings">
+    <section className={locked ? "stack paint-meetings paint-meeting--locked" : "stack paint-meetings"}>
       <div className="row-between wrap gap">
         <div>
           <Link className="muted small" to="/meetings">
@@ -621,9 +662,19 @@ export function MeetingEditorPage() {
               </div>
             ) : null}
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => void onSave()} disabled={saving}>
-            {saving ? "Saving…" : saved ? "Saved" : "Save"}
+          <button type="button" className="btn btn-primary" onClick={() => void onSave()} disabled={saving || locked}>
+            {locked ? "Locked" : saving ? "Saving…" : saved ? "Saved" : "Save"}
           </button>
+          {locked && isAdmin ? (
+            <button type="button" className="btn" onClick={() => void onUnlock()} disabled={locking}>
+              {locking ? "Unlocking…" : "Unlock"}
+            </button>
+          ) : null}
+          {locked ? null : (
+            <button type="button" className="btn" onClick={() => void onLock()} disabled={locking || saving}>
+              {locking ? "Locking…" : "Lock"}
+            </button>
+          )}
           <div className="paint-meeting-download" ref={moreRef}>
             <button
               type="button"
@@ -640,7 +691,7 @@ export function MeetingEditorPage() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={copying || saving}
+                  disabled={copying || saving || locking}
                   onClick={() => {
                     setMoreOpen(false);
                     void onCopyNextWeek();
@@ -652,6 +703,8 @@ export function MeetingEditorPage() {
                   type="button"
                   role="menuitem"
                   className="paint-meeting-menu-danger"
+                  disabled={locked}
+                  title={locked ? "Unlock this meeting before deleting it." : undefined}
                   onClick={() => {
                     setMoreOpen(false);
                     void onDelete();
@@ -681,6 +734,11 @@ export function MeetingEditorPage() {
         </button>
       </div>
 
+      {locked ? (
+        <div className="banner banner-warn" role="status">
+          This meeting is locked. {isAdmin ? "Unlock it to edit again." : "An admin can unlock it."} Copy for next week still works.
+        </div>
+      ) : null}
       {error ? (
         <div className="banner banner-error" role="alert">
           {error}
@@ -716,6 +774,7 @@ export function MeetingEditorPage() {
               type="button"
               className="paint-meeting-edit"
               onClick={() => {
+                if (locked) return;
                 setTitleDraft(content.title);
                 setPurposeDraft(content.purpose);
                 setHeaderEditing(true);
@@ -869,6 +928,7 @@ export function MeetingEditorPage() {
       </div>
 
       <div id="meeting-projects">
+      {locked ? null : (
       <div className="card stack">
         <button
           type="button"
@@ -926,6 +986,7 @@ export function MeetingEditorPage() {
           </>
         ) : null}
       </div>
+      )}
       {content.groups.map((group) => {
         const open = sectionOpen(group.id);
         const jobCount = group.lines.filter((line) => line.company.trim() || line.job.trim() || line.notes.trim() || line.action.trim()).length;

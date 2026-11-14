@@ -73,6 +73,7 @@ export type PaintMeetingContent = {
 export type PaintMeetingRecord = PaintMeetingContent & {
   id: string;
   updatedAt: string;
+  locked: boolean;
 };
 
 function newId(): string {

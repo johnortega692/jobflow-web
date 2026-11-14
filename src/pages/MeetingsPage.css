@@ -102,6 +102,23 @@
   padding: 0.35rem 0.55rem;
 }
 
+.paint-meeting--locked input,
+.paint-meeting--locked textarea,
+.paint-meeting--locked select,
+.paint-meeting--locked .paint-meeting-chip {
+  pointer-events: none;
+}
+
+.paint-meeting--locked .card:not(.modal) .btn,
+.paint-meeting--locked .card:not(.modal) .paint-meeting-edit,
+.paint-meeting--locked .card:not(.modal) .paint-meeting-next-btn,
+.paint-meeting--locked .card:not(.modal) .paint-meeting-remove,
+.paint-meeting--locked .card:not(.modal) .paint-meeting-move,
+.paint-meeting--locked .card:not(.modal) .paint-meeting-section-actions,
+.paint-meeting--locked .card:not(.modal) .paint-meeting-line-actions {
+  display: none;
+}
+
 .paint-meetings-list {
   margin: 0;
   padding: 0;

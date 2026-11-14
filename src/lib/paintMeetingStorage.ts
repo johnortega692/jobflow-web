@@ -14,7 +14,10 @@ type MeetingRow = {
   meeting_on: string | null;
   content: unknown;
   updated_at: string;
+  locked: boolean;
 };
+
+const MEETING_COLUMNS = "id, title, meeting_on, content, updated_at, locked";
 
 function toRecord(row: MeetingRow): PaintMeetingRecord {
   const content = normalizeMeetingContent(row.content, row.meeting_on ?? "");
@@ -24,13 +27,14 @@ function toRecord(row: MeetingRow): PaintMeetingRecord {
     meetingDate: content.meetingDate || row.meeting_on || "",
     id: row.id,
     updatedAt: row.updated_at,
+    locked: row.locked === true,
   };
 }
 
 export async function listPaintMeetings(): Promise<PaintMeetingRecord[]> {
   const { data, error } = await supabase
     .from("paint_meetings")
-    .select("id, title, meeting_on, content, updated_at")
+    .select(MEETING_COLUMNS)
     .order("meeting_on", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -40,7 +44,7 @@ export async function listPaintMeetings(): Promise<PaintMeetingRecord[]> {
 export async function getPaintMeeting(id: string): Promise<PaintMeetingRecord | null> {
   const { data, error } = await supabase
     .from("paint_meetings")
-    .select("id, title, meeting_on, content, updated_at")
+    .select(MEETING_COLUMNS)
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -58,22 +62,38 @@ export async function createPaintMeeting(content?: PaintMeetingContent): Promise
       content: next as unknown as Json,
       created_by: userData.user?.id ?? null,
     })
-    .select("id, title, meeting_on, content, updated_at")
+    .select(MEETING_COLUMNS)
     .single();
   if (error) throw new Error(error.message);
   return toRecord(data as MeetingRow);
 }
 
-export async function savePaintMeeting(id: string, content: PaintMeetingContent): Promise<PaintMeetingRecord> {
+export async function savePaintMeeting(
+  id: string,
+  content: PaintMeetingContent,
+  options?: { lock?: boolean },
+): Promise<PaintMeetingRecord> {
   const { data, error } = await supabase
     .from("paint_meetings")
     .update({
       title: content.title.trim() || "Meeting Agenda",
       meeting_on: content.meetingDate || null,
       content: content as unknown as Json,
+      ...(options?.lock ? { locked: true } : {}),
     })
     .eq("id", id)
-    .select("id, title, meeting_on, content, updated_at")
+    .select(MEETING_COLUMNS)
+    .single();
+  if (error) throw new Error(error.message);
+  return toRecord(data as MeetingRow);
+}
+
+export async function unlockPaintMeeting(id: string): Promise<PaintMeetingRecord> {
+  const { data, error } = await supabase
+    .from("paint_meetings")
+    .update({ locked: false })
+    .eq("id", id)
+    .select(MEETING_COLUMNS)
     .single();
   if (error) throw new Error(error.message);
   return toRecord(data as MeetingRow);
