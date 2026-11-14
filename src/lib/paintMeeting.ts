@@ -41,7 +41,7 @@ export type MeetingTopicItem = {
   action: string;
 };
 
-export type MeetingSort = "entered" | "company" | "job" | "name";
+export type MeetingSort = "entered" | "company" | "job" | "name" | "manual";
 
 export type MeetingGroup = {
   id: string;
@@ -98,18 +98,60 @@ export function blankMeetingContent(date = localMeetingDate()): PaintMeetingCont
     nextMeeting: "",
     attendeeSort: "entered",
     attendees: [emptyAttendee()],
-    groups: MEETING_GROUP_TITLES.map((title) => ({ id: newId(), title, sort: "entered" as const, lines: [emptyJobLine()] })),
+    groups: MEETING_GROUP_TITLES.map((title) => ({ id: newId(), title, sort: "job" as const, lines: [emptyJobLine()] })),
     topics: MEETING_TOPIC_TITLES.map((title) => ({ id: newId(), title, items: [emptyTopicItem()] })),
   };
 }
 
 export function copyMeetingForNextWeek(content: PaintMeetingContent, today = localMeetingDate()): PaintMeetingContent {
-  const shifted = shiftMeetingDate(content.meetingDate, 7);
+  const meetingDate = nextWeekdayOnOrAfter(content.meetingDate, today);
+  const fromLabel = monthDayLabel(content.meetingDate);
   return {
     ...content,
-    meetingDate: shifted && shifted >= today ? shifted : today,
+    meetingDate,
     nextMeeting: "",
+    groups: content.groups.map((group) => ({
+      ...group,
+      lines: group.lines.map((line) => ({
+        ...line,
+        notes: carriedDiscussion(line.notes, line.action, fromLabel),
+        action: "",
+      })),
+    })),
+    topics: content.topics.map((topic) => ({
+      ...topic,
+      items: topic.items.map((item) => ({
+        ...item,
+        notes: carriedDiscussion(item.notes, item.action, fromLabel),
+        action: "",
+      })),
+    })),
   };
+}
+
+/** Same weekday one week later, stepped forward until it is not in the past. */
+function nextWeekdayOnOrAfter(iso: string, today: string): string {
+  let next = shiftMeetingDate(iso, 7);
+  if (!next) return today;
+  while (next < today) {
+    const stepped = shiftMeetingDate(next, 7);
+    if (!stepped || stepped === next) break;
+    next = stepped;
+  }
+  return next;
+}
+
+function monthDayLabel(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!match) return "";
+  return `${Number(match[2])}/${Number(match[3])}`;
+}
+
+/** Updates become the new discussion, tagged with the source meeting date. An empty update keeps the old discussion. */
+function carriedDiscussion(notes: string, action: string, fromLabel: string): string {
+  const update = action.trim();
+  if (!update) return notes;
+  return fromLabel ? `[From ${fromLabel}] ${update}` : update;
 }
 
 function shiftMeetingDate(iso: string, days: number): string {
@@ -201,13 +243,14 @@ export function normalizeMeetingContent(value: unknown, fallbackDate = ""): Pain
     const lines = found && Array.isArray((found as MeetingGroup).lines)
       ? (found as MeetingGroup).lines.map(asJobLine).filter((row) => row !== null)
       : [];
-    const rawSort = found ? asString((found as MeetingGroup).sort) : "entered";
-    const sort: MeetingSort = rawSort === "company" || rawSort === "job" || rawSort === "name" ? rawSort : "entered";
+    const rawSort = found ? asString((found as MeetingGroup).sort) : "";
+    const sort: MeetingSort =
+      rawSort === "company" || rawSort === "job" || rawSort === "manual" || rawSort === "name" ? rawSort : "job";
     return {
       id: found ? asString((found as MeetingGroup).id) || newId() : newId(),
       title,
       sort,
-      lines,
+      lines: sort === "manual" || sort === "name" ? lines : sortMeetingLines(lines, sort),
     };
   });
   const incomingTopics = Array.isArray(raw.topics) ? raw.topics : [];
@@ -245,7 +288,7 @@ function filledJob(line: MeetingJobLine): boolean {
 
 /** Reorder a section. Empty rows stay at the bottom. "As entered" keeps the current order. */
 export function sortMeetingLines(lines: MeetingJobLine[], sort: MeetingSort): MeetingJobLine[] {
-  if (sort === "entered" || sort === "name") return lines;
+  if (sort === "entered" || sort === "name" || sort === "manual") return lines;
   const filled = lines.filter(filledJob);
   const empty = lines.filter((line) => !filledJob(line));
   filled.sort((a, b) => {
