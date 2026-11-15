@@ -20987,3 +20987,124 @@ input.readonly {
     flex-direction: column;
   }
 }
+
+.material-prices-title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.material-prices-tax {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  margin: 0;
+  font-weight: 650;
+}
+
+.material-prices-tax input {
+  width: 5.5rem;
+  margin: 0;
+}
+
+.material-prices-switch,
+.material-prices-vendors,
+.material-prices-tools,
+.material-prices-meta,
+.material-prices-paste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.material-prices-tools input,
+.material-prices-tools select {
+  min-width: 0;
+}
+
+.material-prices-tools input {
+  flex: 1 1 220px;
+}
+
+.material-prices-paste {
+  align-items: stretch;
+}
+
+.material-prices-paste textarea {
+  flex: 1 1 280px;
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.material-prices-meta {
+  justify-content: space-between;
+}
+
+.material-prices-error {
+  margin: 0;
+  color: var(--danger, #b42318);
+  font-weight: 600;
+}
+
+.material-prices-scroll {
+  max-height: min(70vh, 760px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.material-prices-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.material-prices-table th,
+.material-prices-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.material-prices-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.material-prices-table input {
+  width: 7.5rem;
+  margin: 0;
+}
+
+.material-prices-name {
+  font-weight: 650;
+}
+
+.material-prices-sku {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.material-prices-sheens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+}
+
+.material-prices-sheens label {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.material-prices-changed {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}

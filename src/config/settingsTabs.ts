@@ -10,6 +10,7 @@ export const SETTINGS_TABS = [
   { id: "vendors", label: "Vendors, architects & GCs" },
   { id: "google", label: "Mailing Settings", adminOnly: true as const },
   { id: "budget", label: "Budget", adminOnly: true as const },
+  { id: "material-prices", label: "Material prices", adminOnly: true as const },
   { id: "paint-catalog", label: "Paint products & sheens" },
   { id: "spec-sections", label: "Spec sections" },
   { id: "aha-library", label: "AHA library" },
@@ -25,7 +26,7 @@ export type SettingsTabId = SettingsTab["id"];
 export type SettingsMenuGroup = "user" | "admin";
 export type GrantableSettingsTabId = Exclude<
   SettingsTabId,
-  "profile" | "users" | "storage" | "completed-projects" | "project-staff" | "google" | "budget"
+  "profile" | "users" | "storage" | "completed-projects" | "project-staff" | "google" | "budget" | "material-prices"
 >;
 
 export const GRANTABLE_SETTINGS_TABS = SETTINGS_TABS.filter(

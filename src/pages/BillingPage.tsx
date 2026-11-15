@@ -20,6 +20,7 @@ import {
   resolveLaborProjectionMaterialCost,
 } from "../lib/laborProjectionContractValue";
 import { loadBudgetLibrary } from "../lib/budgetLibrary";
+import { fetchMaterialOrderSpend } from "../lib/materialOrderSpend";
 import { commitProjectUpdate } from "../lib/projectActivity";
 import { saveProjectBillingQuiet } from "../lib/projectBillingStorage";
 import { syncBillingPhasesFromBudget } from "../lib/syncManpowerFromBudget";
@@ -246,6 +247,25 @@ export function BillingPage() {
     () => resolveLaborProjectionMaterialCost(budgetMaker, activeContracts, budgetLibrary),
     [activeContracts, budgetLibrary, budgetMaker],
   );
+  const [orderedMaterial, setOrderedMaterial] = useState<number | null>(null);
+  const [materialTaxPercent, setMaterialTaxPercent] = useState(0);
+  useEffect(() => {
+    const job = project.job_number?.trim() ?? "";
+    if (!job) {
+      setOrderedMaterial(null);
+      setMaterialTaxPercent(0);
+      return;
+    }
+    let cancelled = false;
+    void fetchMaterialOrderSpend(job).then((spend) => {
+      if (cancelled) return;
+      setOrderedMaterial(spend?.ordered ?? null);
+      setMaterialTaxPercent(spend?.taxPercent ?? 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.job_number]);
   const monthlyHours = useMemo(
     () => deriveMonthlyHours(billing, weekStarts, activePhaseIds),
     [activePhaseIds, billing, weekStarts],
@@ -333,6 +353,8 @@ export function BillingPage() {
         projectEndIso={projectEndIso}
         contractValue={contractValue}
         materialBudget={materialBudget}
+        orderedMaterial={orderedMaterial}
+        materialTaxPercent={materialTaxPercent}
         phaseIds={activePhaseIds}
         contract={activeContract}
         contractLabel={TRANSMITTAL_CONTRACT_LABELS[activeContract]}

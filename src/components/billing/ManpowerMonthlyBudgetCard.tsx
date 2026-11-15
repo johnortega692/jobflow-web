@@ -39,6 +39,10 @@ type Props = {
   contractValue: number;
   /** Budget Maker material total — reference for splitting into months. */
   materialBudget: number;
+  /** Paint and sundry dollars ordered from Field Tools, including sales tax. Null while loading. */
+  orderedMaterial?: number | null;
+  /** Company sales tax percent already included in orderedMaterial. */
+  materialTaxPercent?: number;
   /** When set, month hours / billable use only this contract's Labor Projection rows. */
   phaseIds?: ReadonlySet<string>;
   /** Active contract key for per-contract billed amounts. */
@@ -56,6 +60,8 @@ export function ManpowerMonthlyBudgetCard({
   projectEndIso,
   contractValue,
   materialBudget,
+  orderedMaterial = null,
+  materialTaxPercent = 0,
   phaseIds,
   contract,
   contractLabel,
@@ -179,6 +185,13 @@ export function ManpowerMonthlyBudgetCard({
             <>
               {" "}
               · Material budget {formatMoney0(materialBudget)}
+              {orderedMaterial != null ? (
+                <>
+                  {" "}
+                  · ordered {formatMoney0(orderedMaterial)}
+                  {materialTaxPercent > 0 ? " incl. tax" : ""}
+                </>
+              ) : null}
               {totalMaterialEntered > 0 ? (
                 <>
                   {" "}

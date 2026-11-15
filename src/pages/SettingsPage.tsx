@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { CompletedProjectsSettingsSection } from "../components/settings/CompletedProjectsSettingsSection";
 import { StorageSettingsSection } from "../components/settings/StorageSettingsSection";
 import { BudgetCatalogSettingsSection } from "../components/settings/BudgetCatalogSettingsSection";
+import { MaterialPricesSettingsSection } from "../components/settings/MaterialPricesSettingsSection";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
@@ -101,6 +102,10 @@ export function SettingsPage() {
   const onDeliveryDirty = useCallback((dirty: boolean) => setTabDirty("delivery", dirty), [setTabDirty]);
   const onGoogleDirty = useCallback((dirty: boolean) => setTabDirty("google", dirty), [setTabDirty]);
   const onBudgetDirty = useCallback((dirty: boolean) => setTabDirty("budget", dirty), [setTabDirty]);
+  const onMaterialPricesDirty = useCallback(
+    (dirty: boolean) => setTabDirty("material-prices", dirty),
+    [setTabDirty],
+  );
   const onPaintCatalogDirty = useCallback(
     (dirty: boolean) => setTabDirty("paint-catalog", dirty),
     [setTabDirty],
@@ -862,6 +867,17 @@ export function SettingsPage() {
         <BudgetCatalogSettingsSection
           onDirtyChange={onBudgetDirty}
           onBindActions={(actions) => bindSectionActions("budget", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "material-prices" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "material-prices"}
+      >
+        <MaterialPricesSettingsSection
+          readOnly={!isAdmin}
+          onDirtyChange={isAdmin ? onMaterialPricesDirty : undefined}
+          onBindActions={(actions) => bindSectionActions("material-prices", actions)}
         />
       </div>
 
