@@ -13,12 +13,20 @@ import {
   type FieldToolsPoDispatchRow,
   updatePoDispatchTracking,
 } from "../lib/fieldToolsPoTracker";
+import { fetchMaterialOrderSpend, formatMaterialDollars } from "../lib/materialOrderSpend";
 import { getProjectFieldAppVisibility } from "../lib/projectFieldAppVisibility";
 import type { ProjectForm } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string };
 
 type ViewTarget = { orderId: string; poNumber: string; dispatchId: string };
+
+type PoMaterialBudget = {
+  jobNumber: string;
+  contractLabel: string;
+  budget: number;
+  ordered: number;
+};
 
 /** Known paint vendors. Longer keys are matched first so "Sherwin Williams" wins over shorter prefixes. */
 const VENDOR_SHORT_CODES: Record<string, string> = {
@@ -228,6 +236,8 @@ export function ProjectPoPage() {
   const [contractFilter, setContractFilter] = useState<TransmittalContract | "all">("all");
   const [hiddenFromFieldApps, setHiddenFromFieldApps] = useState(false);
   const [visibilityLoaded, setVisibilityLoaded] = useState(false);
+  const [materialBudgets, setMaterialBudgets] = useState<PoMaterialBudget[]>([]);
+  const [materialBudgetLoading, setMaterialBudgetLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,6 +302,40 @@ export function ProjectPoPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!visibilityLoaded || hiddenFromFieldApps || jobLookups.length === 0) {
+      setMaterialBudgets([]);
+      setMaterialBudgetLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setMaterialBudgetLoading(true);
+    void Promise.all(
+      jobLookups.map(async (lookup) => {
+        const spend = await fetchMaterialOrderSpend(lookup.jobNumber);
+        if (!spend) return null;
+        return {
+          jobNumber: lookup.jobNumber,
+          contractLabel: lookup.contractLabel,
+          budget: spend.budget,
+          ordered: spend.ordered,
+        };
+      }),
+    )
+      .then((loaded) => {
+        if (!cancelled) setMaterialBudgets(loaded.filter((row): row is PoMaterialBudget => row != null));
+      })
+      .catch(() => {
+        if (!cancelled) setMaterialBudgets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMaterialBudgetLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibilityLoaded, hiddenFromFieldApps, jobLookups]);
+
   const filteredRows = useMemo(() => {
     if (contractFilter === "all") return rows;
     const identity = projectTradeJobIdentities(project).find((item) => item.contract === contractFilter);
@@ -333,6 +377,16 @@ export function ProjectPoPage() {
       setBusyId(null);
     }
   }
+
+  const shownBudgets = useMemo(() => {
+    if (contractFilter === "all") return materialBudgets;
+    const identity = projectTradeJobIdentities(project).find((item) => item.contract === contractFilter);
+    if (!identity) return materialBudgets;
+    return materialBudgets.filter((row) => row.jobNumber === identity.jobNumber);
+  }, [contractFilter, materialBudgets, project]);
+  const materialBudgetTotal = shownBudgets.reduce((sum, row) => sum + row.budget, 0);
+  const materialOrderedTotal = shownBudgets.reduce((sum, row) => sum + row.ordered, 0);
+  const materialLeft = materialBudgetTotal > 0 ? materialBudgetTotal - materialOrderedTotal : null;
 
   const viewRow = viewOrder ? rows.find((r) => r.dispatchId === viewOrder.dispatchId) : null;
 
@@ -397,6 +451,48 @@ export function ProjectPoPage() {
           </p>
         )}
       </div>
+
+      {jobLookups.length > 0 && (materialBudgetLoading || shownBudgets.length > 0) ? (
+        <section className="po-material-budget" aria-label="Material budget">
+          {materialBudgetLoading && shownBudgets.length === 0 ? (
+            <p className="muted small">Loading material budget…</p>
+          ) : (
+            <>
+              <div className="po-material-budget-stats">
+                <div>
+                  <span className="po-material-budget-label">Material budget</span>
+                  <strong>{materialBudgetTotal > 0 ? formatMaterialDollars(materialBudgetTotal) : "Not set"}</strong>
+                </div>
+                <div>
+                  <span className="po-material-budget-label">Material left</span>
+                  <strong className={materialLeft != null && materialLeft < 0 ? "po-material-budget-over" : undefined}>
+                    {materialLeft == null
+                      ? "—"
+                      : materialLeft < 0
+                        ? `${formatMaterialDollars(Math.abs(materialLeft))} over`
+                        : formatMaterialDollars(materialLeft)}
+                  </strong>
+                </div>
+              </div>
+              {shownBudgets.length > 1 ? (
+                <p className="muted small po-material-budget-split">
+                  {shownBudgets
+                    .map((row) => {
+                      const left = row.budget > 0 ? row.budget - row.ordered : null;
+                      const leftText =
+                        left == null ? "budget not set" : left < 0 ? `${formatMaterialDollars(Math.abs(left))} over` : `${formatMaterialDollars(left)} left`;
+                      return `${row.contractLabel} ${row.jobNumber}: ${row.budget > 0 ? formatMaterialDollars(row.budget) : "no budget"} · ${leftText}`;
+                    })
+                    .join(" · ")}
+                </p>
+              ) : null}
+              <p className="muted small po-material-budget-note">
+                Left is the Budget Maker amount minus ordered paint and sundries, including sales tax, and Last-Min receipt amounts.
+              </p>
+            </>
+          )}
+        </section>
+      ) : null}
 
       {canAdjustPoSequence && sequenceJobs.length > 0 && <PoSequencePanel jobs={sequenceJobs} />}
 

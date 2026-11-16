@@ -3270,6 +3270,44 @@ th {
   margin: 0 0 0.35rem;
 }
 
+.po-material-budget {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.po-material-budget-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.5rem;
+}
+
+.po-material-budget-stats strong {
+  display: block;
+  font-size: 1.15rem;
+}
+
+.po-material-budget-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.po-material-budget-over {
+  color: var(--danger);
+}
+
+.po-material-budget-split,
+.po-material-budget-note {
+  margin: 0;
+}
+
 .po-sequence-panel h3 {
   margin: 0;
 }
