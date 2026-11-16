@@ -185,6 +185,109 @@ export function lastMinUncountedLabel(value: LastMinUncounted, jobNumber: string
     : `${value.count} last-min receipts${job} (${amount}) have no gallons and aren't counted in Ordered.`;
 }
 
+export type LastMinPaintFormRow = {
+  key: string;
+  product: string;
+  sheen: string;
+  primer: boolean;
+};
+
+type LastMinPaintLine = { product: string; sheen: string; gallons: number };
+
+function readLastMinPaintLines(payload: Record<string, unknown> | null | undefined): LastMinPaintLine[] {
+  const lists = payload?.lists;
+  if (!lists || typeof lists !== "object" || Array.isArray(lists)) return [];
+  const paint = (lists as { paint?: unknown }).paint;
+  if (!Array.isArray(paint)) return [];
+  const out: LastMinPaintLine[] = [];
+  for (const item of paint) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as { name?: unknown; detail?: unknown; quantity?: unknown };
+    const product = String(row.name ?? "").trim();
+    if (!product) continue;
+    const sheen = String(row.detail ?? "").trim();
+    const quantity = String(row.quantity ?? "");
+    const match = quantity.match(/([0-9]+(?:\.[0-9]+)?)/);
+    if (!match) continue;
+    let gallons = Number(match[1]);
+    if (/qt|quart/i.test(quantity)) gallons *= 0.25;
+    if (!(gallons > 0)) continue;
+    out.push({ product, sheen, gallons });
+  }
+  return out;
+}
+
+/** True when a Last-Min payload already has paint gallons for the estimate. */
+export function lastMinOrderHasPaint(payload: Record<string, unknown> | null | undefined): boolean {
+  return readLastMinPaintLines(payload).length > 0;
+}
+
+/** Gallons already stored on the receipt, keyed like the estimate rows. */
+export function lastMinPaintGallons(payload: Record<string, unknown> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of readLastMinPaintLines(payload)) {
+    out[paintEstimateKey(line.product, line.sheen)] = formatGallons(line.gallons);
+  }
+  return out;
+}
+
+/** Approved brush-out products, then estimate products and any gallons already on the receipt. */
+export function lastMinPaintFormRows(
+  brushouts: ApprovedBrushoutDraft[],
+  estimateNames: { product: string; sheen: string }[],
+  payload: Record<string, unknown> | null | undefined,
+): LastMinPaintFormRow[] {
+  const rows: LastMinPaintFormRow[] = brushoutEstimateTargets(brushouts.filter((row) => row.approved)).map((row) => ({
+    key: row.key,
+    product: row.product,
+    sheen: row.sheen,
+    primer: row.role === "primer",
+  }));
+  const seen = new Set(rows.map((row) => row.key));
+  const extras = [
+    ...estimateNames.map((name) => ({ product: name.product, sheen: name.sheen })),
+    ...readLastMinPaintLines(payload).map((line) => ({ product: line.product, sheen: line.sheen })),
+  ];
+  for (const extra of extras) {
+    const product = extra.product.trim();
+    if (!product) continue;
+    const sheen = extra.sheen.trim();
+    const key = paintEstimateKey(product, sheen);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ key, product, sheen, primer: false });
+  }
+  return rows;
+}
+
+export async function listPaintEstimateNames(projectId: string): Promise<{ product: string; sheen: string }[]> {
+  const { data, error } = await estimatesTable().select("product, sheen").eq("project_id", projectId);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as { product: string; sheen: string }[];
+}
+
+export type LastMinPaintSaveLine = { product: string; sheen: string; gallons: number };
+
+/** Blank is skipped. Any other value must be a positive number of gallons. */
+export function parseLastMinPaintGallons(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0 || value > 9999) return null;
+  return Math.round(value * 100) / 100;
+}
+
+export async function saveLastMinPaint(orderId: string, lines: LastMinPaintSaveLine[]): Promise<unknown[]> {
+  const { data, error } = await supabase.rpc(
+    "jobflow_set_last_min_paint" as never,
+    { p_order_id: orderId, p_lines: lines } as never,
+  );
+  if (error) throw new Error(error.message);
+  const result = (data ?? {}) as { ok?: boolean; error?: string; lines?: unknown };
+  if (!result.ok) throw new Error(result.error ?? "Could not save paint.");
+  return Array.isArray(result.lines) ? result.lines : [];
+}
+
 /** Rows with gallons or a note are kept. Everything else for this project is cleared. */
 export async function savePaintEstimates(
   projectId: string,

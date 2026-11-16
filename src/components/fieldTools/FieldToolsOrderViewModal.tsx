@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { LastMinPaintEditor } from "./LastMinPaintEditor";
 import { ReceiptImageViewer } from "./ReceiptImageViewer";
 import {
   deleteOrderReceiptImage,
@@ -32,6 +33,9 @@ type Props = {
   onClose: () => void;
   onReceiptCount?: (count: number) => void;
   onPaperReceipt?: (paperReceiptAt: string | null, paperReceiptBy: string) => void;
+  projectId?: string;
+  canEditPaint?: boolean;
+  onPaintSaved?: (entered: boolean) => void;
 };
 
 const RECEIPT_ORDER_TYPES = new Set(["field_request", "job_scope_kit", "last_min"]);
@@ -56,6 +60,9 @@ export function FieldToolsOrderViewModal({
   onClose,
   onReceiptCount,
   onPaperReceipt,
+  projectId,
+  canEditPaint = false,
+  onPaintSaved,
 }: Props) {
   const { isAdmin } = useAuth();
   const [order, setOrder] = useState<FieldToolsOrder | null>(null);
@@ -205,6 +212,32 @@ export function FieldToolsOrderViewModal({
           </p>
         ) : null}
         {paperError ? <div className="banner banner-error">{paperError}</div> : null}
+
+        {order && !loading && isLastMin && projectId ? (
+          <LastMinPaintEditor
+            orderId={order.id}
+            projectId={projectId}
+            payload={order.payload}
+            canEdit={canEditPaint}
+            onSaved={(lines) => {
+              setOrder((current) => {
+                if (!current) return current;
+                const lists =
+                  current.payload.lists && typeof current.payload.lists === "object" && !Array.isArray(current.payload.lists)
+                    ? { ...(current.payload.lists as Record<string, unknown>) }
+                    : {};
+                lists.paint = lines;
+                const paint = lines
+                  .map((line) =>
+                    line && typeof line === "object" && "raw" in line ? String((line as { raw?: unknown }).raw ?? "") : "",
+                  )
+                  .filter(Boolean);
+                return { ...current, paint, payload: { ...current.payload, lists } };
+              });
+              onPaintSaved?.(lines.length > 0);
+            }}
+          />
+        ) : null}
 
         {order && !loading && (
           <>

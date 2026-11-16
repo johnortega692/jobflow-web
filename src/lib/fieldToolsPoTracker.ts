@@ -1,3 +1,4 @@
+import { lastMinOrderHasPaint } from "./paintEstimates";
 import { supabase } from "./supabase";
 
 import type { FieldToolsOrder, FieldToolsOrderType } from "../types/fieldToolsOrder";
@@ -29,6 +30,8 @@ export type FieldToolsPoDispatchRow = {
   /** Paper receipt dropped off at the office, in place of a photo. */
   paperReceiptAt: string | null;
   paperReceiptBy: string;
+  /** Last-Min receipt already has paint gallons for the estimate. */
+  paintEntered: boolean;
 };
 
 type DispatchRecord = {
@@ -210,6 +213,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         hasReceipt: receiptOrderIds.has(row.order.id),
         paperReceiptAt: row.order.paper_receipt_at ?? null,
         paperReceiptBy: row.order.paper_receipt_by ?? "",
+        paintEntered: row.order.order_type === "last_min" && lastMinOrderHasPaint(payload),
       };
     });
 
@@ -237,6 +241,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
       hasReceipt: false,
       paperReceiptAt: null,
       paperReceiptBy: "",
+      paintEntered: false,
     };
   });
 

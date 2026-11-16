@@ -3534,6 +3534,41 @@ th {
   display: block;
 }
 
+.po-tracker-table .po-tracker-icon-btn--paint-needed {
+  color: var(--accent);
+}
+
+.last-min-paint-list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.last-min-paint-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.last-min-paint-row label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  min-width: 0;
+}
+
+.last-min-paint-row .input {
+  width: 100%;
+  text-align: right;
+}
+
+.last-min-paint-primer {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
 .field-tools-order-modal {
   width: min(640px, 100%);
   max-height: calc(100vh - 4rem);

@@ -169,6 +169,29 @@ function PoViewIcon() {
   );
 }
 
+function PoPaintIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M3 21v-4a4 4 0 1 1 4 4h-4" />
+      <path d="M21 3a16 16 0 0 0 -12.8 10.2" />
+      <path d="M21 3a16 16 0 0 1 -10.2 12.8" />
+      <path d="M10.6 9a9 9 0 0 1 4.4 4.4" />
+    </svg>
+  );
+}
+
 function PoReceiptIcon() {
   return (
     <svg
@@ -522,6 +545,27 @@ export function ProjectPoPage() {
                             Paper receipt
                           </span>
                         ) : null}
+                        {row.orderType === "last_min" && row.source === "field_tools" ? (
+                          <button
+                            type="button"
+                            className={`btn btn-ghost po-tracker-icon-btn${row.paintEntered ? "" : " po-tracker-icon-btn--paint-needed"}`}
+                            aria-label={
+                              row.paintEntered
+                                ? `Edit paint gallons for PO ${row.poNumber}`
+                                : `Enter paint gallons for PO ${row.poNumber}`
+                            }
+                            title={row.paintEntered ? "Paint gallons" : "Enter paint gallons"}
+                            onClick={() =>
+                              setViewOrder({
+                                orderId: row.orderId,
+                                poNumber: row.poNumber,
+                                dispatchId: row.dispatchId,
+                              })
+                            }
+                          >
+                            <PoPaintIcon />
+                          </button>
+                        ) : null}
                         {(row.orderType === "last_min" || row.hasReceipt) && (
                           <button
                             type="button"
@@ -589,6 +633,13 @@ export function ProjectPoPage() {
           completed={viewRow.completed}
           hasReceipt={viewRow.hasReceipt}
           trackingBusy={busyId === viewRow.dispatchId}
+          projectId={projectId}
+          canEditPaint={canAdjustPoSequence}
+          onPaintSaved={(entered) =>
+            setRows((current) =>
+              current.map((row) => (row.orderId === viewOrder.orderId ? { ...row, paintEntered: entered } : row)),
+            )
+          }
           onToggleReceived={(next) => void toggleRow(viewRow, "receivedField", next)}
           onToggleCompleted={(next) => void toggleRow(viewRow, "completed", next)}
           onClose={() => setViewOrder(null)}
