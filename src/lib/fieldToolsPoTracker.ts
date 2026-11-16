@@ -384,3 +384,29 @@ export async function updatePoDispatchTracking(
     .eq("id", dispatchId);
   if (error) throw new Error(error.message);
 }
+
+/** Blank is invalid. Zero clears the receipt from the material budget. */
+export function parseLastMinAmount(text: string): number | null {
+  const cleaned = text.trim().replace(/[$,\s]/g, "");
+  if (!/^[0-9]+(\.[0-9]{1,2})?$/.test(cleaned)) return null;
+  const value = Number(cleaned);
+  if (!Number.isFinite(value) || value < 0 || value > 999999.99) return null;
+  return Math.round(value * 100) / 100;
+}
+
+export function lastMinAmountText(payload: Record<string, unknown> | null | undefined): string {
+  const raw = typeof payload?.amount === "string" ? payload.amount : "";
+  const parsed = parseLastMinAmount(raw);
+  return parsed == null ? raw.replace(/[$,\s]/g, "") : parsed.toFixed(2);
+}
+
+export async function saveLastMinAmount(orderId: string, amount: number): Promise<string> {
+  const { data, error } = await supabase.rpc(
+    "jobflow_set_last_min_amount" as never,
+    { p_order_id: orderId, p_amount: amount } as never,
+  );
+  if (error) throw new Error(error.message);
+  const result = (data ?? {}) as { ok?: boolean; error?: string; amount?: unknown };
+  if (!result.ok) throw new Error(result.error ?? "Could not save the total.");
+  return typeof result.amount === "string" ? result.amount : amount.toFixed(2);
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { LastMinAmountEditor } from "./LastMinAmountEditor";
 import { LastMinPaintEditor } from "./LastMinPaintEditor";
 import { ReceiptImageViewer } from "./ReceiptImageViewer";
 import {
@@ -36,6 +37,7 @@ type Props = {
   projectId?: string;
   canEditPaint?: boolean;
   onPaintSaved?: (entered: boolean) => void;
+  onAmountSaved?: () => void;
 };
 
 const RECEIPT_ORDER_TYPES = new Set(["field_request", "job_scope_kit", "last_min"]);
@@ -63,6 +65,7 @@ export function FieldToolsOrderViewModal({
   projectId,
   canEditPaint = false,
   onPaintSaved,
+  onAmountSaved,
 }: Props) {
   const { isAdmin } = useAuth();
   const [order, setOrder] = useState<FieldToolsOrder | null>(null);
@@ -212,6 +215,21 @@ export function FieldToolsOrderViewModal({
           </p>
         ) : null}
         {paperError ? <div className="banner banner-error">{paperError}</div> : null}
+
+        {order && !loading && isLastMin ? (
+          <LastMinAmountEditor
+            key={order.id}
+            orderId={order.id}
+            payload={order.payload}
+            canEdit={canEditPaint}
+            onSaved={(amount) => {
+              setOrder((current) =>
+                current ? { ...current, payload: { ...current.payload, amount } } : current,
+              );
+              onAmountSaved?.();
+            }}
+          />
+        ) : null}
 
         {order && !loading && isLastMin && projectId ? (
           <LastMinPaintEditor

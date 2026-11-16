@@ -238,6 +238,7 @@ export function ProjectPoPage() {
   const [visibilityLoaded, setVisibilityLoaded] = useState(false);
   const [materialBudgets, setMaterialBudgets] = useState<PoMaterialBudget[]>([]);
   const [materialBudgetLoading, setMaterialBudgetLoading] = useState(false);
+  const [materialBudgetTick, setMaterialBudgetTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -334,7 +335,7 @@ export function ProjectPoPage() {
     return () => {
       cancelled = true;
     };
-  }, [visibilityLoaded, hiddenFromFieldApps, jobLookups]);
+  }, [visibilityLoaded, hiddenFromFieldApps, jobLookups, materialBudgetTick]);
 
   const filteredRows = useMemo(() => {
     if (contractFilter === "all") return rows;
@@ -731,6 +732,7 @@ export function ProjectPoPage() {
           trackingBusy={busyId === viewRow.dispatchId}
           projectId={projectId}
           canEditPaint={canAdjustPoSequence}
+          onAmountSaved={() => setMaterialBudgetTick((tick) => tick + 1)}
           onPaintSaved={(entered) =>
             setRows((current) =>
               current.map((row) => (row.orderId === viewOrder.orderId ? { ...row, paintEntered: entered } : row)),
