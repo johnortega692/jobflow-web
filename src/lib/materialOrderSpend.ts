@@ -1,9 +1,16 @@
 import { supabase } from "./supabase";
 
+export type MaterialOrderMonth = {
+  month: string;
+  amount: number;
+};
+
 export type MaterialOrderSpend = {
   budget: number;
   ordered: number;
   taxPercent: number;
+  /** Ordered dollars by YYYY-MM, using the Pacific day the order was placed. */
+  months: MaterialOrderMonth[];
 };
 
 export function formatMaterialDollars(value: number): string {
@@ -23,11 +30,26 @@ export async function fetchMaterialOrderSpend(jobNumber: string): Promise<Materi
     p_job_number: job,
   } as never);
   if (error || !data || typeof data !== "object") return null;
-  const result = data as { ok?: boolean; budget?: unknown; ordered?: unknown; tax_percent?: unknown };
+  const result = data as {
+    ok?: boolean;
+    budget?: unknown;
+    ordered?: unknown;
+    tax_percent?: unknown;
+    months?: unknown;
+  };
   if (!result.ok) return null;
   const budget = typeof result.budget === "number" ? result.budget : Number(result.budget);
   const ordered = typeof result.ordered === "number" ? result.ordered : Number(result.ordered);
   const taxPercent = typeof result.tax_percent === "number" ? result.tax_percent : Number(result.tax_percent);
   if (!Number.isFinite(budget) || !Number.isFinite(ordered)) return null;
-  return { budget, ordered, taxPercent: Number.isFinite(taxPercent) ? taxPercent : 0 };
+  const months = Array.isArray(result.months)
+    ? result.months.flatMap((row) => {
+        if (!row || typeof row !== "object") return [];
+        const month = String((row as { month?: unknown }).month ?? "");
+        const amount = Number((row as { amount?: unknown }).amount);
+        if (!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(amount) || amount === 0) return [];
+        return [{ month, amount }];
+      })
+    : [];
+  return { budget, ordered, taxPercent: Number.isFinite(taxPercent) ? taxPercent : 0, months };
 }

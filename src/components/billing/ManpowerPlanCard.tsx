@@ -1,16 +1,26 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
 import {
   cellHours,
+  addWeeksIso,
   formatJobDateLabel,
   hoursToManWeeks,
   manpowerEndDateHint,
   manpowerWeekStarts,
   phaseTotalHours,
+  todayMondayIso,
   weekColumnLabel,
   weekHasPhaseOverlap,
   withCellHours,
 } from "../../lib/manpowerCalendar";
+import { carryOver, type CarryDest } from "../../lib/carryOver";
+import { weekActivityWeights } from "../../lib/spreadBudgetHours";
+import {
+  blendedCostRate,
+  formatMoney0,
+  monthPocBillable,
+} from "../../lib/manpowerCalculator";
+import { currentMonthKey, currentMonthLabel, deriveMonthlyHours } from "../../lib/manpowerHours";
 import {
   TRANSMITTAL_CONTRACT_LABELS,
   type TransmittalContract,
@@ -20,14 +30,17 @@ import {
   phaseColorAtIndex,
   phaseDisplayLabel,
   plannedHoursForPhase,
+  type ManpowerCell,
   type ManpowerPhase,
   type ManpowerPhaseId,
   type ProjectBillingData,
 } from "../../types/projectBilling";
 import { GcScheduleImport } from "./GcScheduleImport";
 import { GcSchedulePanel } from "./GcSchedulePanel";
+import { SpreadBudgetHours } from "./SpreadBudgetHours";
 import { ManpowerHeaderPencilIcon } from "./ManpowerHeaderPillIcons";
 import { ManpowerWeekDetailModal } from "./ManpowerWeekDetailModal";
+import { CarryWeekSheet } from "./CarryWeekSheet";
 
 type Props = {
   billing: ProjectBillingData;
@@ -41,12 +54,15 @@ type Props = {
   /** Contracts with a Labor Projection tab (from job + budget). */
   contracts?: TransmittalContract[];
   activeContract?: TransmittalContract;
+  contractValues?: Partial<Record<TransmittalContract, number>>;
   onActiveContractChange?: (contract: TransmittalContract) => void;
   onBillingChange: (next: ProjectBillingData) => void;
   onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
   onScheduleDatesChange?: (startIso: string, endIso: string) => Promise<boolean>;
   projectId?: string;
   jobNumber?: string;
+  /** Office monthly billing table. Hidden on the field variant. */
+  monthlyBilling?: ReactNode;
 };
 
 function cellKey(phaseId: ManpowerPhaseId, weekStartIso: string): string {
@@ -84,6 +100,14 @@ function formatHoursPlain(hours: number): string {
   return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
 }
 
+function shortScheduleDate(iso: string): string {
+  const label = formatJobDateLabel(iso);
+  if (!label) return "—";
+  const parts = label.split("/");
+  if (parts.length !== 3 || !parts[2]) return label;
+  return `${parts[0]}/${parts[1]}/${parts[2].slice(-2)}`;
+}
+
 export function ManpowerPlanCard({
   billing,
   projectStartIso,
@@ -94,12 +118,14 @@ export function ManpowerPlanCard({
   variant = "office",
   contracts: contractsProp,
   activeContract: activeContractProp,
+  contractValues,
   onActiveContractChange,
   onBillingChange,
   onPersistQuiet,
   onScheduleDatesChange,
   projectId = "",
   jobNumber = "",
+  monthlyBilling,
 }: Props) {
   const contracts = useMemo<TransmittalContract[]>(() => {
     if (contractsProp?.length) return contractsProp;
@@ -131,10 +157,20 @@ export function ManpowerPlanCard({
     () => billing.manpowerPhases.filter((p) => p.contract === activeContract),
     [activeContract, billing.manpowerPhases],
   );
+  const visiblePhases = useMemo(
+    () => contractPhases.filter((phase) => phase.hidden !== true),
+    [contractPhases],
+  );
+  const hiddenPhases = useMemo(
+    () => contractPhases.filter((phase) => phase.hidden === true),
+    [contractPhases],
+  );
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [phaseColPx, setPhaseColPx] = useState(0);
   const [gcOpen, setGcOpen] = useState(false);
+  const [datesOpen, setDatesOpen] = useState(false);
+  const [planView, setPlanView] = useState<"weekly" | "monthly">("weekly");
 
   useLayoutEffect(() => {
     const root = scrollRef.current;
@@ -149,13 +185,7 @@ export function ManpowerPlanCard({
     const ro = new ResizeObserver(sync);
     ro.observe(cell);
     return () => ro.disconnect();
-  }, [activeContract, contractPhases, gcOpen]);
-
-  const phaseIndexById = useMemo(() => {
-    const map = new Map<string, number>();
-    billing.manpowerPhases.forEach((p, i) => map.set(p.id, i));
-    return map;
-  }, [billing.manpowerPhases]);
+  }, [activeContract, contractPhases, gcOpen, planView]);
 
   const { weekStarts: weeks, contractEndWeekIndex } = manpowerWeekStarts(
     projectStartIso,
@@ -164,13 +194,28 @@ export function ManpowerPlanCard({
     billing.manpowerWeekCount,
   );
   const endDateHint = manpowerEndDateHint(projectStartIso, projectEndIso);
-  const endDateLabel = formatJobDateLabel(projectEndIso);
   const [editing, setEditing] = useState<string | null>(null);
   const [draftHours, setDraftHours] = useState("");
   const [detailWeek, setDetailWeek] = useState<string | null>(null);
+  const [weekMenu, setWeekMenu] = useState<{ week: string; top: number; left: number } | null>(null);
+  const [carryWeek, setCarryWeek] = useState<string | null>(null);
+  const [carryToast, setCarryToast] = useState<{ message: string; cells: ManpowerCell[] } | null>(null);
   const [draftStart, setDraftStart] = useState(projectStartIso);
   const [draftEnd, setDraftEnd] = useState(projectEndIso);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragRef = useRef<{
+    phaseId: ManpowerPhaseId;
+    anchorWeek: string;
+    currentWeek: string;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    pointerId: number;
+  } | null>(null);
+  const [dragFill, setDragFill] = useState<{ phaseId: string; anchorWeek: string; currentWeek: string } | null>(null);
+  const spreadUndoRef = useRef<{ phaseIds: string[]; cells: ManpowerCell[] } | null>(null);
+  const [spreadCanUndo, setSpreadCanUndo] = useState(false);
+  const [spreadPreview, setSpreadPreview] = useState<Record<string, number[]> | null>(null);
 
   useEffect(() => {
     setDraftStart(projectStartIso);
@@ -206,6 +251,53 @@ export function ManpowerPlanCard({
     [canEditCells, commitHours],
   );
 
+  const moveDraggedHours = useCallback(
+    async (phaseId: ManpowerPhaseId, anchorWeek: string, endWeek: string) => {
+      setDragFill(null);
+      if (!canEditCells || anchorWeek === endWeek || !weeks.includes(endWeek)) return;
+      const source = billing.manpowerCells.find(
+        (cell) => cell.phaseId === phaseId && cell.weekStartIso === anchorWeek && cell.hours > 0,
+      );
+      if (!source) return;
+      const destination = billing.manpowerCells.find(
+        (cell) => cell.phaseId === phaseId && cell.weekStartIso === endWeek,
+      );
+      const rest = billing.manpowerCells.filter(
+        (cell) =>
+          !(cell.phaseId === phaseId && (cell.weekStartIso === anchorWeek || cell.weekStartIso === endWeek)),
+      );
+      if (!destination) {
+        rest.push({ ...source, weekStartIso: endWeek });
+      } else {
+        const dayHours =
+          destination.dayHours && source.dayHours
+            ? destination.dayHours.map((hours, index) => hours + (source.dayHours?.[index] ?? 0))
+            : undefined;
+        rest.push({
+          phaseId,
+          weekStartIso: endWeek,
+          hours: destination.hours + source.hours,
+          ...(dayHours ? { dayHours } : {}),
+        });
+      }
+      const next = { ...billing, manpowerCells: rest };
+      onBillingChange(next);
+      await onPersistQuiet(next);
+    },
+    [billing, canEditCells, onBillingChange, onPersistQuiet, weeks],
+  );
+
+  function weekUnderPointer(clientX: number, clientY: number, phaseId: string): string | null {
+    const hit = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-manpower-week]");
+    if (!hit || hit.dataset.manpowerPhase !== phaseId) return null;
+    return hit.dataset.manpowerWeek ?? null;
+  }
+
+  function dragMarks(phaseId: string, week: string): boolean {
+    if (!dragFill || dragFill.phaseId !== phaseId) return false;
+    return week === dragFill.anchorWeek || week === dragFill.currentWeek;
+  }
+
   const saveWeekDetail = useCallback(
     async (next: ProjectBillingData) => {
       if (!canEditCells) return false;
@@ -215,6 +307,158 @@ export function ManpowerPlanCard({
     [canEditCells, onBillingChange, onPersistQuiet],
   );
 
+  const showSpreadPreview = useCallback((rows: { id: string; hours: number[] }[] | null) => {
+    if (!rows) {
+      setSpreadPreview(null);
+      return;
+    }
+    const next: Record<string, number[]> = {};
+    for (const row of rows) next[row.id] = row.hours;
+    setSpreadPreview(next);
+  }, []);
+
+  const applySpread = useCallback(
+    async (rows: { id: string; hours: number[] }[]) => {
+      if (!canEditCells || rows.length === 0) return;
+      const phaseIds = new Set(rows.map((row) => row.id));
+      const snapshot = billing.manpowerCells
+        .filter((cell) => phaseIds.has(cell.phaseId))
+        .map((cell) => ({ ...cell, dayHours: cell.dayHours?.slice() }));
+      let cells = billing.manpowerCells;
+      for (const row of rows) {
+        weeks.forEach((week, index) => {
+          cells = withCellHours(cells, row.id, week, row.hours[index] ?? 0);
+        });
+      }
+      spreadUndoRef.current = { phaseIds: [...phaseIds], cells: snapshot };
+      setSpreadCanUndo(true);
+      setSpreadPreview(null);
+      const next = { ...billing, manpowerCells: cells };
+      onBillingChange(next);
+      await onPersistQuiet(next);
+    },
+    [billing, canEditCells, onBillingChange, onPersistQuiet, weeks],
+  );
+
+  const undoSpread = useCallback(async () => {
+    const undo = spreadUndoRef.current;
+    if (!canEditCells || !undo) return;
+    const phaseIds = new Set(undo.phaseIds);
+    const cells = [
+      ...billing.manpowerCells.filter((cell) => !phaseIds.has(cell.phaseId)),
+      ...undo.cells.map((cell) => ({ ...cell, dayHours: cell.dayHours?.slice() })),
+    ];
+    spreadUndoRef.current = null;
+    setSpreadCanUndo(false);
+    setSpreadPreview(null);
+    const next = { ...billing, manpowerCells: cells };
+    onBillingChange(next);
+    await onPersistQuiet(next);
+  }, [billing, canEditCells, onBillingChange, onPersistQuiet]);
+
+  useEffect(() => {
+    if (!weekMenu) return;
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-week-menu]")) return;
+      setWeekMenu(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setWeekMenu(null);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    const root = scrollRef.current;
+    const close = () => setWeekMenu(null);
+    root?.addEventListener("scroll", close, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+      root?.removeEventListener("scroll", close);
+    };
+  }, [weekMenu]);
+
+  useEffect(() => {
+    if (!carryToast) return;
+    const timer = window.setTimeout(() => setCarryToast(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [carryToast]);
+
+  const applyCarry = useCallback(
+    async (weekStartIso: string, actuals: { phaseId: string; actual: number }[], dest: CarryDest) => {
+      if (!canEditCells) return;
+      const weekIndex = weeks.indexOf(weekStartIso);
+      if (weekIndex < 0) return;
+      const activities = (billing.gcSchedule?.items ?? [])
+        .filter((activity) => activity.name.trim())
+        .map((activity) => ({
+          id: activity.id,
+          startIso: activity.startIso,
+          endIso: activity.finishIso || activity.startIso,
+        }));
+      const { weights } = weekActivityWeights(
+        activities,
+        weeks[0] ?? weekStartIso,
+        weeks.length,
+        "activity-days",
+      );
+      const grid = billing.manpowerCells
+        .map((cell) => ({
+          phaseId: cell.phaseId,
+          weekIndex: weeks.indexOf(cell.weekStartIso),
+          hours: cell.hours,
+        }))
+        .filter((cell) => cell.weekIndex >= 0);
+      const snapshot = billing.manpowerCells.map((cell) => ({
+        ...cell,
+        dayHours: cell.dayHours?.slice(),
+      }));
+      const nextGrid = carryOver(grid, weekIndex, actuals, dest, weights);
+      const phaseIds = new Set(actuals.map((row) => row.phaseId));
+      let cells = billing.manpowerCells;
+      for (const phaseId of phaseIds) {
+        for (let index = 0; index < weeks.length; index += 1) {
+          const before = grid.find((cell) => cell.phaseId === phaseId && cell.weekIndex === index)?.hours ?? 0;
+          const after = nextGrid.find((cell) => cell.phaseId === phaseId && cell.weekIndex === index)?.hours ?? 0;
+          if (Math.abs(before - after) > 1e-6) {
+            cells = withCellHours(cells, phaseId, weeks[index]!, after);
+          }
+        }
+      }
+      const shortfall = actuals.reduce((sum, row) => {
+        const planned = cellHours(billing.manpowerCells, row.phaseId, weekStartIso);
+        const actual = Number.isFinite(row.actual) && row.actual > 0 ? row.actual : 0;
+        return sum + Math.max(0, planned - actual);
+      }, 0);
+      const laterActive = weights.some((weight, index) => index > weekIndex && weight > 0);
+      const qty = formatHoursPlain(shortfall);
+      const nextWeek = weeks[weekIndex + 1];
+      let message = `Updated week of ${weekColumnLabel(weekStartIso)}`;
+      if (shortfall > 0 && dest === "next" && nextWeek) {
+        message = `Carried ${qty} hrs to ${weekColumnLabel(nextWeek)}`;
+      } else if (shortfall > 0 && dest === "spread" && laterActive) {
+        message = `Carried ${qty} hrs across later weeks`;
+      } else if (shortfall > 0) {
+        message = `Parked ${qty} hrs`;
+      }
+      const nextBilling = { ...billing, manpowerCells: cells };
+      onBillingChange(nextBilling);
+      setCarryWeek(null);
+      setCarryToast({ message, cells: snapshot });
+      await onPersistQuiet(nextBilling);
+    },
+    [billing, canEditCells, onBillingChange, onPersistQuiet, weeks],
+  );
+
+  const undoCarry = useCallback(async () => {
+    if (!canEditCells || !carryToast) return;
+    const cells = carryToast.cells.map((cell) => ({ ...cell, dayHours: cell.dayHours?.slice() }));
+    setCarryToast(null);
+    const next = { ...billing, manpowerCells: cells };
+    onBillingChange(next);
+    await onPersistQuiet(next);
+  }, [billing, canEditCells, carryToast, onBillingChange, onPersistQuiet]);
+
   async function addWeek() {
     if (!canEditSchedule) return;
     const next = { ...billing, manpowerWeekCount: billing.manpowerWeekCount + 1 };
@@ -222,10 +466,56 @@ export function ManpowerPlanCard({
     await onPersistQuiet(next);
   }
 
+  async function pushScheduleWeek(fromWeek: string) {
+    if (!canEditCells || saving) return;
+    const phaseIds = new Set(contractPhases.map((phase) => phase.id));
+    const moving = billing.manpowerCells.some(
+      (cell) => cell.hours > 0 && phaseIds.has(cell.phaseId) && cell.weekStartIso >= fromWeek,
+    );
+    if (!moving) return;
+    const snapshot = billing.manpowerCells.map((cell) => ({
+      ...cell,
+      dayHours: cell.dayHours?.slice(),
+    }));
+    const next = {
+      ...billing,
+      manpowerCells: billing.manpowerCells.map((cell) => {
+        if (!phaseIds.has(cell.phaseId) || cell.weekStartIso < fromWeek) return cell;
+        return {
+          ...cell,
+          weekStartIso: addWeeksIso(cell.weekStartIso, 1),
+          dayHours: cell.dayHours?.slice(),
+        };
+      }),
+    };
+    onBillingChange(next);
+    setCarryToast({
+      message: `Pushed ${weekColumnLabel(fromWeek)} and later weeks 1 week later.`,
+      cells: snapshot,
+    });
+    await onPersistQuiet(next);
+  }
+
   async function persistDates(nextStart: string, nextEnd: string) {
     if (!canEditSchedule || !onScheduleDatesChange) return;
     if (nextStart === projectStartIso && nextEnd === projectEndIso) return;
     await onScheduleDatesChange(nextStart, nextEnd);
+  }
+
+  async function setPhaseHidden(phaseId: ManpowerPhaseId, hidden: boolean) {
+    if (!canEditCells || saving) return;
+    const next = {
+      ...billing,
+      manpowerPhases: billing.manpowerPhases.map((phase) => {
+        if (phase.id !== phaseId) return phase;
+        if (hidden) return { ...phase, hidden: true };
+        const rest = { ...phase };
+        delete rest.hidden;
+        return rest;
+      }),
+    };
+    onBillingChange(next);
+    await onPersistQuiet(next);
   }
 
   const isField = variant === "field";
@@ -244,9 +534,12 @@ export function ManpowerPlanCard({
 
   const gcItems = billing.gcSchedule?.items ?? [];
   const gcUnsent = gcItems.filter((item) => item.status === "open").length;
-  const activeHours = contractHours.get(activeContract) ?? { budget: 0, planned: 0 };
-  const contractBudget = activeHours.budget;
-  const contractPlanned = activeHours.planned;
+
+  const phaseIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    billing.manpowerPhases.forEach((phase, index) => map.set(phase.id, index));
+    return map;
+  }, [billing.manpowerPhases]);
 
   function rowMeta(phase: ManpowerPhase) {
     const planned = phaseTotalHours(billing.manpowerCells, phase.id);
@@ -255,55 +548,129 @@ export function ManpowerPlanCard({
     return { planned, left, colors };
   }
 
+  function hourSplit(phases: ManpowerPhase[]) {
+    let budget = 0;
+    let onBudget = 0;
+    let unbudgeted = 0;
+    const names: string[] = [];
+    for (const phase of phases) {
+      const planned = plannedHoursForPhase(phase.id, billing.manpowerCells);
+      if (phase.budgetHours > 0) {
+        budget += phase.budgetHours;
+        onBudget += planned;
+      } else if (planned > 0) {
+        unbudgeted += planned;
+        const name = (phase.name.trim() || phase.costCode || "unbudgeted").trim();
+        if (name && !names.includes(name)) names.push(name);
+      }
+    }
+    return { budget, onBudget, unbudgeted, names };
+  }
+
+  function hoursThroughWeek(phases: ManpowerPhase[], throughWeek: string) {
+    const ids = new Set(phases.map((phase) => phase.id));
+    let through = 0;
+    let planned = 0;
+    for (const cell of billing.manpowerCells) {
+      if (!ids.has(cell.phaseId) || !(cell.hours > 0)) continue;
+      planned += cell.hours;
+      if (cell.weekStartIso <= throughWeek) through += cell.hours;
+    }
+    return { through, planned };
+  }
+
+  const selectedHours = contractHours.get(activeContract) ?? { budget: 0, planned: 0 };
+  const selectedContractValue = contractValues?.[activeContract] ?? 0;
+  const scopeMonths = deriveMonthlyHours(
+    billing,
+    weeks,
+    new Set(contractPhases.map((phase) => phase.id)),
+  );
+  const scopeHourTotal = scopeMonths.reduce((sum, month) => sum + month.hours, 0);
+  let hoursBefore = 0;
+  let billableThrough = 0;
+  const monthNow = currentMonthKey();
+  for (const month of scopeMonths) {
+    const prev = hoursBefore;
+    hoursBefore += month.hours;
+    if (month.key <= monthNow) {
+      billableThrough += monthPocBillable(selectedContractValue, prev, hoursBefore, scopeHourTotal);
+    }
+  }
+  const laborCost = selectedHours.planned * blendedCostRate(billing.calculatorLaborRates);
+  const selectedSplit = hourSplit(contractPhases);
+  const hoursShare =
+    selectedSplit.budget > 0
+      ? Math.max(0, Math.min(100, (selectedSplit.onBudget / selectedSplit.budget) * 100))
+      : 0;
+  const currentWeek = todayMondayIso();
+  const visibleIds = new Set(visiblePhases.map((phase) => phase.id));
+  const weekTotals = weeks.map((week) =>
+    billing.manpowerCells
+      .filter((cell) => cell.weekStartIso === week && visibleIds.has(cell.phaseId))
+      .reduce((sum, cell) => sum + cell.hours, 0),
+  );
+  const showWeekly = isField || !monthlyBilling || planView === "weekly";
+
   return (
     <section
-      className={`card stack billing-card billing-manpower-card${isField ? " billing-manpower-card--field" : ""}`}
+      data-contract={gcOpen ? undefined : activeContract}
+      className={`card stack billing-card billing-manpower-card${isField ? " billing-manpower-card--field" : ""}${dragFill ? " is-dragging-hours" : ""}`}
     >
-      <div className="billing-manpower-toolbar">
-        <div className="billing-manpower-toolbar-main">
-          {!isField ? <h3 className="billing-card-title">Labor Projection</h3> : null}
-          <div className="billing-manpower-schedule-row">
-            <label>
-              Start
-              {canEditSchedule ? (
-                <DateInput
-                  value={draftStart}
-                  onChange={(v) => {
-                    setDraftStart(v);
-                    void persistDates(v, draftEnd);
-                  }}
-                />
-              ) : (
-                <input className="readonly" readOnly value={formatJobDateLabel(projectStartIso) || "—"} />
-              )}
-            </label>
-            <label>
-              Finish
-              {canEditSchedule ? (
-                <DateInput
-                  value={draftEnd}
-                  onChange={(v) => {
-                    setDraftEnd(v);
-                    void persistDates(draftStart, v);
-                  }}
-                />
-              ) : (
-                <input className="readonly" readOnly value={formatJobDateLabel(projectEndIso) || "—"} />
-              )}
-            </label>
-            <p className="muted small billing-manpower-week-count">
-              {weeks.length} week{weeks.length === 1 ? "" : "s"}
-              {endDateLabel ? ` · through ${endDateLabel}` : ""}
-            </p>
-          </div>
-        </div>
+      <div className="lp-header">
+        <button
+          type="button"
+          className="lp-date-chip"
+          aria-expanded={datesOpen}
+          onClick={() => setDatesOpen((open) => !open)}
+        >
+          <ManpowerHeaderPencilIcon />
+          {shortScheduleDate(projectStartIso)} – {shortScheduleDate(projectEndIso)} · {weeks.length} wk
+          {weeks.length === 1 ? "" : "s"}
+        </button>
       </div>
+      {datesOpen ? (
+        <div className="billing-manpower-schedule-row">
+          <label>
+            Start
+            {canEditSchedule ? (
+              <DateInput
+                value={draftStart}
+                onChange={(v) => {
+                  setDraftStart(v);
+                  void persistDates(v, draftEnd);
+                }}
+              />
+            ) : (
+              <input className="readonly" readOnly value={formatJobDateLabel(projectStartIso) || "—"} />
+            )}
+          </label>
+          <label>
+            Finish
+            {canEditSchedule ? (
+              <DateInput
+                value={draftEnd}
+                onChange={(v) => {
+                  setDraftEnd(v);
+                  void persistDates(draftStart, v);
+                }}
+              />
+            ) : (
+              <input className="readonly" readOnly value={formatJobDateLabel(projectEndIso) || "—"} />
+            )}
+          </label>
+        </div>
+      ) : null}
 
-      <div className="billing-manpower-contract-tabs" role="tablist" aria-label="Labor projection">
+      <div className="lp-scopes" role="tablist" aria-label="Labor projection">
         {contracts.map((contract) => {
-          const hours = contractHours.get(contract) ?? { budget: 0, planned: 0 };
-          const share = hours.budget > 0 ? Math.max(0, Math.min(100, (hours.planned / hours.budget) * 100)) : 0;
+          const phases = billing.manpowerPhases.filter((phase) => phase.contract === contract);
+          const split = hourSplit(phases);
+          const pace = hoursThroughWeek(phases, currentWeek);
+          const share =
+            pace.planned > 0 ? Math.max(0, Math.min(100, (pace.through / pace.planned) * 100)) : 0;
           const selected = !gcOpen && activeContract === contract;
+          const dollars = contractValues?.[contract];
           return (
             <button
               key={contract}
@@ -311,7 +678,7 @@ export function ManpowerPlanCard({
               role="tab"
               data-contract={contract}
               aria-selected={selected}
-              className={`billing-manpower-contract-tab${selected ? " active" : ""}`}
+              className={`lp-scope-card${selected ? " active" : ""}`}
               onClick={() => {
                 setGcOpen(false);
                 setActiveContract(contract);
@@ -322,20 +689,25 @@ export function ManpowerPlanCard({
                 {TRANSMITTAL_CONTRACT_LABELS[contract]}
               </span>
               <span className="billing-manpower-tab-budget">
-                {formatHoursPlain(hours.planned)} of {formatHoursPlain(hours.budget)} hrs planned
+                {formatHoursPlain(pace.through)} of {formatHoursPlain(pace.planned)} hrs through this week
+                {dollars != null ? ` · ${formatMoney0(dollars)}` : ""}
               </span>
+              {split.unbudgeted > 0 ? (
+                <span className="muted small">
+                  +{formatHoursPlain(split.unbudgeted)} {split.names.join(", ").toLowerCase()}
+                </span>
+              ) : null}
               <span className="billing-manpower-tab-meter" aria-hidden>
                 <span style={{ width: `${share}%` }} />
               </span>
             </button>
           );
         })}
-        <span className="billing-manpower-tab-split" aria-hidden />
         <button
           type="button"
           role="tab"
           aria-selected={gcOpen}
-          className={`billing-manpower-contract-tab billing-manpower-contract-tab--gc${gcOpen ? " active" : ""}`}
+          className={`lp-scope-card lp-scope-card--gc${gcOpen ? " active" : ""}`}
           onClick={() => setGcOpen(true)}
         >
           <span className="billing-manpower-tab-name">
@@ -347,8 +719,8 @@ export function ManpowerPlanCard({
             {gcItems.length === 0 ? "No schedule" : gcUnsent > 0 ? `${gcUnsent} not sent` : "All sent"}
           </span>
         </button>
-        <div className="billing-manpower-tab-actions">
-          {gcOpen && canEditCells ? (
+        {gcOpen && canEditCells ? (
+          <div className="lp-scope-import">
             <GcScheduleImport
               billing={billing}
               phases={billing.manpowerPhases}
@@ -362,14 +734,66 @@ export function ManpowerPlanCard({
               onPersistQuiet={onPersistQuiet}
               onStored={() => setGcOpen(true)}
             />
-          ) : null}
-          {!gcOpen && canEditSchedule ? (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void addWeek()} disabled={saving}>
-              + Add week
-            </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
+
+      {!gcOpen ? (
+        <div className="lp-strip" data-contract={activeContract}>
+          <div className="lp-strip-cell">
+            <span className="lp-strip-label">Hours planned</span>
+            <strong>{formatHoursPlain(selectedSplit.onBudget)}</strong>
+            <span className="muted small">of {formatHoursPlain(selectedSplit.budget)} budget</span>
+            {selectedSplit.unbudgeted > 0 ? (
+              <span className="muted small">
+                +{formatHoursPlain(selectedSplit.unbudgeted)} hrs unbudgeted ({selectedSplit.names.join(", ")})
+              </span>
+            ) : null}
+            <span className="billing-manpower-tab-meter" aria-hidden>
+              <span style={{ width: `${hoursShare}%` }} />
+            </span>
+          </div>
+          <div className="lp-strip-cell">
+            <span className="lp-strip-label">Man-weeks</span>
+            <strong>{formatManWeeks(selectedHours.planned)}</strong>
+            <span className="muted small">40 hrs each</span>
+          </div>
+          <div className="lp-strip-cell">
+            <span className="lp-strip-label">Labor cost</span>
+            <strong>{formatMoney0(laborCost)}</strong>
+          </div>
+          <div className="lp-strip-cell">
+            <span className="lp-strip-label">Contract</span>
+            <strong>{formatMoney0(selectedContractValue)}</strong>
+            <span className="muted small">
+              {formatMoney0(billableThrough)} billable through {currentMonthLabel()}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {!gcOpen && monthlyBilling ? (
+        <div className="lp-subtabs" role="tablist" aria-label="Projection view" data-contract={activeContract}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={planView === "weekly"}
+            className={planView === "weekly" ? "active" : ""}
+            onClick={() => setPlanView("weekly")}
+          >
+            Weekly hours
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={planView === "monthly"}
+            className={planView === "monthly" ? "active" : ""}
+            onClick={() => setPlanView("monthly")}
+          >
+            Monthly billing
+          </button>
+        </div>
+      ) : null}
 
       {gcOpen ? (
         <GcSchedulePanel
@@ -386,16 +810,43 @@ export function ManpowerPlanCard({
           onPersistQuiet={onPersistQuiet}
         />
       ) : null}
+      {gcOpen && canEditCells && weeks.length > 0 ? (
+        <SpreadBudgetHours
+          phases={visiblePhases}
+          activities={billing.gcSchedule?.items ?? []}
+          cells={billing.manpowerCells}
+          gridStart={weeks[0] ?? ""}
+          weekCount={weeks.length}
+          saving={saving}
+          canUndo={spreadCanUndo}
+          onPreview={showSpreadPreview}
+          onApply={(rows) => void applySpread(rows)}
+          onUndo={() => void undoSpread()}
+        />
+      ) : null}
 
       {!gcOpen && endDateHint ? (
         <p className="banner banner-warn billing-manpower-end-hint">{endDateHint}</p>
-      ) : !gcOpen && !isField && endDateLabel && contractEndWeekIndex !== null ? (
-        <p className="muted small billing-manpower-end-hint">
-          Contract schedule through {endDateLabel} ({weeks.length} weeks) · scroll horizontally for all columns
-        </p>
       ) : null}
 
-      {gcOpen ? null : contractPhases.length === 0 ? (
+      {showWeekly && hiddenPhases.length > 0 ? (
+        <div className="billing-manpower-hidden">
+          <span className="muted small">Hidden</span>
+          {hiddenPhases.map((phase) => (
+            <button
+              key={phase.id}
+              type="button"
+              className="billing-manpower-show"
+              disabled={!canEditCells || saving}
+              onClick={() => void setPhaseHidden(phase.id, false)}
+            >
+              Show {phase.costCode || phase.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {!showWeekly ? null : contractPhases.length === 0 ? (
         <p className="muted small billing-manpower-empty">
           No Hours PDF lines for {TRANSMITTAL_CONTRACT_LABELS[activeContract]}. Unhide labor cost codes in Budget Maker
           to project this contract.
@@ -417,38 +868,50 @@ export function ManpowerPlanCard({
                 : undefined
             }
         >
-          <table className="billing-manpower-table billing-manpower-table--plan">
+          <table className="billing-manpower-table billing-manpower-table--plan" data-contract={activeContract}>
             <thead>
               <tr>
                 <th className="billing-manpower-sticky billing-manpower-phase-col">Cost code</th>
-                <th className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--budget num">
-                  Budget
-                </th>
-                <th className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--planned num">
-                  Planned
-                </th>
-                <th className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--left num">
-                  Left
-                </th>
                 {weeks.map((w, weekIdx) => (
                   <th
                     key={w}
                     className={`billing-manpower-week-col num${
+                      w === currentWeek ? " billing-manpower-week-col--current" : ""
+                    }${
                       contractEndWeekIndex !== null && weekIdx > contractEndWeekIndex
                         ? " billing-manpower-week-col--beyond-contract"
                         : ""
                     }`}
                   >
                     {canEditCells ? (
-                      <button
-                        type="button"
-                        className="billing-manpower-header-pill"
-                        onClick={() => setDetailWeek(w)}
-                        title={`Plan daily hours for week of ${weekColumnLabel(w)}`}
-                      >
-                        <ManpowerHeaderPencilIcon />
-                        {weekColumnLabel(w)}
-                      </button>
+                      <div className="billing-week-head">
+                        <button
+                          type="button"
+                          className="billing-manpower-header-pill"
+                          data-week-menu=""
+                          aria-haspopup="menu"
+                          aria-expanded={weekMenu?.week === w}
+                          title={`Week of ${weekColumnLabel(w)}`}
+                          onClick={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setWeekMenu((current) =>
+                              current?.week === w
+                                ? null
+                                : {
+                                    week: w,
+                                    top: rect.bottom + 4,
+                                    left: Math.max(8, Math.min(rect.left, window.innerWidth - 168)),
+                                  },
+                            );
+                          }}
+                        >
+                          <ManpowerHeaderPencilIcon />
+                          {weekColumnLabel(w)}
+                          <span className="billing-week-caret" aria-hidden>
+                            ▾
+                          </span>
+                        </button>
+                      </div>
                     ) : (
                       <span className="billing-manpower-header-pill billing-manpower-header-pill--readonly">
                         {weekColumnLabel(w)}
@@ -461,9 +924,13 @@ export function ManpowerPlanCard({
               </tr>
             </thead>
             <tbody>
-              {contractPhases.map((phase) => {
+              {visiblePhases.map((phase) => {
                 const { planned, left, colors } = rowMeta(phase);
                 const over = left < 0;
+                const budgetLine =
+                  phase.budgetHours > 0
+                    ? `${formatHoursPlain(planned)} of ${formatHoursPlain(phase.budgetHours)} · ${formatHoursPlain(left)} left`
+                    : `${formatHoursPlain(planned)} planned · no budget`;
                 return (
                   <tr key={phase.id}>
                     <td
@@ -476,25 +943,42 @@ export function ManpowerPlanCard({
                       phase.name.trim() !== (phase.costCode || "").trim() ? (
                         <span className="billing-manpower-phase-desc">{phase.name.trim()}</span>
                       ) : null}
-                    </td>
-                    <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--budget num">
-                      {formatHours(phase.budgetHours)}
-                    </td>
-                    <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--planned num">
-                      {formatHours(planned)}
-                    </td>
-                    <td
-                      className={`billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--left num${over ? " billing-manpower-left--over" : ""}`}
-                    >
-                      {formatHoursPlain(left)}
+                      <span className={`billing-manpower-phase-meta${over ? " billing-manpower-left--over" : ""}`}>
+                        {budgetLine}
+                      </span>
+                      {canEditCells ? (
+                        <button
+                          type="button"
+                          className="billing-manpower-hide"
+                          title={`Hide ${phaseDisplayLabel(phase)}`}
+                          aria-label={`Hide ${phaseDisplayLabel(phase)}`}
+                          disabled={saving}
+                          onClick={() => void setPhaseHidden(phase.id, true)}
+                        >
+                          Hide
+                        </button>
+                      ) : null}
                     </td>
                     {weeks.map((w) => {
                       const hrs = cellHours(billing.manpowerCells, phase.id, w);
                       const key = cellKey(phase.id, w);
                       const isEditing = editing === key;
+                      const previewHours = spreadPreview?.[phase.id]?.[weeks.indexOf(w)];
                       return (
-                        <td key={w} className="billing-manpower-week-col">
-                          {isEditing && canEditCells ? (
+                        <td
+                          key={w}
+                          className={`billing-manpower-week-col${w === currentWeek ? " billing-manpower-week-col--current" : ""}`}
+                          data-manpower-phase={phase.id}
+                          data-manpower-week={w}
+                        >
+                          {previewHours !== undefined ? (
+                            <span
+                              className={`billing-manpower-chip billing-manpower-chip--preview${previewHours > 0 ? "" : " billing-manpower-chip--empty"}`}
+                              aria-label={`Preview ${previewHours} hours for ${phaseDisplayLabel(phase)} week ${weekColumnLabel(w)}`}
+                            >
+                              {previewHours > 0 ? formatHours(previewHours) : "—"}
+                            </span>
+                          ) : isEditing && canEditCells ? (
                             <input
                               ref={inputRef}
                               type="number"
@@ -517,7 +1001,7 @@ export function ManpowerPlanCard({
                           ) : (
                             <button
                               type="button"
-                              className={`billing-manpower-chip${hrs > 0 ? "" : " billing-manpower-chip--empty"}`}
+                              className={`billing-manpower-chip${hrs > 0 ? "" : " billing-manpower-chip--empty"}${dragMarks(phase.id, w) ? " billing-manpower-chip--drag" : ""}`}
                               style={
                                 hrs > 0
                                   ? {
@@ -527,11 +1011,63 @@ export function ManpowerPlanCard({
                                     }
                                   : undefined
                               }
+                              data-manpower-phase={phase.id}
+                              data-manpower-week={w}
                               disabled={!canEditCells}
-                              onClick={() => {
-                                if (!canEditCells) return;
-                                setEditing(key);
-                                setDraftHours(hrs > 0 ? String(hrs) : "");
+                              onPointerDown={(event) => {
+                                if (!canEditCells || event.button !== 0) return;
+                                dragRef.current = {
+                                  phaseId: phase.id,
+                                  anchorWeek: w,
+                                  currentWeek: w,
+                                  startX: event.clientX,
+                                  startY: event.clientY,
+                                  moved: false,
+                                  pointerId: event.pointerId,
+                                };
+                                event.currentTarget.setPointerCapture(event.pointerId);
+                              }}
+                              onPointerMove={(event) => {
+                                const drag = dragRef.current;
+                                if (!drag || drag.pointerId !== event.pointerId) return;
+                                const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+                                if (!drag.moved && distance < 6) return;
+                                drag.moved = true;
+                                const scroller = scrollRef.current;
+                                if (scroller) {
+                                  const edge = scroller.getBoundingClientRect();
+                                  if (event.clientX > edge.right - 40) scroller.scrollLeft += 16;
+                                  else if (event.clientX < edge.left + 40) scroller.scrollLeft -= 16;
+                                }
+                                const week = weekUnderPointer(event.clientX, event.clientY, drag.phaseId) ?? drag.currentWeek;
+                                drag.currentWeek = week;
+                                setDragFill((current) =>
+                                  current &&
+                                  current.phaseId === drag.phaseId &&
+                                  current.anchorWeek === drag.anchorWeek &&
+                                  current.currentWeek === week
+                                    ? current
+                                    : { phaseId: drag.phaseId, anchorWeek: drag.anchorWeek, currentWeek: week },
+                                );
+                              }}
+                              onPointerUp={(event) => {
+                                const drag = dragRef.current;
+                                if (!drag || drag.pointerId !== event.pointerId) return;
+                                dragRef.current = null;
+                                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                                  event.currentTarget.releasePointerCapture(event.pointerId);
+                                }
+                                if (!drag.moved) {
+                                  setDragFill(null);
+                                  setEditing(key);
+                                  setDraftHours(hrs > 0 ? String(hrs) : "");
+                                  return;
+                                }
+                                void moveDraggedHours(drag.phaseId, drag.anchorWeek, drag.currentWeek);
+                              }}
+                              onPointerCancel={() => {
+                                dragRef.current = null;
+                                setDragFill(null);
                               }}
                               onContextMenu={(e) => {
                                 if (!canEditCells || hrs <= 0) return;
@@ -540,7 +1076,7 @@ export function ManpowerPlanCard({
                               }}
                               title={
                                 hrs > 0
-                                  ? `${formatHours(hrs)} hrs · ${formatManWeeks(hrs)} man-wk · right-click to clear`
+                                  ? `${formatHours(hrs)} hrs · ${formatManWeeks(hrs)} man-wk · drag to another week to move · right-click to clear`
                                   : canEditCells
                                     ? "Add hours"
                                     : "View only"
@@ -566,28 +1102,16 @@ export function ManpowerPlanCard({
             <tfoot>
               <tr className="billing-manpower-total-row">
                 <td className="billing-manpower-sticky billing-manpower-phase-col">Total hrs</td>
-                <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--budget num">
-                  {formatHours(contractBudget)}
-                </td>
-                <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--planned num">
-                  {formatHours(contractPlanned)}
-                </td>
-                <td className="billing-manpower-sticky billing-manpower-budget-col billing-manpower-budget-col--left num">
-                  {formatHoursPlain(contractBudget - contractPlanned)}
-                </td>
-                {weeks.map((w) => {
-                  const phaseIds = new Set(contractPhases.map((p) => p.id));
-                  const total = billing.manpowerCells
-                    .filter((c) => c.weekStartIso === w && phaseIds.has(c.phaseId))
-                    .reduce((sum, c) => sum + c.hours, 0);
+                {weeks.map((w, weekIdx) => {
+                  const total = weekTotals[weekIdx] ?? 0;
                   const overlap = weekHasPhaseOverlap(
-                    billing.manpowerCells.filter((c) => phaseIds.has(c.phaseId)),
+                    billing.manpowerCells.filter((c) => visibleIds.has(c.phaseId)),
                     w,
                   );
                   return (
                     <td
                       key={w}
-                      className={`billing-manpower-week-col num billing-manpower-week-total${overlap ? " billing-manpower-week-total--overlap" : ""}`}
+                      className={`billing-manpower-week-col num billing-manpower-week-total${overlap ? " billing-manpower-week-total--overlap" : ""}${w === currentWeek ? " billing-manpower-week-col--current" : ""}`}
                       title={total > 0 ? `${formatManWeeks(total)} man-wk` : undefined}
                     >
                       {formatHours(total)}
@@ -601,25 +1125,115 @@ export function ManpowerPlanCard({
         </div>
       )}
 
-      {!gcOpen ? (
-      <p className="muted small billing-manpower-caption">
-        {isField
-          ? `Tap a cell to edit · clear empties the week · scroll sideways for the full schedule · ${HOURS_PER_MAN_WEEK} hrs = 1 man-week`
-          : `Rows sync from Budget Hours PDF · cells = week hours · man-week = ${HOURS_PER_MAN_WEEK} hrs`}
-        {canEditCells && !isField ? " · clear a cell with an empty value or right-click" : ""}
-        {!canEditSchedule ? " · start/finish set by PM" : ""}
-      </p>
+      {!gcOpen && !showWeekly ? monthlyBilling : null}
+
+      {!gcOpen && (showWeekly || canEditSchedule) ? (
+        <div className="lp-week-foot">
+          {showWeekly ? (
+            <p className="muted small billing-manpower-caption">
+              {isField
+                ? `Tap a cell to edit · drag a week onto another week to move the hours · ${HOURS_PER_MAN_WEEK} hrs = 1 man-week`
+                : `Drag a week onto another week to move the hours · right-click or clear a cell to empty it · ${HOURS_PER_MAN_WEEK} hrs = 1 man-week`}
+            </p>
+          ) : (
+            <span />
+          )}
+          {canEditSchedule ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void addWeek()} disabled={saving}>
+              + Add week
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {!gcOpen && detailWeek && canEditCells && contractPhases.length > 0 ? (
         <ManpowerWeekDetailModal
           weekStartIso={detailWeek}
           billing={billing}
-          phases={contractPhases}
+          phases={visiblePhases}
           saving={saving}
           onClose={() => setDetailWeek(null)}
           onSave={saveWeekDetail}
         />
+      ) : null}
+
+      {weekMenu ? (
+        <div
+          className="billing-week-menu"
+          data-week-menu=""
+          role="menu"
+          style={{ top: weekMenu.top, left: weekMenu.left }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const week = weekMenu.week;
+              setWeekMenu(null);
+              setDetailWeek(week);
+            }}
+          >
+            Plan week
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const week = weekMenu.week;
+              setWeekMenu(null);
+              setCarryWeek(week);
+            }}
+          >
+            Adjust week
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={saving}
+            onClick={() => {
+              const week = weekMenu.week;
+              setWeekMenu(null);
+              void pushScheduleWeek(week);
+            }}
+          >
+            Push 1 week
+          </button>
+        </div>
+      ) : null}
+
+      {!gcOpen && carryWeek && canEditCells ? (
+        <CarryWeekSheet
+          weekLabel={weekColumnLabel(carryWeek)}
+          nextWeekLabel={(() => {
+            const next = weeks[weeks.indexOf(carryWeek) + 1];
+            return next ? weekColumnLabel(next) : null;
+          })()}
+          isLastWeek={weeks.indexOf(carryWeek) >= weeks.length - 1}
+          key={carryWeek}
+          rows={contractPhases
+            .map((phase) => ({
+              phaseId: phase.id,
+              code: phase.costCode || "—",
+              name:
+                phase.name.trim() && phase.name.trim() !== (phase.costCode || "").trim()
+                  ? phase.name.trim()
+                  : "",
+              planned: cellHours(billing.manpowerCells, phase.id, carryWeek),
+            }))
+            .filter((row) => row.planned > 0)}
+          saving={saving}
+          onCancel={() => setCarryWeek(null)}
+          onApply={(actuals, dest) => void applyCarry(carryWeek, actuals, dest)}
+        />
+      ) : null}
+
+      {carryToast ? (
+        <div className="carry-toast" role="status">
+          <span>{carryToast.message}</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void undoCarry()}>
+            Undo
+          </button>
+        </div>
       ) : null}
     </section>
   );

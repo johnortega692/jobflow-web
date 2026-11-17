@@ -18316,11 +18316,11 @@ input.readonly {
   z-index: 1;
 }
 
-.billing-manpower-table tbody tr:hover td {
+.billing-manpower-table tbody tr:not(.lp-month-section):hover td {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.billing-manpower-table tbody tr:hover td.billing-manpower-sticky {
+.billing-manpower-table tbody tr:not(.lp-month-section):hover td.billing-manpower-sticky {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 
@@ -18739,6 +18739,186 @@ input.readonly {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
+.billing-week-head {
+  display: inline-flex;
+  align-items: center;
+}
+
+.billing-week-caret {
+  margin-left: 1px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.billing-week-menu {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.billing-week-menu button {
+  display: block;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.billing-week-menu button:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.carry-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.carry-sheet {
+  width: min(560px, 100%);
+  max-height: min(82vh, 680px);
+  overflow: auto;
+  padding: 1rem 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  background: var(--bg);
+}
+
+.carry-sheet h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.carry-sheet-sub {
+  margin: 0.25rem 0 0.85rem;
+  font-size: 0.85rem;
+}
+
+.carry-sheet-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.carry-sheet-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.carry-sheet-code {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.carry-sheet-code span,
+.carry-sheet-planned,
+.carry-sheet-actual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.carry-sheet-code span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.carry-sheet-actual input {
+  width: 5.5rem;
+}
+
+.carry-sheet-short {
+  margin: 0.2rem 0 0;
+  color: var(--warn, #f0b429);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.carry-sheet-dest {
+  margin: 0.9rem 0 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.carry-sheet-dest legend {
+  padding: 0 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.carry-sheet-dest label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+}
+
+.carry-sheet-dest input {
+  width: auto;
+}
+
+.carry-sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.carry-toast {
+  position: fixed;
+  z-index: 140;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2, var(--bg));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
 .billing-week-detail-modal {
   width: min(820px, 96vw);
   max-height: min(90vh, 720px);
@@ -18859,13 +19039,52 @@ input.readonly {
   margin-top: 4px;
 }
 
-.billing-manpower-week-col--beyond-contract {
+th.billing-manpower-week-col--beyond-contract,
+td.billing-manpower-week-col--beyond-contract,
+.billing-manpower-month-col.billing-manpower-week-col--beyond-contract,
+.billing-manpower-month-col.billing-manpower-week-col--beyond-contract .billing-manpower-header-pill {
   color: var(--warn);
   font-weight: 600;
 }
 
 .billing-manpower-phase-name {
   font-weight: 500;
+}
+
+.billing-manpower-hide,
+.billing-manpower-show {
+  width: auto;
+  margin: 0 0 0 0.45rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.billing-manpower-hide:hover,
+.billing-manpower-show:hover {
+  color: var(--text);
+}
+
+@media (pointer: fine) {
+  .billing-manpower-hide {
+    opacity: 0;
+  }
+
+  tr:hover .billing-manpower-hide,
+  .billing-manpower-hide:focus-visible {
+    opacity: 1;
+  }
+}
+
+.billing-manpower-hidden {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
 }
 
 .billing-manpower-chip {
@@ -18882,6 +19101,137 @@ input.readonly {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.billing-manpower-card.is-dragging-hours,
+.billing-manpower-card.is-dragging-hours .billing-manpower-chip {
+  cursor: grabbing;
+}
+
+.billing-manpower-chip--drag {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.billing-manpower-chip--preview {
+  border-style: dashed;
+  pointer-events: none;
+  cursor: default;
+}
+
+.billing-manpower-chip--preview:not(.billing-manpower-chip--empty) {
+  border-style: dashed;
+  background: rgba(37, 99, 235, 0.14);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.spread-budget {
+  display: grid;
+  gap: 0.9rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.spread-budget-title,
+.spread-budget h4 {
+  margin: 0;
+}
+
+.spread-budget-title {
+  font-size: 0.95rem;
+}
+
+.spread-budget h4 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.spread-budget-block,
+.spread-budget-list,
+.spread-budget-weight,
+.spread-budget-footer {
+  margin: 0;
+}
+
+.spread-budget-list {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0;
+  list-style: none;
+}
+
+.spread-budget-list li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.spread-budget-list li.spread-budget-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.spread-budget-list label,
+.spread-budget-weight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+}
+
+.spread-budget input[type="checkbox"],
+.spread-budget input[type="radio"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.spread-budget-hours {
+  width: 5.5rem;
+  margin: 0;
+  padding: 0.3rem 0.45rem;
+  text-align: center;
+}
+
+.spread-budget-skip {
+  margin: 0 0 0 1.4rem;
+  color: var(--warn);
+  font-size: 0.75rem;
+}
+
+.spread-budget-weight {
+  border: 0;
+  padding: 0;
+}
+
+.spread-budget-weight legend {
+  padding: 0;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.spread-budget-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.spread-budget-footer .btn {
+  width: auto;
 }
 
 .billing-manpower-chip--empty:hover {
@@ -18891,6 +19241,13 @@ input.readonly {
 
 .billing-manpower-chip:not(.billing-manpower-chip--empty) {
   border-style: solid;
+}
+
+.billing-manpower-chip--preview,
+.billing-manpower-chip--preview:not(.billing-manpower-chip--empty) {
+  border-style: dashed;
+  pointer-events: none;
+  cursor: default;
 }
 
 .billing-manpower-cell-input {
@@ -18904,33 +19261,20 @@ input.readonly {
   color: var(--muted);
 }
 
-.billing-manpower-planned-cell {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.billing-monthly-cost-band td {
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
-  border-bottom-color: color-mix(in srgb, var(--accent) 22%, rgba(58, 67, 88, 0.5));
-}
-
-.billing-monthly-cost-band .billing-manpower-sticky {
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
-}
-
-.billing-monthly-cost-band .billing-manpower-row-label {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.billing-monthly-cost-band--total td {
-  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
-  font-weight: 600;
-  border-bottom-color: color-mix(in srgb, var(--accent) 34%, rgba(58, 67, 88, 0.5));
-}
-
+.billing-monthly-cost-band--total td,
 .billing-monthly-cost-band--total .billing-manpower-sticky {
-  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
+  background: var(--bg-elevated);
+  font-weight: 700;
+}
+
+.billing-monthly-cost-band--total .billing-manpower-row-label {
+  color: var(--text);
+}
+
+.billing-monthly-budget-card .billing-manpower-table tbody tr:not(.lp-month-section) td {
+  min-height: 2rem;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .billing-budget-card {
@@ -18938,38 +19282,38 @@ input.readonly {
 }
 
 .billing-budget-value-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 56px;
-  min-height: 28px;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  display: inline;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: inherit;
   font: inherit;
+  line-height: inherit;
   cursor: pointer;
 }
 
 .billing-billed-input {
+  display: block;
   width: 100%;
-  min-width: 64px;
-  max-width: 96px;
-  margin: 0 auto;
-  padding: 2px 6px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: right;
+  line-height: inherit;
+  text-align: center;
 }
 
 .billing-billed-input:hover,
 .billing-billed-input:focus {
-  border-color: var(--border);
-  background: rgba(79, 140, 255, 0.1);
   outline: none;
 }
 
@@ -18980,8 +19324,7 @@ input.readonly {
 
 .billing-budget-value-button:hover,
 .billing-budget-value-button:focus-visible {
-  border-color: var(--border);
-  background: rgba(79, 140, 255, 0.1);
+  color: var(--accent);
   outline: none;
 }
 
@@ -21180,4 +21523,226 @@ input.readonly {
 
 .material-prices-changed {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.lp-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.lp-week-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.lp-week-foot .btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.lp-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text-secondary, var(--muted));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lp-date-chip svg {
+  width: 11px;
+  height: 11px;
+}
+
+.lp-scopes {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.lp-scope-card {
+  flex: 1 1 14rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lp-scope-card--gc {
+  flex: 0 1 11rem;
+}
+
+.lp-scope-card[data-contract="paint"],
+.billing-manpower-card[data-contract="paint"],
+.billing-manpower-table--plan[data-contract="paint"],
+.lp-strip[data-contract="paint"],
+.lp-subtabs[data-contract="paint"] {
+  --trade-color: #2dd4bf;
+}
+
+.lp-scope-card[data-contract="wallcovering"],
+.billing-manpower-card[data-contract="wallcovering"],
+.billing-manpower-table--plan[data-contract="wallcovering"],
+.lp-strip[data-contract="wallcovering"],
+.lp-subtabs[data-contract="wallcovering"] {
+  --trade-color: #c084fc;
+}
+
+.lp-scope-card[data-contract="frp"],
+.billing-manpower-card[data-contract="frp"],
+.billing-manpower-table--plan[data-contract="frp"],
+.lp-strip[data-contract="frp"],
+.lp-subtabs[data-contract="frp"] {
+  --trade-color: #22d3ee;
+}
+
+.lp-scope-card[data-contract="track"],
+.billing-manpower-card[data-contract="track"],
+.billing-manpower-table--plan[data-contract="track"],
+.lp-strip[data-contract="track"],
+.lp-subtabs[data-contract="track"] {
+  --trade-color: #fbbf24;
+}
+
+.lp-scope-card[aria-selected="true"] {
+  outline: 1.5px solid var(--trade-color, var(--border-strong));
+}
+
+.lp-scope-card--gc[aria-selected="true"] {
+  outline-color: var(--border-strong);
+}
+
+.lp-scope-import {
+  display: flex;
+  align-items: center;
+}
+
+.lp-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.lp-strip-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lp-strip-cell strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.lp-strip-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.lp-subtabs {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.lp-subtabs button {
+  width: auto;
+  margin: 0 0 -1px;
+  padding: 0.4rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.lp-subtabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--trade-color, var(--accent));
+}
+
+.billing-manpower-week-col--current {
+  background: color-mix(in srgb, var(--trade-color, var(--accent)) 10%, transparent);
+}
+
+.billing-manpower-phase-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.billing-manpower-table--plan .billing-manpower-chip:not(.billing-manpower-chip--empty):not(.billing-manpower-chip--preview) {
+  background: color-mix(in srgb, var(--trade-color, var(--accent)) 20%, transparent);
+  border-color: var(--trade-color, var(--accent));
+  color: var(--text);
+}
+
+.billing-monthly-budget-card .billing-manpower-header-pill {
+  padding: 2px 8px;
+  box-shadow: none;
+}
+
+.billing-monthly-budget-card .billing-manpower-header-pill--current {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lp-month-section td {
+  height: auto;
+  padding: 2px 8px;
+  border-bottom: 1px solid rgba(58, 67, 88, 0.5);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  .lp-scopes {
+    flex-direction: column;
+  }
+
+  .lp-scope-card,
+  .lp-scope-card--gc {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .lp-strip {
+    grid-template-columns: 1fr 1fr;
+  }
 }

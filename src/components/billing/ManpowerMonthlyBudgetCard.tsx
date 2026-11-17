@@ -23,6 +23,7 @@ import {
   type DerivedMonthHours,
 } from "../../lib/manpowerHours";
 import type { TransmittalContract } from "../../lib/jobInfo";
+import { formatMonthPeriodLabel } from "../../lib/manpowerPeriods";
 import {
   getMonthBilledAmount,
   getMonthMaterialCost,
@@ -41,6 +42,8 @@ type Props = {
   materialBudget: number;
   /** Paint and sundry dollars ordered from Field Tools, including sales tax. Null while loading. */
   orderedMaterial?: number | null;
+  /** Ordered dollars by YYYY-MM, from the day each order was placed. */
+  orderedByMonth?: Record<string, number>;
   /** Company sales tax percent already included in orderedMaterial. */
   materialTaxPercent?: number;
   /** When set, month hours / billable use only this contract's Labor Projection rows. */
@@ -52,6 +55,8 @@ type Props = {
   calculatorRevision: number;
   onOpenMonth: (month: DerivedMonthHours) => void;
   onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
+  /** Render inside the labor projection panel, without a second card. */
+  embedded?: boolean;
 };
 
 export function ManpowerMonthlyBudgetCard({
@@ -61,6 +66,7 @@ export function ManpowerMonthlyBudgetCard({
   contractValue,
   materialBudget,
   orderedMaterial = null,
+  orderedByMonth = {},
   materialTaxPercent = 0,
   phaseIds,
   contract,
@@ -68,6 +74,7 @@ export function ManpowerMonthlyBudgetCard({
   calculatorRevision,
   onOpenMonth,
   onPersistQuiet,
+  embedded = false,
 }: Props) {
   const { weekStarts: weeks, contractEndWeekIndex } = manpowerWeekStarts(
     projectStartIso,
@@ -77,6 +84,20 @@ export function ManpowerMonthlyBudgetCard({
   );
   const endDateHint = manpowerEndDateHint(projectStartIso, projectEndIso);
   const months = deriveMonthlyHours(billing, weeks, phaseIds);
+  const displayMonths = useMemo(() => {
+    const byKey = new Map(months.map((month) => [month.key, month]));
+    for (const [key, amount] of Object.entries(orderedByMonth)) {
+      if (!amount || byKey.has(key)) continue;
+      byKey.set(key, {
+        key,
+        label: formatMonthPeriodLabel(key),
+        weekStartIsos: [],
+        hours: 0,
+        manWeeks: 0,
+      });
+    }
+    return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }, [months, orderedByMonth]);
   const thisMonth = currentMonthKey();
   const laborRates = billing.calculatorLaborRates;
   void calculatorRevision;
@@ -91,15 +112,17 @@ export function ManpowerMonthlyBudgetCard({
     setBilledDrafts({});
   }, [contract]);
 
-  const totalHours = months.reduce((sum, m) => sum + m.hours, 0);
+  const totalHours = displayMonths.reduce((sum, m) => sum + m.hours, 0);
   const costRate = blendedCostRate(laborRates);
 
   const monthRows = useMemo(() => {
     let running = 0;
-    return months.map((m) => {
+    return displayMonths.map((m) => {
       const prev = running;
       running += m.hours;
-      const materialCost = getMonthMaterialCost(billing, m.key);
+      const enteredMaterial = getMonthMaterialCost(billing, m.key);
+      const ordered = orderedByMonth[m.key] ?? 0;
+      const materialCost = enteredMaterial + ordered;
       const pocBillable = monthPocBillable(contractValue, prev, running, totalHours);
       const totals = deriveMonthCalculatorTotals(m.hours, laborRates, materialCost, pocBillable);
       const billedAmount = getMonthBilledAmount(billing, contract, m.key);
@@ -108,16 +131,20 @@ export function ManpowerMonthlyBudgetCard({
         cumulativeHours: running,
         percentComplete: hoursPercentComplete(running, totalHours),
         laborCost: m.hours * costRate,
+        enteredMaterial,
+        ordered,
         materialCost,
         billedAmount,
         totals,
       };
     });
-  }, [billing, contract, contractValue, costRate, laborRates, months, totalHours]);
+  }, [billing, contract, contractValue, costRate, displayMonths, laborRates, orderedByMonth, totalHours]);
 
   const totalLaborCost = monthRows.reduce((sum, r) => sum + r.laborCost, 0);
-  const totalMaterialEntered = monthRows.reduce((sum, r) => sum + r.materialCost, 0);
-  const materialRemaining = materialBudget > 0 ? materialBudget - totalMaterialEntered : 0;
+  const totalOrdered = monthRows.reduce((sum, r) => sum + r.ordered, 0);
+  const totalMaterialEntered = monthRows.reduce((sum, r) => sum + r.enteredMaterial, 0);
+  const totalMaterial = totalOrdered + totalMaterialEntered;
+  const materialRemaining = materialBudget > 0 ? materialBudget - totalMaterial : 0;
   const totalCost = monthRows.reduce((sum, r) => sum + r.totals.cost, 0);
   const totalBillable = contractValue > 0 && totalHours > 0 ? contractValue : 0;
   const totalBilled = monthRows.reduce((sum, r) => sum + r.billedAmount, 0);
@@ -143,21 +170,30 @@ export function ManpowerMonthlyBudgetCard({
     setSavingBilled(false);
   }
 
+  function beyondMark(m: DerivedMonthHours): string {
+    return monthBeyondContract(m.weekStartIsos, weeks, contractEndWeekIndex)
+      ? " billing-manpower-week-col--beyond-contract"
+      : "";
+  }
+
   function monthHeaderClass(m: DerivedMonthHours): string {
-    return [
-      "billing-manpower-month-col",
-      "num",
-      "billing-manpower-month-col--clickable",
-      monthBeyondContract(m.weekStartIsos, weeks, contractEndWeekIndex)
-        ? "billing-manpower-week-col--beyond-contract"
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    return `billing-manpower-month-col num billing-manpower-month-col--clickable${beyondMark(m)}`;
+  }
+
+  const monthCount = displayMonths.length + 2;
+
+  function sectionLabel(label: string) {
+    return (
+      <tr className="lp-month-section">
+        <td colSpan={monthCount}>{label}</td>
+      </tr>
+    );
   }
 
   return (
-    <section className="card stack billing-card billing-manpower-card billing-budget-card billing-monthly-budget-card">
+    <div className={embedded ? "billing-monthly-budget-card" : "card stack billing-card billing-manpower-card billing-budget-card billing-monthly-budget-card"}>
+      {embedded ? null : (
+      <>
       <div className="row-between wrap gap">
         <h3 className="billing-card-title">Monthly hours</h3>
         <span className="muted small">
@@ -192,10 +228,14 @@ export function ManpowerMonthlyBudgetCard({
                   {materialTaxPercent > 0 ? " incl. tax" : ""}
                 </>
               ) : null}
-              {totalMaterialEntered > 0 ? (
+              {totalMaterial > 0 ? (
                 <>
-                  {" "}
-                  · entered {formatMoney0(totalMaterialEntered)}
+                  {totalMaterialEntered > 0 ? (
+                    <>
+                      {" "}
+                      · entered {formatMoney0(totalMaterialEntered)}
+                    </>
+                  ) : null}
                   {materialRemaining !== 0 ? (
                     <> · left {formatMoney0(materialRemaining)}</>
                   ) : (
@@ -209,13 +249,15 @@ export function ManpowerMonthlyBudgetCard({
           ) : null}
         </p>
       )}
+      </>
+      )}
 
       <div className="billing-manpower-scroll" tabIndex={0} aria-label="Monthly hours — scroll horizontally">
         <table className="billing-manpower-table">
           <thead>
             <tr>
               <th className="billing-manpower-sticky billing-manpower-phase-col">Row</th>
-              {months.map((m) => (
+              {displayMonths.map((m) => (
                 <th key={m.key} className={monthHeaderClass(m)}>
                   <button
                     type="button"
@@ -233,12 +275,13 @@ export function ManpowerMonthlyBudgetCard({
             </tr>
           </thead>
           <tbody>
+            {sectionLabel("Hours")}
             <tr>
               <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
                 Planned (hrs)
               </td>
-              {months.map((m) => (
-                <td key={m.key} className="billing-manpower-month-col num billing-manpower-planned-cell">
+              {displayMonths.map((m) => (
+                <td key={m.key} className={`billing-manpower-month-col num${beyondMark(m)}`}>
                   {formatHoursCompact(m.hours)}
                 </td>
               ))}
@@ -248,19 +291,44 @@ export function ManpowerMonthlyBudgetCard({
               <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
                 Man-weeks
               </td>
-              {months.map((m) => (
-                <td key={m.key} className="billing-manpower-month-col num">
+              {displayMonths.map((m) => (
+                <td key={m.key} className={`billing-manpower-month-col num${beyondMark(m)}`}>
                   {formatManWeeksCompact(m.hours)}
                 </td>
               ))}
               <td className="billing-manpower-sticky billing-manpower-total-col num">{formatManWeeksCompact(totalHours)}</td>
             </tr>
-            <tr className="billing-monthly-cost-band">
+            <tr>
+              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
+                Cumulative hrs
+              </td>
+              {monthRows.map((r) => (
+                <td key={r.month.key} className={`billing-manpower-month-col num${beyondMark(r.month)}`}>
+                  {formatHoursCompact(r.cumulativeHours)}
+                </td>
+              ))}
+              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatHoursCompact(totalHours)}</td>
+            </tr>
+            <tr>
+              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
+                % complete
+              </td>
+              {monthRows.map((r) => (
+                <td key={r.month.key} className={`billing-manpower-month-col num${beyondMark(r.month)}`}>
+                  {totalHours > 0 ? formatPct0(r.percentComplete) : "—"}
+                </td>
+              ))}
+              <td className="billing-manpower-sticky billing-manpower-total-col num">
+                {totalHours > 0 ? formatPct0(100) : "—"}
+              </td>
+            </tr>
+            {sectionLabel("Cost")}
+            <tr>
               <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
                 Labor (calc)
               </td>
               {monthRows.map((r) => (
-                <td key={r.month.key} className="billing-manpower-month-col num">
+                <td key={r.month.key} className={`billing-manpower-month-col num${beyondMark(r.month)}`}>
                   <button
                     type="button"
                     className="billing-budget-value-button"
@@ -273,48 +341,63 @@ export function ManpowerMonthlyBudgetCard({
               ))}
               <td className="billing-manpower-sticky billing-manpower-total-col num">{formatMoney0(totalLaborCost)}</td>
             </tr>
-            <tr className="billing-monthly-cost-band">
-              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
+            <tr>
+              <td
+                className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label"
+                title="Orders placed that month, including tax"
+              >
                 Material
               </td>
-              {monthRows.map((r) => (
-                <td key={r.month.key} className="billing-manpower-month-col num">
+              {monthRows.map((r) => {
+                const detail = [
+                  r.ordered > 0 ? `Orders placed in ${r.month.label}: ${formatMoney0(r.ordered)}` : "",
+                  r.enteredMaterial > 0 ? `Extra entered: ${formatMoney0(r.enteredMaterial)}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                <td key={r.month.key} className={`billing-manpower-month-col num${beyondMark(r.month)}`}>
                   <button
                     type="button"
                     className="billing-budget-value-button"
                     onClick={() => onOpenMonth(r.month)}
-                    title={`Enter material cost for ${r.month.label}`}
+                    title={detail || `Enter material cost for ${r.month.label}`}
                   >
                     {formatMoney0(r.materialCost)}
                   </button>
                 </td>
-              ))}
+                );
+              })}
               <td className="billing-manpower-sticky billing-manpower-total-col num">
-                {formatMoney0(totalMaterialEntered)}
-                {materialBudget > 0 ? (
+                {formatMoney0(totalMaterial)}
+                {materialBudget > 0 || (orderedMaterial != null && orderedMaterial > 0) ? (
                   <span className="muted" style={{ display: "block", fontSize: "0.75em", fontWeight: 400 }}>
-                    of {formatMoney0(materialBudget)}
+                    {materialBudget > 0 ? `of ${formatMoney0(materialBudget)}` : ""}
+                    {orderedMaterial != null && orderedMaterial > 0
+                      ? `${materialBudget > 0 ? " · " : ""}ordered ${formatMoney0(orderedMaterial)}`
+                      : ""}
                   </span>
                 ) : null}
               </td>
             </tr>
-            <tr className="billing-monthly-cost-band billing-monthly-cost-band--total">
+            <tr className="billing-monthly-cost-band--total">
               <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
-                Cost (calc)
+                Total cost
               </td>
               {monthRows.map((r) => (
-                <td key={r.month.key} className="billing-manpower-month-col num">
+                <td key={r.month.key} className={`billing-manpower-month-col num${beyondMark(r.month)}`}>
                   {formatMoney0(r.totals.cost)}
                 </td>
               ))}
               <td className="billing-manpower-sticky billing-manpower-total-col num">{formatMoney0(totalCost)}</td>
             </tr>
+            {sectionLabel("Billing")}
             <tr>
               <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
                 Billable
               </td>
               {monthRows.map((r) => (
-                <td key={r.month.key} className="billing-manpower-month-col num">
+                <td key={r.month.key} className={`billing-manpower-month-col num${beyondMark(r.month)}`}>
                   <button
                     type="button"
                     className="billing-budget-value-button"
@@ -329,34 +412,10 @@ export function ManpowerMonthlyBudgetCard({
             </tr>
             <tr>
               <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
-                Cumulative hrs
-              </td>
-              {monthRows.map((r) => (
-                <td key={r.month.key} className="billing-manpower-month-col num">
-                  {formatHoursCompact(r.cumulativeHours)}
-                </td>
-              ))}
-              <td className="billing-manpower-sticky billing-manpower-total-col num">{formatHoursCompact(totalHours)}</td>
-            </tr>
-            <tr>
-              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
-                % complete
-              </td>
-              {monthRows.map((r) => (
-                <td key={r.month.key} className="billing-manpower-month-col num">
-                  {totalHours > 0 ? formatPct0(r.percentComplete) : "—"}
-                </td>
-              ))}
-              <td className="billing-manpower-sticky billing-manpower-total-col num">
-                {totalHours > 0 ? formatPct0(100) : "—"}
-              </td>
-            </tr>
-            <tr>
-              <td className="billing-manpower-sticky billing-manpower-phase-col billing-manpower-row-label">
                 Billed
               </td>
               {monthRows.map((r) => (
-                <td key={r.month.key} className="billing-manpower-month-col num">
+                <td key={r.month.key} className={`billing-manpower-month-col num${beyondMark(r.month)}`}>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -385,6 +444,6 @@ export function ManpowerMonthlyBudgetCard({
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
   );
 }

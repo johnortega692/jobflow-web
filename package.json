@@ -8,6 +8,7 @@
     "postinstall": "node scripts/patch-niimbot-notify.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "test": "node --experimental-strip-types --test src/lib/spreadBudgetHours.test.ts src/lib/carryOver.test.ts",
     "supabase:login": "supabase login",
     "supabase:deploy:submit-order": "supabase functions deploy field-tools-submit-order --project-ref hrbsekijkvhtfoogdwzp",
     "supabase:deploy:audit-pdf": "supabase functions deploy field-tools-audit-pdf --project-ref hrbsekijkvhtfoogdwzp",

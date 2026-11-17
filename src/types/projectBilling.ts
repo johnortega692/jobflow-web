@@ -30,6 +30,8 @@ export type ManpowerPhase = {
   contract: TransmittalContract;
   budgetHours: number;
   actualHours: number;
+  /** Hidden on the Labor Projection week grid. Hours stay on the contract. */
+  hidden?: boolean;
 };
 
 export type ManpowerCell = {
@@ -194,6 +196,7 @@ function normalizeManpowerPhase(raw: unknown): ManpowerPhase | null {
       contract: "paint",
       budgetHours: num(o.budgetHours),
       actualHours: num(o.actualHours),
+      ...(o.hidden === true ? { hidden: true } : {}),
     };
   }
 
@@ -208,6 +211,7 @@ function normalizeManpowerPhase(raw: unknown): ManpowerPhase | null {
     contract: contractFromPhaseId(id, o.contract),
     budgetHours: num(o.budgetHours),
     actualHours: num(o.actualHours),
+    ...(o.hidden === true ? { hidden: true } : {}),
   };
 }
 

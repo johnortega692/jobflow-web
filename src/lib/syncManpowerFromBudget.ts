@@ -97,10 +97,14 @@ export function syncBillingPhasesFromBudget(
 ): { billing: ProjectBillingData; changed: boolean } {
   const fromBudget = buildManpowerPhasesFromBudget(budget, lib, contracts);
   const prevById = new Map(billing.manpowerPhases.map((p) => [p.id, p]));
-  const nextPhases: ManpowerPhase[] = fromBudget.map((phase) => ({
-    ...phase,
-    actualHours: prevById.get(phase.id)?.actualHours ?? 0,
-  }));
+  const nextPhases: ManpowerPhase[] = fromBudget.map((phase) => {
+    const prev = prevById.get(phase.id);
+    return {
+      ...phase,
+      actualHours: prev?.actualHours ?? 0,
+      ...(prev?.hidden ? { hidden: true } : {}),
+    };
+  });
 
   const keepIds = new Set(nextPhases.map((p) => p.id));
 

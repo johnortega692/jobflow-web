@@ -36,6 +36,10 @@ type Props = {
   materialBudget: number;
   /** Sum of material entered in other months (excludes this month). */
   materialEnteredOtherMonths: number;
+  /** Orders placed during this month, including tax. */
+  orderedThisMonth?: number;
+  /** Ordered dollars for the whole job, including tax. */
+  orderedTotal?: number;
   onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
   onClose: () => void;
 };
@@ -51,6 +55,8 @@ export function MonthBudgetCalculatorModal({
   contractValue,
   materialBudget,
   materialEnteredOtherMonths,
+  orderedThisMonth = 0,
+  orderedTotal = 0,
   onPersistQuiet,
   onClose,
 }: Props) {
@@ -92,10 +98,15 @@ export function MonthBudgetCalculatorModal({
     totalPlannedHours,
   );
   const earnedToDate = pocBillableAmount(contractValue, percentComplete);
-  const totals = deriveMonthCalculatorTotals(plannedHours, rates, materialCost, monthBillable);
+  const totals = deriveMonthCalculatorTotals(
+    plannedHours,
+    rates,
+    materialCost + orderedThisMonth,
+    monthBillable,
+  );
   const marginPct = totals.billable > 0 ? (totals.margin / totals.billable) * 100 : 0;
   const materialEnteredAll = materialEnteredOtherMonths + materialCost;
-  const materialLeft = materialBudget > 0 ? materialBudget - materialEnteredAll : 0;
+  const materialLeft = materialBudget > 0 ? materialBudget - materialEnteredAll - orderedTotal : 0;
 
   async function commitMaterial(raw: string) {
     const amount = parseMoney(raw);
@@ -187,7 +198,7 @@ export function MonthBudgetCalculatorModal({
             <strong className="billing-calc-stat-value">{formatMoney0(materialBudget)}</strong>
             <span className="billing-calc-stat-sub muted">
               {materialBudget > 0
-                ? `entered ${formatMoney0(materialEnteredAll)} · left ${formatMoney0(materialLeft)}`
+                ? `${orderedTotal > 0 ? `ordered ${formatMoney0(orderedTotal)} · ` : ""}entered ${formatMoney0(materialEnteredAll)} · left ${formatMoney0(materialLeft)}`
                 : "from Budget Maker"}
             </span>
           </div>
@@ -226,7 +237,7 @@ export function MonthBudgetCalculatorModal({
                 className="billing-calc-ledger-input"
                 value={materialCostDraft}
                 placeholder="0"
-                aria-label="Material cost for this month"
+                aria-label={orderedThisMonth > 0 ? "Extra material cost for this month" : "Material cost for this month"}
                 onChange={(e) => setMaterialCostDraft(e.target.value)}
                 onBlur={(e) => {
                   void commitMaterial(e.target.value);
@@ -235,6 +246,9 @@ export function MonthBudgetCalculatorModal({
                   if (e.key === "Enter") e.currentTarget.blur();
                 }}
               />
+              {orderedThisMonth > 0 ? (
+                <span className="muted small">Orders placed this month {formatMoney0(orderedThisMonth)}</span>
+              ) : null}
             </span>
             <span className="billing-calc-ledger-cell billing-calc-ledger-value muted" role="cell">
               —

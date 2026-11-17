@@ -104,6 +104,5 @@ export function formatHoursCompact(hours: number): string {
 
 export function formatManWeeksCompact(hours: number): string {
   if (hours <= 0) return "—";
-  const mw = hoursToManWeeks(hours);
-  return Number.isInteger(mw) ? String(mw) : mw.toFixed(1);
+  return hoursToManWeeks(hours).toFixed(1);
 }

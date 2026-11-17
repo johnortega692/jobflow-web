@@ -5,11 +5,7 @@ import { ManpowerPlanCard } from "../components/billing/ManpowerPlanCard";
 import { MonthBudgetCalculatorModal } from "../components/billing/MonthBudgetCalculatorModal";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  currentMonthLabel,
   deriveMonthlyHours,
-  formatHoursCompact,
-  formatManWeeksCompact,
-  hoursToDateFromCalendar,
   manpowerHoursContext,
   type DerivedMonthHours,
 } from "../lib/manpowerHours";
@@ -44,16 +40,6 @@ import { parseProjectTradeData } from "../types/tradeDocuments";
 
 type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectForm) => void };
 
-function SummaryCard({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
-  return (
-    <div className="billing-summary-card">
-      <span className="billing-summary-label">{label}</span>
-      <span className="billing-summary-value">{value}</span>
-      {subtitle ? <span className="billing-summary-sub">{subtitle}</span> : null}
-    </div>
-  );
-}
-
 export function BillingPage() {
   const { project, projectId, setProject } = useOutletContext<Ctx>();
   const { user, isAdmin, jobRole } = useAuth();
@@ -69,6 +55,8 @@ export function BillingPage() {
   const syncingRef = useRef(false);
   const projectRef = useRef(project);
   projectRef.current = project;
+  const billingRef = useRef(billing);
+  billingRef.current = billing;
 
   const contracts = useMemo(() => availableTransmittalContracts(project), [project]);
   const [activeContract, setActiveContract] = useState<TransmittalContract>(() => contracts[0] ?? "paint");
@@ -135,7 +123,7 @@ export function BillingPage() {
       const lib = user ? await loadBudgetLibrary(user.id) : defaultBudgetLibrary();
       if (cancelled) return;
       setBudgetLibrary(lib);
-      const current = parseProjectBilling(latest.data);
+      const current = billingRef.current;
       const { billing: synced, changed } = syncBillingPhasesFromBudget(
         current,
         budget,
@@ -225,8 +213,6 @@ export function BillingPage() {
   const projectEndIso = project.jobInfo.end_date ?? "";
   const { weekStarts } = manpowerHoursContext(billing, projectStartIso, projectEndIso);
   const totalHours = totalPlannedHours(billing);
-  const hoursThroughMonth = hoursToDateFromCalendar(billing, projectStartIso, projectEndIso);
-  const throughMonth = currentMonthLabel();
   const budgetMaker = useMemo(
     () => normalizeBudgetMaker(budgetMakerRaw, project.job_name),
     [budgetMakerRaw, project.job_name],
@@ -239,20 +225,26 @@ export function BillingPage() {
     return new Set(ids);
   }, [activeContract, billing.manpowerPhases]);
 
-  const contractValue = useMemo(
-    () => resolveLaborProjectionContractValue(project, budgetMaker, activeContracts),
-    [activeContracts, budgetMaker, project],
-  );
+  const contractValues = useMemo(() => {
+    const map = {} as Record<TransmittalContract, number>;
+    for (const contract of contracts) {
+      map[contract] = resolveLaborProjectionContractValue(project, budgetMaker, [contract]);
+    }
+    return map;
+  }, [budgetMaker, contracts, project]);
+  const contractValue = contractValues[activeContract] ?? 0;
   const materialBudget = useMemo(
     () => resolveLaborProjectionMaterialCost(budgetMaker, activeContracts, budgetLibrary),
     [activeContracts, budgetLibrary, budgetMaker],
   );
   const [orderedMaterial, setOrderedMaterial] = useState<number | null>(null);
+  const [orderedByMonth, setOrderedByMonth] = useState<Record<string, number>>({});
   const [materialTaxPercent, setMaterialTaxPercent] = useState(0);
   useEffect(() => {
     const job = project.job_number?.trim() ?? "";
     if (!job) {
       setOrderedMaterial(null);
+      setOrderedByMonth({});
       setMaterialTaxPercent(0);
       return;
     }
@@ -261,6 +253,9 @@ export function BillingPage() {
       if (cancelled) return;
       setOrderedMaterial(spend?.ordered ?? null);
       setMaterialTaxPercent(spend?.taxPercent ?? 0);
+      const byMonth: Record<string, number> = {};
+      for (const row of spend?.months ?? []) byMonth[row.month] = row.amount;
+      setOrderedByMonth(byMonth);
     });
     return () => {
       cancelled = true;
@@ -307,29 +302,6 @@ export function BillingPage() {
     <div className="stack billing-page">
       {error ? <div className="banner banner-error">{error}</div> : null}
 
-      <div className="billing-summary-row billing-summary-row--four">
-        <SummaryCard
-          label="Total planned"
-          value={formatHoursCompact(totalHours)}
-          subtitle={`${formatManWeeksCompact(totalHours)} man-weeks · ${weekStarts.length} weeks`}
-        />
-        <SummaryCard
-          label="Through current month"
-          value={formatHoursCompact(hoursThroughMonth)}
-          subtitle={`Cumulative planned hours through ${throughMonth}`}
-        />
-        <SummaryCard
-          label="Man-weeks (total)"
-          value={formatManWeeksCompact(totalHours)}
-          subtitle="40 hrs = 1 man-week"
-        />
-        <SummaryCard
-          label="Week columns"
-          value={String(weekStarts.length)}
-          subtitle="From project start through schedule"
-        />
-      </div>
-
       <ManpowerPlanCard
         billing={billing}
         projectStartIso={projectStartIso}
@@ -339,28 +311,32 @@ export function BillingPage() {
         canEditCells={canEditCells}
         contracts={contracts}
         activeContract={activeContract}
+        contractValues={contractValues}
         onActiveContractChange={setActiveContract}
         onBillingChange={setBilling}
         onPersistQuiet={persistQuiet}
         onScheduleDatesChange={persistScheduleDates}
         projectId={projectId}
         jobNumber={project.job_number}
-      />
-
-      <ManpowerMonthlyBudgetCard
-        billing={billing}
-        projectStartIso={projectStartIso}
-        projectEndIso={projectEndIso}
-        contractValue={contractValue}
-        materialBudget={materialBudget}
-        orderedMaterial={orderedMaterial}
-        materialTaxPercent={materialTaxPercent}
-        phaseIds={activePhaseIds}
-        contract={activeContract}
-        contractLabel={TRANSMITTAL_CONTRACT_LABELS[activeContract]}
-        calculatorRevision={calculatorRevision}
-        onOpenMonth={setCalculatorMonth}
-        onPersistQuiet={persistQuiet}
+        monthlyBilling={
+          <ManpowerMonthlyBudgetCard
+            embedded
+            billing={billing}
+            projectStartIso={projectStartIso}
+            projectEndIso={projectEndIso}
+            contractValue={contractValue}
+            materialBudget={materialBudget}
+            orderedMaterial={orderedMaterial}
+            orderedByMonth={orderedByMonth}
+            materialTaxPercent={materialTaxPercent}
+            phaseIds={activePhaseIds}
+            contract={activeContract}
+            contractLabel={TRANSMITTAL_CONTRACT_LABELS[activeContract]}
+            calculatorRevision={calculatorRevision}
+            onOpenMonth={setCalculatorMonth}
+            onPersistQuiet={persistQuiet}
+          />
+        }
       />
 
       {calculatorMonth && calculatorMonthContext ? (
@@ -375,6 +351,8 @@ export function BillingPage() {
           contractValue={contractValue}
           materialBudget={materialBudget}
           materialEnteredOtherMonths={calculatorMonthContext.materialEnteredOtherMonths}
+          orderedThisMonth={orderedByMonth[calculatorMonth.key] ?? 0}
+          orderedTotal={orderedMaterial ?? 0}
           onPersistQuiet={persistQuiet}
           onClose={closeCalculator}
         />
