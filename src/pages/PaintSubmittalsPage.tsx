@@ -4,6 +4,7 @@ import { StartRevisionFromHistoryModal } from "../components/submittals/StartRev
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { AtticStockOrderModal } from "../components/paint/AtticStockOrderModal";
 import { EmailVendorModal } from "../components/paint/EmailVendorModal";
+import { PaintOrderSamplesModal } from "../components/paint/PaintOrderSamplesModal";
 import { ImportBrushoutPrepModal } from "../components/paint/ImportBrushoutPrepModal";
 import { PaintBulkAddModal } from "../components/paint/PaintBulkAddModal";
 import { PaintSubmittalMetaPanel } from "../components/paint/PaintSubmittalMetaPanel";
@@ -32,7 +33,7 @@ import {
 import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
 import { syncApprovedBrushoutPrimers } from "../lib/approvedBrushouts";
 import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/paintImageImport";
-import { gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
+import { gcSuperEmail, gcSuperintendentContact, icbiProjectManager, icbiSuperEmail, icbiSuperintendent, jobArchitectAddressOneLine, jobFullAddressOneLine, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import {
   paintPackageGaps,
@@ -102,6 +103,7 @@ export function PaintSubmittalsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [startRevisionOpen, setStartRevisionOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [samplesOpen, setSamplesOpen] = useState(false);
   const [atticOpen, setAtticOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState<PaintSubmittalData | null>(null);
   const [prepOpen, setPrepOpen] = useState(false);
@@ -943,6 +945,9 @@ export function PaintSubmittalsPage() {
               Ordered
             </button>
           </div>
+          <button type="button" className="btn btn-secondary" onClick={() => setSamplesOpen(true)}>
+            Order samples
+          </button>
           <button type="button" className="btn btn-secondary" onClick={() => setAtticOpen(true)}>
             Attic stock
           </button>
@@ -1375,6 +1380,21 @@ export function PaintSubmittalsPage() {
             setError(null);
           }}
           onClose={() => setAtticOpen(false)}
+        />
+      )}
+
+      {samplesOpen && userSettings && (
+        <PaintOrderSamplesModal
+          jobNumber={project.job_number}
+          jobName={project.job_name}
+          jobLocation={jobFullAddressOneLine(project, project.jobInfo)}
+          architect={project.architect}
+          specifierAddress={jobArchitectAddressOneLine(project.jobInfo)}
+          pmName={icbiProjectManager(project.jobInfo)}
+          items={omitCatalogPrimerItems(draft.items, catalogProducts)}
+          vendors={userSettings.vendors}
+          includeLocation={draft.show_floor === true}
+          onClose={() => setSamplesOpen(false)}
         />
       )}
 

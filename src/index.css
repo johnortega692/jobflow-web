@@ -9545,8 +9545,13 @@ tr.budget-hours-pdf-hidden td {
   font-size: 0.88rem;
 }
 
-.ob-field select {
+.ob-field select,
+.ob-field input {
   margin-top: 0;
+}
+
+.ob-field input[type="number"] {
+  max-width: 6rem;
 }
 
 .ob-field--cc {
