@@ -19,6 +19,7 @@ type Props = {
   onRemove: () => void;
   showSelfPriming?: boolean;
   onSelfPrimingChange?: (on: boolean) => void;
+  primerHint?: string;
 };
 
 function colorPieces(color: string): { tag: string; location: string }[] {
@@ -52,6 +53,7 @@ export function SdsSectionListRow({
   onRemove,
   showSelfPriming = false,
   onSelfPrimingChange,
+  primerHint = "",
 }: Props) {
   const badges = sectionAttachmentBadges(section, packetType);
   const title =
@@ -97,6 +99,7 @@ export function SdsSectionListRow({
           <strong className="sds-section-row-title">{title}</strong>
         </div>
         {detail ? <p className="sds-section-row-sub muted small">{detail}</p> : null}
+        {primerHint ? <p className="sds-section-row-sub sds-section-primer-hint small">{primerHint}</p> : null}
         {showSelfPriming ? (
           <label className="check sds-self-prime" onDoubleClick={(event) => event.stopPropagation()}>
             <input

@@ -16,6 +16,8 @@ export type PaintPackageGroup = {
   sheen: string;
   specSection: string;
   marks: ScheduleMark[];
+  /** Finish products this primer is for. Blank on a finish group. */
+  primerFor?: string;
 };
 
 export type PaintPackageMerge = {

@@ -7629,6 +7629,16 @@
       "number": "SW9186",
       "name": "Caramelized",
       "hex": "#C29871"
+    },
+    {
+      "number": "SW9503",
+      "name": "Cheviot",
+      "hex": "#F6F2E8"
+    },
+    {
+      "number": "SW9599",
+      "name": "Limestone",
+      "hex": "#6A655C"
     }
   ],
   "BenjaminMoore": [

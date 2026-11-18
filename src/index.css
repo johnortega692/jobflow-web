@@ -5841,6 +5841,11 @@ th {
   white-space: pre-wrap;
 }
 
+.sds-section-primer-hint {
+  margin-top: 0.15rem;
+  color: var(--text-secondary);
+}
+
 .sds-notes-input {
   min-height: 6.5rem;
   line-height: 1.45;
@@ -9301,7 +9306,9 @@ tr.budget-hours-pdf-hidden td {
   display: flex;
   gap: 0.35rem;
   align-items: center;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
 }
 
 .paint-color-field input {
@@ -10245,9 +10252,17 @@ tr.budget-hours-pdf-hidden td {
 }
 
 .paint-items-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  display: grid;
+  grid-template-columns:
+    20px
+    56px
+    16rem
+    calc(var(--paint-color-ch, 18) * 1ch + 6.75rem)
+    14rem
+    168px
+    max-content;
+  column-gap: 6px;
+  row-gap: 0.2rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   max-width: 100%;
@@ -10257,24 +10272,79 @@ tr.budget-hours-pdf-hidden td {
   scrollbar-color: color-mix(in srgb, var(--text) 35%, transparent) transparent;
 }
 
+.paint-items-grid--no-floor {
+  grid-template-columns:
+    20px
+    56px
+    calc(var(--paint-color-ch, 18) * 1ch + 6.75rem)
+    14rem
+    168px
+    max-content;
+}
+
+.paint-items-grid--substitution {
+  grid-template-columns:
+    20px
+    56px
+    16rem
+    calc(var(--paint-color-ch, 18) * 1ch + 6.75rem)
+    120px
+    14rem
+    168px
+    max-content;
+}
+
+.paint-items-grid--no-floor.paint-items-grid--substitution {
+  grid-template-columns:
+    20px
+    56px
+    calc(var(--paint-color-ch, 18) * 1ch + 6.75rem)
+    120px
+    14rem
+    168px
+    max-content;
+}
+
+.paint-items-grid--revision-status {
+  grid-template-columns:
+    20px
+    56px
+    16rem
+    calc(var(--paint-color-ch, 18) * 1ch + 6.75rem)
+    14rem
+    168px
+    5.5rem
+    max-content;
+}
+
+.paint-items-grid--no-floor.paint-items-grid--revision-status {
+  grid-template-columns:
+    20px
+    56px
+    calc(var(--paint-color-ch, 18) * 1ch + 6.75rem)
+    14rem
+    168px
+    5.5rem
+    max-content;
+}
+
 .paint-items-header,
 .paint-item-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
-  width: max-content;
-  min-width: 100%;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   box-sizing: border-box;
 }
 
 .paint-items-header {
+  align-items: center;
   padding: 0 0 0.15rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 0.1rem;
 }
 
 .paint-item-row {
+  align-items: start;
   padding: 0.15rem 0;
   border-radius: 6px;
   --paint-control-height: 32px;
@@ -10331,6 +10401,11 @@ tr.budget-hours-pdf-hidden td {
   min-width: 56px;
 }
 
+.paint-col-label input {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 .paint-col-floor {
   flex: 0 0 16rem;
   width: 16rem;
@@ -10338,10 +10413,11 @@ tr.budget-hours-pdf-hidden td {
 }
 
 .paint-col-color {
-  flex: 0 0 auto;
-  width: calc(var(--paint-color-ch, 18) * 1ch + 4rem);
-  min-width: 12rem;
-  max-width: none;
+  /* Text width, plus the color swatch and the search button, so the header matches the row. */
+  flex: 0 0 calc(var(--paint-color-ch, 18) * 1ch + 6.75rem);
+  width: calc(var(--paint-color-ch, 18) * 1ch + 6.75rem);
+  min-width: calc(var(--paint-color-ch, 18) * 1ch + 6.75rem);
+  max-width: calc(var(--paint-color-ch, 18) * 1ch + 6.75rem);
 }
 
 .paint-col-prev {
@@ -10351,13 +10427,14 @@ tr.budget-hours-pdf-hidden td {
 }
 
 .paint-col-product {
-  flex: 1 0 26rem;
-  width: auto;
-  min-width: 26rem;
-  max-width: 32rem;
+  flex: 0 0 14rem;
+  width: 14rem;
+  min-width: 14rem;
+  max-width: 14rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  overflow: visible;
 }
 
 .paint-primer-line {
@@ -10367,7 +10444,11 @@ tr.budget-hours-pdf-hidden td {
   margin-top: 4px;
   padding-left: 12px;
   position: relative;
+  z-index: 1;
+  width: calc(100% + 6px + 168px);
+  max-width: none;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .paint-primer-line::before {
@@ -10495,9 +10576,9 @@ tr.budget-hours-pdf-hidden td {
 
 .paint-col-head-actions,
 .paint-row-actions {
-  flex: 0 0 148px;
-  width: 148px;
-  min-width: 148px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
 }
 
 .paint-col-head-actions {
@@ -10569,6 +10650,94 @@ tr.budget-hours-pdf-hidden td {
   font-size: 0.85rem;
 }
 
+.paint-product-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.paint-product-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+}
+
+.paint-product-select-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paint-product-select-trigger::after {
+  content: "";
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.1rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -2px);
+  opacity: 0.7;
+}
+
+.paint-product-select-placeholder {
+  color: var(--muted);
+}
+
+.paint-product-select-menu {
+  position: fixed;
+  z-index: 80;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(36rem, calc(100vw - 16px));
+  max-height: min(320px, 50vh);
+  overflow: auto;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 22%, transparent);
+}
+
+.paint-product-select-group {
+  padding: 0.4rem 0.45rem 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.paint-product-select-menu button {
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.paint-product-select-menu button:hover,
+.paint-product-select-menu button.is-selected {
+  background: var(--surface2);
+}
+
 .paint-sheen-select {
   position: relative;
   width: 100%;
@@ -10613,6 +10782,8 @@ tr.budget-hours-pdf-hidden td {
   position: fixed;
   z-index: 80;
   box-sizing: border-box;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 16px));
   padding: 0.45rem 0.5rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -10620,6 +10791,7 @@ tr.budget-hours-pdf-hidden td {
   box-shadow: 0 10px 28px color-mix(in srgb, #000 22%, transparent);
   max-height: min(280px, 50vh);
   overflow: auto;
+  white-space: nowrap;
 }
 
 .paint-sheen-select-hint,
@@ -10674,7 +10846,7 @@ tr.budget-hours-pdf-hidden td {
   display: flex;
   gap: 4px;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding-bottom: 0;
 }
 
@@ -10711,6 +10883,84 @@ tr.budget-hours-pdf-hidden td {
   width: 36px;
   min-width: 36px;
   height: var(--paint-control-height, 32px);
+}
+
+.paint-row-menu {
+  position: relative;
+}
+
+.paint-row-more {
+  width: 26px;
+  min-width: 26px;
+  height: var(--paint-control-height, 32px);
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.paint-row-more[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.paint-row-menu-pop {
+  position: fixed;
+  z-index: 80;
+  width: 10.5rem;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.paint-row-menu-pop button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.paint-row-menu-pop button:hover:not(:disabled) {
+  background: var(--surface2);
+}
+
+.paint-row-menu-pop button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.paint-row-menu-pop button.is-on {
+  color: var(--accent);
+}
+
+.paint-row-menu-rule {
+  height: 1px;
+  margin: 0.25rem 0.35rem;
+  background: var(--border);
+}
+
+.paint-row-menu-delete,
+.paint-row-menu-delete:hover:not(:disabled) {
+  color: var(--danger);
 }
 
 .paint-items-readiness {

@@ -16,7 +16,6 @@ import {
   packetProductCount,
   sectionAttachmentFiles,
   sectionIncludedDocuments,
-  sectionHasAnyAttachment,
   sdsPacketSpecSectionsLabel,
   sortSdsSectionsBySpec,
   tocSectionTitle,
@@ -1854,12 +1853,6 @@ export async function buildSdsPacketPdf(
 ): Promise<Uint8Array> {
   if (!packet.sections.length) {
     throw new Error("Add at least one section before building the packet.");
-  }
-  const missingFiles = packet.sections.filter(
-    (section) => section.category !== "Wallcovering" && !sectionHasAnyAttachment(section),
-  );
-  if (missingFiles.length) {
-    throw new Error("Each section needs at least one file attachment (product data, SDS, warranty, etc.).");
   }
 
   const savedSchedule = packet.paint_schedule

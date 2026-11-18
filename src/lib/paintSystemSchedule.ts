@@ -4,7 +4,12 @@ import {
   type PaintProduct,
 } from "./paintCatalog";
 import { paintItemIsPlaceholder } from "./paintItemLabels";
-import { samePaintPackageProduct } from "./paintPackageLink";
+import {
+  groupPaintItemsForPackage,
+  paintItemProductVendor,
+  samePaintPackageProduct,
+  type PaintPackageGroup,
+} from "./paintPackageLink";
 import { sectionHasAttachment, sortSdsSectionsBySpec } from "./sdsSectionModel";
 import {
   leadSpecSection,
@@ -232,6 +237,121 @@ export function buildPaintSystemSchedule(
 
 export function countPaintItemsMissingPrimer(items: PaintItem[], products: PaintProduct[]): number {
   return items.filter((item) => effectivePaintPrimer(item, products).missing).length;
+}
+
+/**
+ * Finish groups from the color schedule, with one primer section before the first finish that uses it.
+ * A primer used by two finishes is one section.
+ */
+export function paintPackageGroupsFromSchedule(
+  items: PaintItem[],
+  specForItem: (item: PaintItem) => string,
+  products: PaintProduct[],
+): PaintPackageGroup[] {
+  const finishes = groupPaintItemsForPackage(items, specForItem, products);
+  if (!products.length) return finishes;
+
+  const ordered: PaintPackageGroup[] = [];
+  const primerAt = new Map<string, number>();
+
+  const belongsToGroup = (item: PaintItem, group: PaintPackageGroup) => {
+    if (!item.product.trim() && !item.manufacturer.trim()) return false;
+    return (
+      norm(specForItem(item)) === norm(group.specSection) &&
+      samePaintPackageProduct(
+        { manufacturer: paintItemProductVendor(item, products), product: item.product, sheen: item.sheen },
+        { manufacturer: group.manufacturer, product: group.product, sheen: group.sheen },
+      )
+    );
+  };
+
+  for (const group of finishes) {
+    for (const item of items) {
+      if (!belongsToGroup(item, group) || paintItemIsPlaceholder(item)) continue;
+      const effect = effectivePaintPrimer(item, products);
+      if (effect.isPrimerProduct || !effect.primerName.trim()) continue;
+      const catalog = effect.primerId
+        ? products.find((product) => product.id === effect.primerId && product.is_primer)
+        : findCatalogPaintProduct(products, effect.primerName);
+      const manufacturer = catalog?.manufacturer?.trim() ?? "";
+      const key = `primer|${norm(manufacturer)}|${norm(effect.primerName)}|${norm(group.specSection)}`;
+      const finishName = group.product.trim();
+      const existing = primerAt.get(key);
+      if (existing !== undefined) {
+        const row = ordered[existing]!;
+        const listed = (row.primerFor ?? "").split(", ").map((name) => norm(name));
+        if (finishName && !listed.includes(norm(finishName))) {
+          row.primerFor = row.primerFor ? `${row.primerFor}, ${finishName}` : finishName;
+        }
+        continue;
+      }
+      primerAt.set(key, ordered.length);
+      ordered.push({
+        key,
+        manufacturer,
+        product: effect.primerName.trim(),
+        sheen: "Primer",
+        specSection: group.specSection,
+        marks: [],
+        primerFor: finishName,
+      });
+    }
+    ordered.push(group);
+  }
+
+  return ordered;
+}
+
+/** One line for a package section: the primer the schedule prints with this finish. */
+export function packageSectionPrimerHint(
+  section: SdsSection,
+  items: PaintItem[],
+  products: PaintProduct[],
+  sections: SdsSection[],
+): string {
+  if (!products.length) return "";
+  const productName = section.product.trim();
+  if (!productName) return "";
+  const key = norm(productName);
+
+  const finishes = items
+    .filter((item) => !paintItemIsPlaceholder(item) && item.product.trim())
+    .map((item) => ({ item, effect: effectivePaintPrimer(item, products) }))
+    .filter(({ effect }) => !effect.isPrimerProduct);
+
+  const asPrimerFor = [
+    ...new Set(
+      finishes
+        .filter(({ effect }) => norm(effect.primerName) === key)
+        .map(({ item }) => item.product.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (asPrimerFor.length) {
+    const finishes = asPrimerFor.join(", ");
+    const where = asPrimerFor.length === 1 ? "that finish" : "those finishes";
+    return `Primer for ${finishes}. The schedule prints this directly before ${where}.`;
+  }
+
+  const matched = finishes.filter(({ item }) => norm(item.product) === key);
+  if (!matched.length) return "";
+
+  const primerNames = [...new Set(matched.map(({ effect }) => effect.primerName.trim()).filter(Boolean))];
+  if (matched.every(({ effect }) => effect.selfPriming) && primerNames.length === 0) {
+    return "Self-priming. The schedule lists no separate primer.";
+  }
+  if (!primerNames.length) {
+    return matched.some(({ effect }) => effect.missing) ? "No primer on the paint schedule for this finish." : "";
+  }
+
+  if (primerNames.length === 1) {
+    const name = primerNames[0]!;
+    const inPackage = sections.some((row) => row.id !== section.id && norm(row.product) === norm(name));
+    const where = inPackage ? " Its sheets sit directly before this finish." : "";
+    return `System primer: ${name}. The schedule prints this finish over that primer.${where}`;
+  }
+
+  return `System primers: ${primerNames.join(", ")}. The schedule prints each sheen over its primer.`;
 }
 
 /** Spec sections actually used by the paint schedule, lead first. */

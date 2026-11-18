@@ -16,14 +16,13 @@ import {
   type TransmittalContract,
 } from "../lib/jobInfo";
 import { loadPaintProducts, type PaintProduct } from "../lib/paintCatalog";
-import { countPaintItemsMissingPrimer, paintScheduleSpecLabel, buildPaintSystemSchedule, snapshotFromPaintSchedule } from "../lib/paintSystemSchedule";
+import { countPaintItemsMissingPrimer, packageSectionPrimerHint, paintPackageGroupsFromSchedule, paintScheduleSpecLabel, buildPaintSystemSchedule, snapshotFromPaintSchedule } from "../lib/paintSystemSchedule";
 import { buildSdsPacketPdf, downloadPdfBytes, type BuildProgress } from "../lib/sdsPacketBuild";
 import { fillItemImageUrlsFromTracker, resolveWcTrackerLines } from "../lib/fieldTrackerProject";
 import { evaluatePacketReadiness } from "../lib/sdsPacketRequirements";
 import {
   applyPaintPackageChoices,
   colorScheduleCoverValue,
-  groupPaintItemsForPackage,
   packageScheduleWarning,
   paintItemsForPackageSchedule,
   paintPackageGaps,
@@ -156,7 +155,7 @@ export function SdsPacketPage() {
   const paintLinkGaps = useMemo(() => {
     const lead = leadSpecSection(paintSubmittal);
     const secondary = paintSubmittal.spec_sections?.[1]?.trim() ?? "";
-    const groups = groupPaintItemsForPackage(
+    const groups = paintPackageGroupsFromSchedule(
       paintSubmittal.items,
       (item) => (paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead),
       products,
@@ -254,22 +253,33 @@ export function SdsPacketPage() {
     setDraft((d) => ({ ...d, cover_purpose: defaultCoverPurpose(d.packet_type) }));
   }
 
-  function paintScheduleGroups(): PaintPackageGroup[] {
+  function paintScheduleGroups(catalog: PaintProduct[] = products): PaintPackageGroup[] {
     const paint = normalizePaintSubmittal(tradeData.paint_submittal);
     const lead = leadSpecSection(paint);
     const secondary = paint.spec_sections?.[1]?.trim() ?? "";
-    return groupPaintItemsForPackage(
+    return paintPackageGroupsFromSchedule(
       paint.items,
       (item) => (paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead),
-      products,
+      catalog,
     );
   }
 
-  function applyPaintImport(groups: PaintPackageGroup[], targets: Record<string, string | null>) {
+  function applyPaintImport(
+    groups: PaintPackageGroup[],
+    targets: Record<string, string | null>,
+    catalog: PaintProduct[] = products,
+  ) {
     const merged = applyPaintPackageChoices(draft.sections, groups, targets);
+    const items = paintItemsForPackageSchedule(
+      paintSubmittal.items,
+      merged.sections,
+      otherPackageSections(draft.submittal_number),
+    );
+    const specSection = paintScheduleSpecLabel({ ...paintSubmittal, items });
+    const schedule = buildPaintSystemSchedule(items, catalog, merged.sections, specSection);
     setDraft((d) => ({
       ...d,
-      sections: sortSdsSectionsBySpec(merged.sections),
+      sections: schedule?.orderedSections.length ? schedule.orderedSections : sortSdsSectionsBySpec(merged.sections),
       ...(showContractSwitch ? { contract: "paint" as const } : {}),
     }));
     setPaintImportGroups(null);
@@ -277,8 +287,9 @@ export function SdsPacketPage() {
     setSuccess(`${paintPackageImportSummary(merged.added, merged.updated)} Save to keep it.`);
   }
 
-  function importFromPaint() {
-    const groups = paintScheduleGroups();
+  async function importFromPaint() {
+    const catalog = await catalogForSchedule();
+    const groups = paintScheduleGroups(catalog);
     if (!groups.length) {
       setError("No products found on the color schedule.");
       return;
@@ -287,6 +298,7 @@ export function SdsPacketPage() {
       applyPaintImport(
         groups,
         Object.fromEntries(groups.map((group) => [group.key, null])),
+        catalog,
       );
       return;
     }
@@ -919,6 +931,11 @@ export function SdsPacketPage() {
                   if (window.confirm(`Remove section ${index + 1}?`)) removeSection(section.id);
                 }}
                 showSelfPriming={draft.contract === "paint"}
+                primerHint={
+                  draft.contract === "paint"
+                    ? packageSectionPrimerHint(section, paintSubmittal.items, products, draft.sections)
+                    : ""
+                }
                 onSelfPrimingChange={(on) =>
                   replaceSection({ ...section, intended_use: setSelfPrimingNote(section.intended_use, on) })
                 }
@@ -932,7 +949,7 @@ export function SdsPacketPage() {
         <ImportPaintPackageModal
           groups={paintImportGroups}
           sections={draft.sections}
-          onConfirm={(targets) => applyPaintImport(paintImportGroups, targets)}
+          onConfirm={(targets) => applyPaintImport(paintImportGroups, targets, products)}
           onClose={() => setPaintImportGroups(null)}
         />
       ) : null}

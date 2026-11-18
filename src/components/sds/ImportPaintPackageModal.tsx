@@ -66,6 +66,7 @@ export function ImportPaintPackageModal({ groups, sections, onConfirm, onClose }
               <li key={group.key} className="sds-paint-import-row">
                 <div className="sds-paint-import-product">
                   <strong>{[group.product || group.manufacturer, group.sheen].filter(Boolean).join(" · ")}</strong>
+                  {group.primerFor ? <p className="muted small">Primer for {group.primerFor}</p> : null}
                   {marks ? <p className="muted small">{marks}</p> : null}
                 </div>
                 <label className="sds-paint-import-target">

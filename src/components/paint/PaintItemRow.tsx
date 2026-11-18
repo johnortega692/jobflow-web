@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
   abbreviateVendorKey,
   formatSheenSelection,
@@ -49,6 +49,150 @@ type Props = {
   onDrop: () => void;
   onDragEnd: () => void;
 };
+
+function PaintRowMenu({
+  index,
+  total,
+  tracked,
+  onTrack,
+  onDuplicate,
+  onRemove,
+}: {
+  index: number;
+  total: number;
+  tracked: boolean;
+  onTrack: () => void;
+  onDuplicate?: () => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const place = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = 168;
+    const height = onDuplicate ? 132 : 96;
+    const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+    const below = rect.bottom + 6;
+    const top = below + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 6) : below;
+    setPos({ top, left });
+  }, [onDuplicate]);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    function onPointer(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open, place]);
+
+  return (
+    <div className="paint-row-menu" ref={rootRef}>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="paint-row-more"
+        aria-label={`More actions for row ${index + 1}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            return;
+          }
+          place();
+          setOpen(true);
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <circle cx="12" cy="5" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="12" cy="19" r="1.7" />
+        </svg>
+      </button>
+      {open && pos ? (
+        <div className="paint-row-menu-pop" role="menu" style={{ top: pos.top, left: pos.left }}>
+          <button
+            type="button"
+            role="menuitem"
+            className={tracked ? "is-on" : undefined}
+            aria-pressed={tracked}
+            title={
+              tracked
+                ? "On Material Tracker under Paint → Special orders. Click to remove it."
+                : "Add this finish to Material Tracker as a special order."
+            }
+            onClick={() => {
+              setOpen(false);
+              onTrack();
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" />
+              <circle cx="12" cy="10" r="2.2" />
+            </svg>
+            Track
+          </button>
+          {onDuplicate ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onDuplicate();
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <rect x="8" y="8" width="12" height="12" rx="2" />
+                <path d="M4 16V6a2 2 0 0 1 2-2h10" />
+              </svg>
+              Copy
+            </button>
+          ) : null}
+          <div className="paint-row-menu-rule" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className="paint-row-menu-delete"
+            disabled={total <= 1}
+            onClick={() => {
+              setOpen(false);
+              onRemove();
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function SearchIcon() {
   return (
@@ -142,8 +286,9 @@ export function PaintItemRow({
   const productDisplay = item.product ? getProductDisplay(products, item.product) : "";
 
   const runColorLookup = useCallback(() => {
-    if (!colors || shouldSkipColorLookup(item.color)) return;
+    if (!colors) return;
     const q = item.color.trim();
+    if (!q) return;
     const matches = searchPaintColors(colors, q);
     setLookupQuery(q);
     setLookupMatches(matches);
@@ -258,7 +403,7 @@ export function PaintItemRow({
             <button
               type="button"
               className="btn btn-small btn-secondary paint-color-lookup-btn paint-color-lookup-btn--icon"
-              disabled={!colors || !item.color.trim() || shouldSkipColorLookup(item.color)}
+              disabled={!colors || !item.color.trim()}
               onClick={runColorLookup}
               title="Look up color name from catalog"
               aria-label="Look up color"
@@ -363,45 +508,14 @@ export function PaintItemRow({
           >
             PDF
           </button>
-          <button
-            type="button"
-            className={`paint-pdf-toggle${item.special_order ? " is-on" : ""}`}
-            aria-pressed={Boolean(item.special_order)}
-            title={
-              item.special_order
-                ? "On Material Tracker under Paint → Special orders. Click to remove it."
-                : "Add this finish to Material Tracker as a special order."
-            }
-            aria-label={
-              item.special_order
-                ? `Special order on for row ${index + 1}`
-                : `Mark row ${index + 1} as a special order`
-            }
-            onClick={() => onChange({ special_order: !item.special_order })}
-          >
-            Track
-          </button>
-          {onDuplicate ? (
-            <button
-              type="button"
-              className="paint-pdf-toggle"
-              title="Duplicate this row"
-              aria-label={`Duplicate row ${index + 1}`}
-              onClick={onDuplicate}
-            >
-              Copy
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn-icon btn-small btn-danger-soft"
-            disabled={total <= 1}
-            onClick={onRemove}
-            title="Remove row"
-            aria-label={`Remove row ${index + 1}`}
-          >
-            ×
-          </button>
+          <PaintRowMenu
+            index={index}
+            total={total}
+            tracked={Boolean(item.special_order)}
+            onTrack={() => onChange({ special_order: !item.special_order })}
+            onDuplicate={onDuplicate}
+            onRemove={onRemove}
+          />
         </div>
       </div>
 

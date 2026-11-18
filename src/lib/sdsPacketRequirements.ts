@@ -7,13 +7,12 @@ import {
 } from "./sdsSectionModel";
 import type { SdsSection } from "../types/tradeDocuments";
 
-/** Attachment kinds required for every section under a packet type. */
+/** Attachment kinds required for every section under a packet type. TDS and SDS stay optional. */
 export function requiredAttachmentsForPacketType(packetType: SdsPacketType): SdsAttachmentKind[] {
   switch (packetType) {
     case "Product Information":
     case "Finish Submittal":
     case "Custom":
-      return ["product_data", "sds"];
     case "Shop Drawings":
       return [];
     case "LEED / Sustainability":
@@ -25,9 +24,9 @@ export function requiredAttachmentsForPacketType(packetType: SdsPacketType): Sds
     case "O&M Manual":
       return ["maintenance"];
     case "Closeout Package":
-      return ["product_data", "sds", "warranty", "maintenance"];
+      return ["warranty", "maintenance"];
     default:
-      return ["product_data", "sds"];
+      return [];
   }
 }
 

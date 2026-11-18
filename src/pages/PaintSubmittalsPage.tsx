@@ -35,11 +35,11 @@ import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/pain
 import { gcSuperEmail, gcSuperintendentContact, icbiSuperEmail, icbiSuperintendent, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import {
-  groupPaintItemsForPackage,
   paintPackageGaps,
   paintSchedulePackageWarning,
   productPackagePdfNote,
 } from "../lib/paintPackageLink";
+import { paintPackageGroupsFromSchedule } from "../lib/paintSystemSchedule";
 import { formatSubmittalNumberDisplay } from "../lib/printCore";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
 import { patchPaintTrackerSubmittalOrdered, paintVendorSnapshot, reloadProject, removePaintSpecialOrderFromTracker, resolvePaintTracker, updatePaintTrackerFromSpecialOrders } from "../lib/fieldTrackerProject";
@@ -306,7 +306,7 @@ export function PaintSubmittalsPage() {
   const paintLinkGaps = useMemo(() => {
     const lead = leadSpecSection(draft);
     const secondary = draft.spec_sections?.[1]?.trim() ?? "";
-    const groups = groupPaintItemsForPackage(
+    const groups = paintPackageGroupsFromSchedule(
       draft.items,
       (item) => (paintItemSpecScope(item) === "secondary" && secondary ? secondary : lead),
       catalogProducts,
