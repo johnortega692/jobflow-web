@@ -156,7 +156,7 @@ export function PaintOrderSamplesModal({
         <div className="ob-head">
           <div>
             <h2 id="paint-samples-title">Order samples</h2>
-            <p>{[jobName.trim() || "Project", "Mailed paint samples"].join(" · ")}</p>
+            <p>{[jobName.trim() || "Project", "Mailed samples"].join(" · ")}</p>
           </div>
           <button type="button" className="ob-close" aria-label="Close" onClick={onClose}>
             ×

@@ -24,7 +24,7 @@ function firstName(vendor: string): string {
 }
 
 export function buildPaintSampleOrderSubject(jobNumber: string, jobName: string): string {
-  return `Paint sample request | ${jobNumber} ${jobName}`.trim();
+  return `Sample request | ${jobNumber} ${jobName}`.trim();
 }
 
 export function paintSampleOrderItems(items: PaintItem[], includeLocation: boolean): PaintSampleOrderItem[] {
@@ -102,7 +102,7 @@ export function buildPaintSampleOrderPlainBody(params: PaintSampleOrderEmailPara
   const lines = [
     `Hi ${firstName(params.vendor)},`,
     "",
-    `Please mail paint samples for Job ${params.jobNumber} ${params.jobName}. These are mailed samples, not brush-outs.`,
+    `Please mail samples for Job ${params.jobNumber} ${params.jobName}. These are mailed samples, not brush-outs.`,
     "",
     ...jobInfoPlain(params),
     "",
@@ -150,7 +150,7 @@ export function buildPaintSampleOrderHtmlBody(params: PaintSampleOrderEmailParam
   let fragment =
     emailParagraph(`Hi ${escHtml(firstName(params.vendor))},`) +
     emailParagraph(
-      `Please mail paint samples for <strong>Job ${escHtml(params.jobNumber)} ${escHtml(params.jobName)}</strong>. These are mailed samples, not brush-outs.`,
+      `Please mail samples for <strong>Job ${escHtml(params.jobNumber)} ${escHtml(params.jobName)}</strong>. These are mailed samples, not brush-outs.`,
     ) +
     emailParagraph(jobInfoHtml(params)) +
     emailParagraph(`Please send <strong>${escHtml(qtyLine(params.qty))}</strong>.`) +
