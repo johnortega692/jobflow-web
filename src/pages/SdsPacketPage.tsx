@@ -173,11 +173,12 @@ export function SdsPacketPage() {
     const packageCount = draft.sections.length;
     if (!packageCount) return { tone: "warn" as const, text: "Empty" };
     if (draft.contract !== "paint") return null;
-    const missing = paintLinkGaps.scheduleOnly.length;
-    if (missing > 0) {
+    const missingNames = paintLinkGaps.scheduleOnly;
+    if (missingNames.length > 0) {
       return {
         tone: "warn" as const,
-        text: `${missing} product${missing === 1 ? "" : "s"} from schedule not included`,
+        text: `${missingNames.length} product${missingNames.length === 1 ? "" : "s"} from schedule not included`,
+        detail: missingNames.join(", "),
       };
     }
     if (!colorScheduleLabel) return null;
@@ -189,7 +190,7 @@ export function SdsPacketPage() {
     colorScheduleLabel,
     draft.contract,
     draft.sections.length,
-    paintLinkGaps.scheduleOnly.length,
+    paintLinkGaps.scheduleOnly,
     paintSubmittal.submittal_number,
   ]);
 
@@ -811,7 +812,10 @@ export function SdsPacketPage() {
           <div className="paint-items-title">
             <h3>Sections ({draft.sections.length})</h3>
             {sectionStatus ? (
-              <p className={`paint-items-status paint-items-status--${sectionStatus.tone}`}>
+              <p
+                className={`paint-items-status paint-items-status--${sectionStatus.tone}`}
+                title={"detail" in sectionStatus ? sectionStatus.detail : undefined}
+              >
                 {sectionStatus.tone === "ok" ? (
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
                     <circle cx="12" cy="12" r="9" />
@@ -826,6 +830,9 @@ export function SdsPacketPage() {
                 )}
                 {sectionStatus.text}
               </p>
+            ) : null}
+            {sectionStatus && "detail" in sectionStatus ? (
+              <p className="paint-items-status-detail">{sectionStatus.detail}</p>
             ) : null}
           </div>
           <div className="sds-sections-toolbar">

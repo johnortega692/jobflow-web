@@ -10,6 +10,7 @@ import {
   paintItemProductVendor,
   paintSheenParts,
   samePaintPackageProduct,
+  sheenMatchKey,
   type PaintPackageGroup,
 } from "./paintPackageLink";
 import { sectionHasAttachment, sortSdsSectionsBySpec } from "./sdsSectionModel";
@@ -73,11 +74,11 @@ function hasKind(
   kind: "product_data" | "sds",
   sheen = "",
 ): boolean {
-  const sheenKey = norm(sheen);
+  const finishKey = sheenMatchKey(sheen);
   return sections.some(
     (section) =>
       sectionMatchesProduct(section, name) &&
-      (!sheenKey || norm(section.finish_type) === sheenKey) &&
+      (!finishKey || sheenMatchKey(section.finish_type) === finishKey) &&
       sectionHasAttachment(section, kind),
   );
 }
@@ -150,7 +151,7 @@ export function buildPaintSystemSchedule(
           ? "No primer"
           : "";
     for (const sheen of paintSheenParts(item.sheen, catalogSheens)) {
-      const key = [norm(item.manufacturer), norm(item.product), primerKey, norm(sheen)].join("|");
+      const key = [norm(item.manufacturer), norm(item.product), primerKey, sheenMatchKey(sheen)].join("|");
       let index = indexByKey.get(key);
       if (index === undefined) {
         index = groups.length;
@@ -201,7 +202,7 @@ export function buildPaintSystemSchedule(
     finishName: string,
     sheen = "",
   ) => {
-    const key = role === "finish" && sheen.trim() ? `${norm(name)}|${norm(sheen)}` : norm(name);
+    const key = role === "finish" && sheen.trim() ? `${norm(name)}|${sheenMatchKey(sheen)}` : norm(name);
     if (!norm(name)) return;
     const existing = listedIndex.get(key);
     if (existing === undefined) {

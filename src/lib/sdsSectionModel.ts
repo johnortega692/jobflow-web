@@ -235,17 +235,22 @@ const ATTACHMENT_FILENAME_TOKENS = new Set([
   "leed / hpd / epd",
 ]);
 
-/** Strip trailing attachment tokens (e.g. "Eggshell - SDS" → "Eggshell"). */
+/**
+ * Strip a trailing attachment token ("Eggshell - SDS" → "Eggshell").
+ * Hyphens inside a sheen stay put, so "Semi-Gloss" is not rewritten as "Semi - Gloss".
+ */
 export function sanitizeFinishType(value: string): string {
-  const parts = value
-    .trim()
-    .split(/\s*[-_|]\s*/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-  while (parts.length > 0 && isAttachmentFilenameToken(parts[parts.length - 1]!)) {
-    parts.pop();
+  let text = value.trim().replace(/\s+/g, " ");
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const match = text.match(/^(.*\S)\s+[-_|]\s+(\S+)$/);
+    if (!match) break;
+    if (!isAttachmentFilenameToken(match[2]!)) break;
+    text = match[1]!.trim();
+    changed = true;
   }
-  return parts.join(" - ");
+  return text.replace(/\s+-\s+/g, "-");
 }
 
 function isAttachmentFilenameToken(part: string): boolean {

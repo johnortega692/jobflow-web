@@ -37,6 +37,11 @@ function norm(value: string): string {
   return value.trim().toLowerCase();
 }
 
+/** "Semi-Gloss" and "Semi - Gloss" are the same sheen. */
+export function sheenMatchKey(value: string): string {
+  return norm(value).replace(/\s*-\s*/g, "-").replace(/\s+/g, " ");
+}
+
 const MANUFACTURER_ALIASES: Record<string, string> = {
   de: "de",
   "dunn edwards": "de",
@@ -81,7 +86,7 @@ export function samePaintPackageProduct(
   left: { manufacturer: string; product: string; sheen: string },
   right: { manufacturer: string; product: string; sheen: string },
 ): boolean {
-  if (norm(left.product) !== norm(right.product) || norm(left.sheen) !== norm(right.sheen)) return false;
+  if (norm(left.product) !== norm(right.product) || sheenMatchKey(left.sheen) !== sheenMatchKey(right.sheen)) return false;
   const a = manufacturerKey(left.manufacturer);
   const b = manufacturerKey(right.manufacturer);
   if (!a || !b) return true;
@@ -145,7 +150,7 @@ export function paintItemsForPackageSchedule(
 }
 
 export function paintProductKey(manufacturer: string, product: string, sheen: string): string {
-  return [manufacturerKey(manufacturer), norm(product), norm(sheen)].join("|");
+  return [manufacturerKey(manufacturer), norm(product), sheenMatchKey(sheen)].join("|");
 }
 
 /** Sheen names known by the catalog, used to split a combined sheen without breaking "Semi-Gloss". */

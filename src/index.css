@@ -9312,6 +9312,16 @@ tr.budget-hours-pdf-hidden td {
   background: color-mix(in srgb, var(--warn) 16%, transparent);
 }
 
+.paint-items-status-detail {
+  flex: 1 1 16rem;
+  min-width: 12rem;
+  margin: 0;
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .paint-items-status--ok {
   color: var(--ok);
   background: color-mix(in srgb, var(--ok) 16%, transparent);

@@ -324,11 +324,11 @@ export function PaintSubmittalsPage() {
       return {
         tone: "warn" as const,
         text: `${missingFromPackage} not in Package #${packageNumber}`,
-        title: "Add these to a package from the Package tab",
+        title: paintLinkGaps.scheduleOnly.join(", "),
       };
     }
     return { tone: "ok" as const, text: `Complete · all in Package #${packageNumber}` };
-  }, [itemsReadiness.missingColor, paintLinkGaps.scheduleOnly.length, productPacket.submittal_number]);
+  }, [itemsReadiness.missingColor, paintLinkGaps.scheduleOnly, productPacket.submittal_number]);
 
   const primaryIndexed = useMemo(
     () =>
