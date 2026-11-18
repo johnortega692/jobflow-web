@@ -5,8 +5,10 @@ import {
 } from "./paintCatalog";
 import { paintItemIsPlaceholder } from "./paintItemLabels";
 import {
+  catalogSheenNames,
   groupPaintItemsForPackage,
   paintItemProductVendor,
+  paintSheenParts,
   samePaintPackageProduct,
   type PaintPackageGroup,
 } from "./paintPackageLink";
@@ -65,8 +67,19 @@ function sectionMatchesProduct(section: SdsSection, name: string): boolean {
   return norm(section.product) === norm(name);
 }
 
-function hasKind(sections: SdsSection[], name: string, kind: "product_data" | "sds"): boolean {
-  return sections.some((section) => sectionMatchesProduct(section, name) && sectionHasAttachment(section, kind));
+function hasKind(
+  sections: SdsSection[],
+  name: string,
+  kind: "product_data" | "sds",
+  sheen = "",
+): boolean {
+  const sheenKey = norm(sheen);
+  return sections.some(
+    (section) =>
+      sectionMatchesProduct(section, name) &&
+      (!sheenKey || norm(section.finish_type) === sheenKey) &&
+      sectionHasAttachment(section, kind),
+  );
 }
 
 type SystemDraft = {
@@ -116,6 +129,7 @@ export function buildPaintSystemSchedule(
 ): PaintSystemSchedule | null {
   const groups: SystemDraft[] = [];
   const indexByKey = new Map<string, number>();
+  const catalogSheens = catalogSheenNames(products);
 
   for (const item of items) {
     if (paintItemIsPlaceholder(item) || !item.product.trim()) continue;
@@ -128,33 +142,35 @@ export function buildPaintSystemSchedule(
         : effect.missing
           ? "missing"
           : "none";
-    const key = [norm(item.manufacturer), norm(item.product), primerKey, norm(item.sheen)].join("|");
-    let index = indexByKey.get(key);
-    if (index === undefined) {
-      index = groups.length;
-      indexByKey.set(key, index);
-      const primerLine = effect.primerName
-        ? `over ${effect.primerName}`
-        : effect.selfPriming
-          ? "self-priming"
-          : effect.missing
-            ? "No primer"
-            : "";
-      groups.push({
-        key,
-        finishName: item.product.trim(),
-        manufacturer: item.manufacturer.trim(),
-        sheen: item.sheen.trim(),
-        primerName: effect.primerName,
-        primerLine,
-        specSection: specSection.trim(),
-        labels: [],
-        primerId: effect.primerId,
-        selfPriming: effect.selfPriming,
-      });
+    const primerLine = effect.primerName
+      ? `over ${effect.primerName}`
+      : effect.selfPriming
+        ? "self-priming"
+        : effect.missing
+          ? "No primer"
+          : "";
+    for (const sheen of paintSheenParts(item.sheen, catalogSheens)) {
+      const key = [norm(item.manufacturer), norm(item.product), primerKey, norm(sheen)].join("|");
+      let index = indexByKey.get(key);
+      if (index === undefined) {
+        index = groups.length;
+        indexByKey.set(key, index);
+        groups.push({
+          key,
+          finishName: item.product.trim(),
+          manufacturer: item.manufacturer.trim(),
+          sheen,
+          primerName: effect.primerName,
+          primerLine,
+          specSection: specSection.trim(),
+          labels: [],
+          primerId: effect.primerId,
+          selfPriming: effect.selfPriming,
+        });
+      }
+      const label = item.label.trim();
+      if (label && !groups[index]!.labels.includes(label)) groups[index]!.labels.push(label);
     }
-    const label = item.label.trim();
-    if (label) groups[index]!.labels.push(label);
   }
 
   if (!groups.length) return null;
@@ -174,12 +190,19 @@ export function buildPaintSystemSchedule(
     manufacturer: string;
     role: "primer" | "finish";
     finishes: string[];
+    sheen: string;
   };
   const listed: ListedProduct[] = [];
   const listedIndex = new Map<string, number>();
-  const listProduct = (name: string, manufacturer: string, role: "primer" | "finish", finishName: string) => {
-    const key = norm(name);
-    if (!key) return;
+  const listProduct = (
+    name: string,
+    manufacturer: string,
+    role: "primer" | "finish",
+    finishName: string,
+    sheen = "",
+  ) => {
+    const key = role === "finish" && sheen.trim() ? `${norm(name)}|${norm(sheen)}` : norm(name);
+    if (!norm(name)) return;
     const existing = listedIndex.get(key);
     if (existing === undefined) {
       listedIndex.set(key, listed.length);
@@ -188,6 +211,7 @@ export function buildPaintSystemSchedule(
         manufacturer,
         role,
         finishes: role === "primer" && finishName ? [finishName] : [],
+        sheen: role === "finish" ? sheen.trim() : "",
       });
       return;
     }
@@ -205,7 +229,7 @@ export function buildPaintSystemSchedule(
       listProduct(system.primerName, "", "primer", system.finishName);
     }
     take(finishSection, spec);
-    listProduct(system.finishName, system.manufacturer, "finish", system.finishName);
+    listProduct(system.finishName, system.manufacturer, "finish", system.finishName, system.sheen);
   }
   for (const section of sortSdsSectionsBySpec(sections.filter((section) => !used.has(section.id)))) take(section);
 
@@ -224,10 +248,10 @@ export function buildPaintSystemSchedule(
       specSection: system.specSection,
     })),
     products: listed.map((row) => ({
-      product: row.product,
+      product: row.sheen ? `${row.product} · ${row.sheen}` : row.product,
       use: row.role === "primer" ? `Primer for ${row.finishes.join(", ") || "finish"}` : "Finish",
-      tds: hasKind(sections, row.product, "product_data"),
-      sds: hasKind(sections, row.product, "sds"),
+      tds: hasKind(sections, row.product, "product_data", row.sheen),
+      sds: hasKind(sections, row.product, "sds", row.sheen),
       voc: productVoc(products, row.product, row.manufacturer),
       manufacturer: row.manufacturer,
     })),
@@ -253,15 +277,17 @@ export function paintPackageGroupsFromSchedule(
 
   const ordered: PaintPackageGroup[] = [];
   const primerAt = new Map<string, number>();
+  const catalogSheens = catalogSheenNames(products);
 
   const belongsToGroup = (item: PaintItem, group: PaintPackageGroup) => {
     if (!item.product.trim() && !item.manufacturer.trim()) return false;
-    return (
-      norm(specForItem(item)) === norm(group.specSection) &&
+    if (norm(specForItem(item)) !== norm(group.specSection)) return false;
+    const vendor = paintItemProductVendor(item, products);
+    return paintSheenParts(item.sheen, catalogSheens).some((sheen) =>
       samePaintPackageProduct(
-        { manufacturer: paintItemProductVendor(item, products), product: item.product, sheen: item.sheen },
+        { manufacturer: vendor, product: item.product, sheen },
         { manufacturer: group.manufacturer, product: group.product, sheen: group.sheen },
-      )
+      ),
     );
   };
 

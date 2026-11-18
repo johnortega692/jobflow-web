@@ -1,4 +1,4 @@
-import type { PaintProduct } from "./paintCatalog";
+import { parseSheenSelection, type PaintProduct } from "./paintCatalog";
 import { formatRevisionTag, formatSubmittalNumberDisplay } from "./printCore.js";
 import { sectionHasAnyAttachment } from "./sdsSectionModel.js";
 import type { PaintItem, SdsSection } from "../types/tradeDocuments";
@@ -95,10 +95,12 @@ export function paintItemsInPackage(items: PaintItem[], sections: SdsSection[]):
 
 function itemMatchesPackageSection(item: PaintItem, sections: SdsSection[]): boolean {
   if (!item.product.trim() && !item.manufacturer.trim()) return false;
-  return sections.some((section) =>
-    samePaintPackageProduct(
-      { manufacturer: item.manufacturer, product: item.product, sheen: item.sheen },
-      { manufacturer: section.manufacturer, product: section.product, sheen: section.finish_type },
+  return paintSheenParts(item.sheen).some((sheen) =>
+    sections.some((section) =>
+      samePaintPackageProduct(
+        { manufacturer: item.manufacturer, product: item.product, sheen },
+        { manufacturer: section.manufacturer, product: section.product, sheen: section.finish_type },
+      ),
     ),
   );
 }
@@ -146,6 +148,33 @@ export function paintProductKey(manufacturer: string, product: string, sheen: st
   return [manufacturerKey(manufacturer), norm(product), norm(sheen)].join("|");
 }
 
+/** Sheen names known by the catalog, used to split a combined sheen without breaking "Semi-Gloss". */
+export function catalogSheenNames(products: PaintProduct[]): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const product of products) {
+    for (const sheen of product.sheens ?? []) {
+      const name = sheen.trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+/**
+ * One stored sheen field can hold several finishes: "Flat, Eggshell and Semi-Gloss".
+ * Each one needs its own package section so it can carry its own TDS.
+ */
+export function paintSheenParts(sheen: string, catalogSheens: string[] = []): string[] {
+  const parts = parseSheenSelection(sheen, catalogSheens);
+  if (parts.length) return parts;
+  const trimmed = sheen.trim();
+  return trimmed ? [trimmed] : [""];
+}
+
 function productLabel(product: string, manufacturer: string, sheen: string): string {
   const name = product.trim() || manufacturer.trim() || "Product";
   const finish = sheen.trim();
@@ -171,30 +200,34 @@ export function groupPaintItemsForPackage(
 ): PaintPackageGroup[] {
   const groups: PaintPackageGroup[] = [];
   const indexByKey = new Map<string, number>();
+  const catalogSheens = catalogSheenNames(products);
 
   for (const item of items) {
     if (!item.product.trim() && !item.manufacturer.trim()) continue;
     const vendor = paintItemProductVendor(item, products);
     const specSection = specForItem(item).trim();
-    const key = `${paintProductKey(vendor, item.product, item.sheen)}|${norm(specSection)}`;
-    let index = indexByKey.get(key);
-    if (index === undefined) {
-      index = groups.length;
-      indexByKey.set(key, index);
-      groups.push({
-        key,
-        manufacturer: vendor,
-        product: item.product.trim(),
-        sheen: item.sheen.trim(),
-        specSection,
-        marks: [],
-      });
-    }
-    groups[index]!.marks.push({
+    const mark = {
       label: item.label.trim(),
       color: item.color.trim(),
       location: item.floor.trim(),
-    });
+    };
+    for (const sheen of paintSheenParts(item.sheen, catalogSheens)) {
+      const key = `${paintProductKey(vendor, item.product, sheen)}|${norm(specSection)}`;
+      let index = indexByKey.get(key);
+      if (index === undefined) {
+        index = groups.length;
+        indexByKey.set(key, index);
+        groups.push({
+          key,
+          manufacturer: vendor,
+          product: item.product.trim(),
+          sheen,
+          specSection,
+          marks: [],
+        });
+      }
+      groups[index]!.marks.push(mark);
+    }
   }
 
   return groups;
