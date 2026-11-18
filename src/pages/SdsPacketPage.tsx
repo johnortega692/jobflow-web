@@ -960,6 +960,7 @@ export function SdsPacketPage() {
           section={editor.section}
           projectId={projectId}
           packetType={draft.packet_type}
+          packageSections={draft.sections}
           showSelfPriming={draft.contract === "paint"}
           onSave={(section) => {
             addSectionRow(section);
@@ -975,6 +976,7 @@ export function SdsPacketPage() {
           section={editor.section}
           projectId={projectId}
           packetType={draft.packet_type}
+          packageSections={draft.sections}
           showSelfPriming={draft.contract === "paint"}
           onSave={(section) => {
             replaceSection(section);

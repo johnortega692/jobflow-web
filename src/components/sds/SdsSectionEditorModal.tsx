@@ -4,11 +4,14 @@ import { requiredAttachmentsForSection } from "../../lib/sdsPacketRequirements";
 import { parseSdsFilename, removeSdsPdf, uploadSdsPdf } from "../../lib/sdsFileStorage";
 import { downloadProductSheet, searchProductSheets, type ProductSheetHit } from "../../lib/productSheetSearch";
 import {
+  attachmentPathUsedElsewhere,
   intendedUseHasSelfPriming,
   sanitizeFinishType,
   sectionAttachmentFiles,
   setSelfPrimingNote,
+  sharedSdsSheets,
   type SdsAttachmentKind,
+  type SharedSdsSheet,
 } from "../../lib/sdsSectionModel";
 import type { SdsSection } from "../../types/tradeDocuments";
 import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
@@ -31,6 +34,8 @@ type Props = {
   section: SdsSection;
   projectId: string;
   packetType: SdsPacketType;
+  /** Other products in this package, so an SDS already uploaded can be reused. */
+  packageSections?: SdsSection[];
   showSelfPriming?: boolean;
   onSave: (section: SdsSection) => void;
   onClose: () => void;
@@ -41,6 +46,7 @@ export function SdsSectionEditorModal({
   section: initial,
   projectId,
   packetType,
+  packageSections = [],
   showSelfPriming = false,
   onSave,
   onClose,
@@ -126,7 +132,10 @@ export function SdsSectionEditorModal({
     setUploading(`${kind}|${index}`);
     setError(null);
     try {
-      const uploaded = await uploadSdsPdf(projectId, section.id, kind, file, existing.path);
+      const storagePath = attachmentPathUsedElsewhere(packageSections, section.id, existing.path)
+        ? `${projectId}/${section.id}/${kind}-${crypto.randomUUID()}.pdf`
+        : existing.path;
+      const uploaded = await uploadSdsPdf(projectId, section.id, kind, file, storagePath);
       const nextFiles = [...files];
       nextFiles[index] = uploaded;
       setSection({
@@ -146,8 +155,9 @@ export function SdsSectionEditorModal({
     const files = sectionAttachmentFiles(section, kind);
     const target = files[index];
     if (!target) return;
+    const shared = attachmentPathUsedElsewhere(packageSections, section.id, target.path);
     try {
-      if (target.path) await removeSdsPdf(target.path);
+      if (target.path && !shared) await removeSdsPdf(target.path);
     } catch {
       /* ignore */
     }
@@ -174,6 +184,24 @@ export function SdsSectionEditorModal({
       return copy;
     });
     addInputs.current[kind]?.click();
+  }
+
+  const sdsFiles = sectionAttachmentFiles(section, "sds");
+  const sdsShares = sharedSdsSheets(packageSections, section.id, sdsFiles);
+  const sharedSdsPaths = new Set(
+    sdsFiles.map((file) => file.path.trim()).filter((path) => attachmentPathUsedElsewhere(packageSections, section.id, path)),
+  );
+
+  function useSharedSds(sheet: SharedSdsSheet) {
+    const existing = sectionAttachmentFiles(section, "sds");
+    if (existing.some((file) => file.path.trim() === sheet.path)) return;
+    setSection({
+      ...section,
+      attachments: {
+        ...section.attachments,
+        sds: [...existing, { path: sheet.path, filename: sheet.filename }],
+      },
+    });
   }
 
   const canSearch = Boolean(section.manufacturer.trim() || section.product.trim());
@@ -384,10 +412,36 @@ export function SdsSectionEditorModal({
                   required={requiredKinds.has(kind)}
                   busy={kindBusy(kind)}
                   replacingIndex={kindReplacingIndex(kind)}
+                  sharedPaths={kind === "sds" ? sharedSdsPaths : undefined}
                   onAdd={(files) => void addFiles(kind, files, true)}
                   onReplace={(index, file) => void replaceFile(kind, index, file)}
                   onRemove={(index) => void removeFile(kind, index)}
-                />
+                >
+                  {kind === "sds" && sdsShares.length > 0 ? (
+                    <div className="sds-share-sheets">
+                      <p className="sds-share-sheets-label">Use an SDS already in this package</p>
+                      <ul>
+                        {sdsShares.map((sheet) => (
+                          <li key={sheet.path} className="sds-share-sheet">
+                            <div className="sds-share-sheet-copy">
+                              <span className="sds-share-sheet-name" title={sheet.filename}>
+                                {sheet.filename}
+                              </span>
+                              <span className="sds-share-sheet-product">On {sheet.product}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-small"
+                              onClick={() => useSharedSds(sheet)}
+                            >
+                              Use on this product
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </AttachmentGroup>
               ))}
               <div className="sds-other-docs">
                 <p className="sds-other-docs-label">Other documents</p>

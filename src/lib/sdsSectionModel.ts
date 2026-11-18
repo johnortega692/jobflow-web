@@ -465,3 +465,51 @@ export function packetProductCount(sections: SdsSection[]): number {
 export function packetDocumentCount(sections: SdsSection[]): number {
   return sections.reduce((total, section) => total + sectionAttachmentCount(section), 0);
 }
+
+export type SharedSdsSheet = {
+  path: string;
+  filename: string;
+  product: string;
+};
+
+function sectionProductLabel(section: SdsSection): string {
+  const name = [section.manufacturer.trim(), section.product.trim()].filter(Boolean).join(" ");
+  return name || section.finish_type.trim() || "Another product";
+}
+
+/** SDS files already stored on other products in this package, skipping ones this section already uses. */
+export function sharedSdsSheets(
+  sections: SdsSection[],
+  currentSectionId: string,
+  already: SdsFileAttachment[],
+): SharedSdsSheet[] {
+  const used = new Set(already.map((file) => file.path.trim()).filter(Boolean));
+  const seen = new Set<string>();
+  const choices: SharedSdsSheet[] = [];
+  for (const other of sections) {
+    if (other.id === currentSectionId) continue;
+    for (const file of sectionAttachmentFiles(other, "sds")) {
+      const path = file.path.trim();
+      if (!path || used.has(path) || seen.has(path)) continue;
+      seen.add(path);
+      choices.push({
+        path,
+        filename: file.filename.trim() || "SDS",
+        product: sectionProductLabel(other),
+      });
+    }
+  }
+  return choices;
+}
+
+/** True when another section in the package points at this stored file. */
+export function attachmentPathUsedElsewhere(sections: SdsSection[], currentSectionId: string, path: string): boolean {
+  const key = path.trim();
+  if (!key) return false;
+  return sections.some((other) => {
+    if (other.id === currentSectionId) return false;
+    return SDS_ATTACHMENT_KINDS.some((kind) =>
+      sectionAttachmentFiles(other, kind.kind).some((file) => file.path.trim() === key),
+    );
+  });
+}

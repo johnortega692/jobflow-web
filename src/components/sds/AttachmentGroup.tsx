@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 import type { SdsFileAttachment } from "../../lib/sdsSectionModel";
 
 type Props = {
@@ -10,6 +10,9 @@ type Props = {
   onRemove: (index: number) => void;
   busy?: boolean;
   replacingIndex?: number | null;
+  /** Paths also attached to another product. Removing one of these leaves that copy in place. */
+  sharedPaths?: ReadonlySet<string>;
+  children?: ReactNode;
 };
 
 function pdfFiles(list: FileList | File[] | null | undefined): File[] {
@@ -26,6 +29,8 @@ export function AttachmentGroup({
   onRemove,
   busy = false,
   replacingIndex = null,
+  sharedPaths,
+  children,
 }: Props) {
   const [dragOver, setDragOver] = useState(false);
   const hasFile = files.length > 0;
@@ -106,6 +111,11 @@ export function AttachmentGroup({
               <span className="sds-attach-name" title={file.filename || "PDF"}>
                 {file.filename || "PDF"}
               </span>
+              {sharedPaths?.has(file.path.trim()) ? (
+                <span className="sds-attach-shared" title="Also used by another product. Removing it here leaves that copy in place.">
+                  Shared
+                </span>
+              ) : null}
               <label className="btn btn-secondary btn-small">
                 {replacingIndex === index ? "Uploading…" : "Replace"}
                 <input
@@ -140,6 +150,7 @@ export function AttachmentGroup({
           Drop PDFs here or use Add file
         </p>
       )}
+      {children}
     </div>
   );
 }

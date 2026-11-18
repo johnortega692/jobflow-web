@@ -1986,14 +1986,21 @@ export async function buildSdsPacketPdf(
       const attachment = sectionAttachmentFiles(section, doc.kind)[doc.fileIndex];
       const path = attachment?.path?.trim();
       if (!path) continue;
-      if (paintSchedule && seenDocPaths.has(path)) {
+      if (seenDocPaths.has(path)) {
         const first = pathFirstPage.get(path);
-        if (first !== undefined) attachmentPages.set(docKey(doc.kind, doc.fileIndex), first);
+        if (first !== undefined) {
+          attachmentPages.set(docKey(doc.kind, doc.fileIndex), first);
+          if (packet.include_toc) {
+            tocEntries.push({ level: 2, label: doc.tocLabel, pageIndex: first });
+          }
+          attachmentOutlines.push({ title: doc.tocLabel, to: first });
+        }
+        tick(`Section ${num} ${doc.stamp}`);
         continue;
       }
       const attachmentPage = pageCount();
       pathFirstPage.set(path, attachmentPage);
-      if (paintSchedule) seenDocPaths.add(path);
+      seenDocPaths.add(path);
       attachmentPages.set(docKey(doc.kind, doc.fileIndex), attachmentPage);
       if (packet.include_toc) {
         tocEntries.push({ level: 2, label: doc.tocLabel, pageIndex: attachmentPage });

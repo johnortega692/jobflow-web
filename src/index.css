@@ -6260,6 +6260,66 @@ th {
   background: color-mix(in srgb, #f5c518 10%, var(--bg-elevated));
 }
 
+.sds-attach-shared {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.sds-share-sheets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sds-share-sheets-label {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.sds-share-sheets ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sds-share-sheet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.sds-share-sheet-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sds-share-sheet-name {
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sds-share-sheet-product {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sds-share-sheet .btn {
+  flex: 0 0 auto;
+  width: auto;
+}
+
 .sds-attach-files {
   display: flex;
   flex-direction: column;
