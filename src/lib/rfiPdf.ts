@@ -1,7 +1,10 @@
-import { PDFDocument, PDFPage, type PDFFont } from "pdf-lib";
+import { PDFDocument, PDFPage, type PDFFont, type PDFImage } from "pdf-lib";
+import type { RfiAttachedFile } from "../types/database";
 import { formatSubmittalDisplayDate } from "./dateInputUtils";
 import { downloadPdfBytes } from "./pdfDownload";
 import { rfiFilename } from "./pdfFilenames";
+import { isProgressiveJpeg } from "./productImage";
+import { downloadRfiAttachment } from "./rfiFileStorage";
 import {
   createLetterPdfFonts,
   drawCheckbox,
@@ -144,6 +147,148 @@ function drawSignatureBlock(
     color: TEXT,
   });
   page.drawText(caption, { x, y: lineY - FS_HDR - 2, size: FS_HDR, font: bold, color: TEXT });
+}
+
+function attachmentError(filename: string): Error {
+  return new Error(`Could not add "${filename}" to the RFI PDF.`);
+}
+
+function pdfSafeLabel(value: string): string {
+  const cleaned = value.replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
+  return cleaned || "Attachment";
+}
+
+function isPdfBytes(bytes: Uint8Array): boolean {
+  return bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+}
+
+function isPngBytes(bytes: Uint8Array): boolean {
+  return bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+}
+
+function isJpegBytes(bytes: Uint8Array): boolean {
+  return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+}
+
+function blobBytes(blob: Blob): Promise<Uint8Array | null> {
+  return blob.arrayBuffer().then(
+    (buffer) => new Uint8Array(buffer),
+    () => null,
+  );
+}
+
+/** Redraw a photo so phone orientation is baked in and the PDF gets a baseline image. */
+async function rasterizeAttachment(
+  bytes: Uint8Array,
+  contentType: string,
+  kind: "png" | "jpeg",
+): Promise<Uint8Array | null> {
+  if (typeof document === "undefined" || typeof createImageBitmap !== "function") return null;
+  const source = new Blob([bytes], { type: contentType });
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(source);
+  } catch {
+    return null;
+  }
+  const width = bitmap.width;
+  const height = bitmap.height;
+  if (!width || !height) {
+    bitmap.close();
+    return null;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    return null;
+  }
+  if (kind === "jpeg") {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+  }
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const out = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), kind === "png" ? "image/png" : "image/jpeg", 0.92);
+  });
+  if (!out) return null;
+  return blobBytes(out);
+}
+
+async function embedAttachmentImage(doc: PDFDocument, bytes: Uint8Array, filename: string): Promise<PDFImage> {
+  const png = isPngBytes(bytes) || /\.png$/i.test(filename);
+  const jpeg = isJpegBytes(bytes) || /\.jpe?g$/i.test(filename);
+  if (png || jpeg) {
+    const kind = png ? "png" : "jpeg";
+    const raster = await rasterizeAttachment(bytes, png ? "image/png" : "image/jpeg", kind);
+    if (raster) {
+      try {
+        return kind === "png" ? await doc.embedPng(raster) : await doc.embedJpg(raster);
+      } catch {
+        /* Try the original bytes below. */
+      }
+    }
+  }
+  try {
+    if (isPngBytes(bytes)) return await doc.embedPng(bytes);
+    if (isJpegBytes(bytes) && !isProgressiveJpeg(bytes)) return await doc.embedJpg(bytes);
+  } catch {
+    /* Reported below. */
+  }
+  throw attachmentError(filename);
+}
+
+async function appendPdfPages(doc: PDFDocument, bytes: Uint8Array, filename: string): Promise<void> {
+  try {
+    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const indices = src.getPageIndices();
+    if (!indices.length) throw attachmentError(filename);
+    const pages = await doc.copyPages(src, indices);
+    for (const copied of pages) doc.addPage(copied);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Could not add ")) throw error;
+    throw attachmentError(filename);
+  }
+}
+
+async function appendImagePage(doc: PDFDocument, bytes: Uint8Array, filename: string, font: PDFFont): Promise<void> {
+  const image = await embedAttachmentImage(doc, bytes, filename);
+  const page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
+  const margin = 36;
+  const caption = truncate(pdfSafeLabel(filename), font, 9, LETTER_WIDTH - margin * 2);
+  page.drawText(caption, { x: margin, y: LETTER_HEIGHT - margin, size: 9, font, color: TEXT });
+  const maxW = LETTER_WIDTH - margin * 2;
+  const maxH = LETTER_HEIGHT - margin * 2 - 18;
+  const scale = Math.min(maxW / image.width, maxH / image.height, 1);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  page.drawImage(image, {
+    x: (LETTER_WIDTH - width) / 2,
+    y: margin + (maxH - height) / 2,
+    width,
+    height,
+  });
+}
+
+async function appendRfiAttachments(doc: PDFDocument, files: RfiAttachedFile[], font: PDFFont): Promise<void> {
+  for (const file of files) {
+    const filename = file.filename.trim() || "Attachment";
+    if (!file.storage_path.trim()) throw attachmentError(filename);
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await downloadRfiAttachment(file.storage_path));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "";
+      throw new Error(detail ? `Could not add "${filename}" to the RFI PDF. ${detail}` : attachmentError(filename).message);
+    }
+    if (!bytes.byteLength) throw attachmentError(filename);
+    const pdf = isPdfBytes(bytes) || (/\.pdf$/i.test(filename) && !isPngBytes(bytes) && !isJpegBytes(bytes));
+    if (pdf) await appendPdfPages(doc, bytes, filename);
+    else await appendImagePage(doc, bytes, filename, font);
+  }
 }
 
 function formatRfiDate(value: string): string {
@@ -402,6 +547,7 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
   );
   drawSignatureBlock(page, M + (sigW + 10) * 2, sigW, sigTop, formatRfiDate(form.rfi_date), "DATE", font, bold);
 
+  await appendRfiAttachments(doc, form.attached_files, font);
   return doc.save();
 }
 
