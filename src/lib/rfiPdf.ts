@@ -153,11 +153,6 @@ function attachmentError(filename: string): Error {
   return new Error(`Could not add "${filename}" to the RFI PDF.`);
 }
 
-function pdfSafeLabel(value: string): string {
-  const cleaned = value.replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
-  return cleaned || "Attachment";
-}
-
 function isPdfBytes(bytes: Uint8Array): boolean {
   return bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
 }
@@ -254,26 +249,21 @@ async function appendPdfPages(doc: PDFDocument, bytes: Uint8Array, filename: str
   }
 }
 
-async function appendImagePage(doc: PDFDocument, bytes: Uint8Array, filename: string, font: PDFFont): Promise<void> {
+async function appendImagePage(doc: PDFDocument, bytes: Uint8Array, filename: string): Promise<void> {
   const image = await embedAttachmentImage(doc, bytes, filename);
   const page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
-  const margin = 36;
-  const caption = truncate(pdfSafeLabel(filename), font, 9, LETTER_WIDTH - margin * 2);
-  page.drawText(caption, { x: margin, y: LETTER_HEIGHT - margin, size: 9, font, color: TEXT });
-  const maxW = LETTER_WIDTH - margin * 2;
-  const maxH = LETTER_HEIGHT - margin * 2 - 18;
-  const scale = Math.min(maxW / image.width, maxH / image.height, 1);
+  const scale = Math.min(LETTER_WIDTH / image.width, LETTER_HEIGHT / image.height, 1);
   const width = image.width * scale;
   const height = image.height * scale;
   page.drawImage(image, {
     x: (LETTER_WIDTH - width) / 2,
-    y: margin + (maxH - height) / 2,
+    y: (LETTER_HEIGHT - height) / 2,
     width,
     height,
   });
 }
 
-async function appendRfiAttachments(doc: PDFDocument, files: RfiAttachedFile[], font: PDFFont): Promise<void> {
+async function appendRfiAttachments(doc: PDFDocument, files: RfiAttachedFile[]): Promise<void> {
   for (const file of files) {
     const filename = file.filename.trim() || "Attachment";
     if (!file.storage_path.trim()) throw attachmentError(filename);
@@ -287,7 +277,7 @@ async function appendRfiAttachments(doc: PDFDocument, files: RfiAttachedFile[], 
     if (!bytes.byteLength) throw attachmentError(filename);
     const pdf = isPdfBytes(bytes) || (/\.pdf$/i.test(filename) && !isPngBytes(bytes) && !isJpegBytes(bytes));
     if (pdf) await appendPdfPages(doc, bytes, filename);
-    else await appendImagePage(doc, bytes, filename, font);
+    else await appendImagePage(doc, bytes, filename);
   }
 }
 
@@ -547,7 +537,7 @@ export async function buildRfiPdfBytes(input: RfiPrintInput): Promise<Uint8Array
   );
   drawSignatureBlock(page, M + (sigW + 10) * 2, sigW, sigTop, formatRfiDate(form.rfi_date), "DATE", font, bold);
 
-  await appendRfiAttachments(doc, form.attached_files, font);
+  await appendRfiAttachments(doc, form.attached_files);
   return doc.save();
 }
 
