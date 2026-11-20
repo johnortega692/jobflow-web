@@ -251,16 +251,11 @@ async function appendPdfPages(doc: PDFDocument, bytes: Uint8Array, filename: str
 
 async function appendImagePage(doc: PDFDocument, bytes: Uint8Array, filename: string): Promise<void> {
   const image = await embedAttachmentImage(doc, bytes, filename);
-  const page = doc.addPage([LETTER_WIDTH, LETTER_HEIGHT]);
-  const scale = Math.min(LETTER_WIDTH / image.width, LETTER_HEIGHT / image.height, 1);
-  const width = image.width * scale;
-  const height = image.height * scale;
-  page.drawImage(image, {
-    x: (LETTER_WIDTH - width) / 2,
-    y: (LETTER_HEIGHT - height) / 2,
-    width,
-    height,
-  });
+  const width = image.width;
+  const height = image.height;
+  if (!width || !height) throw attachmentError(filename);
+  const page = doc.addPage([width, height]);
+  page.drawImage(image, { x: 0, y: 0, width, height });
 }
 
 async function appendRfiAttachments(doc: PDFDocument, files: RfiAttachedFile[]): Promise<void> {
