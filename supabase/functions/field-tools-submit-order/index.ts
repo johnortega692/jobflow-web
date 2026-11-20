@@ -814,7 +814,7 @@ Deno.serve(async (req) => {
       }
 
       let poNumber = existingDispatch?.po_number ?? "";
-      if (!poNumber && spec.assign_po) {
+      if (!poNumber && spec.assign_po && spec.type !== "rental") {
         const { data: po, error: poErr } = await supabase.rpc("field_tools_next_po_number", {
           p_job_code: jobCode,
         });
