@@ -55,13 +55,19 @@ function turn(current: Rotation, delta: 90 | -90): Rotation {
   return (((current + delta) % 360) + 360) % 360 as Rotation;
 }
 
-function printReceipts(poNumber: string, pages: { url: string; deg: Rotation }[]): void {
+function printReceipts(
+  poNumber: string,
+  pages: { url: string; deg: Rotation }[],
+  hidePo: boolean,
+): void {
   const title = `PO ${poNumber} receipt`;
+  const longSide = hidePo ? "10.2in" : "9.7in";
   const sheets = pages
     .map(({ url, deg }) => {
       const sideways = deg === 90 || deg === 270 ? " sideways" : "";
+      const heading = hidePo ? "" : `<h1>PO# ${esc(poNumber)}</h1>`;
       return `<section class="sheet">
-        <h1>PO# ${esc(poNumber)}</h1>
+        ${heading}
         <div class="frame">
           <img class="r${deg}${sideways}" src="${esc(url)}" alt="Receipt for PO ${esc(poNumber)}" />
         </div>
@@ -80,10 +86,10 @@ function printReceipts(poNumber: string, pages: { url: string; deg: Rotation }[]
     .sheet { break-after: page; display: flex; flex-direction: column; align-items: center; }
     .sheet:last-child { break-after: auto; }
     h1 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
-    /* Letter minus 0.4in margins, less the PO heading. */
-    .frame { width: 7.7in; height: 9.7in; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    img { flex: none; max-width: 7.7in; max-height: 9.7in; object-fit: contain; }
-    img.sideways { max-width: 9.7in; max-height: 7.7in; }
+    /* Letter minus 0.4in margins. Shorter when the PO heading is printed. */
+    .frame { width: 7.7in; height: ${longSide}; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    img { flex: none; max-width: 7.7in; max-height: ${longSide}; object-fit: contain; }
+    img.sideways { max-width: ${longSide}; max-height: 7.7in; }
     img.r90 { transform: rotate(90deg); }
     img.r180 { transform: rotate(180deg); }
     img.r270 { transform: rotate(270deg); }
@@ -102,6 +108,7 @@ export function ReceiptImageViewer({ receipts, poNumber, onDelete, printTarget }
   const [sizes, setSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [edits, setEdits] = useState<Record<string, EditedReceipt>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [hidePoOnPrint, setHidePoOnPrint] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef(zoom);
@@ -154,21 +161,32 @@ export function ReceiptImageViewer({ receipts, poNumber, onDelete, printTarget }
   const editingReceipt = editingId ? receipts.find((receipt) => receipt.id === editingId) : undefined;
 
   const printButton = (
-    <button
-      type="button"
-      className="btn btn-secondary btn-sm"
-      onClick={() =>
-        printReceipts(
-          poNumber,
-          receipts.map((receipt) => {
-            const edited = edits[receipt.id];
-            return edited ? { url: edited.url, deg: 0 } : { url: receipt.url, deg: rotations[receipt.id] ?? 0 };
-          }),
-        )
-      }
-    >
-      Print
-    </button>
+    <span className="receipt-print-actions">
+      <button
+        type="button"
+        className={`filter-chip${hidePoOnPrint ? " filter-chip--active" : ""}`}
+        aria-pressed={hidePoOnPrint}
+        onClick={() => setHidePoOnPrint((on) => !on)}
+      >
+        Hide PO
+      </button>
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        onClick={() =>
+          printReceipts(
+            poNumber,
+            receipts.map((receipt) => {
+              const edited = edits[receipt.id];
+              return edited ? { url: edited.url, deg: 0 } : { url: receipt.url, deg: rotations[receipt.id] ?? 0 };
+            }),
+            hidePoOnPrint,
+          )
+        }
+      >
+        Print
+      </button>
+    </span>
   );
 
   function rotate(receiptId: string, delta: 90 | -90) {
