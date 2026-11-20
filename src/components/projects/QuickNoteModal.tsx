@@ -5,6 +5,8 @@ import { JobSearchCombo, type JobSearchProject } from "./JobSearchCombo";
 
 type DatePick = "tomorrow" | "plus3" | "nextWeek" | "custom";
 
+const SOV_FOLLOW_UP = "SOV FOLLOW UP";
+
 export type QuickNoteProject = JobSearchProject;
 
 type Props = {
@@ -64,6 +66,17 @@ export function QuickNoteModal({ projects, onClose }: Props) {
       if (next) setFollowUp(true);
       return next;
     });
+  }
+
+  function applySovFollowUp() {
+    setBody((current) => {
+      const lines = current.split(/\n/).map((line) => line.trim());
+      if (lines.some((line) => line === SOV_FOLLOW_UP)) return current;
+      const trimmed = current.replace(/\s+$/, "");
+      return trimmed ? `${trimmed}\n${SOV_FOLLOW_UP}` : SOV_FOLLOW_UP;
+    });
+    setFollowUp(true);
+    setDatePick("nextWeek");
   }
 
   async function onSubmit(event: FormEvent) {
@@ -127,7 +140,7 @@ export function QuickNoteModal({ projects, onClose }: Props) {
             disabled={saving}
           />
         </label>
-        <div className="quick-note-toggles" role="group" aria-label="Follow-up and flag">
+        <div className="quick-note-toggles" role="group" aria-label="Follow-up, flag, and SOV">
           <button
             type="button"
             className={`filter-chip${followUp ? " filter-chip--active" : ""}`}
@@ -146,6 +159,14 @@ export function QuickNoteModal({ projects, onClose }: Props) {
             onClick={toggleFlag}
           >
             ⚑ Flag
+          </button>
+          <button
+            type="button"
+            className="filter-chip"
+            disabled={saving}
+            onClick={applySovFollowUp}
+          >
+            SOV
           </button>
         </div>
         {scheduled ? (
