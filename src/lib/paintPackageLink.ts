@@ -1,4 +1,4 @@
-import { parseSheenSelection, type PaintProduct } from "./paintCatalog";
+import { parseSheenSelection, type PaintProduct } from "./paintCatalog.js";
 import { formatRevisionTag, formatSubmittalNumberDisplay } from "./printCore.js";
 import { sectionHasAnyAttachment } from "./sdsSectionModel.js";
 import type { PaintItem, SdsSection } from "../types/tradeDocuments";
