@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const BUCKET = "field-tools-receipts";
-const MAX_BYTES = 1_500_000;
+const MAX_BYTES = 4_000_000;
 
 type Body = {
   caller_id?: string;

@@ -12,7 +12,7 @@ const RECEIPT_REQUIRED_FROM = "2026-10-24T15:30:00.000Z";
 
 const BUCKET = "field-tools-receipts";
 const MAX_RECEIPTS = 8;
-const MAX_BYTES = 1_500_000;
+const MAX_BYTES = 4_000_000;
 const SIGNED_TTL_SEC = 60 * 60;
 
 const TEST_RECIPIENT = "johnortega@gmail.com";
@@ -846,7 +846,7 @@ Deno.serve(async (req) => {
 
     const jpeg = decodeJpegBase64(body.image_base64 ?? "");
     if (!jpeg) {
-      return jsonResponse({ ok: false, error: "Upload a JPEG photo of the receipt (under 1.5 MB)." }, 400);
+      return jsonResponse({ ok: false, error: "Upload a JPEG photo of the receipt (under 4 MB)." }, 400);
     }
 
     const receiptId = crypto.randomUUID();
