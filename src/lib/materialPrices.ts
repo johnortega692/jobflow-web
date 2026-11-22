@@ -8,6 +8,7 @@ export type MaterialPriceItem = {
   category: string;
   name: string;
   productId: string;
+  akas: string[];
   unitCost: number | null;
   sheenCosts: Record<string, number>;
   sheens: string[];
@@ -99,6 +100,38 @@ export function parsePricePaste(text: string): { productId: string; price: strin
   return rows;
 }
 
+function itemFromRow(row: unknown): MaterialPriceItem | null {
+  if (!row || typeof row !== "object") return null;
+  const item = row as Record<string, unknown>;
+  const section = item.section === "paint_product" ? "paint_product" : item.section === "sundry" ? "sundry" : null;
+  const id = typeof item.id === "string" ? item.id : "";
+  const name = typeof item.name === "string" ? item.name : "";
+  if (!section || !id || !name) return null;
+  const unit = item.unit_cost == null || item.unit_cost === "" ? null : Number(item.unit_cost);
+  return {
+    id,
+    section,
+    category: typeof item.category === "string" ? item.category : "",
+    name,
+    productId: typeof item.product_id === "string" ? item.product_id : "",
+    akas: asStringList(item.akas),
+    unitCost: unit != null && Number.isFinite(unit) ? unit : null,
+    sheenCosts: asRecord(item.sheen_costs),
+    sheens: asStringList(item.sheens),
+    vendorNames: asStringList(item.vendor_names),
+  };
+}
+
+export async function listSundryCategories(): Promise<string[]> {
+  const { data, error } = await supabase.rpc("jobflow_admin_list_sundry_categories" as never);
+  if (error) throw new Error(error.message);
+  const result = data as { ok?: boolean; error?: string; categories?: unknown } | null;
+  if (!result?.ok || !Array.isArray(result.categories)) {
+    throw new Error(result?.error || "Could not load sundry categories.");
+  }
+  return result.categories.filter((name): name is string => typeof name === "string" && name.trim().length > 0);
+}
+
 export async function listMaterialPrices(): Promise<MaterialPriceItem[]> {
   const { data, error } = await supabase.rpc("jobflow_admin_list_material_prices" as never);
   if (error) throw new Error(error.message);
@@ -107,25 +140,47 @@ export async function listMaterialPrices(): Promise<MaterialPriceItem[]> {
     throw new Error(result?.error || "Could not load material prices.");
   }
   return result.items.flatMap((row) => {
-    if (!row || typeof row !== "object") return [];
-    const item = row as Record<string, unknown>;
-    const section = item.section === "paint_product" ? "paint_product" : item.section === "sundry" ? "sundry" : null;
-    const id = typeof item.id === "string" ? item.id : "";
-    const name = typeof item.name === "string" ? item.name : "";
-    if (!section || !id || !name) return [];
-    const unit = item.unit_cost == null || item.unit_cost === "" ? null : Number(item.unit_cost);
-    return [{
-      id,
-      section,
-      category: typeof item.category === "string" ? item.category : "",
-      name,
-      productId: typeof item.product_id === "string" ? item.product_id : "",
-      unitCost: unit != null && Number.isFinite(unit) ? unit : null,
-      sheenCosts: asRecord(item.sheen_costs),
-      sheens: asStringList(item.sheens),
-      vendorNames: asStringList(item.vendor_names),
-    }];
+    const item = itemFromRow(row);
+    return item ? [item] : [];
   });
+}
+
+export async function addMaterialPriceItem(input: {
+  section: MaterialPriceSection;
+  name: string;
+  category: string;
+  productId: string;
+  vendorName: string;
+  unitCost: string;
+}): Promise<MaterialPriceItem> {
+  const payload: Record<string, string> = {
+    section: input.section,
+    name: input.name.trim(),
+    category: input.category.trim(),
+    product_id: input.productId.trim(),
+    vendor_name: input.vendorName.trim(),
+  };
+  const price = input.unitCost.trim().replace(/^\$/, "");
+  if (input.section === "sundry" && price) payload.unit_cost = price;
+  const { data, error } = await supabase.rpc("jobflow_admin_add_material_item" as never, {
+    p_item: payload,
+  } as never);
+  if (error) throw new Error(error.message);
+  const result = data as { ok?: boolean; error?: string; item?: unknown } | null;
+  const item = result?.ok ? itemFromRow(result.item) : null;
+  if (!item) throw new Error(result?.error || "Could not add that item.");
+  return item;
+}
+
+export async function saveMaterialAkas(id: string, akas: string[]): Promise<string[]> {
+  const { data, error } = await supabase.rpc("jobflow_admin_set_material_akas" as never, {
+    p_id: id,
+    p_akas: akas,
+  } as never);
+  if (error) throw new Error(error.message);
+  const result = data as { ok?: boolean; error?: string; akas?: unknown } | null;
+  if (!result?.ok) throw new Error(result?.error || "Could not save those AKAs.");
+  return asStringList(result.akas);
 }
 
 export async function saveMaterialPrices(

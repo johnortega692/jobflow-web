@@ -21730,9 +21730,76 @@ td.billing-manpower-week-col--beyond-contract,
   }
 }
 
-.material-prices-title {
+.settings-tab-panel:has(> .material-prices) {
+  width: 100%;
+  max-width: 1100px;
+}
+
+.material-prices {
+  width: 100%;
+  max-width: 1100px;
+}
+
+.material-prices .settings-subtabs {
   margin: 0;
-  font-size: 1.15rem;
+}
+
+.material-prices .settings-subtab {
+  width: auto;
+}
+
+.material-prices-invoice-pane {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.material-prices-bar,
+.material-prices-tools,
+.material-prices-meta,
+.material-prices-paste,
+.material-prices-meta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.material-prices-bar-spacer {
+  flex: 1 1 0.75rem;
+}
+
+.material-prices-segment {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.material-prices-segment button {
+  width: auto;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.material-prices-segment button + button {
+  border-left: 1px solid var(--border);
+}
+
+.material-prices-segment button.is-on {
+  background: var(--accent);
+  color: white;
+}
+
+.material-prices-vendor,
+.material-prices-tools select {
+  width: auto;
+  min-width: 10rem;
+  margin: 0;
 }
 
 .material-prices-tax {
@@ -21749,24 +21816,44 @@ td.billing-manpower-week-col--beyond-contract,
   margin: 0;
 }
 
-.material-prices-switch,
-.material-prices-vendors,
-.material-prices-tools,
-.material-prices-meta,
-.material-prices-paste {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
+.material-prices-add-panel {
+  width: min(24rem, 100vw);
 }
 
-.material-prices-tools input,
-.material-prices-tools select {
-  min-width: 0;
+.material-prices-add {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+  flex: 1;
+  min-height: 0;
+  padding: 1rem 1.15rem 1.25rem;
+  overflow: auto;
+}
+
+.material-prices-add label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.material-prices-add input,
+.material-prices-add select,
+.material-prices-add textarea {
+  width: 100%;
+  margin: 0;
+}
+
+.material-prices-add-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .material-prices-tools input {
   flex: 1 1 220px;
+  width: auto;
+  min-width: 12rem;
+  margin: 0;
 }
 
 .material-prices-paste {
@@ -21775,12 +21862,35 @@ td.billing-manpower-week-col--beyond-contract,
 
 .material-prices-paste textarea {
   flex: 1 1 280px;
+  width: auto;
   min-height: 5.5rem;
+  margin: 0;
   resize: vertical;
+}
+
+.material-prices-paste .btn {
+  align-self: flex-end;
 }
 
 .material-prices-meta {
   justify-content: space-between;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.material-prices-meta-actions {
+  margin-left: auto;
+}
+
+.material-prices-meta .btn:disabled {
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.material-prices-meta .btn:disabled:hover {
+  filter: none;
 }
 
 .material-prices-error {
@@ -21789,15 +21899,34 @@ td.billing-manpower-week-col--beyond-contract,
   font-weight: 600;
 }
 
+.material-prices-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 280;
+  max-width: 18rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--danger, #ff6b6b) 55%, var(--border));
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+
 .material-prices-scroll {
   max-height: min(70vh, 760px);
-  overflow: auto;
+  overflow-x: scroll;
+  overflow-y: scroll;
   border: 1px solid var(--border);
   border-radius: 10px;
 }
 
 .material-prices-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
 }
 
@@ -21806,12 +21935,13 @@ td.billing-manpower-week-col--beyond-contract,
   padding: 0.55rem 0.7rem;
   border-bottom: 1px solid var(--border);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .material-prices-table th {
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--surface);
   font-size: 0.75rem;
   letter-spacing: 0.04em;
@@ -21820,12 +21950,44 @@ td.billing-manpower-week-col--beyond-contract,
 }
 
 .material-prices-table input {
-  width: 7.5rem;
+  width: 84px;
   margin: 0;
+  text-align: right;
+}
+
+.material-prices-table th.material-prices-money,
+.material-prices-table td.material-prices-money {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .material-prices-name {
   font-weight: 650;
+}
+
+.material-prices-aka {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  margin: 0.15rem 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.material-prices-aka:disabled {
+  cursor: default;
+}
+
+.material-prices-category,
+.material-prices-sku,
+.material-prices-empty {
+  color: var(--muted);
 }
 
 .material-prices-sku {
@@ -21833,22 +21995,425 @@ td.billing-manpower-week-col--beyond-contract,
   font-variant-numeric: tabular-nums;
 }
 
-.material-prices-sheens {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.75rem;
-}
-
-.material-prices-sheens label {
-  display: grid;
-  gap: 0.15rem;
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
 .material-prices-changed {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.material-prices-invoice {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.material-prices-invoice-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.material-prices-invoice-summary {
+  flex-wrap: nowrap;
+}
+
+.material-prices-invoice-summary .btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .material-prices-invoice-summary {
+    flex-wrap: wrap;
+  }
+}
+
+.material-prices-invoice-head .btn {
+  margin-left: auto;
+}
+
+.material-prices-invoice-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.material-prices-clear {
+  flex: 0 0 auto;
+  align-self: center;
+  box-sizing: border-box;
+  width: calc(1.5em + 1rem + 2px);
+  height: calc(1.5em + 1rem + 2px);
+  min-width: calc(1.5em + 1rem + 2px);
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.material-prices-invoice-actions select {
+  width: auto;
+  min-width: 11rem;
+  margin: 0;
+}
+
+.material-prices-invoice-actions .btn {
+  margin-left: 0;
+}
+
+.material-prices-invoice-scroll {
+  width: 100%;
+  max-height: min(70vh, 760px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.material-prices-invoice-table {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.material-prices-invoice-table thead,
+.material-prices-invoice-table tbody {
+  display: block;
+}
+
+.material-prices-invoice-table tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 108px minmax(104px, max-content);
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.material-prices-invoice-table th {
+  position: static;
+}
+
+.material-prices-invoice-table th,
+.material-prices-invoice-table td {
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  text-decoration: none;
+}
+
+.material-prices-invoice-table .material-prices-copy-line {
+  align-items: center;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.material-prices-invoice-table .material-prices-copy-line .material-prices-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 1.55rem);
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-prices-invoice-line {
+  min-width: 0;
+  width: auto;
+  max-width: none;
+}
+
+.material-prices-copy-line,
+.material-prices-money-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.material-prices-money-copy {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.material-prices-pack {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.material-prices-copy-line .material-prices-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.material-prices-copy {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.material-prices-copy:hover {
+  color: var(--text);
+}
+
+.material-prices-invoice-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  margin-top: 0.1rem;
+}
+
+.material-prices-invoice-sub-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.material-prices-pill {
+  flex: 0 0 auto;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.material-prices-pill.is-match {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok);
+}
+
+.material-prices-pill.is-differ {
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+  color: var(--warn);
+}
+
+.material-prices-invoice-table .material-prices-money {
+  width: auto;
+  padding-right: 8px;
+  padding-left: 4px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.material-prices-invoice-table .material-prices-money strong {
+  font-weight: 650;
+}
+
+.material-prices-price-note {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.material-prices-price-note.is-differ {
+  color: var(--warn);
+}
+
+.material-prices-info {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 1rem 1.15rem 1.25rem;
+  overflow: auto;
+}
+
+.material-prices-info dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.material-prices-info dd {
+  margin: 0.2rem 0 0;
+}
+
+.material-prices-info-price {
+  display: block;
+}
+
+.material-prices-invoice-break {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.material-prices-invoice-break td {
+  grid-column: 1 / -1;
+  background: var(--surface2);
+  font-weight: 650;
+}
+
+.material-prices-invoice-id {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.material-prices-invoice-charges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.material-prices-invoice-charges span {
+  white-space: nowrap;
+}
+
+.material-prices-invoice-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  min-width: 104px;
+  white-space: nowrap;
+}
+
+.material-prices-invoice-action-slot {
+  min-width: 104px;
+  height: 1px;
+}
+
+.material-prices-invoice-action .btn {
+  width: auto;
+  margin: 0;
+  padding: 0.25rem 0.55rem;
+}
+
+.material-prices-icon-btn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.material-prices-icon-btn.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.material-prices-find {
+  display: grid;
+  gap: 0.65rem;
+  align-content: start;
+  flex: 1;
+  min-height: 0;
+  padding: 1rem 1.15rem 1.25rem;
+  overflow: auto;
+}
+
+.material-prices-find .material-prices-link-list {
+  max-height: none;
+}
+
+.material-prices-link {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  text-align: left;
+}
+
+.material-prices-link input {
+  width: 100%;
+  margin: 0;
+}
+
+.material-prices-link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 11rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.material-prices-link-list button {
+  display: grid;
+  gap: 0.1rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.material-prices-link-list li:last-child button {
+  border-bottom: 0;
+}
+
+.material-prices-menu {
+  position: fixed;
+  z-index: 260;
+  display: grid;
+  min-width: 11.5rem;
+  max-width: 18rem;
+  margin: 0;
+  padding: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.material-prices-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.material-prices-menu button:hover:not(:disabled) {
+  background: var(--surface2);
+}
+
+.material-prices-menu button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.material-prices-menu button.is-primary {
+  color: var(--accent);
+  font-weight: 650;
 }
 
 .lp-header {
