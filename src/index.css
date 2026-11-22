@@ -21849,6 +21849,70 @@ td.billing-manpower-week-col--beyond-contract,
   gap: 0.5rem;
 }
 
+.material-prices-photo {
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.material-prices-photo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.material-prices-photo-row img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border, #d7dbe3);
+}
+
+.material-prices-library-grid img {
+  width: 100%;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.material-prices-library {
+  display: grid;
+  gap: 0.55rem;
+  font-weight: 500;
+}
+
+.material-prices-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 0.45rem;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.material-prices-library-grid button {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #d7dbe3);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.material-prices-library-grid span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
 .material-prices-tools input {
   flex: 1 1 220px;
   width: auto;
@@ -22171,6 +22235,38 @@ td.billing-manpower-week-col--beyond-contract,
   gap: 0.35rem;
   min-width: 0;
   margin-top: 0.1rem;
+}
+
+.material-prices-kind {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 16%, transparent);
+}
+
+.material-prices-kind button {
+  margin: 0;
+  min-height: 0;
+  padding: 0 0.45rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.material-prices-kind button[aria-pressed="true"] {
+  background: var(--surface, #1c2430);
+  color: var(--text);
+}
+
+.material-prices-kind button:disabled {
+  cursor: default;
 }
 
 .material-prices-invoice-sub-text {

@@ -145,6 +145,34 @@ export async function listMaterialPrices(): Promise<MaterialPriceItem[]> {
   });
 }
 
+export type SundryLibraryPhoto = {
+  id: string;
+  name: string;
+  imageUrl: string;
+};
+
+export async function listSundryPhotos(query: string, after: string | null): Promise<{ photos: SundryLibraryPhoto[]; next: string | null }> {
+  const { data, error } = await supabase.rpc("jobflow_admin_list_sundry_photos" as never, {
+    p_query: query,
+    p_after: after,
+    p_limit: 20,
+  } as never);
+  if (error) throw new Error(error.message);
+  const result = data as { ok?: boolean; error?: string; photos?: unknown; next?: unknown } | null;
+  if (!result?.ok || !Array.isArray(result.photos)) {
+    throw new Error(result?.error || "Could not load the photo library.");
+  }
+  const photos = result.photos.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const photo = row as Record<string, unknown>;
+    const id = typeof photo.id === "string" ? photo.id : "";
+    const imageUrl = typeof photo.image_url === "string" ? photo.image_url : "";
+    const name = typeof photo.name === "string" ? photo.name.trim() : "";
+    return id && imageUrl.startsWith("data:image/") ? [{ id, name: name || "Photo", imageUrl }] : [];
+  });
+  return { photos, next: typeof result.next === "string" ? result.next : null };
+}
+
 export async function addMaterialPriceItem(input: {
   section: MaterialPriceSection;
   name: string;
@@ -152,6 +180,7 @@ export async function addMaterialPriceItem(input: {
   productId: string;
   vendorName: string;
   unitCost: string;
+  imageUrl?: string;
 }): Promise<MaterialPriceItem> {
   const payload: Record<string, string> = {
     section: input.section,
@@ -162,6 +191,7 @@ export async function addMaterialPriceItem(input: {
   };
   const price = input.unitCost.trim().replace(/^\$/, "");
   if (input.section === "sundry" && price) payload.unit_cost = price;
+  if (input.section === "sundry" && input.imageUrl?.trim()) payload.image_url = input.imageUrl.trim();
   const { data, error } = await supabase.rpc("jobflow_admin_add_material_item" as never, {
     p_item: payload,
   } as never);

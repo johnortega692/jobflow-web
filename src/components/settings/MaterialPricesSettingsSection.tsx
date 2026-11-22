@@ -13,15 +13,18 @@ import {
   saveMaterialAkas,
   saveMaterialPrices,
   saveMaterialTax,
+  listSundryPhotos,
   type MaterialPriceDraft,
   type MaterialPriceItem,
   type MaterialPriceSection,
+  type SundryLibraryPhoto,
 } from "../../lib/materialPrices";
+import { fileToCatalogImage } from "../../lib/catalogImage";
 import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoiceSheenKey, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
 import { invoiceReaderChoices, readVendorInvoice } from "../../lib/invoiceReaders/readInvoice";
 import { foundationGridText } from "../../lib/invoiceReaders/foundationGrid";
 import { ecoFeeAmount, formatTaxPercent, paintFeeAmount } from "../../lib/invoiceReaders/invoiceCharges";
-import { invoiceProductCode, type ParsedInvoice, type ParsedInvoiceFile } from "../../lib/invoiceReaders/types";
+import { invoiceProductCode, type InvoiceLine, type ParsedInvoice, type ParsedInvoiceFile } from "../../lib/invoiceReaders/types";
 import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
 
@@ -42,7 +45,7 @@ function invoiceRowRole(row: InvoiceCompareRow): "matched" | "differs" | "new" |
 
 function invoiceSubline(row: InvoiceCompareRow): string {
   if (row.kind === "fee") return "Fee";
-  const parts = [row.line.section === "paint_product" ? "Paint" : "Sundry"];
+  const parts: string[] = [];
   const code = invoiceProductCode(row.line);
   if (code) parts.push(code);
   if (row.line.discountPercent != null) parts.push(`${row.line.discountPercent}% off $${row.line.listPrice.toFixed(2)}`);
@@ -107,6 +110,7 @@ export function MaterialPricesSettingsSection({
   const [invoiceReading, setInvoiceReading] = useState(false);
   const [invoice, setInvoice] = useState<ParsedInvoiceFile | null>(null);
   const [forcedMatch, setForcedMatch] = useState<Record<string, string>>({});
+  const [sectionOverride, setSectionOverride] = useState<Record<string, MaterialPriceSection>>({});
   const [linkQuery, setLinkQuery] = useState<{ key: string; text: string } | null>(null);
   const [taxPercent, setTaxPercent] = useState("10.25");
   const [savedTax, setSavedTax] = useState("10.25");
@@ -126,6 +130,14 @@ export function MaterialPricesSettingsSection({
   const [addAkas, setAddAkas] = useState("");
   const [addAliasSeed, setAddAliasSeed] = useState("");
   const [addInvoiceKey, setAddInvoiceKey] = useState<string | null>(null);
+  const [addImage, setAddImage] = useState("");
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [libraryPhotos, setLibraryPhotos] = useState<SundryLibraryPhoto[]>([]);
+  const [libraryNext, setLibraryNext] = useState<string | null>(null);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [sundryCategories, setSundryCategories] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -206,6 +218,37 @@ export function MaterialPricesSettingsSection({
   useEffect(() => () => {
     if (toastTimer.current != null) window.clearTimeout(toastTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (!libraryOpen) return;
+    let cancelled = false;
+    setLibraryNext(null);
+    const timer = window.setTimeout(() => {
+      setLibraryLoading(true);
+      void listSundryPhotos(libraryQuery, null)
+        .then((page) => {
+          if (cancelled) return;
+          const seen = new Set<string>();
+          setLibraryPhotos(page.photos.filter((photo) => {
+            if (seen.has(photo.imageUrl)) return false;
+            seen.add(photo.imageUrl);
+            return true;
+          }));
+          setLibraryNext(page.next);
+          setPhotoError(null);
+        })
+        .catch((e: unknown) => {
+          if (!cancelled) setPhotoError(e instanceof Error ? e.message : "Could not load the photo library.");
+        })
+        .finally(() => {
+          if (!cancelled) setLibraryLoading(false);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [libraryOpen, libraryQuery]);
 
   function showToast(message: string) {
     setToast(message);
@@ -476,6 +519,10 @@ export function MaterialPricesSettingsSection({
     setAddAkas("");
     setAddAliasSeed("");
     setAddVendor(vendor === OPEN_VENDOR ? "" : vendor);
+    setAddImage("");
+    setPhotoError(null);
+    setLibraryOpen(false);
+    setLibraryQuery("");
     setAddOpen(true);
     setError(null);
     setStatus(null);
@@ -495,9 +542,46 @@ export function MaterialPricesSettingsSection({
     setAddAkas("");
     setAddAliasSeed(row.line.description);
     setAddVendor(invoice.vendorName);
+    setAddImage("");
+    setPhotoError(null);
+    setLibraryOpen(false);
+    setLibraryQuery("");
     setAddOpen(true);
     setError(null);
     setStatus(null);
+  }
+
+  async function choosePhotoFile(file: File | null) {
+    if (!file) return;
+    setPhotoError(null);
+    try {
+      setAddImage(await fileToCatalogImage(file));
+      setLibraryOpen(false);
+    } catch (e) {
+      setPhotoError(e instanceof Error ? e.message : "Could not use that photo.");
+    }
+  }
+
+  async function loadMorePhotos() {
+    if (!libraryNext || libraryLoading) return;
+    setLibraryLoading(true);
+    setPhotoError(null);
+    try {
+      const page = await listSundryPhotos(libraryQuery, libraryNext);
+      setLibraryPhotos((current) => {
+        const seen = new Set(current.map((photo) => photo.imageUrl));
+        return [...current, ...page.photos.filter((photo) => {
+          if (seen.has(photo.imageUrl)) return false;
+          seen.add(photo.imageUrl);
+          return true;
+        })];
+      });
+      setLibraryNext(page.next);
+    } catch (e) {
+      setPhotoError(e instanceof Error ? e.message : "Could not load more photos.");
+    } finally {
+      setLibraryLoading(false);
+    }
   }
 
   async function submitAdd(event: FormEvent) {
@@ -518,6 +602,7 @@ export function MaterialPricesSettingsSection({
         productId: addProductId,
         vendorName: addVendor,
         unitCost: addSection === "sundry" ? addPrice : "",
+        imageUrl: addSection === "sundry" ? addImage : "",
       });
       const aliases = addAkas.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
       const seed = addAliasSeed.trim();
@@ -601,10 +686,22 @@ export function MaterialPricesSettingsSection({
     () => (invoice
       ? invoice.invoices.map((entry) => ({
           invoice: entry,
-          rows: compareInvoiceLines(entry.lines, items, drafts, entry.vendorName, forcedMatch, entry.invoiceNo, perGallon),
+          rows: compareInvoiceLines(
+            entry.lines.map((line, index) => {
+              const next = sectionOverride[invoiceLineKey(line, index, entry.invoiceNo)];
+              if (!next || next === line.section) return line;
+              return { ...line, section: next, sheen: next === "sundry" ? null : line.sheen };
+            }),
+            items,
+            drafts,
+            entry.vendorName,
+            forcedMatch,
+            entry.invoiceNo,
+            perGallon,
+          ),
         }))
       : []),
-    [drafts, forcedMatch, invoice, items, perGallon],
+    [drafts, forcedMatch, invoice, items, perGallon, sectionOverride],
   );
   const invoiceRows = invoiceGroups.flatMap((group) => group.rows);
   const invoiceMatchCount = invoiceRows.filter((row) => invoiceRowRole(row) === "matched").length;
@@ -663,12 +760,15 @@ export function MaterialPricesSettingsSection({
       const parsed = await readVendorInvoice(await file.arrayBuffer(), invoiceReader);
       setInvoice(parsed);
       setForcedMatch({});
+      setSectionOverride({});
       setLinkQuery(null);
       const lineCount = parsed.invoices.reduce((sum, entry) => sum + entry.lines.length, 0);
       const invoiceCount = parsed.invoices.length;
       setStatus(`${parsed.vendorName}: ${invoiceCount} ${invoiceCount === 1 ? "invoice" : "invoices"}, ${lineCount} priced ${lineCount === 1 ? "line" : "lines"}.`);
     } catch (e) {
       setInvoice(null);
+      setForcedMatch({});
+      setSectionOverride({});
       setError(e instanceof Error ? e.message : "Could not read that invoice.");
     } finally {
       setInvoiceReading(false);
@@ -712,6 +812,26 @@ export function MaterialPricesSettingsSection({
     } finally {
       setAkaSaving(false);
     }
+  }
+
+  function setInvoiceSection(key: string, original: InvoiceLine["section"], next: MaterialPriceSection) {
+    setSectionOverride((current) => {
+      if (next === original) {
+        if (!(key in current)) return current;
+        const copy = { ...current };
+        delete copy[key];
+        return copy;
+      }
+      if (current[key] === next) return current;
+      return { ...current, [key]: next };
+    });
+    setForcedMatch((current) => {
+      if (!current[key]) return current;
+      const copy = { ...current };
+      delete copy[key];
+      return copy;
+    });
+    setActionMenu(null);
   }
 
   function applyInvoicePrice(row: InvoiceCompareRow) {
@@ -863,6 +983,7 @@ export function MaterialPricesSettingsSection({
                 setInvoice(null);
                 setLinkQuery(null);
                 setForcedMatch({});
+                setSectionOverride({});
               }}
             >
               {invoiceReaderChoices.map((choice) => (
@@ -883,7 +1004,7 @@ export function MaterialPricesSettingsSection({
                 className="btn material-prices-clear"
                 aria-label="Clear results"
                 title="Clear results"
-                onClick={() => { setInvoice(null); setLinkQuery(null); }}
+                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); }}
               >
                 ✕
               </button>
@@ -985,6 +1106,26 @@ export function MaterialPricesSettingsSection({
                           </button>
                         </div>
                         <div className="material-prices-invoice-sub">
+                          {role === "fee" ? null : (
+                            <span className="material-prices-kind" role="group" aria-label={`Catalog type for ${row.line.description}`}>
+                              <button
+                                type="button"
+                                aria-pressed={row.line.section === "paint_product"}
+                                disabled={readOnly}
+                                onClick={() => setInvoiceSection(key, group.invoice.lines[index]!.section, "paint_product")}
+                              >
+                                Paint
+                              </button>
+                              <button
+                                type="button"
+                                aria-pressed={row.line.section === "sundry"}
+                                disabled={readOnly}
+                                onClick={() => setInvoiceSection(key, group.invoice.lines[index]!.section, "sundry")}
+                              >
+                                Sundry
+                              </button>
+                            </span>
+                          )}
                           <span className="material-prices-invoice-sub-text">{invoiceSubline(row)}</span>
                           {role === "matched" ? <span className="material-prices-pill is-match">✓</span> : null}
                           {role === "differs" ? <span className="material-prices-pill is-differ">Differs</span> : null}
@@ -1275,6 +1416,78 @@ export function MaterialPricesSettingsSection({
                       disabled={adding}
                     />
                   </label>
+                  {addSection === "sundry" ? (
+                    <div className="material-prices-photo">
+                      <span>Photo</span>
+                      <div className="material-prices-photo-row">
+                        {addImage ? <img src={addImage} alt="" /> : null}
+                        <input
+                          ref={photoInputRef}
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          disabled={adding}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            event.target.value = "";
+                            void choosePhotoFile(file);
+                          }}
+                        />
+                        <button type="button" className="btn" disabled={adding} onClick={() => photoInputRef.current?.click()}>
+                          {addImage ? "Change photo" : "Upload photo"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={adding}
+                          onClick={() => setLibraryOpen((open) => !open)}
+                        >
+                          Photo library
+                        </button>
+                        {addImage ? (
+                          <button type="button" className="btn" disabled={adding} onClick={() => setAddImage("")}>
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                      {photoError ? <p className="material-prices-error">{photoError}</p> : null}
+                      {libraryOpen ? (
+                        <div className="material-prices-library">
+                          <input
+                            value={libraryQuery}
+                            onChange={(event) => setLibraryQuery(event.target.value)}
+                            placeholder="Search item or product ID"
+                            aria-label="Search photo library"
+                            disabled={adding}
+                          />
+                          {libraryLoading && libraryPhotos.length === 0 ? <p className="muted small">Loading photos…</p> : null}
+                          {!libraryLoading && libraryPhotos.length === 0 ? <p className="muted small">No photos match.</p> : null}
+                          <div className="material-prices-library-grid">
+                            {libraryPhotos.map((photo) => (
+                              <button
+                                key={photo.id}
+                                type="button"
+                                title={photo.name}
+                                disabled={adding}
+                                onClick={() => {
+                                  setAddImage(photo.imageUrl);
+                                  setLibraryOpen(false);
+                                }}
+                              >
+                                <img src={photo.imageUrl} alt="" />
+                                <span>{photo.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                          {libraryNext ? (
+                            <button type="button" className="btn" disabled={adding || libraryLoading} onClick={() => void loadMorePhotos()}>
+                              {libraryLoading ? "Loading…" : "More photos"}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="material-prices-add-actions">
                     <button type="submit" className="btn btn-primary" disabled={adding || !addName.trim()}>
                       {adding ? "Adding…" : "Add"}
