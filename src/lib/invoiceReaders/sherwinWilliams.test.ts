@@ -335,6 +335,112 @@ test("a primer product still prices Primer when the invoice line names no sheen"
   assert.equal(rows[0]?.catalogPrice, 12.14);
 });
 
+test("a paint price matches without a sheen when every sheen has that price", () => {
+  const rows = compareInvoiceLines([
+    {
+      salesNumber: "",
+      size: "GALLON",
+      productId: "A41W00151",
+      description: "DURATION HOME",
+      color: "",
+      qty: 1,
+      listPrice: 48,
+      discountAmount: 0,
+      discountPercent: null,
+      netPrice: 48,
+      section: "paint_product",
+      sheen: null,
+    },
+  ], [
+    item({
+      id: "duration",
+      section: "paint_product",
+      name: "Duration Home",
+      productId: "A41W00151",
+      sheens: ["Flat", "Eggshell", "Semi-Gloss"],
+      sheenCosts: { Flat: 48, Eggshell: 48, "Semi-Gloss": 48 },
+      vendorNames: ["Sherwin Williams"],
+    }),
+  ], {}, "Sherwin Williams");
+  assert.equal(rows[0]?.kind, "match");
+  assert.equal(rows[0]?.sheenKey, null);
+  assert.equal(rows[0]?.catalogPrice, null);
+  assert.equal(rows[0]?.samePrice, false);
+  assert.deepEqual(rows[0]?.sheenOptions?.map((option) => option.name), ["Flat", "Eggshell", "Semi-Gloss"]);
+});
+
+test("different sheen prices ask for a sheen until one is chosen", () => {
+  const line = {
+    salesNumber: "",
+    size: "GALLON",
+    productId: "A41W00151",
+    description: "DURATION HOME",
+    color: "",
+    qty: 1,
+    listPrice: 48,
+    discountAmount: 0,
+    discountPercent: null,
+    netPrice: 48,
+    section: "paint_product" as const,
+    sheen: null,
+  };
+  const catalog = [
+    item({
+      id: "duration",
+      section: "paint_product",
+      name: "Duration Home",
+      productId: "A41W00151",
+      sheens: ["Flat", "Eggshell", "Semi-Gloss"],
+      sheenCosts: { Flat: 40, Eggshell: 48, "Semi-Gloss": 52 },
+      vendorNames: ["Sherwin Williams"],
+    }),
+  ];
+  const waiting = compareInvoiceLines([line], catalog, {}, "Sherwin Williams");
+  assert.equal(waiting[0]?.sheenKey, null);
+  assert.equal(waiting[0]?.catalogPrice, null);
+  assert.equal(waiting[0]?.samePrice, false);
+  assert.deepEqual(waiting[0]?.sheenOptions?.map((option) => option.name), ["Flat", "Eggshell", "Semi-Gloss"]);
+
+  const chosen = compareInvoiceLines([line], catalog, {}, "Sherwin Williams", {}, "", false, { ":0::A41W00151": "Eggshell" });
+  assert.equal(chosen[0]?.sheenKey, "Eggshell");
+  assert.equal(chosen[0]?.catalogPrice, 48);
+  assert.equal(chosen[0]?.samePrice, true);
+  assert.deepEqual(chosen[0]?.sheenOptions?.map((option) => option.name), ["Flat", "Eggshell", "Semi-Gloss"]);
+});
+
+test("an invoice sheen word does not choose the catalog sheen", () => {
+  const rows = compareInvoiceLines([
+    {
+      salesNumber: "",
+      size: "GALLON",
+      productId: "A41W00151",
+      description: "DURATION HOME EGGSHELL",
+      color: "",
+      qty: 1,
+      listPrice: 48,
+      discountAmount: 0,
+      discountPercent: null,
+      netPrice: 48,
+      section: "paint_product",
+      sheen: "Eggshell",
+    },
+  ], [
+    item({
+      id: "duration",
+      section: "paint_product",
+      name: "Duration Home",
+      productId: "A41W00151",
+      sheens: ["Flat", "Eggshell", "Semi-Gloss"],
+      sheenCosts: { Flat: 40, Eggshell: 48, "Semi-Gloss": 52 },
+      vendorNames: ["Sherwin Williams"],
+    }),
+  ], {}, "Sherwin Williams");
+  assert.equal(rows[0]?.sheenKey, null);
+  assert.equal(rows[0]?.catalogPrice, null);
+  assert.equal(rows[0]?.samePrice, false);
+  assert.deepEqual(rows[0]?.sheenOptions?.map((option) => option.name), ["Flat", "Eggshell", "Semi-Gloss"]);
+});
+
 test("a PDF with two Sherwin Williams invoices stays split by PAGE n OF m", () => {
   const header = row([
     [20, "SALES NUMBER"],

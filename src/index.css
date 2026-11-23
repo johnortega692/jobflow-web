@@ -22291,6 +22291,23 @@ td.billing-manpower-week-col--beyond-contract,
   cursor: default;
 }
 
+.material-prices-sheen {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 11rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0 1.4rem 0 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .material-prices-invoice-sub-text {
   min-width: 0;
   overflow: hidden;

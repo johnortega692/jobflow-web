@@ -20,6 +20,19 @@ export type InvoicePriceDraft = {
 
 export type InvoiceMatchKind = "match" | "suggested" | "missing" | "fee";
 
+export type InvoiceSheenOption = {
+  name: string;
+  price: number | null;
+};
+
+export type InvoicePaintTarget = {
+  /** Sheen column to update. Empty when the invoice price applies to every sheen, or a sheen still has to be chosen. */
+  sheen: string | null;
+  catalogPrice: number | null;
+  /** Sheens the user can choose. Empty when the product has one sheen. */
+  options: InvoiceSheenOption[] | null;
+};
+
 export type InvoiceCompareRow = {
   line: InvoiceLine;
   kind: InvoiceMatchKind;
@@ -27,6 +40,7 @@ export type InvoiceCompareRow = {
   suggestion: InvoiceCatalogItem | null;
   catalogPrice: number | null;
   sheenKey: string | null;
+  sheenOptions: InvoiceSheenOption[] | null;
   samePrice: boolean;
 };
 
@@ -76,18 +90,6 @@ function vendorHit(item: InvoiceCatalogItem, vendorName: string): boolean {
   return item.vendorNames.some((name) => vendorKey(name) === want);
 }
 
-export function invoiceSheenKey(item: InvoiceCatalogItem, draft: InvoicePriceDraft | undefined, label: string | null): string | null {
-  const keys = [...item.sheens, ...Object.keys(item.sheenCosts), ...Object.keys(draft?.sheenCosts ?? {})];
-  if (label) {
-    const want = fold(label);
-    const hit = keys.find((key) => fold(key) === want);
-    if (hit) return hit;
-  }
-  const own = item.sheens.map((name) => name.trim()).filter(Boolean);
-  if (!label && own.length === 1) return own[0]!;
-  return null;
-}
-
 /** Gallons in a paint unit such as 5GL or GALLON. Quart and each stay unset. */
 export function paintGallons(size: string): number | null {
   const text = size.toUpperCase().replace(/[\s-]+/g, "");
@@ -108,23 +110,69 @@ export function invoiceComparePrice(line: InvoiceLine, perGallon: boolean): numb
   return Math.round((line.netPrice / gallons) * 100) / 100;
 }
 
-function draftPrice(item: InvoiceCatalogItem, draft: InvoicePriceDraft | undefined, sheenKey: string | null): number | null {
-  if (item.section === "sundry") {
-    const raw = draft?.unitCost ?? "";
-    if (raw.trim()) {
-      const n = Number(raw);
-      return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
-    }
-    return item.unitCost;
+const STANDARD_SHEENS = ["Flat", "Eggshell", "Satin", "Semi-Gloss", "Gloss", "Primer"];
+const SHEEN_ORDER = STANDARD_SHEENS.map((name) => name.toLowerCase().replace(/[\s-]+/g, ""));
+
+function paintSheenNames(item: InvoiceCatalogItem, draft: InvoicePriceDraft | undefined): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const name of [...item.sheens, ...Object.keys(item.sheenCosts), ...Object.keys(draft?.sheenCosts ?? {})]) {
+    const clean = name.trim();
+    const key = fold(clean);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    names.push(clean);
   }
-  if (!sheenKey) return null;
-  const raw = draft?.sheenCosts[sheenKey];
-  if (raw != null && raw.trim()) {
+  return names;
+}
+
+function sheenAmount(item: InvoiceCatalogItem, draft: InvoicePriceDraft | undefined, sheen: string): number | null {
+  const raw = draft?.sheenCosts[sheen];
+  if (draft && Object.keys(draft.sheenCosts).length > 0) {
+    if (raw == null || !raw.trim()) return null;
     const n = Number(raw);
     return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
   }
-  const saved = item.sheenCosts[sheenKey];
-  return saved == null || !Number.isFinite(saved) ? null : saved;
+  const saved = item.sheenCosts[sheen];
+  return saved == null || !Number.isFinite(saved) ? null : Math.round(saved * 100) / 100;
+}
+
+function sheenChoices(names: string[], draft: InvoicePriceDraft | undefined, item: InvoiceCatalogItem): InvoiceSheenOption[] {
+  const amounts = names.map((name) => ({ name, price: sheenAmount(item, draft, name) }));
+  const listed = amounts.filter((entry) => entry.price != null || SHEEN_ORDER.includes(fold(entry.name)));
+  const options = listed.length > 0 ? listed : amounts;
+  return options.sort((a, b) => {
+    const aOrder = SHEEN_ORDER.indexOf(fold(a.name));
+    const bOrder = SHEEN_ORDER.indexOf(fold(b.name));
+    return (aOrder === -1 ? SHEEN_ORDER.length : aOrder) - (bOrder === -1 ? SHEEN_ORDER.length : bOrder) || a.name.localeCompare(b.name);
+  });
+}
+
+/** The invoice does not choose a sheen. One sheen is used as-is. Several sheens wait for the user. */
+export function invoicePaintTarget(
+  item: InvoiceCatalogItem,
+  draft: InvoicePriceDraft | undefined,
+  chosenSheen: string | null = null,
+): InvoicePaintTarget {
+  const names = paintSheenNames(item, draft);
+  const available = names.length > 0 ? names : STANDARD_SHEENS;
+  const only = available.length === 1 ? available[0]! : null;
+  const chosen = !only && chosenSheen ? available.find((name) => fold(name) === fold(chosenSheen)) ?? null : null;
+  const sheen = only ?? chosen;
+  return {
+    sheen,
+    catalogPrice: sheen ? sheenAmount(item, draft, sheen) : null,
+    options: available.length > 1 ? sheenChoices(available, draft, item) : null,
+  };
+}
+
+function draftPrice(item: InvoiceCatalogItem, draft: InvoicePriceDraft | undefined): number | null {
+  const raw = draft?.unitCost ?? "";
+  if (raw.trim()) {
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+  }
+  return item.unitCost;
 }
 
 function rank(line: InvoiceLine, item: InvoiceCatalogItem, vendorName: string): number {
@@ -152,10 +200,11 @@ export function compareInvoiceLines(
   forcedIds: Record<string, string> = {},
   invoiceNo = "",
   perGallon = false,
+  sheenChoices: Record<string, string> = {},
 ): InvoiceCompareRow[] {
   return lines.map((line, index) => {
     if (line.catalogItem === false) {
-      return { line, kind: "fee" as const, item: null, suggestion: null, catalogPrice: null, sheenKey: null, samePrice: false };
+      return { line, kind: "fee" as const, item: null, suggestion: null, catalogPrice: null, sheenKey: null, sheenOptions: null, samePrice: false };
     }
     const key = invoiceLineKey(line, index, invoiceNo);
     const catalog = items.filter((item) => inInvoiceCatalog(item, vendorName));
@@ -173,12 +222,14 @@ export function compareInvoiceLines(
       if (best.score >= 85 || (best.score >= 62 && gap >= 15)) item = best.item;
       else if (best.score >= 48 && gap >= 8) suggestion = best.item;
     }
-    const sheenKey = item && line.section === "paint_product" ? invoiceSheenKey(item, drafts[item.id], line.sheen) : null;
-    const catalogPrice = item ? draftPrice(item, drafts[item.id], sheenKey) : null;
+    const paint = item && line.section === "paint_product" ? invoicePaintTarget(item, drafts[item.id], sheenChoices[key] ?? null) : null;
+    const sheenKey = paint?.sheen ?? null;
+    const sheenOptions = paint?.options ?? null;
+    const catalogPrice = paint ? paint.catalogPrice : item ? draftPrice(item, drafts[item.id]) : null;
     const comparePrice = invoiceComparePrice(line, perGallon);
     const samePrice = item != null && catalogPrice != null && Math.round(catalogPrice * 100) === Math.round(comparePrice * 100);
     const kind: InvoiceMatchKind = item ? "match" : suggestion ? "suggested" : "missing";
-    return { line, kind, item, suggestion, catalogPrice, sheenKey, samePrice };
+    return { line, kind, item, suggestion, catalogPrice, sheenKey, sheenOptions, samePrice };
   });
 }
 

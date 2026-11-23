@@ -20,7 +20,7 @@ import {
   type SundryLibraryPhoto,
 } from "../../lib/materialPrices";
 import { fileToCatalogImage } from "../../lib/catalogImage";
-import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoiceSheenKey, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
+import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoicePaintTarget, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
 import { invoiceReaderChoices, readVendorInvoice } from "../../lib/invoiceReaders/readInvoice";
 import { foundationGridText } from "../../lib/invoiceReaders/foundationGrid";
 import { ecoFeeAmount, formatTaxPercent, paintFeeAmount } from "../../lib/invoiceReaders/invoiceCharges";
@@ -36,8 +36,9 @@ function foldSheen(value: string): string {
   return value.toLowerCase().replace(/[\s-]+/g, "");
 }
 
-function invoiceRowRole(row: InvoiceCompareRow): "matched" | "differs" | "new" | "fee" {
+function invoiceRowRole(row: InvoiceCompareRow): "matched" | "differs" | "sheen" | "new" | "fee" {
   if (row.kind === "fee") return "fee";
+  if (row.kind === "match" && row.sheenOptions && !row.sheenKey) return "sheen";
   if (row.kind === "match" && row.samePrice) return "matched";
   if (row.kind === "match") return "differs";
   return "new";
@@ -112,6 +113,7 @@ export function MaterialPricesSettingsSection({
   const [invoice, setInvoice] = useState<ParsedInvoiceFile | null>(null);
   const [forcedMatch, setForcedMatch] = useState<Record<string, string>>({});
   const [sectionOverride, setSectionOverride] = useState<Record<string, MaterialPriceSection>>({});
+  const [sheenChoice, setSheenChoice] = useState<Record<string, string>>({});
   const [linkQuery, setLinkQuery] = useState<{ key: string; text: string } | null>(null);
   const [taxPercent, setTaxPercent] = useState("10.25");
   const [savedTax, setSavedTax] = useState("10.25");
@@ -504,6 +506,22 @@ export function MaterialPricesSettingsSection({
     setStatus(null);
   }
 
+  function setPaintPrice(item: MaterialPriceItem, price: string) {
+    setDrafts((current) => {
+      const draft = current[item.id] ?? draftFromItem(item);
+      const keys = new Set<string>();
+      for (const sheen of [...item.sheens, ...Object.keys(item.sheenCosts), ...Object.keys(draft.sheenCosts)]) {
+        if (sheen.trim()) keys.add(sheen);
+      }
+      if (keys.size === 0) {
+        for (const sheen of PAINT_PRICE_COLUMNS) keys.add(sheen);
+      }
+      const sheenCosts = { ...draft.sheenCosts };
+      for (const sheen of keys) sheenCosts[sheen] = price;
+      return { ...current, [item.id]: { ...draft, sheenCosts } };
+    });
+  }
+
   function refreshSundryCategories() {
     void listSundryCategories().then(setSundryCategories).catch(() => undefined);
   }
@@ -699,10 +717,11 @@ export function MaterialPricesSettingsSection({
             forcedMatch,
             entry.invoiceNo,
             perGallon,
+            sheenChoice,
           ),
         }))
       : []),
-    [drafts, forcedMatch, invoice, items, perGallon, sectionOverride],
+    [drafts, forcedMatch, invoice, items, perGallon, sectionOverride, sheenChoice],
   );
   const invoiceRows = invoiceGroups.flatMap((group) => group.rows);
   const invoiceMatchCount = invoiceRows.filter((row) => invoiceRowRole(row) === "matched").length;
@@ -795,6 +814,7 @@ export function MaterialPricesSettingsSection({
       setInvoice(parsed);
       setForcedMatch({});
       setSectionOverride({});
+      setSheenChoice({});
       setLinkQuery(null);
       const lineCount = parsed.invoices.reduce((sum, entry) => sum + entry.lines.length, 0);
       const invoiceCount = parsed.invoices.length;
@@ -803,6 +823,7 @@ export function MaterialPricesSettingsSection({
       setInvoice(null);
       setForcedMatch({});
       setSectionOverride({});
+      setSheenChoice({});
       setError(e instanceof Error ? e.message : "Could not read that invoice.");
     } finally {
       setInvoiceReading(false);
@@ -814,22 +835,16 @@ export function MaterialPricesSettingsSection({
     setForcedMatch((current) => ({ ...current, [key]: choice.id }));
     setLinkQuery(null);
     const price = invoiceComparePrice(row.line, perGallon).toFixed(2);
-    let priced = false;
-    if (choice.section === "sundry") {
-      setUnit(choice.id, price);
-      priced = true;
-    } else {
-      const sheen = invoiceSheenKey(choice, drafts[choice.id], row.line.sheen);
-      if (sheen) {
-        setSheen(choice.id, sheen, price);
-        priced = true;
-      } else {
-        setError(`${choice.name} has more than one sheen, and that invoice line does not name one.`);
-      }
-    }
+    const paint = choice.section === "paint_product" ? invoicePaintTarget(choice, drafts[choice.id], sheenChoice[key] ?? null) : null;
+    const priced = paint == null || !paint.options || paint.sheen != null;
+    if (choice.section === "sundry") setUnit(choice.id, price);
+    else if (paint?.sheen) setSheen(choice.id, paint.sheen, price);
+    else if (!paint?.options) setPaintPrice(choice, price);
     revealItem(choice);
     const alias = row.line.description.trim();
-    const priceNote = priced ? `Invoice price for ${choice.name} is in the list. Save to keep it.` : "";
+    const priceNote = priced
+      ? `Invoice price for ${choice.name} is in the list. Save to keep it.`
+      : `Select a sheen for ${choice.name}, then apply the invoice price.`;
     if (priceNote) setStatus(priceNote);
     if (!alias || knownAlias(choice, alias)) return;
     setAkaSaving(true);
@@ -839,7 +854,7 @@ export function MaterialPricesSettingsSection({
       setItems((current) => current.map((item) => item.id === choice.id ? { ...item, akas } : item));
       setStatus(priced
         ? `Invoice price for ${choice.name} is in the list. Saved “${alias}” as an AKA. Save to keep the price.`
-        : `Saved “${alias}” as an AKA for ${choice.name}.`);
+        : `Saved “${alias}” as an AKA for ${choice.name}. Select a sheen, then apply the invoice price.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save that AKA.");
       if (priceNote) setStatus(priceNote);
@@ -865,18 +880,37 @@ export function MaterialPricesSettingsSection({
       delete copy[key];
       return copy;
     });
+    if (next !== "paint_product") {
+      setSheenChoice((current) => {
+        if (!(key in current)) return current;
+        const copy = { ...current };
+        delete copy[key];
+        return copy;
+      });
+    }
     setActionMenu(null);
+  }
+
+  function setInvoiceSheen(key: string, sheen: string) {
+    setSheenChoice((current) => {
+      if (!sheen) {
+        if (!(key in current)) return current;
+        const copy = { ...current };
+        delete copy[key];
+        return copy;
+      }
+      if (current[key] === sheen) return current;
+      return { ...current, [key]: sheen };
+    });
   }
 
   function applyInvoicePrice(row: InvoiceCompareRow) {
     if (!row.item) return;
+    if (row.sheenOptions && !row.sheenKey) return;
     const price = invoiceComparePrice(row.line, perGallon).toFixed(2);
     if (row.item.section === "sundry") setUnit(row.item.id, price);
     else if (row.sheenKey) setSheen(row.item.id, row.sheenKey, price);
-    else {
-      setError(`${row.item.name} has more than one sheen, and that invoice line does not name one.`);
-      return;
-    }
+    else setPaintPrice(row.item, price);
     revealItem(row.item);
     setStatus(`Invoice price for ${row.item.name} is in the list. Save to keep it.`);
   }
@@ -1026,6 +1060,7 @@ export function MaterialPricesSettingsSection({
                 setLinkQuery(null);
                 setForcedMatch({});
                 setSectionOverride({});
+                setSheenChoice({});
               }}
             >
               {invoiceReaderChoices.map((choice) => (
@@ -1046,7 +1081,7 @@ export function MaterialPricesSettingsSection({
                 className="btn material-prices-clear"
                 aria-label="Clear results"
                 title="Clear results"
-                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); }}
+                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); setSheenChoice({}); }}
               >
                 ✕
               </button>
@@ -1168,6 +1203,22 @@ export function MaterialPricesSettingsSection({
                               </button>
                             </span>
                           )}
+                          {row.sheenOptions ? (
+                            <select
+                              className="material-prices-sheen"
+                              aria-label={`Sheen for ${row.line.description}`}
+                              value={row.sheenKey ?? ""}
+                              disabled={readOnly}
+                              onChange={(event) => setInvoiceSheen(key, event.target.value)}
+                            >
+                              <option value="">Sheen</option>
+                              {row.sheenOptions.map((option) => (
+                                <option key={option.name} value={option.name}>
+                                  {option.price == null ? option.name : `${option.name} · $${option.price.toFixed(2)}`}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
                           <span className="material-prices-invoice-sub-text">{invoiceSubline(row)}</span>
                           {role === "matched" ? <span className="material-prices-pill is-match">✓</span> : null}
                           {role === "differs" ? <span className="material-prices-pill is-differ">Differs</span> : null}
@@ -1191,7 +1242,8 @@ export function MaterialPricesSettingsSection({
                           </button>
                         </span>
                         {role === "matched" ? <div className="material-prices-price-note">same as catalog</div> : null}
-                        {role === "differs" ? (
+                        {row.sheenOptions && !row.sheenKey ? <div className="material-prices-price-note is-differ">Select a sheen</div> : null}
+                        {role === "differs" && !(row.sheenOptions && !row.sheenKey) ? (
                           <div className="material-prices-price-note is-differ">
                             was {row.catalogPrice == null ? "—" : `$${row.catalogPrice.toFixed(2)}`}
                           </div>
@@ -1235,9 +1287,9 @@ export function MaterialPricesSettingsSection({
                             role="menu"
                             style={{ top: actionMenu.top, right: actionMenu.right }}
                           >
-                            {role === "differs" ? (
+                            {role === "differs" || role === "sheen" ? (
                               <>
-                                <button type="button" role="menuitem" disabled={readOnly} onClick={() => { setActionMenu(null); applyInvoicePrice(row); }}>Apply</button>
+                                <button type="button" role="menuitem" disabled={readOnly || (row.sheenOptions != null && !row.sheenKey)} onClick={() => { setActionMenu(null); applyInvoicePrice(row); }}>Apply</button>
                                 <button type="button" role="menuitem" disabled={readOnly || addOpen} onClick={() => { setActionMenu(null); openInvoiceAdd(row, key); }}>Add</button>
                                 <button type="button" role="menuitem" onClick={() => openInvoiceFind(key)}>Find item</button>
                               </>
@@ -1248,7 +1300,7 @@ export function MaterialPricesSettingsSection({
                             {role === "matched" ? (
                               <button type="button" role="menuitem" onClick={() => openInvoiceFind(key)}>Change match…</button>
                             ) : null}
-                            {role === "matched" || (role === "differs" && linked) ? (
+                            {role === "matched" || ((role === "differs" || role === "sheen") && linked) ? (
                               <button type="button" role="menuitem" onClick={() => unlinkInvoiceRow(key)}>Unlink</button>
                             ) : null}
                           </div>,
