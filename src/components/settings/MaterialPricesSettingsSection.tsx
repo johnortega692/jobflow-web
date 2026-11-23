@@ -750,15 +750,15 @@ export function MaterialPricesSettingsSection({
     }
   }
 
-  async function copyFoundation() {
-    if (!invoice) return;
-    const lines = invoice.invoices.flatMap((entry) => entry.lines);
+  async function copyFoundation(entry: ParsedInvoice) {
+    const lines = entry.lines;
     if (!lines.length) return;
+    const label = entry.invoiceNo ? `#${entry.invoiceNo}` : "that invoice";
     try {
       await navigator.clipboard.writeText(foundationGridText(lines));
       const fees = lines.filter((line) => line.catalogItem === false).length;
       setError(null);
-      setStatus(`Copied ${lines.length} rows. In Foundation, click the first Description cell and paste.${fees ? ` Includes ${fees} ${fees === 1 ? "fee" : "fees"}.` : ""}`);
+      setStatus(`Copied ${lines.length} rows for ${label}. In Foundation, click the first Description cell and paste.${fees ? ` Includes ${fees} ${fees === 1 ? "fee" : "fees"}.` : ""}`);
     } catch {
       setError("Could not copy those rows. Allow clipboard access and try again.");
     }
@@ -1111,7 +1111,6 @@ export function MaterialPricesSettingsSection({
               {" · "}
               {invoiceNewRows.length} not in catalog
             </span>
-            <button type="button" className="btn" onClick={() => void copyFoundation()}>Copy for Foundation</button>
           </div>
           <div className="material-prices-invoice-head">
             <div className="material-prices-segment" role="group" aria-label="Invoice price unit">
@@ -1133,29 +1132,40 @@ export function MaterialPricesSettingsSection({
                   <Fragment key={`${groupIndex}-${group.invoice.invoiceNo}-${group.invoice.firstPage}`}>
                     <tr className="material-prices-invoice-break">
                       <td colSpan={3}>
-                        <div className="material-prices-invoice-id">
-                          <strong>{group.invoice.invoiceNo ? `#${group.invoice.invoiceNo}` : "Invoice"}</strong>
-                          {group.invoice.invoiceNo ? (
-                            <button
-                              type="button"
-                              className="material-prices-copy"
-                              aria-label={`Copy invoice ${group.invoice.invoiceNo}`}
-                              title="Copy invoice number"
-                              onClick={() => void copyText(group.invoice.invoiceNo, group.invoice.invoiceNo)}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                                <rect x="9" y="9" width="13" height="13" rx="2" />
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                              </svg>
-                            </button>
-                          ) : null}
-                          <span className="muted small">{[group.invoice.invoiceDate, invoicePageLabel(group.invoice)].filter(Boolean).join(" · ")}</span>
-                        </div>
-                        <div className="material-prices-invoice-charges">
-                          <span>Total {group.invoice.total == null ? "—" : `$${group.invoice.total.toFixed(2)}`}</span>
-                          <span>Paint fee ${paintFeeAmount(group.invoice.lines).toFixed(2)}</span>
-                          <span>Eco fee ${ecoFeeAmount(group.invoice.lines).toFixed(2)}</span>
-                          <span>Tax {group.invoice.taxPercent == null ? "—" : formatTaxPercent(group.invoice.taxPercent)}</span>
+                        <div className="material-prices-invoice-break-row">
+                          <div>
+                            <div className="material-prices-invoice-id">
+                              <strong>{group.invoice.invoiceNo ? `#${group.invoice.invoiceNo}` : "Invoice"}</strong>
+                              {group.invoice.invoiceNo ? (
+                                <button
+                                  type="button"
+                                  className="material-prices-copy"
+                                  aria-label={`Copy invoice ${group.invoice.invoiceNo}`}
+                                  title="Copy invoice number"
+                                  onClick={() => void copyText(group.invoice.invoiceNo, group.invoice.invoiceNo)}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                                    <rect x="9" y="9" width="13" height="13" rx="2" />
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                  </svg>
+                                </button>
+                              ) : null}
+                              <span className="muted small">{[group.invoice.invoiceDate, invoicePageLabel(group.invoice)].filter(Boolean).join(" · ")}</span>
+                            </div>
+                            <div className="material-prices-invoice-charges">
+                              <span>Total {group.invoice.total == null ? "—" : `$${group.invoice.total.toFixed(2)}`}</span>
+                              <span>Paint fee ${paintFeeAmount(group.invoice.lines).toFixed(2)}</span>
+                              <span>Eco fee ${ecoFeeAmount(group.invoice.lines).toFixed(2)}</span>
+                              <span>Tax {group.invoice.taxPercent == null ? "—" : formatTaxPercent(group.invoice.taxPercent)}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => void copyFoundation(group.invoice)}
+                          >
+                            Copy for Foundation
+                          </button>
                         </div>
                       </td>
                     </tr>

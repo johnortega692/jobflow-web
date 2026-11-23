@@ -22401,6 +22401,22 @@ td.billing-manpower-week-col--beyond-contract,
   font-weight: 650;
 }
 
+.material-prices-invoice-break-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 1rem;
+}
+
+.material-prices-invoice-break-row > div {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.material-prices-invoice-break-row .btn {
+  margin-left: auto;
+}
+
 .material-prices-invoice-id {
   display: flex;
   align-items: center;
