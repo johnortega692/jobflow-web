@@ -94,24 +94,10 @@ function vendorHit(item: InvoiceCatalogItem, vendorName: string): boolean {
   return item.vendorNames.some((name) => vendorKey(name) === want);
 }
 
-/** Gallons in a paint unit such as 5GL or GALLON. Quart and each stay unset. */
-export function paintGallons(size: string): number | null {
-  const text = size.toUpperCase().replace(/[\s-]+/g, "");
-  const counted = text.match(/^(\d+)(?:GL|GAL|GALLONS?)$/);
-  if (counted) {
-    const gallons = Number(counted[1]);
-    return gallons > 0 ? gallons : null;
-  }
-  if (/^(?:GL|GAL|GALLONS?)$/.test(text)) return 1;
-  return null;
-}
-
-/** Catalog prices are per gallon. Multi-gallon invoice units divide down to that. */
+/** Catalog prices are per gallon. 1 gal always divides a paint line by 5. */
 export function invoiceComparePrice(line: InvoiceLine, perGallon: boolean): number {
   if (!perGallon || line.section !== "paint_product") return line.netPrice;
-  const gallons = paintGallons(line.size);
-  if (!gallons || gallons <= 1) return line.netPrice;
-  return Math.round((line.netPrice / gallons) * 100) / 100;
+  return Math.round((line.netPrice / 5) * 100) / 100;
 }
 
 const STANDARD_SHEENS = ["Flat", "Eggshell", "Satin", "Semi-Gloss", "Gloss", "Primer"];

@@ -310,7 +310,7 @@ test("a primer abbreviation uses the Primer price on a primer-only product", () 
   assert.equal(rows[0]?.catalogPrice, 12.14);
 });
 
-test("a 5 gallon invoice price divides to the 1 gallon catalog price", () => {
+test("1 gal divides a paint invoice price by 5 and leaves as-invoiced alone", () => {
   const five = {
     salesNumber: "",
     size: "5GL",
@@ -327,7 +327,7 @@ test("a 5 gallon invoice price divides to the 1 gallon catalog price", () => {
   };
   assert.equal(invoiceComparePrice(five, true), 21.5);
   assert.equal(invoiceComparePrice(five, false), 107.5);
-  assert.equal(invoiceComparePrice({ ...five, size: "GALLON", netPrice: 37.8 }, true), 37.8);
+  assert.equal(invoiceComparePrice({ ...five, size: "GALLON", netPrice: 37.8 }, true), 7.56);
   assert.equal(invoiceComparePrice({ ...five, section: "sundry", size: "EA", netPrice: 6.62 }, true), 6.62);
 });
 
@@ -427,7 +427,16 @@ test("different sheen prices ask for a sheen until one is chosen", () => {
   assert.equal(waiting[0]?.samePrice, false);
   assert.deepEqual(waiting[0]?.sheenOptions?.map((option) => option.name), ["Flat", "Eggshell", "Semi-Gloss"]);
 
-  const chosen = compareInvoiceLines([line], catalog, {}, "Sherwin Williams", {}, "", {}, { ":0::A41W00151": "Eggshell" });
+  const chosen = compareInvoiceLines(
+    [line],
+    catalog,
+    {},
+    "Sherwin Williams",
+    {},
+    "",
+    { ":0::A41W00151": false },
+    { ":0::A41W00151": "Eggshell" },
+  );
   assert.equal(chosen[0]?.sheenKey, "Eggshell");
   assert.equal(chosen[0]?.catalogPrice, 48);
   assert.equal(chosen[0]?.samePrice, true);
