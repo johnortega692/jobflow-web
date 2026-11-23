@@ -22,7 +22,7 @@ import {
 import { fileToCatalogImage } from "../../lib/catalogImage";
 import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoicePaintTarget, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
 import { invoiceReaderChoices, readVendorInvoice } from "../../lib/invoiceReaders/readInvoice";
-import { foundationGridText } from "../../lib/invoiceReaders/foundationGrid";
+import { foundationGridHtml, foundationGridText } from "../../lib/invoiceReaders/foundationGrid";
 import { ecoFeeAmount, formatTaxPercent, paintFeeAmount } from "../../lib/invoiceReaders/invoiceCharges";
 import { invoiceProductCode, type InvoiceLine, type ParsedInvoice, type ParsedInvoiceFile } from "../../lib/invoiceReaders/types";
 import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
@@ -754,13 +754,30 @@ export function MaterialPricesSettingsSection({
     const lines = entry.lines;
     if (!lines.length) return;
     const label = entry.invoiceNo ? `#${entry.invoiceNo}` : "that invoice";
+    const plain = foundationGridText(lines);
+    const html = foundationGridHtml(lines);
     try {
-      await navigator.clipboard.writeText(foundationGridText(lines));
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([plain], { type: "text/plain" }),
+            "text/html": new Blob([html], { type: "text/html" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(plain);
+      }
       const fees = lines.filter((line) => line.catalogItem === false).length;
       setError(null);
-      setStatus(`Copied ${lines.length} rows for ${label}. In Foundation, click the first Description cell and paste.${fees ? ` Includes ${fees} ${fees === 1 ? "fee" : "fees"}.` : ""}`);
+      setStatus(`Copied ${lines.length} rows for ${label}. Click the Description cell in Foundation. If the list opens, press Esc, then paste.${fees ? ` Includes ${fees} ${fees === 1 ? "fee" : "fees"}.` : ""}`);
     } catch {
-      setError("Could not copy those rows. Allow clipboard access and try again.");
+      try {
+        await navigator.clipboard.writeText(plain);
+        setError(null);
+        setStatus(`Copied ${lines.length} rows for ${label}. Click the Description cell in Foundation. If the list opens, press Esc, then paste.`);
+      } catch {
+        setError("Could not copy those rows. Allow clipboard access and try again.");
+      }
     }
   }
 

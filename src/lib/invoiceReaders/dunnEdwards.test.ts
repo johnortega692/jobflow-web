@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseDunnEdwards } from "./dunnEdwards.ts";
-import { foundationGridText } from "./foundationGrid.ts";
+import { foundationGridHtml, foundationGridText } from "./foundationGrid.ts";
 import { ecoFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
 import type { PdfRow } from "./types.ts";
 
@@ -105,4 +105,8 @@ test("Dunn Edwards invoice keeps paint lines and fees for Foundation", () => {
     "PAINTCARE FEE\t1\t\t3.00",
     "VINYLASTIC PLUS INT PRIMER WH\t1\t\t57.00",
   ].join("\r\n"));
+  assert.equal(
+    foundationGridHtml(parsed.lines),
+    "<table><tr><td>SPARTAWALL INT ES L BASE</td><td>1</td><td></td><td>107.50</td></tr><tr><td>PAINTCARE FEE</td><td>1</td><td></td><td>3.00</td></tr><tr><td>VINYLASTIC PLUS INT PRIMER WH</td><td>1</td><td></td><td>57.00</td></tr></table>",
+  );
 });
