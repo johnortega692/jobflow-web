@@ -22413,8 +22413,27 @@ td.billing-manpower-week-col--beyond-contract,
   min-width: 0;
 }
 
-.material-prices-invoice-break-row .btn {
+.material-prices-invoice-break-row .material-prices-segment {
   margin-left: auto;
+}
+
+.material-prices-invoice-break-row .btn {
+  margin-left: 0;
+}
+
+.material-prices-foundation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.material-prices-foundation svg {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 .material-prices-invoice-id {

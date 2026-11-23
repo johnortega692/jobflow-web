@@ -106,7 +106,7 @@ export function MaterialPricesSettingsSection({
   const [invoiceReader, setInvoiceReader] = useState(
     vendor === "Dunn Edwards" ? "dunn-edwards" : vendor === "PPG Paints" ? "ppg" : "sherwin-williams",
   );
-  const [perGallon, setPerGallon] = useState(true);
+  const [gallonInvoices, setGallonInvoices] = useState<Record<string, boolean>>({});
   const invoiceInputRef = useRef<HTMLInputElement>(null);
   const [invoiceDragOver, setInvoiceDragOver] = useState(false);
   const [invoiceReading, setInvoiceReading] = useState(false);
@@ -547,7 +547,7 @@ export function MaterialPricesSettingsSection({
     setStatus(null);
   }
 
-  function openInvoiceAdd(row: InvoiceCompareRow, key: string) {
+  function openInvoiceAdd(row: InvoiceCompareRow, key: string, byGallon: boolean) {
     if (!invoice) return;
     refreshSundryCategories();
     setAddInvoiceKey(key);
@@ -557,7 +557,7 @@ export function MaterialPricesSettingsSection({
     setAddName(row.line.description);
     setAddCategory(row.line.section === "paint_product" ? invoice.vendorName : "");
     setAddProductId(invoiceProductCode(row.line));
-    setAddPrice(invoiceComparePrice(row.line, perGallon).toFixed(2));
+    setAddPrice(invoiceComparePrice(row.line, byGallon).toFixed(2));
     setAddAkas("");
     setAddAliasSeed(row.line.description);
     setAddVendor(invoice.vendorName);
@@ -703,25 +703,31 @@ export function MaterialPricesSettingsSection({
 
   const invoiceGroups = useMemo(
     () => (invoice
-      ? invoice.invoices.map((entry) => ({
-          invoice: entry,
-          rows: compareInvoiceLines(
-            entry.lines.map((line, index) => {
-              const next = sectionOverride[invoiceLineKey(line, index, entry.invoiceNo)];
-              if (!next || next === line.section) return line;
-              return { ...line, section: next, sheen: next === "sundry" ? null : line.sheen };
-            }),
-            items,
-            drafts,
-            entry.vendorName,
-            forcedMatch,
-            entry.invoiceNo,
-            perGallon,
-            sheenChoice,
-          ),
-        }))
+      ? invoice.invoices.map((entry, index) => {
+          const unitKey = `${index}:${entry.invoiceNo}`;
+          const byGallon = gallonInvoices[unitKey] ?? true;
+          return {
+            invoice: entry,
+            unitKey,
+            perGallon: byGallon,
+            rows: compareInvoiceLines(
+              entry.lines.map((line, lineIndex) => {
+                const next = sectionOverride[invoiceLineKey(line, lineIndex, entry.invoiceNo)];
+                if (!next || next === line.section) return line;
+                return { ...line, section: next, sheen: next === "sundry" ? null : line.sheen };
+              }),
+              items,
+              drafts,
+              entry.vendorName,
+              forcedMatch,
+              entry.invoiceNo,
+              byGallon,
+              sheenChoice,
+            ),
+          };
+        })
       : []),
-    [drafts, forcedMatch, invoice, items, perGallon, sectionOverride, sheenChoice],
+    [drafts, forcedMatch, gallonInvoices, invoice, items, sectionOverride, sheenChoice],
   );
   const invoiceRows = invoiceGroups.flatMap((group) => group.rows);
   const invoiceMatchCount = invoiceRows.filter((row) => invoiceRowRole(row) === "matched").length;
@@ -732,7 +738,7 @@ export function MaterialPricesSettingsSection({
     for (const group of invoiceGroups) {
       const index = group.rows.findIndex((row, rowIndex) => invoiceLineKey(row.line, rowIndex, group.invoice.invoiceNo) === linkQuery.key);
       if (index < 0) continue;
-      return { row: group.rows[index]!, key: linkQuery.key, text: linkQuery.text };
+      return { row: group.rows[index]!, key: linkQuery.key, text: linkQuery.text, perGallon: group.perGallon };
     }
     return null;
   })();
@@ -832,6 +838,7 @@ export function MaterialPricesSettingsSection({
       setForcedMatch({});
       setSectionOverride({});
       setSheenChoice({});
+      setGallonInvoices({});
       setLinkQuery(null);
       const lineCount = parsed.invoices.reduce((sum, entry) => sum + entry.lines.length, 0);
       const invoiceCount = parsed.invoices.length;
@@ -841,17 +848,18 @@ export function MaterialPricesSettingsSection({
       setForcedMatch({});
       setSectionOverride({});
       setSheenChoice({});
+      setGallonInvoices({});
       setError(e instanceof Error ? e.message : "Could not read that invoice.");
     } finally {
       setInvoiceReading(false);
     }
   }
 
-  async function linkFoundItem(row: InvoiceCompareRow, choice: MaterialPriceItem, key: string) {
+  async function linkFoundItem(row: InvoiceCompareRow, choice: MaterialPriceItem, key: string, byGallon: boolean) {
     if (readOnly || akaSaving) return;
     setForcedMatch((current) => ({ ...current, [key]: choice.id }));
     setLinkQuery(null);
-    const price = invoiceComparePrice(row.line, perGallon).toFixed(2);
+    const price = invoiceComparePrice(row.line, byGallon).toFixed(2);
     const paint = choice.section === "paint_product" ? invoicePaintTarget(choice, drafts[choice.id], sheenChoice[key] ?? null) : null;
     const priced = paint == null || !paint.options || paint.sheen != null;
     if (choice.section === "sundry") setUnit(choice.id, price);
@@ -921,10 +929,10 @@ export function MaterialPricesSettingsSection({
     });
   }
 
-  function applyInvoicePrice(row: InvoiceCompareRow) {
+  function applyInvoicePrice(row: InvoiceCompareRow, byGallon: boolean) {
     if (!row.item) return;
     if (row.sheenOptions && !row.sheenKey) return;
-    const price = invoiceComparePrice(row.line, perGallon).toFixed(2);
+    const price = invoiceComparePrice(row.line, byGallon).toFixed(2);
     if (row.item.section === "sundry") setUnit(row.item.id, price);
     else if (row.sheenKey) setSheen(row.item.id, row.sheenKey, price);
     else setPaintPrice(row.item, price);
@@ -1078,6 +1086,7 @@ export function MaterialPricesSettingsSection({
                 setForcedMatch({});
                 setSectionOverride({});
                 setSheenChoice({});
+                setGallonInvoices({});
               }}
             >
               {invoiceReaderChoices.map((choice) => (
@@ -1098,7 +1107,7 @@ export function MaterialPricesSettingsSection({
                 className="btn material-prices-clear"
                 aria-label="Clear results"
                 title="Clear results"
-                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); setSheenChoice({}); }}
+                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); setSheenChoice({}); setGallonInvoices({}); }}
               >
                 ✕
               </button>
@@ -1128,12 +1137,6 @@ export function MaterialPricesSettingsSection({
               {" · "}
               {invoiceNewRows.length} not in catalog
             </span>
-          </div>
-          <div className="material-prices-invoice-head">
-            <div className="material-prices-segment" role="group" aria-label="Invoice price unit">
-              <button type="button" className={perGallon ? "is-on" : undefined} aria-pressed={perGallon} onClick={() => setPerGallon(true)}>1 gal</button>
-              <button type="button" className={perGallon ? undefined : "is-on"} aria-pressed={!perGallon} onClick={() => setPerGallon(false)}>As invoiced</button>
-            </div>
           </div>
           <div className="material-prices-invoice-scroll">
             <table className="material-prices-table material-prices-invoice-table">
@@ -1176,12 +1179,21 @@ export function MaterialPricesSettingsSection({
                               <span>Tax {group.invoice.taxPercent == null ? "—" : formatTaxPercent(group.invoice.taxPercent)}</span>
                             </div>
                           </div>
+                          <div className="material-prices-segment" role="group" aria-label={`Price unit for ${group.invoice.invoiceNo ? `invoice ${group.invoice.invoiceNo}` : "this invoice"}`}>
+                            <button type="button" className={group.perGallon ? "is-on" : undefined} aria-pressed={group.perGallon} onClick={() => setGallonInvoices((current) => ({ ...current, [group.unitKey]: true }))}>1 gal</button>
+                            <button type="button" className={group.perGallon ? undefined : "is-on"} aria-pressed={!group.perGallon} onClick={() => setGallonInvoices((current) => ({ ...current, [group.unitKey]: false }))}>As invoiced</button>
+                          </div>
                           <button
                             type="button"
-                            className="btn"
+                            className="btn material-prices-foundation"
+                            aria-label={`Copy ${group.invoice.invoiceNo ? `invoice ${group.invoice.invoiceNo}` : "this invoice"} for Foundation`}
+                            title="Copy for Foundation"
                             onClick={() => void copyFoundation(group.invoice)}
                           >
-                            Copy for Foundation
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" aria-hidden="true">
+                              <rect width="200" height="200" fill="#000" />
+                              <path d="M100 50 L190 150 L150 150 L100 95 L50 150 L10 150 Z" fill="#FFC72C" />
+                            </svg>
                           </button>
                         </div>
                       </td>
@@ -1189,7 +1201,7 @@ export function MaterialPricesSettingsSection({
                 {group.rows.map((row, index) => {
                   const key = invoiceLineKey(row.line, index, group.invoice.invoiceNo);
                   const role = invoiceRowRole(row);
-                  const comparePrice = invoiceComparePrice(row.line, perGallon);
+                  const comparePrice = invoiceComparePrice(row.line, group.perGallon);
                   const linked = Boolean(forcedMatch[key]);
                   return (
                     <tr key={key}>
@@ -1280,7 +1292,7 @@ export function MaterialPricesSettingsSection({
                       <td className="material-prices-invoice-action">
                         {role === "fee" ? <div className="material-prices-invoice-action-slot" /> : null}
                         {role === "new" ? (
-                          <button type="button" className="btn btn-primary" disabled={readOnly || addOpen} onClick={() => openInvoiceAdd(row, key)}>Add</button>
+                          <button type="button" className="btn btn-primary" disabled={readOnly || addOpen} onClick={() => openInvoiceAdd(row, key, group.perGallon)}>Add</button>
                         ) : null}
                         {role === "fee" ? null : (
                           <button
@@ -1316,8 +1328,8 @@ export function MaterialPricesSettingsSection({
                           >
                             {role === "differs" || role === "sheen" ? (
                               <>
-                                <button type="button" role="menuitem" disabled={readOnly || (row.sheenOptions != null && !row.sheenKey)} onClick={() => { setActionMenu(null); applyInvoicePrice(row); }}>Apply</button>
-                                <button type="button" role="menuitem" disabled={readOnly || addOpen} onClick={() => { setActionMenu(null); openInvoiceAdd(row, key); }}>Add</button>
+                                <button type="button" role="menuitem" disabled={readOnly || (row.sheenOptions != null && !row.sheenKey)} onClick={() => { setActionMenu(null); applyInvoicePrice(row, group.perGallon); }}>Apply</button>
+                                <button type="button" role="menuitem" disabled={readOnly || addOpen} onClick={() => { setActionMenu(null); openInvoiceAdd(row, key, group.perGallon); }}>Add</button>
                                 <button type="button" role="menuitem" onClick={() => openInvoiceFind(key)}>Find item</button>
                               </>
                             ) : null}
@@ -1692,7 +1704,7 @@ export function MaterialPricesSettingsSection({
                               disabled={readOnly || akaSaving}
                               onClick={() => {
                                 const chosen = items.find((item) => item.id === choice.id);
-                                if (chosen) void linkFoundItem(linkTarget.row, chosen, linkTarget.key);
+                                if (chosen) void linkFoundItem(linkTarget.row, chosen, linkTarget.key, linkTarget.perGallon);
                               }}
                             >
                               <span>{choice.name}</span>
