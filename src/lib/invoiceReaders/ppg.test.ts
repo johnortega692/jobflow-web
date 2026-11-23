@@ -89,3 +89,26 @@ test("PPG invoice keeps each price, a gallon primer, and the eco fee", () => {
   assert.match(pasted, /SXA110 GL STIX BONDING PRIMER IXP20771\t3\t\t88\.95/);
   assert.match(pasted, /Eco Fee\t1\t\t1\.95/);
 });
+
+test("PPG description pack size wins over a bare GL or EA unit", () => {
+  const page: PdfRow[] = [
+    row([[535, "PAGE 1 OF 1"]]),
+    row([[402, "INVOICE #"], [463, "811620018415"]]),
+    row([[104, "TEST JOB"], [463, "16 Nov 2026"]]),
+    row([[41, "Item # / SAP #"], [137, "Description"], [389, "Qty"], [423, "Unit Price"], [544, "Amount"]]),
+    row([[41, "12405/EA"], [137, "5GL PRO-880 ULTRA PRM AD B500"], [396, "1"], [435, "$53.55"], [548, "$53.55"]]),
+    row([[41, "00745039"]]),
+    row([[41, "88001/GL"], [137, "12405 5GL PRO-880 ULTRA PRM"], [396, "1"], [429, "$53.55"], [538, "$53.55"]]),
+    row([[41, "00745040"]]),
+    row([[420, "Item Subtotal"], [543, "$107.10"]]),
+    row([[420, "Sales Tax"], [547, "$0.00"]]),
+    row([[420, "Total"], [543, "$107.10"]]),
+  ];
+  const invoices = parsePpgPages([page]);
+  assert.equal(invoices.length, 1);
+  const [eaLine, glLine] = invoices[0]!.lines;
+  assert.equal(eaLine?.size, "5GL");
+  assert.equal(eaLine?.section, "paint_product");
+  assert.equal(glLine?.size, "5GL");
+  assert.equal(glLine?.section, "paint_product");
+});

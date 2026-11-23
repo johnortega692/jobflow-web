@@ -106,7 +106,7 @@ export function MaterialPricesSettingsSection({
   const [invoiceReader, setInvoiceReader] = useState(
     vendor === "Dunn Edwards" ? "dunn-edwards" : vendor === "PPG Paints" ? "ppg" : "sherwin-williams",
   );
-  const [gallonInvoices, setGallonInvoices] = useState<Record<string, boolean>>({});
+  const [gallonLines, setGallonLines] = useState<Record<string, boolean>>({});
   const invoiceInputRef = useRef<HTMLInputElement>(null);
   const [invoiceDragOver, setInvoiceDragOver] = useState(false);
   const [invoiceReading, setInvoiceReading] = useState(false);
@@ -703,13 +703,8 @@ export function MaterialPricesSettingsSection({
 
   const invoiceGroups = useMemo(
     () => (invoice
-      ? invoice.invoices.map((entry, index) => {
-          const unitKey = `${index}:${entry.invoiceNo}`;
-          const byGallon = gallonInvoices[unitKey] ?? true;
-          return {
+      ? invoice.invoices.map((entry) => ({
             invoice: entry,
-            unitKey,
-            perGallon: byGallon,
             rows: compareInvoiceLines(
               entry.lines.map((line, lineIndex) => {
                 const next = sectionOverride[invoiceLineKey(line, lineIndex, entry.invoiceNo)];
@@ -721,13 +716,12 @@ export function MaterialPricesSettingsSection({
               entry.vendorName,
               forcedMatch,
               entry.invoiceNo,
-              byGallon,
+              gallonLines,
               sheenChoice,
             ),
-          };
-        })
+          }))
       : []),
-    [drafts, forcedMatch, gallonInvoices, invoice, items, sectionOverride, sheenChoice],
+    [drafts, forcedMatch, gallonLines, invoice, items, sectionOverride, sheenChoice],
   );
   const invoiceRows = invoiceGroups.flatMap((group) => group.rows);
   const invoiceMatchCount = invoiceRows.filter((row) => invoiceRowRole(row) === "matched").length;
@@ -738,7 +732,8 @@ export function MaterialPricesSettingsSection({
     for (const group of invoiceGroups) {
       const index = group.rows.findIndex((row, rowIndex) => invoiceLineKey(row.line, rowIndex, group.invoice.invoiceNo) === linkQuery.key);
       if (index < 0) continue;
-      return { row: group.rows[index]!, key: linkQuery.key, text: linkQuery.text, perGallon: group.perGallon };
+      const key = linkQuery.key;
+      return { row: group.rows[index]!, key, text: linkQuery.text, perGallon: gallonLines[key] ?? true };
     }
     return null;
   })();
@@ -838,7 +833,7 @@ export function MaterialPricesSettingsSection({
       setForcedMatch({});
       setSectionOverride({});
       setSheenChoice({});
-      setGallonInvoices({});
+      setGallonLines({});
       setLinkQuery(null);
       const lineCount = parsed.invoices.reduce((sum, entry) => sum + entry.lines.length, 0);
       const invoiceCount = parsed.invoices.length;
@@ -848,7 +843,7 @@ export function MaterialPricesSettingsSection({
       setForcedMatch({});
       setSectionOverride({});
       setSheenChoice({});
-      setGallonInvoices({});
+      setGallonLines({});
       setError(e instanceof Error ? e.message : "Could not read that invoice.");
     } finally {
       setInvoiceReading(false);
@@ -1086,7 +1081,7 @@ export function MaterialPricesSettingsSection({
                 setForcedMatch({});
                 setSectionOverride({});
                 setSheenChoice({});
-                setGallonInvoices({});
+                setGallonLines({});
               }}
             >
               {invoiceReaderChoices.map((choice) => (
@@ -1107,7 +1102,7 @@ export function MaterialPricesSettingsSection({
                 className="btn material-prices-clear"
                 aria-label="Clear results"
                 title="Clear results"
-                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); setSheenChoice({}); setGallonInvoices({}); }}
+                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); setSheenChoice({}); setGallonLines({}); }}
               >
                 ✕
               </button>
@@ -1179,10 +1174,6 @@ export function MaterialPricesSettingsSection({
                               <span>Tax {group.invoice.taxPercent == null ? "—" : formatTaxPercent(group.invoice.taxPercent)}</span>
                             </div>
                           </div>
-                          <div className="material-prices-segment" role="group" aria-label={`Price unit for ${group.invoice.invoiceNo ? `invoice ${group.invoice.invoiceNo}` : "this invoice"}`}>
-                            <button type="button" className={group.perGallon ? "is-on" : undefined} aria-pressed={group.perGallon} onClick={() => setGallonInvoices((current) => ({ ...current, [group.unitKey]: true }))}>1 gal</button>
-                            <button type="button" className={group.perGallon ? undefined : "is-on"} aria-pressed={!group.perGallon} onClick={() => setGallonInvoices((current) => ({ ...current, [group.unitKey]: false }))}>As invoiced</button>
-                          </div>
                           <button
                             type="button"
                             className="btn material-prices-foundation"
@@ -1201,7 +1192,8 @@ export function MaterialPricesSettingsSection({
                 {group.rows.map((row, index) => {
                   const key = invoiceLineKey(row.line, index, group.invoice.invoiceNo);
                   const role = invoiceRowRole(row);
-                  const comparePrice = invoiceComparePrice(row.line, group.perGallon);
+                  const perGallon = gallonLines[key] ?? true;
+                  const comparePrice = invoiceComparePrice(row.line, perGallon);
                   const linked = Boolean(forcedMatch[key]);
                   return (
                     <tr key={key}>
@@ -1292,7 +1284,7 @@ export function MaterialPricesSettingsSection({
                       <td className="material-prices-invoice-action">
                         {role === "fee" ? <div className="material-prices-invoice-action-slot" /> : null}
                         {role === "new" ? (
-                          <button type="button" className="btn btn-primary" disabled={readOnly || addOpen} onClick={() => openInvoiceAdd(row, key, group.perGallon)}>Add</button>
+                          <button type="button" className="btn btn-primary" disabled={readOnly || addOpen} onClick={() => openInvoiceAdd(row, key, perGallon)}>Add</button>
                         ) : null}
                         {role === "fee" ? null : (
                           <button
@@ -1328,8 +1320,8 @@ export function MaterialPricesSettingsSection({
                           >
                             {role === "differs" || role === "sheen" ? (
                               <>
-                                <button type="button" role="menuitem" disabled={readOnly || (row.sheenOptions != null && !row.sheenKey)} onClick={() => { setActionMenu(null); applyInvoicePrice(row, group.perGallon); }}>Apply</button>
-                                <button type="button" role="menuitem" disabled={readOnly || addOpen} onClick={() => { setActionMenu(null); openInvoiceAdd(row, key, group.perGallon); }}>Add</button>
+                                <button type="button" role="menuitem" disabled={readOnly || (row.sheenOptions != null && !row.sheenKey)} onClick={() => { setActionMenu(null); applyInvoicePrice(row, perGallon); }}>Apply</button>
+                                <button type="button" role="menuitem" disabled={readOnly || addOpen} onClick={() => { setActionMenu(null); openInvoiceAdd(row, key, perGallon); }}>Add</button>
                                 <button type="button" role="menuitem" onClick={() => openInvoiceFind(key)}>Find item</button>
                               </>
                             ) : null}
@@ -1341,6 +1333,34 @@ export function MaterialPricesSettingsSection({
                             ) : null}
                             {role === "matched" || ((role === "differs" || role === "sheen") && linked) ? (
                               <button type="button" role="menuitem" onClick={() => unlinkInvoiceRow(key)}>Unlink</button>
+                            ) : null}
+                            {row.line.section === "paint_product" ? (
+                              <>
+                                <button
+                                  type="button"
+                                  role="menuitemradio"
+                                  aria-checked={perGallon}
+                                  className={perGallon ? "is-on" : undefined}
+                                  onClick={() => {
+                                    setActionMenu(null);
+                                    setGallonLines((current) => ({ ...current, [key]: true }));
+                                  }}
+                                >
+                                  Price as 1 gal
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitemradio"
+                                  aria-checked={!perGallon}
+                                  className={perGallon ? undefined : "is-on"}
+                                  onClick={() => {
+                                    setActionMenu(null);
+                                    setGallonLines((current) => ({ ...current, [key]: false }));
+                                  }}
+                                >
+                                  Price as invoiced
+                                </button>
+                              </>
                             ) : null}
                           </div>,
                           document.body,

@@ -203,7 +203,7 @@ export function compareInvoiceLines(
   vendorName: string,
   forcedIds: Record<string, string> = {},
   invoiceNo = "",
-  perGallon = false,
+  gallonLines: Record<string, boolean> = {},
   sheenChoices: Record<string, string> = {},
 ): InvoiceCompareRow[] {
   return lines.map((line, index) => {
@@ -230,7 +230,7 @@ export function compareInvoiceLines(
     const sheenKey = paint?.sheen ?? null;
     const sheenOptions = paint?.options ?? null;
     const catalogPrice = paint ? paint.catalogPrice : item ? draftPrice(item, drafts[item.id]) : null;
-    const comparePrice = invoiceComparePrice(line, perGallon);
+    const comparePrice = invoiceComparePrice(line, gallonLines[key] ?? true);
     const samePrice = item != null && catalogPrice != null && Math.round(catalogPrice * 100) === Math.round(comparePrice * 100);
     const kind: InvoiceMatchKind = item ? "match" : suggestion ? "suggested" : "missing";
     return { line, kind, item, suggestion, catalogPrice, sheenKey, sheenOptions, samePrice };

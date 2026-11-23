@@ -78,11 +78,20 @@ function normalizeUnit(unit: string): string {
   return compact || "EA";
 }
 
-function paintSize(unit: string, description: string): string {
-  const fromUnit = gallonCount(unit);
-  if (fromUnit) return fromUnit.gallons <= 1 ? "GALLON" : `${fromUnit.gallons}GL`;
+function gallonsFromDescription(description: string): number | null {
   const counted = description.match(/\b(\d+)\s*-?\s*G(?:AL(?:LON)?S?|L)\b/i);
-  if (counted) return Number(counted[1]) <= 1 ? "GALLON" : `${counted[1]}GL`;
+  if (!counted) return null;
+  const gallons = Number(counted[1]);
+  return gallons > 0 ? gallons : null;
+}
+
+function paintSize(unit: string, description: string): string {
+  const fromDescription = gallonsFromDescription(description);
+  const fromUnit = gallonCount(unit);
+  // A named pack size in the description (5GL, 5 GALLON) wins over bare GL/GAL/EA.
+  if (fromDescription && fromDescription > 1) return `${fromDescription}GL`;
+  if (fromUnit) return fromUnit.gallons <= 1 ? "GALLON" : `${fromUnit.gallons}GL`;
+  if (fromDescription === 1) return "GALLON";
   if (/\b(?:GL|GAL|GALLONS?)\b/i.test(description)) return "GALLON";
   return normalizeUnit(unit);
 }

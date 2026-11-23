@@ -427,7 +427,7 @@ test("different sheen prices ask for a sheen until one is chosen", () => {
   assert.equal(waiting[0]?.samePrice, false);
   assert.deepEqual(waiting[0]?.sheenOptions?.map((option) => option.name), ["Flat", "Eggshell", "Semi-Gloss"]);
 
-  const chosen = compareInvoiceLines([line], catalog, {}, "Sherwin Williams", {}, "", false, { ":0::A41W00151": "Eggshell" });
+  const chosen = compareInvoiceLines([line], catalog, {}, "Sherwin Williams", {}, "", {}, { ":0::A41W00151": "Eggshell" });
   assert.equal(chosen[0]?.sheenKey, "Eggshell");
   assert.equal(chosen[0]?.catalogPrice, 48);
   assert.equal(chosen[0]?.samePrice, true);
