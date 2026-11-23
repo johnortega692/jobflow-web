@@ -22167,7 +22167,7 @@ td.billing-manpower-week-col--beyond-contract,
 
 .material-prices-invoice-table tr {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 108px minmax(104px, max-content);
+  grid-template-columns: minmax(0, 1fr) 72px 108px minmax(104px, max-content);
   align-items: center;
   border-bottom: 1px solid var(--border);
 }
@@ -22340,6 +22340,7 @@ td.billing-manpower-week-col--beyond-contract,
   color: var(--warn);
 }
 
+.material-prices-invoice-table .material-prices-qty,
 .material-prices-invoice-table .material-prices-money {
   width: auto;
   padding-right: 8px;
@@ -22348,6 +22349,7 @@ td.billing-manpower-week-col--beyond-contract,
   text-align: right;
 }
 
+.material-prices-invoice-table .material-prices-qty strong,
 .material-prices-invoice-table .material-prices-money strong {
   font-weight: 650;
 }

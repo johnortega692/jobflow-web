@@ -55,6 +55,11 @@ function invoiceSubline(row: InvoiceCompareRow): string {
   return text;
 }
 
+function invoiceQtyText(qty: number): string {
+  if (!Number.isFinite(qty)) return "—";
+  return Number.isInteger(qty) ? String(qty) : String(Math.round(qty * 100) / 100);
+}
+
 function invoicePageLabel(invoice: ParsedInvoice): string {
   if (invoice.firstPage === invoice.lastPage) return `Page ${invoice.firstPage} of ${invoice.pageCount}`;
   return `Pages ${invoice.firstPage}–${invoice.lastPage} of ${invoice.pageCount}`;
@@ -1138,6 +1143,7 @@ export function MaterialPricesSettingsSection({
               <thead>
                 <tr>
                   <th>Invoice line</th>
+                  <th className="material-prices-qty">Qty</th>
                   <th className="material-prices-money">Price</th>
                   <th className="material-prices-invoice-action" aria-hidden="true"><div className="material-prices-invoice-action-slot" /></th>
                 </tr>
@@ -1146,7 +1152,7 @@ export function MaterialPricesSettingsSection({
                 {invoiceGroups.map((group, groupIndex) => (
                   <Fragment key={`${groupIndex}-${group.invoice.invoiceNo}-${group.invoice.firstPage}`}>
                     <tr className="material-prices-invoice-break">
-                      <td colSpan={3}>
+                      <td colSpan={4}>
                         <div className="material-prices-invoice-break-row">
                           <div>
                             <div className="material-prices-invoice-id">
@@ -1255,6 +1261,23 @@ export function MaterialPricesSettingsSection({
                           {role === "differs" ? <span className="material-prices-pill is-differ">Differs</span> : null}
                           {role === "new" ? <span className="material-prices-pill">New</span> : null}
                         </div>
+                      </td>
+                      <td className="material-prices-qty">
+                        <span className="material-prices-money-copy">
+                          <strong>{invoiceQtyText(row.line.qty)}</strong>
+                          <button
+                            type="button"
+                            className="material-prices-copy"
+                            aria-label={`Copy quantity ${invoiceQtyText(row.line.qty)}`}
+                            title="Copy quantity"
+                            onClick={() => void copyText(invoiceQtyText(row.line.qty), invoiceQtyText(row.line.qty))}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                              <rect x="9" y="9" width="13" height="13" rx="2" />
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                            </svg>
+                          </button>
+                        </span>
                       </td>
                       <td className="material-prices-money">
                         <span className="material-prices-money-copy">
