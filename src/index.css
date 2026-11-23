@@ -21753,6 +21753,28 @@ td.billing-manpower-week-col--beyond-contract,
   gap: 0.65rem;
 }
 
+.material-prices-drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-height: 5.5rem;
+  padding: 1rem 1.1rem;
+  border: 1.5px dashed color-mix(in srgb, var(--muted) 55%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface2) 72%, var(--surface));
+}
+
+.material-prices-drop.is-over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+.material-prices-drop p {
+  flex: 1 1 14rem;
+  margin: 0;
+}
+
 .material-prices-bar,
 .material-prices-tools,
 .material-prices-meta,

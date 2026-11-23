@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   addMaterialPriceItem,
@@ -107,6 +107,7 @@ export function MaterialPricesSettingsSection({
   );
   const [perGallon, setPerGallon] = useState(true);
   const invoiceInputRef = useRef<HTMLInputElement>(null);
+  const [invoiceDragOver, setInvoiceDragOver] = useState(false);
   const [invoiceReading, setInvoiceReading] = useState(false);
   const [invoice, setInvoice] = useState<ParsedInvoiceFile | null>(null);
   const [forcedMatch, setForcedMatch] = useState<Record<string, string>>({});
@@ -752,6 +753,39 @@ export function MaterialPricesSettingsSection({
     else if (!itemMatchesVendor(item, vendor)) setVendor(item.vendorNames[0] ?? "");
   }
 
+  function acceptInvoiceFile(file: File | null | undefined) {
+    if (!file || readOnly || invoiceReading) return;
+    const pdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!pdf) {
+      setError("Drop a PDF invoice.");
+      return;
+    }
+    void readInvoice(file);
+  }
+
+  function onInvoiceDragEnter(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (readOnly || invoiceReading) return;
+    setInvoiceDragOver(true);
+  }
+
+  function onInvoiceDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = readOnly || invoiceReading ? "none" : "copy";
+  }
+
+  function onInvoiceDragLeave(event: DragEvent<HTMLDivElement>) {
+    const next = event.relatedTarget;
+    if (next instanceof Node && event.currentTarget.contains(next)) return;
+    setInvoiceDragOver(false);
+  }
+
+  function onInvoiceDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setInvoiceDragOver(false);
+    acceptInvoiceFile(event.dataTransfer.files?.[0]);
+  }
+
   async function readInvoice(file: File) {
     setInvoiceReading(true);
     setError(null);
@@ -971,8 +1005,16 @@ export function MaterialPricesSettingsSection({
       </>
       ) : (
       <div className="material-prices-invoice-pane">
-        <div className="material-prices-invoice-head">
-          <p className="muted small">Pick the vendor, then choose that vendor's invoice PDF.</p>
+        <div
+          className={`material-prices-drop${invoiceDragOver ? " is-over" : ""}`}
+          onDragEnter={onInvoiceDragEnter}
+          onDragOver={onInvoiceDragOver}
+          onDragLeave={onInvoiceDragLeave}
+          onDrop={onInvoiceDrop}
+        >
+          <p className="muted small">
+            {invoiceDragOver ? "Drop the invoice PDF." : "Pick the vendor, then drop the invoice PDF here or choose it."}
+          </p>
           <div className="material-prices-invoice-actions">
             <select
               value={invoiceReader}
@@ -1019,7 +1061,7 @@ export function MaterialPricesSettingsSection({
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
-              if (file) void readInvoice(file);
+              acceptInvoiceFile(file);
             }}
           />
         </div>
