@@ -84,6 +84,10 @@ function inInvoiceCatalog(item: InvoiceCatalogItem, vendorName: string): boolean
   return vendorHit(item, vendorName);
 }
 
+function linkableItem(item: InvoiceCatalogItem, vendorName: string): boolean {
+  return item.vendorNames.length === 0 || vendorHit(item, vendorName);
+}
+
 function vendorHit(item: InvoiceCatalogItem, vendorName: string): boolean {
   const want = vendorKey(vendorName);
   if (!want) return false;
@@ -208,7 +212,7 @@ export function compareInvoiceLines(
     }
     const key = invoiceLineKey(line, index, invoiceNo);
     const catalog = items.filter((item) => inInvoiceCatalog(item, vendorName));
-    const forced = catalog.find((item) => item.id === forcedIds[key] && item.section === line.section) ?? null;
+    const forced = items.find((item) => item.id === forcedIds[key] && item.section === line.section && linkableItem(item, vendorName)) ?? null;
     const ranked = catalog
       .map((item) => ({ item, score: rank(line, item, vendorName) }))
       .filter((entry) => entry.score > 0)
@@ -242,7 +246,7 @@ export function invoiceLinkChoices(
   const needle = query.trim().toLowerCase();
   if (needle.length < 2) return [];
   return items
-    .filter((item) => item.section === section && inInvoiceCatalog(item, vendorName))
+    .filter((item) => item.section === section && linkableItem(item, vendorName))
     .filter((item) => `${item.name} ${(item.akas ?? []).join(" ")} ${item.productId} ${item.category}`.toLowerCase().includes(needle))
     .slice(0, 8);
 }

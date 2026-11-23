@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compareInvoiceLines, invoiceComparePrice } from "./compareInvoice.ts";
+import { compareInvoiceLines, invoiceComparePrice, invoiceLinkChoices } from "./compareInvoice.ts";
 import { ecoFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
 import { parseSherwinWilliams, parseSherwinWilliamsPages } from "./sherwinWilliams.ts";
 import type { PdfRow } from "./types.ts";
@@ -219,6 +219,32 @@ test("catalog compare matches a sundry code, suggests a close name, and leaves u
   assert.equal(rows[3]?.kind, "missing");
   assert.equal(rows[4]?.kind, "missing");
   assert.equal(rows[4]?.item, null);
+});
+
+test("find item includes a product saved for all vendors and keeps that link", () => {
+  const open = item({ id: "open", section: "sundry", name: "Acetone", productId: "124-2197", vendorNames: [] });
+  const other = item({ id: "de", section: "sundry", name: "Acetone DE", productId: "124-2197", vendorNames: ["Dunn Edwards"] });
+  const sw = item({ id: "sw", section: "sundry", name: "Acetone SW", productId: "124-2198", vendorNames: ["Sherwin Williams"] });
+  const choices = invoiceLinkChoices([open, other, sw], "Sherwin Williams", "sundry", "acetone");
+  assert.deepEqual(choices.map((choice) => choice.id).sort(), ["open", "sw"]);
+
+  const line = {
+    salesNumber: "",
+    size: "QT",
+    productId: "124-2197",
+    description: "ACETONE QT",
+    color: "",
+    qty: 1,
+    listPrice: 10.4,
+    discountAmount: 0,
+    discountPercent: null,
+    netPrice: 10.4,
+    section: "sundry" as const,
+    sheen: null,
+  };
+  assert.equal(compareInvoiceLines([line], [open], {}, "Sherwin Williams")[0]?.item, null);
+  const linked = compareInvoiceLines([line], [open], {}, "Sherwin Williams", { ":0::124-2197": "open" });
+  assert.equal(linked[0]?.item?.id, "open");
 });
 
 test("an AKA matches a sheen or tint name to one paint product", () => {

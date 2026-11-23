@@ -1672,7 +1672,7 @@ export function MaterialPricesSettingsSection({
                   <p className="material-prices-name">{linkTarget.row.line.description}</p>
                   <p className="muted small">
                     {linkTarget.row.line.section === "paint_product" ? "Paint" : "Sundry"}
-                    {invoice ? ` · ${invoice.vendorName}` : ""}
+                    {invoice ? ` · ${invoice.vendorName} and all vendors` : ""}
                   </p>
                   <div className="material-prices-link">
                     <input
@@ -1696,7 +1696,7 @@ export function MaterialPricesSettingsSection({
                               }}
                             >
                               <span>{choice.name}</span>
-                              <span className="muted small">{[choice.productId, choice.category].filter(Boolean).join(" · ")}</span>
+                              <span className="muted small">{[choice.productId, choice.category, choice.vendorNames.length === 0 ? "All vendors" : choice.vendorNames.join(", ")].filter(Boolean).join(" · ")}</span>
                             </button>
                           </li>
                         ))}
