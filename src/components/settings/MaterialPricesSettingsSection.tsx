@@ -733,7 +733,7 @@ export function MaterialPricesSettingsSection({
       const index = group.rows.findIndex((row, rowIndex) => invoiceLineKey(row.line, rowIndex, group.invoice.invoiceNo) === linkQuery.key);
       if (index < 0) continue;
       const key = linkQuery.key;
-      return { row: group.rows[index]!, key, text: linkQuery.text, perGallon: gallonLines[key] ?? true };
+      return { row: group.rows[index]!, key, text: linkQuery.text, perGallon: gallonLines[key] ?? false };
     }
     return null;
   })();
@@ -1192,7 +1192,7 @@ export function MaterialPricesSettingsSection({
                 {group.rows.map((row, index) => {
                   const key = invoiceLineKey(row.line, index, group.invoice.invoiceNo);
                   const role = invoiceRowRole(row);
-                  const perGallon = gallonLines[key] ?? true;
+                  const perGallon = gallonLines[key] ?? false;
                   const comparePrice = invoiceComparePrice(row.line, perGallon);
                   const linked = Boolean(forcedMatch[key]);
                   return (
