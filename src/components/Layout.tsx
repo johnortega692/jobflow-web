@@ -51,7 +51,7 @@ export function Layout() {
           <ProjectsNavMenu />
           <Link to="/workload">Workload</Link>
           <NavLink to="/meetings">Meeting</NavLink>
-          <NavLink to="/read-invoice">Read invoice</NavLink>
+          <NavLink to="/read-invoice">Invoice Check</NavLink>
           <NavLink to="/notes" end>
             Notes
             {overdueNotes > 0 ? (
