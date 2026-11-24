@@ -19127,6 +19127,14 @@ input.readonly {
   box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
+.billing-week-holiday-mark {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
 .billing-manpower-header-pill:focus {
   outline: none;
 }
@@ -19375,6 +19383,40 @@ input.readonly {
   text-align: center;
 }
 
+.billing-week-detail-day-col.is-holiday {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+
+.billing-week-detail-day-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.15;
+}
+
+.billing-week-detail-day-toggle:hover,
+.billing-week-detail-day-toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+
+.billing-week-detail-holiday-tag {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
 .billing-week-detail-day-col .billing-week-detail-weekday {
   display: block;
   color: var(--text);
@@ -19414,6 +19456,11 @@ input.readonly {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
+}
+
+.billing-week-detail-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .billing-week-detail-input:focus {

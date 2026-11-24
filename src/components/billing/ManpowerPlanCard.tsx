@@ -10,6 +10,7 @@ import {
   phaseTotalHours,
   todayMondayIso,
   weekColumnLabel,
+  weekDayIsos,
   weekHasPhaseOverlap,
   withCellHours,
 } from "../../lib/manpowerCalendar";
@@ -836,7 +837,9 @@ export function ManpowerPlanCard({
             <thead>
               <tr>
                 <th className="billing-manpower-sticky billing-manpower-phase-col">Cost code</th>
-                {weeks.map((w, weekIdx) => (
+                {weeks.map((w, weekIdx) => {
+                  const holiday = weekDayIsos(w).some((iso) => (billing.holidays ?? []).includes(iso));
+                  return (
                   <th
                     key={w}
                     className={`billing-manpower-week-col num${
@@ -845,7 +848,7 @@ export function ManpowerPlanCard({
                       contractEndWeekIndex !== null && weekIdx > contractEndWeekIndex
                         ? " billing-manpower-week-col--beyond-contract"
                         : ""
-                    }`}
+                    }${holiday ? " billing-manpower-week-col--holiday" : ""}`}
                   >
                     {canEditCells ? (
                       <div className="billing-week-head">
@@ -855,7 +858,11 @@ export function ManpowerPlanCard({
                           data-week-menu=""
                           aria-haspopup="menu"
                           aria-expanded={weekMenu?.week === w}
-                          title={`Week of ${weekColumnLabel(w)}`}
+                          title={
+                            holiday
+                              ? `Week of ${weekColumnLabel(w)} · includes a holiday`
+                              : `Week of ${weekColumnLabel(w)}`
+                          }
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             setWeekMenu((current) =>
@@ -871,6 +878,7 @@ export function ManpowerPlanCard({
                         >
                           <ManpowerHeaderPencilIcon />
                           {weekColumnLabel(w)}
+                          {holiday ? <span className="billing-week-holiday-mark">Hol</span> : null}
                           <span className="billing-week-caret" aria-hidden>
                             ▾
                           </span>
@@ -879,10 +887,12 @@ export function ManpowerPlanCard({
                     ) : (
                       <span className="billing-manpower-header-pill billing-manpower-header-pill--readonly">
                         {weekColumnLabel(w)}
+                        {holiday ? <span className="billing-week-holiday-mark">Hol</span> : null}
                       </span>
                     )}
                   </th>
-                ))}
+                  );
+                })}
                 <th className="billing-manpower-sticky billing-manpower-total-col num">Man-wks</th>
                 <th className="billing-manpower-sticky billing-manpower-total-col num">Hours</th>
               </tr>

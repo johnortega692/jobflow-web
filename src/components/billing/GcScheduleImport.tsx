@@ -3,9 +3,9 @@ import type { GcScheduleActivity, GcScheduleParseResult, GcTrade } from "../../l
 import {
   addGcHours,
   defaultPhaseId,
+  gcProjectionAdds,
   phasesForTrade,
   placeGcActivity,
-  splitGcHours,
   upcomingEventTitle,
 } from "../../lib/gcSchedulePlacement";
 import { addUpcomingFromGcSchedule } from "../../lib/gcScheduleUpcoming";
@@ -299,7 +299,14 @@ export function GcScheduleImport({
     }
     const projectionAdds = chosen.flatMap((row) => {
       if (row.placement.destination !== "projection" || !row.placement.phaseId) return [];
-      return splitGcHours(row.placement.phaseId, row.placement.projectionWeeks, parseHours(row.draft!.hours));
+      return gcProjectionAdds({
+        phaseId: row.placement.phaseId,
+        hours: parseHours(row.draft!.hours),
+        weeks: row.placement.projectionWeeks,
+        startIso: row.activity.startIso,
+        finishIso: row.activity.finishIso,
+        holidays: billing.holidays,
+      });
     });
     const upcomingItems = chosen.flatMap((row) => {
       if (row.placement.destination !== "upcoming" || !row.placement.upcomingDateIso) return [];

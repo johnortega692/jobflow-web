@@ -5,9 +5,9 @@ import type { GcScheduleActivity, GcTrade } from "../../lib/gcScheduleImport";
 import {
   addGcHours,
   defaultPhaseId,
+  gcProjectionAdds,
   phasesForTrade,
   placeGcActivity,
-  splitGcHours,
   upcomingEventTitle,
 } from "../../lib/gcSchedulePlacement";
 import { addUpcomingFromGcSchedule } from "../../lib/gcScheduleUpcoming";
@@ -257,7 +257,17 @@ export function GcSchedulePanel({
         problems.push(placement.note || `${name} does not fall on the projection weeks.`);
         continue;
       }
-      cells = addGcHours(cells, splitGcHours(placement.phaseId, placement.projectionWeeks, item.hours));
+      cells = addGcHours(
+        cells,
+        gcProjectionAdds({
+          phaseId: placement.phaseId,
+          hours: item.hours,
+          weeks: placement.projectionWeeks,
+          startIso: item.startIso || null,
+          finishIso: item.finishIso || null,
+          holidays: billing.holidays,
+        }),
+      );
       placed.set(item.id, placement.phaseId);
     }
     if (!placed.size) {

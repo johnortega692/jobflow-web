@@ -5,10 +5,12 @@
 
 import {
   addWeeksIso,
-  cellHours,
+  emptyDayHours,
   mondayIsoFromDateInput,
   todayMondayIso,
   weekColumnLabel,
+  weekDayIsos,
+  withCellDayHours,
   withCellHours,
 } from "./manpowerCalendar";
 import type { GcScheduleActivity, GcTrade } from "./gcScheduleImport";
@@ -128,8 +130,8 @@ export function placeGcActivity(input: {
       phaseId: phase.id,
       note:
         overlapped.length === 1
-          ? `Adds hours to ${phaseDisplayLabel(phase)} · ${span}`
-          : `Splits hours across ${phaseDisplayLabel(phase)} · ${span}`,
+          ? `Adds hours to ${phaseDisplayLabel(phase)} · ${span}. Each working day is planned at 8 hrs per person.`
+          : `Splits hours across ${phaseDisplayLabel(phase)} · ${span}. Each working day is planned at 8 hrs per person.`,
       blocked: false,
     };
   }
@@ -151,44 +153,115 @@ export function placeGcActivity(input: {
   return upcoming(activityDate, `Not on the projection calendar — adds to Upcoming on ${weekColumnLabel(monday)}`);
 }
 
-/** Split one activity's hours across the weeks it overlaps. The last week gets the remainder. */
-export function splitGcHours(
-  phaseId: string,
-  weeks: string[],
-  hours: number,
-): { phaseId: string; weekStartIso: string; hours: number }[] {
-  if (!phaseId || !(hours > 0) || weeks.length === 0) return [];
+/** Mon–Fri dates in this projection week that the activity covers, skipping holidays. */
+export function gcWorkingDayIndexes(
+  weekStartIso: string,
+  startIso: string | null,
+  finishIso: string | null,
+  holidays: readonly string[] = [],
+): number[] {
+  const days = weekDayIsos(weekStartIso);
+  const start = startIso?.trim() || days[0]!;
+  const finish = finishIso?.trim() || days[6]!;
+  const blocked = new Set(holidays);
+  const indexes: number[] = [];
+  days.forEach((iso, index) => {
+    if (index > 4) return;
+    if (iso < start || iso > finish) return;
+    if (blocked.has(iso)) return;
+    indexes.push(index);
+  });
+  return indexes;
+}
+
+function allocateTenths(total: number, weights: readonly number[]): number[] {
+  const hours = Math.round(total * 10) / 10;
+  const out = weights.map(() => 0);
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
+  if (!(hours > 0) || weightSum <= 0) return out;
+  const active: number[] = [];
+  weights.forEach((weight, index) => {
+    if (weight > 0) active.push(index);
+  });
+  const last = active[active.length - 1]!;
   let used = 0;
-  return weeks.flatMap((weekStartIso, index) => {
-    const share =
-      index === weeks.length - 1
-        ? Math.round((hours - used) * 10) / 10
-        : Math.floor((hours / weeks.length) * 10) / 10;
-    used += share;
-    if (!(share > 0)) return [];
-    return [{ phaseId, weekStartIso, hours: share }];
+  for (const index of active) {
+    if (index === last) continue;
+    const share = Math.round(((hours * weights[index]!) / weightSum) * 10) / 10;
+    out[index] = share;
+    used = Math.round((used + share) * 10) / 10;
+  }
+  out[last] = Math.max(0, Math.round((hours - used) * 10) / 10);
+  return out;
+}
+
+function dayHoursForShare(hours: number, dayIndexes: number[]): number[] {
+  const days = emptyDayHours();
+  if (!dayIndexes.length || !(hours > 0)) return days;
+  const shares = allocateTenths(hours, dayIndexes.map(() => 1));
+  dayIndexes.forEach((dayIndex, shareIndex) => {
+    days[dayIndex] = shares[shareIndex] ?? 0;
+  });
+  return days;
+}
+
+export type GcHourAdd = {
+  phaseId: string;
+  weekStartIso: string;
+  hours: number;
+  dayHours?: number[];
+};
+
+/** Spread an activity across its working days. Eight hours on a day is one person in Plan week. */
+export function gcProjectionAdds(input: {
+  phaseId: string;
+  hours: number;
+  weeks: string[];
+  startIso: string | null;
+  finishIso: string | null;
+  holidays?: readonly string[];
+}): GcHourAdd[] {
+  if (!input.phaseId || !(input.hours > 0) || input.weeks.length === 0) return [];
+  const holidays = input.holidays ?? [];
+  const daySets = input.weeks.map((week) =>
+    gcWorkingDayIndexes(week, input.startIso, input.finishIso, holidays),
+  );
+  const weights = daySets.map((days) => days.length);
+  const weekHours =
+    weights.some((weight) => weight > 0)
+      ? allocateTenths(input.hours, weights)
+      : allocateTenths(input.hours, input.weeks.map(() => 1));
+  return input.weeks.flatMap((weekStartIso, index) => {
+    const hours = weekHours[index] ?? 0;
+    if (!(hours > 0)) return [];
+    const dayIndexes = daySets[index] ?? [];
+    return [
+      {
+        phaseId: input.phaseId,
+        weekStartIso,
+        hours,
+        ...(dayIndexes.length ? { dayHours: dayHoursForShare(hours, dayIndexes) } : {}),
+      },
+    ];
   });
 }
 
-export function addGcHours(
-  cells: ManpowerCell[],
-  adds: { phaseId: string; weekStartIso: string; hours: number }[],
-): ManpowerCell[] {
-  const grouped = new Map<string, { phaseId: string; weekStartIso: string; hours: number }>();
+export function addGcHours(cells: ManpowerCell[], adds: GcHourAdd[]): ManpowerCell[] {
+  let next = cells;
   for (const add of adds) {
     if (!add.phaseId || !add.weekStartIso || !(add.hours > 0)) continue;
-    const key = `${add.phaseId}:${add.weekStartIso}`;
-    const prev = grouped.get(key);
-    grouped.set(key, {
-      phaseId: add.phaseId,
-      weekStartIso: add.weekStartIso,
-      hours: (prev?.hours ?? 0) + add.hours,
+    const current = next.find((cell) => cell.phaseId === add.phaseId && cell.weekStartIso === add.weekStartIso);
+    if (!add.dayHours) {
+      const hours = Math.round(((current?.hours ?? 0) + add.hours) * 10) / 10;
+      next = withCellHours(next, add.phaseId, add.weekStartIso, hours);
+      continue;
+    }
+    const base = current?.dayHours?.length === 7 ? current.dayHours.slice() : emptyDayHours();
+    if (current && !current.dayHours && current.hours > 0) base[0] = current.hours;
+    add.dayHours.forEach((hours, index) => {
+      base[index] = Math.round(((base[index] ?? 0) + hours) * 10) / 10;
     });
-  }
-  let next = cells;
-  for (const add of grouped.values()) {
-    const hours = Math.round((cellHours(next, add.phaseId, add.weekStartIso) + add.hours) * 10) / 10;
-    next = withCellHours(next, add.phaseId, add.weekStartIso, hours);
+    next = withCellDayHours(next, add.phaseId, add.weekStartIso, base);
   }
   return next;
 }

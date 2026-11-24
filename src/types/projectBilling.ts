@@ -69,6 +69,8 @@ export type ProjectBillingData = {
   monthBilled: Record<string, number>;
   /** Imported GC schedule rows, including any sent to Upcoming. */
   gcSchedule?: GcScheduleSaved;
+  /** ISO dates (YYYY-MM-DD) blocked out of the labor plan. */
+  holidays: string[];
 };
 
 export type GcScheduleStatus = "projection" | "upcoming" | "open";
@@ -145,6 +147,7 @@ export function defaultProjectBilling(): ProjectBillingData {
     calculatorLaborRates: defaultCalculatorLaborRates(),
     monthMaterial: {},
     monthBilled: {},
+    holidays: [],
   };
 }
 
@@ -317,6 +320,19 @@ function normalizeGcScheduleItem(raw: unknown): GcScheduleSavedItem | null {
   };
 }
 
+function normalizeHolidays(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    const iso = typeof item === "string" ? item.trim() : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || seen.has(iso)) continue;
+    seen.add(iso);
+    out.push(iso);
+  }
+  return out.sort();
+}
+
 export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return defaultProjectBilling();
@@ -333,6 +349,7 @@ export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
     monthMaterial: normalizeMoneyMap(o.monthMaterial),
     monthBilled: normalizeMoneyMap(o.monthBilled),
     gcSchedule: normalizeGcSchedule(o.gcSchedule),
+    holidays: normalizeHolidays(o.holidays),
   };
 }
 
