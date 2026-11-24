@@ -19,7 +19,7 @@ export type InvoiceStampPlacement = {
 };
 
 export function defaultInvoiceStampPlacement(): InvoiceStampPlacement {
-  return { pageIndex: 0, x: 0.62, y: 0.03, width: 0.35, height: 0.1 };
+  return { pageIndex: 0, x: 0.62, y: 0.03, width: 0.35, height: 0.072 };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -67,16 +67,13 @@ function drawStamp(
   fields: PreparedStamp,
   placement: InvoiceStampPlacement,
 ) {
-  const ink = rgb(0.7, 0.08, 0.1);
+  const red = rgb(0.88, 0.02, 0);
+  const black = rgb(0, 0, 0);
   const pageW = page.getWidth();
   const pageH = page.getHeight();
-  const boxW = clamp(placement.width, 0.12, 1) * pageW;
-  const boxH = clamp(placement.height, 0.08, 1) * pageH;
-  const x = clamp(placement.x, 0, 1 - boxW / pageW) * pageW;
-  const y = pageH - clamp(placement.y, 0, 1 - boxH / pageH) * pageH - boxH;
   const size = 6;
   const outer = 2.25;
-  const pad = 4;
+  const pad = 7;
   const lineH = 9;
   const rows = [
     { label: "GL", value: fields.gl },
@@ -86,13 +83,17 @@ function drawStamp(
     { label: "APPROVED", value: fields.approved },
     { label: "NOTES", value: fields.notes },
   ];
+  const boxW = clamp(placement.width, 0.12, 1) * pageW;
+  const boxH = outer * 2 + pad * 2 + size + (rows.length - 1) * lineH + 2;
+  const x = clamp(placement.x, 0, 1 - boxW / pageW) * pageW;
+  const y = pageH - clamp(placement.y, 0, 1 - boxH / pageH) * pageH - boxH;
 
   page.drawRectangle({
     x,
     y,
     width: boxW,
     height: boxH,
-    borderColor: ink,
+    borderColor: red,
     borderWidth: 0.9,
     color: rgb(1, 1, 1),
   });
@@ -101,13 +102,13 @@ function drawStamp(
     y: y + outer,
     width: Math.max(4, boxW - outer * 2),
     height: Math.max(4, boxH - outer * 2),
-    borderColor: ink,
+    borderColor: red,
     borderWidth: 0.6,
   });
   rows.forEach((row, index) => {
     const baseline = y + boxH - outer - pad - size - index * lineH;
     const title = `${row.label}:`;
-    page.drawText(title, { x: x + outer + pad, y: baseline, size, font: bold, color: ink });
+    page.drawText(title, { x: x + outer + pad, y: baseline, size, font: bold, color: red });
     const titleW = bold.widthOfTextAtSize(title, size);
     const lineX = x + outer + pad + titleW + 3;
     const lineEnd = x + boxW - outer - pad;
@@ -117,11 +118,11 @@ function drawStamp(
         start: { x: lineX, y: lineY },
         end: { x: lineEnd, y: lineY },
         thickness: 0.6,
-        color: ink,
+        color: red,
       });
     }
     const value = fit(row.value, font, size, Math.max(8, lineEnd - lineX - 4));
-    if (value) page.drawText(value, { x: lineX + 2, y: baseline, size, font, color: ink });
+    if (value) page.drawText(value, { x: lineX + 2, y: baseline, size, font, color: black });
   });
 }
 

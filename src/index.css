@@ -22258,12 +22258,12 @@ td.billing-manpower-week-col--beyond-contract,
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  padding: 5px 6px 4px;
-  border: 1.25px solid #b3141a;
-  outline: 1.25px solid #b3141a;
+  padding: 8px 9px 7px;
+  border: 1.25px solid #e10500;
+  outline: 1.25px solid #e10500;
   outline-offset: -3.5px;
   background: rgb(255 255 255 / 0.94);
-  color: #b3141a;
+  color: #111;
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -22295,13 +22295,14 @@ td.billing-manpower-week-col--beyond-contract,
 }
 
 .read-invoice-stamp-lines div span:first-child {
+  color: #e10500;
   font-weight: 700;
 }
 
 .read-invoice-stamp-lines div span:last-child {
   min-width: 0;
   overflow: hidden;
-  border-bottom: 1px solid #b3141a;
+  border-bottom: 1px solid #e10500;
   padding: 0 0.15em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -22317,7 +22318,7 @@ td.billing-manpower-week-col--beyond-contract,
   padding: 0;
   border: 2px solid white;
   border-radius: 2px;
-  background: #b3141a;
+  background: #e10500;
   cursor: nwse-resize;
   touch-action: none;
   opacity: 0;
@@ -22387,7 +22388,8 @@ td.billing-manpower-week-col--beyond-contract,
   position: fixed;
   z-index: 80;
   top: 4.75rem;
-  right: 1.25rem;
+  left: 1.25rem;
+  right: auto;
   width: min(22rem, calc(100vw - 1.5rem));
   max-height: min(78vh, 40rem);
   overflow: auto;
@@ -22479,20 +22481,30 @@ td.billing-manpower-week-col--beyond-contract,
   font-size: 0.95rem;
 }
 
-.read-invoice-stamp-popup label {
+.read-invoice-stamp-popup label,
+.read-invoice-stamp-popup .read-invoice-stamp-class {
   display: grid;
-  gap: 0.2rem;
+  grid-template-columns: 6.6rem minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.55rem;
   font-size: 0.8rem;
 }
 
 .read-invoice-stamp-popup .read-invoice-stamp-remember {
   display: flex;
   align-items: center;
+  gap: 0.4rem;
 }
 
 .read-invoice-stamp-popup input,
 .read-invoice-stamp-popup select {
   width: 100%;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.read-invoice-stamp-popup .read-invoice-stamp-remember input {
+  width: auto;
 }
 
 .read-invoice-stamp-popup p {

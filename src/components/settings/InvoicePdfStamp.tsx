@@ -148,6 +148,7 @@ export function InvoicePdfStamp({
   const [error, setError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<StampContextMenu | null>(null);
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
+  const popupMoved = useRef(false);
 
   const selected = stamps.find((stamp) => stamp.id === selectedId) ?? null;
 
@@ -320,7 +321,7 @@ export function InvoicePdfStamp({
     setStamps((current) => [...current, next]);
     setSelectedId(next.id);
     setStampsVisible(true);
-    if (openPopup) setMenuOpen(true);
+    if (openPopup) openStampMenu();
     setError(null);
     setContextMenu(null);
   }
@@ -359,9 +360,25 @@ export function InvoicePdfStamp({
     setContextMenu(null);
   }
 
+  function popupAtRightPanel(): { x: number; y: number } {
+    const width = Math.min(352, window.innerWidth - 24);
+    const side = document.querySelector(".read-invoice-side");
+    if (!(side instanceof HTMLElement)) return { x: 16, y: 76 };
+    const rect = side.getBoundingClientRect();
+    return {
+      x: clamp(rect.left + 10, 8, Math.max(8, window.innerWidth - width - 8)),
+      y: clamp(rect.top + 8, 8, Math.max(8, window.innerHeight - 120)),
+    };
+  }
+
+  function openStampMenu() {
+    if (!popupMoved.current) setPopupPos(popupAtRightPanel());
+    setMenuOpen(true);
+  }
+
   function openStampEditor(id: string) {
     setSelectedId(id);
-    setMenuOpen(true);
+    openStampMenu();
     setStampsVisible(true);
     setContextMenu(null);
     setError(null);
@@ -406,6 +423,7 @@ export function InvoicePdfStamp({
     const popup = event.currentTarget.parentElement;
     if (!(popup instanceof HTMLElement)) return;
     event.preventDefault();
+    popupMoved.current = true;
     const rect = popup.getBoundingClientRect();
     const originX = popupPos?.x ?? rect.left;
     const originY = popupPos?.y ?? rect.top;
@@ -453,19 +471,11 @@ export function InvoicePdfStamp({
         });
         return;
       }
-      const aspect = start.height > 0 ? start.width / start.height : 3.5;
-      let width = clamp(start.width + dx, 0.12, 1 - start.x);
-      let height = width / aspect;
-      if (height > 1 - start.y) {
-        height = Math.max(0.07, 1 - start.y);
-        width = clamp(height * aspect, 0.12, 1 - start.x);
-        height = width / aspect;
-      }
+      let width = clamp(start.width + dx, 0.18, 1 - start.x);
       updateStamp(stamp.id, {
         placement: {
           ...start,
           width,
-          height: clamp(height, 0.07, 1 - start.y),
         },
       });
     };
@@ -483,7 +493,7 @@ export function InvoicePdfStamp({
       const missing = stamps.find((stamp) => !stampReady(stamp));
       if (stamps.length && missing) {
         setSelectedId(missing.id);
-        setMenuOpen(true);
+        openStampMenu();
         setError("Fill in the GL, job, cost code, and who approved it on every stamp before printing.");
         return;
       }
@@ -584,7 +594,7 @@ export function InvoicePdfStamp({
                     left: `${stamp.placement.x * 100}%`,
                     top: `${stamp.placement.y * 100}%`,
                     width: `${stamp.placement.width * 100}%`,
-                    height: `${stamp.placement.height * 100}%`,
+                    height: "auto",
                   }}
                   onPointerDown={(event) => beginDrag(event, stamp, "move")}
                   onDoubleClick={(event) => {
@@ -699,7 +709,7 @@ export function InvoicePdfStamp({
               ))}
             </select>
           </label>
-          <p className="muted small read-invoice-stamp-class">Cost class: {selectedFields?.costClass}</p>
+          <p className="muted small read-invoice-stamp-class"><span>Cost class</span><span>{selectedFields?.costClass}</span></p>
           <label>
             Job number
             <input
