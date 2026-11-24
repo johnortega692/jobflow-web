@@ -193,12 +193,7 @@ function ProjectLayoutShell() {
               )}
               <div className="project-nav-section-links">
                 {modules.map((mod) => {
-                  const modTo =
-                    mod.id === "read-invoice" && projectId
-                      ? `/read-invoice?project=${projectId}`
-                      : mod.path
-                        ? `${base}/${mod.path}`
-                        : base;
+                  const modTo = mod.path ? `${base}/${mod.path}` : base;
                   return (
                   <NavLink
                     key={mod.id}
@@ -218,35 +213,34 @@ function ProjectLayoutShell() {
                   );
                 })}
               </div>
+              {section.id === "main" && !roleLoading && isAdmin ? (
+                <div className="project-sidebar-admin">
+                  {isDone ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm project-sidebar-reopen-btn"
+                      disabled={doneBusy}
+                      onClick={() => void onToggleCompleted(false)}
+                    >
+                      {doneBusy ? "Reopening…" : "Reopen project"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm project-sidebar-done-btn"
+                      disabled={doneBusy}
+                      onClick={() => void onToggleCompleted(true)}
+                    >
+                      {doneBusy ? "Marking…" : "Mark completed"}
+                    </button>
+                  )}
+                  {doneError ? <p className="project-sidebar-done-error">{doneError}</p> : null}
+                </div>
+              ) : null}
             </div>
             );
           })}
         </nav>
-
-        {!roleLoading && isAdmin ? (
-          <div className="project-sidebar-admin">
-            {isDone ? (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm project-sidebar-reopen-btn"
-                disabled={doneBusy}
-                onClick={() => void onToggleCompleted(false)}
-              >
-                {doneBusy ? "Reopening…" : "Reopen project"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-danger btn-sm project-sidebar-done-btn"
-                disabled={doneBusy}
-                onClick={() => void onToggleCompleted(true)}
-              >
-                {doneBusy ? "Marking…" : "Mark completed"}
-              </button>
-            )}
-            {doneError ? <p className="project-sidebar-done-error">{doneError}</p> : null}
-          </div>
-        ) : null}
       </aside>
 
       <div className="project-main">
@@ -276,7 +270,7 @@ function ProjectLayoutShell() {
         {isDone ? (
           <div className="banner banner-warn project-completed-banner" role="status">
             This project is marked completed. It is hidden from the active projects list, Manpower, and Field Tools
-            {!roleLoading && isAdmin ? " — admins can reopen it from the sidebar." : "."}
+            {!roleLoading && isAdmin ? " — admins can reopen it under Dashboard." : "."}
           </div>
         ) : null}
 

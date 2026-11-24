@@ -65,10 +65,6 @@ type Props = {
   monthlyBilling?: ReactNode;
 };
 
-function cellKey(phaseId: ManpowerPhaseId, weekStartIso: string): string {
-  return `${phaseId}:${weekStartIso}`;
-}
-
 /** Compact man-weeks display: 1 dp, no trailing .0 (e.g. 1.5, 2). */
 function formatManWeeks(hours: number): string {
   if (hours <= 0) return "—";
@@ -194,15 +190,12 @@ export function ManpowerPlanCard({
     billing.manpowerWeekCount,
   );
   const endDateHint = manpowerEndDateHint(projectStartIso, projectEndIso);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draftHours, setDraftHours] = useState("");
   const [detailWeek, setDetailWeek] = useState<string | null>(null);
   const [weekMenu, setWeekMenu] = useState<{ week: string; top: number; left: number } | null>(null);
   const [carryWeek, setCarryWeek] = useState<string | null>(null);
   const [carryToast, setCarryToast] = useState<{ message: string; cells: ManpowerCell[] } | null>(null);
   const [draftStart, setDraftStart] = useState(projectStartIso);
   const [draftEnd, setDraftEnd] = useState(projectEndIso);
-  const inputRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<{
     phaseId: ManpowerPhaseId;
     anchorWeek: string;
@@ -221,35 +214,6 @@ export function ManpowerPlanCard({
     setDraftStart(projectStartIso);
     setDraftEnd(projectEndIso);
   }, [projectStartIso, projectEndIso]);
-
-  useEffect(() => {
-    if (editing && inputRef.current) inputRef.current.focus();
-  }, [editing]);
-
-  const commitHours = useCallback(
-    async (phaseId: ManpowerPhaseId, weekStartIso: string, raw: string) => {
-      if (!canEditCells) {
-        setEditing(null);
-        return;
-      }
-      const n = raw.trim() === "" ? 0 : Number(raw);
-      const hours = Number.isFinite(n) && n >= 0 ? n : 0;
-      const nextCells = withCellHours(billing.manpowerCells, phaseId, weekStartIso, hours);
-      const next = { ...billing, manpowerCells: nextCells };
-      onBillingChange(next);
-      setEditing(null);
-      await onPersistQuiet(next);
-    },
-    [billing, canEditCells, onBillingChange, onPersistQuiet],
-  );
-
-  const clearCell = useCallback(
-    async (phaseId: ManpowerPhaseId, weekStartIso: string) => {
-      if (!canEditCells) return;
-      await commitHours(phaseId, weekStartIso, "");
-    },
-    [canEditCells, commitHours],
-  );
 
   const moveDraggedHours = useCallback(
     async (phaseId: ManpowerPhaseId, anchorWeek: string, endWeek: string) => {
@@ -961,8 +925,6 @@ export function ManpowerPlanCard({
                     </td>
                     {weeks.map((w) => {
                       const hrs = cellHours(billing.manpowerCells, phase.id, w);
-                      const key = cellKey(phase.id, w);
-                      const isEditing = editing === key;
                       const previewHours = spreadPreview?.[phase.id]?.[weeks.indexOf(w)];
                       return (
                         <td
@@ -978,26 +940,6 @@ export function ManpowerPlanCard({
                             >
                               {previewHours > 0 ? formatHours(previewHours) : "—"}
                             </span>
-                          ) : isEditing && canEditCells ? (
-                            <input
-                              ref={inputRef}
-                              type="number"
-                              min={0}
-                              step={0.5}
-                              className="billing-manpower-cell-input"
-                              value={draftHours}
-                              onChange={(e) => setDraftHours(e.target.value)}
-                              onBlur={() => void commitHours(phase.id, w, draftHours)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") void commitHours(phase.id, w, draftHours);
-                                if (e.key === "Escape") setEditing(null);
-                                if (e.key === "Delete" || e.key === "Backspace") {
-                                  if (draftHours === "") void clearCell(phase.id, w);
-                                }
-                              }}
-                              placeholder="hrs"
-                              title="Enter hours · clear to remove"
-                            />
                           ) : (
                             <button
                               type="button"
@@ -1059,8 +1001,8 @@ export function ManpowerPlanCard({
                                 }
                                 if (!drag.moved) {
                                   setDragFill(null);
-                                  setEditing(key);
-                                  setDraftHours(hrs > 0 ? String(hrs) : "");
+                                  setWeekMenu(null);
+                                  setDetailWeek(w);
                                   return;
                                 }
                                 void moveDraggedHours(drag.phaseId, drag.anchorWeek, drag.currentWeek);
@@ -1069,16 +1011,11 @@ export function ManpowerPlanCard({
                                 dragRef.current = null;
                                 setDragFill(null);
                               }}
-                              onContextMenu={(e) => {
-                                if (!canEditCells || hrs <= 0) return;
-                                e.preventDefault();
-                                void clearCell(phase.id, w);
-                              }}
                               title={
                                 hrs > 0
-                                  ? `${formatHours(hrs)} hrs · ${formatManWeeks(hrs)} man-wk · drag to another week to move · right-click to clear`
+                                  ? `${formatHours(hrs)} hrs · ${formatManWeeks(hrs)} man-wk · open Plan week to change · drag to another week to move`
                                   : canEditCells
-                                    ? "Add hours"
+                                    ? "Open Plan week"
                                     : "View only"
                               }
                               aria-label={`${phaseDisplayLabel(phase)} week ${weekColumnLabel(w)} hours`}
@@ -1132,8 +1069,8 @@ export function ManpowerPlanCard({
           {showWeekly ? (
             <p className="muted small billing-manpower-caption">
               {isField
-                ? `Tap a cell to edit · drag a week onto another week to move the hours · ${HOURS_PER_MAN_WEEK} hrs = 1 man-week`
-                : `Drag a week onto another week to move the hours · right-click or clear a cell to empty it · ${HOURS_PER_MAN_WEEK} hrs = 1 man-week`}
+                ? `Tap a cell to open Plan week · drag a week onto another week to move the hours · ${HOURS_PER_MAN_WEEK} hrs = 1 man-week`
+                : `Open Plan week to change hours · drag a week onto another week to move the hours · ${HOURS_PER_MAN_WEEK} hrs = 1 man-week`}
             </p>
           ) : (
             <span />

@@ -86,7 +86,7 @@ export function CompletedProjectsSettingsSection() {
         <p className="muted">Loading completed projects…</p>
       ) : rows.length === 0 ? (
         <p className="muted">
-          No completed projects ready for deletion. Mark a project completed from its sidebar (admin) or in
+          No completed projects ready for deletion. Mark a project completed under Dashboard (admin) or in
           Manpower → Admin first.
         </p>
       ) : (

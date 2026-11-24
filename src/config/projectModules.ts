@@ -5,7 +5,6 @@ export type ProjectModuleId =
   | "excel-paste"
   | "orders"
   | "po"
-  | "read-invoice"
   | "budget"
   | "billing"
   | "work-orders"
@@ -54,7 +53,6 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     label: "Orders",
     modules: [
       { id: "po", label: "PO", path: "po", ready: true },
-      { id: "read-invoice", label: "Invoice Check", path: "read-invoice", ready: true },
       { id: "orders", label: "Material orders", path: "orders", ready: true },
     ],
   },
