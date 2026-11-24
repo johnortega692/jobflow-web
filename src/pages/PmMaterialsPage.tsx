@@ -15,6 +15,7 @@ import {
 } from "../lib/pmMaterialsBoard";
 import { supabase } from "../lib/supabase";
 import { normalizeProject, type Project } from "../types/database";
+import { TrackingLink } from "../components/TrackingLink";
 
 const FILTERS: { id: PmMaterialsFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -211,7 +212,7 @@ export function PmMaterialsPage() {
                       <Cell value={row.shipDate} />
                     </td>
                     <td className="pm-materials-tracking">
-                      <Cell value={row.dateReceivedTracking} />
+                      <TrackingLink value={row.dateReceivedTracking} />
                     </td>
                     <td className="pm-materials-notes">
                       <Cell value={row.notes} />

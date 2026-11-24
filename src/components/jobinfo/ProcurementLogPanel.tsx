@@ -9,6 +9,7 @@ import { resolveWcTrackerLines } from "../../lib/fieldTrackerProject";
 import { trackerLineTrade } from "../../types/fieldTracker";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
 import type { ProjectForm, Json } from "../../types/database";
+import { TrackingLink } from "../TrackingLink";
 
 type Props = {
   project: ProjectForm;
@@ -170,7 +171,7 @@ export function ProcurementLogPanel({ project, projectId }: Props) {
                     <td>{row.dateOrdered}</td>
                     <td>{row.shipDate}</td>
                     <td className="plog-tracking-cell" title={row.dateReceivedTracking}>
-                      {row.dateReceivedTracking}
+                      <TrackingLink value={row.dateReceivedTracking} />
                     </td>
                     <td>{row.notes}</td>
                   </tr>

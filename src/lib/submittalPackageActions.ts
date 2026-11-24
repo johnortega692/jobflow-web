@@ -60,6 +60,7 @@ export function issueSubmittalDraft(
             specSectionSecondaryLabel: issued.spec_section_secondary_label,
           }
         : {}),
+      ...(scope === "paint" && "packet_tracking" in issued ? { packetTracking: issued.packet_tracking } : {}),
     },
   );
   return { draft: issued, history: nextHistory };

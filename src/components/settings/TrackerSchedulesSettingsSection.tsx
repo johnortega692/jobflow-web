@@ -19,6 +19,7 @@ import {
 import {
   loadProjectsForFollowUpReminders,
   sendFollowUpReminder,
+  followUpReminderHasContent,
   type FollowUpReminderKind,
 } from "../../lib/trackerFollowUpReminders";
 import {
@@ -27,15 +28,18 @@ import {
   type WeeklyDigestKind,
 } from "../../lib/trackerWeeklyDigest";
 import { sendNotesDigest } from "../../lib/notesDigestEmail";
-import { sendSiteReadyDigest } from "../../lib/startupSiteReadyDigest";
+import { sendSiteReadyDigest, siteReadyDigestHasContent } from "../../lib/startupSiteReadyDigest";
 import {
   BILLING_DUE_REMINDER_DAYS_BEFORE,
+  billingDueDigestHasContent,
   loadProjectsForBillingDueDigest,
   sendBillingDueDigest,
 } from "../../lib/billingDueDigest";
 import {
   WEEKDAY_LABELS,
+  effectiveScheduleWeekday,
   formatSendHourLabel,
+  trackerSlotsForWeekday,
   zonedCalendarDate,
   type TrackerEmailSchedule,
 } from "../../lib/trackerEmailSchedule";
@@ -59,7 +63,8 @@ type SendKey =
   | "combined"
   | "wc_digest"
   | "site_ready"
-  | "notes_digest";
+  | "notes_digest"
+  | "monday_mail";
 
 function timezoneShort(tz: string): string {
   try {
@@ -315,6 +320,98 @@ export function TrackerSchedulesSettingsSection({
     }
   }
 
+  async function sendMondayMail() {
+    setSending("monday_mail");
+    setSendNote(null);
+    const sent: string[] = [];
+    const skipped: string[] = [];
+    try {
+      if (!data) throw new Error("Schedule settings are still loading.");
+      const ctx = testSendContext(
+        data,
+        letterhead.company_name,
+        letterhead.company_address,
+        letterhead.logo_url,
+        { email: profileEmail, name: profileName },
+      );
+      if (!ctx.primaryEmail) {
+        throw new Error("Set Email on your Profile before sending a test copy.");
+      }
+      const slots = trackerSlotsForWeekday(1, {
+        digestWeekday: schedule.weekly.digest_weekday,
+        wallcoveringDigestWeekday: schedule.weekly.wallcovering_digest_weekday,
+        siteReadyWeekday: schedule.weekly.site_ready_weekday,
+        notesDigestEnabled: schedule.notes_digest.enabled,
+      });
+      const today = zonedCalendarDate(new Date(), schedule.timezone);
+      if (slots.includes("notes") && schedule.notes_digest.enabled) {
+        const notes = await sendNotesTest(ctx);
+        if (/nothing due/i.test(notes)) skipped.push(notes);
+        else sent.push(notes);
+      }
+      if (slots.includes("daily") && schedule.daily.enabled) {
+        const loaded = await loadProjectsForFollowUpReminders();
+        if (loaded.error) throw new Error(loaded.error);
+        const kinds: FollowUpReminderKind[] = [];
+        if (schedule.daily.paint_followup) kinds.push("paint");
+        if (schedule.daily.wallcovering_followup) kinds.push("wallcovering");
+        if (schedule.daily.installs) kinds.push("installs");
+        for (const kind of kinds) {
+          if (!followUpReminderHasContent(kind, loaded.projects, today, schedule.timezone)) {
+            skipped.push(`${kind} follow-up: nothing due`);
+            continue;
+          }
+          sent.push(await sendFollowUpKind(kind, ctx, schedule.timezone));
+        }
+        if (schedule.daily.billing_due) {
+          const billing = await loadProjectsForBillingDueDigest();
+          if (billing.error) throw new Error(billing.error);
+          if (!billingDueDigestHasContent(billing.projects, today)) {
+            skipped.push("Billing due: nothing 4 days out");
+          } else {
+            sent.push(await sendBillingTest(ctx));
+          }
+        }
+      }
+      if (slots.includes("weekly") && schedule.weekly.enabled) {
+        const digestDay = effectiveScheduleWeekday(schedule.weekly.digest_weekday);
+        const wcDay = effectiveScheduleWeekday(schedule.weekly.wallcovering_digest_weekday, digestDay);
+        if (schedule.weekly.combined_digest && digestDay === 1) {
+          sent.push(await sendDigestKind("combined", ctx));
+        }
+        if (schedule.weekly.wallcovering_digest && wcDay === 1) {
+          sent.push(await sendDigestKind("wallcovering", ctx));
+        }
+      }
+      if (slots.includes("monday") && schedule.weekly.enabled && schedule.weekly.startup_site_ready) {
+        const loaded = await loadProjectsForWeeklyDigest();
+        if (loaded.error) throw new Error(loaded.error);
+        if (!siteReadyDigestHasContent(loaded.projects)) {
+          skipped.push("Site-ready: nothing due");
+        } else {
+          sent.push(await sendSiteReadyTest(ctx));
+        }
+      }
+      const text = [...sent, ...skipped.map((line) => `Skipped — ${line}`)].join(" · ") || "Monday has no scheduled mail turned on.";
+      setSendNote({ ok: true, text });
+      const status = buildTrackerEmailCronStatus({
+        source: "send_now",
+        ok: true,
+        slots,
+        sent,
+        skipped,
+        message: text,
+      });
+      setCronStatus(status);
+      if (user?.id) await recordTrackerEmailCronStatus(user.id, status);
+    } catch (e) {
+      const text = e instanceof Error ? e.message : "Could not send Monday's mail.";
+      setSendNote({ ok: false, text });
+    } finally {
+      setSending(null);
+    }
+  }
+
   return (
     <form className="stack sched-page" onSubmit={(e) => void onSave(e)}>
       <div className="sched-title-row">
@@ -355,6 +452,19 @@ export function TrackerSchedulesSettingsSection({
             Automatic send: no run recorded yet.
           </p>
         )}
+        <div className="sched-monday-test">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={readOnly || sending !== null}
+            onClick={() => void sendMondayMail()}
+          >
+            {sending === "monday_mail" ? "Sending Monday’s mail…" : "Send Monday’s mail now"}
+          </button>
+          <p className="muted small">
+            Sends the same emails Monday’s automatic run sends. A single Send test only sends that one piece.
+          </p>
+        </div>
       </div>
 
       <section className="sched-card">

@@ -269,6 +269,28 @@ function isCronSlot(value: string | undefined): value is TrackerEmailCronSlot {
   return Boolean(value && (CRON_SLOTS as string[]).includes(value));
 }
 
+/** Slots for a local weekday, ignoring the clock. Weekends have no daily or notes mail. */
+export function trackerSlotsForWeekday(
+  weekday: number,
+  weekdays?: {
+    digestWeekday?: number;
+    wallcoveringDigestWeekday?: number;
+    siteReadyWeekday?: number;
+    notesDigestEnabled?: boolean;
+  },
+): TrackerEmailCronSlot[] {
+  const notesEnabled = weekdays?.notesDigestEnabled !== false;
+  const slots: TrackerEmailCronSlot[] = [];
+  if (!isWeekendWeekday(weekday)) slots.push("daily");
+  const digest = effectiveScheduleWeekday(weekdays?.digestWeekday, DEFAULT_DIGEST_WEEKDAY);
+  const wcDigest = effectiveScheduleWeekday(weekdays?.wallcoveringDigestWeekday, digest);
+  const siteReady = effectiveScheduleWeekday(weekdays?.siteReadyWeekday, DEFAULT_SITE_READY_WEEKDAY);
+  if (weekday === siteReady) slots.push("monday");
+  if (weekday === digest || weekday === wcDigest) slots.push("weekly");
+  if (notesEnabled && !isWeekendWeekday(weekday)) slots.push("notes");
+  return slots;
+}
+
 /** Which digest/follow-up slots should run for this local calendar day. Empty when not send hour. */
 export function trackerCronSlotsDueOnUtcDate(
   now: Date,
@@ -290,16 +312,8 @@ export function trackerCronSlotsDueOnUtcDate(
   const { weekday, hour } = zonedWeekdayAndHour(now, timezone);
   const notesDue = notesEnabled && !isWeekendWeekday(weekday) && hour === notesHour;
   if (hour !== sendHour) return notesDue ? ["notes"] : [];
-  const slots: TrackerEmailCronSlot[] = [];
-  // Daily follow-ups / installs / billing skip Sat–Sun.
-  if (!isWeekendWeekday(weekday)) slots.push("daily");
-  const digest = effectiveScheduleWeekday(weekdays?.digestWeekday, DEFAULT_DIGEST_WEEKDAY);
-  const wcDigest = effectiveScheduleWeekday(weekdays?.wallcoveringDigestWeekday, digest);
-  const siteReady = effectiveScheduleWeekday(weekdays?.siteReadyWeekday, DEFAULT_SITE_READY_WEEKDAY);
-  if (weekday === siteReady) slots.push("monday");
-  if (weekday === digest || weekday === wcDigest) slots.push("weekly");
-  if (notesDue) slots.push("notes");
-  return slots;
+  const slots = trackerSlotsForWeekday(weekday, weekdays);
+  return notesDue ? slots : slots.filter((slot) => slot !== "notes");
 }
 
 /**

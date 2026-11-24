@@ -171,6 +171,7 @@ export function normalizeHistoryEntry(raw: SubmittalHistoryEntry): SubmittalHist
     spec_section_secondary: raw.spec_section_secondary?.trim() || undefined,
     spec_section_secondary_label: raw.spec_section_secondary_label?.trim() || undefined,
     date: raw.date?.trim() ? formatSubmittalDisplayDate(raw.date) : raw.date,
+    packet_tracking: raw.packet_tracking?.trim() || undefined,
   };
 }
 
@@ -229,6 +230,7 @@ export function addSubmittalToHistory(
     specSection?: string;
     specSectionSecondary?: string;
     specSectionSecondaryLabel?: string;
+    packetTracking?: string;
   },
 ): SubmittalHistoryEntry[] {
   const filtered = items.filter((i) => {
@@ -257,6 +259,7 @@ export function addSubmittalToHistory(
     spec_section_secondary_label: options?.specSectionSecondaryLabel?.trim() || undefined,
     issue_status: issueStatus,
     locked,
+    packet_tracking: options?.packetTracking?.trim() || undefined,
   });
 
   const withoutSame = history.filter(

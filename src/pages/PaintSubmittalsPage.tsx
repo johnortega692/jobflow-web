@@ -51,6 +51,8 @@ import {
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
 import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
+import { stampPaintPacketTracking } from "../lib/paintPacketTracking";
+import { trackingLink } from "../lib/trackingLink";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
 import { listOpenBrushoutPreps, loadPaintUserSettings } from "../lib/paintUserSettings";
@@ -107,7 +109,9 @@ export function PaintSubmittalsPage() {
   const [atticOpen, setAtticOpen] = useState(false);
   const [emailDraft, setEmailDraft] = useState<PaintSubmittalData | null>(null);
   const [prepOpen, setPrepOpen] = useState(false);
-  const [toolbarMenu, setToolbarMenu] = useState<"new" | "help" | null>(null);
+  const [toolbarMenu, setToolbarMenu] = useState<"new" | "help" | "order" | null>(null);
+  const [trackingOpen, setTrackingOpen] = useState(false);
+  const [trackingDraft, setTrackingDraft] = useState("");
   const [itemsMenu, setItemsMenu] = useState<"add" | "more" | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const itemsActionsRef = useRef<HTMLDivElement>(null);
@@ -133,13 +137,14 @@ export function PaintSubmittalsPage() {
         ...tradeData,
         ...(snapshot ? { paint_tracker: snapshot.paint_tracker } : {}),
         paint_submittal: { ...nextDraft, paint_vendor },
-        paint_submittal_history: nextHistory,
+        paint_submittal_history: stampPaintPacketTracking(nextHistory, nextDraft),
       });
       if (ok) {
         const nextSubmittal = { ...nextDraft, paint_vendor };
+        const stampedHistory = stampPaintPacketTracking(nextHistory, nextDraft);
         setDraft(nextSubmittal);
-        setHistory(nextHistory);
-        syncBaseline({ draft: nextSubmittal, history: nextHistory });
+        setHistory(stampedHistory);
+        syncBaseline({ draft: nextSubmittal, history: stampedHistory });
         setError(null);
         try {
           await syncApprovedBrushoutPrimers({
@@ -276,6 +281,35 @@ export function PaintSubmittalsPage() {
   );
   const showPreviousColor = draft.submittal_type === "substitution";
   const draftLocked = submittalDraftIsLocked(draft);
+  const packetNumber = draft.packet_tracking?.trim() ?? "";
+  const packetShipment = trackingLink(packetNumber);
+
+  function openPacketTracking() {
+    setTrackingDraft(packetNumber);
+    setTrackingOpen(true);
+  }
+
+  function commitPacketTracking(raw: string) {
+    const next = raw.trim();
+    setTrackingOpen(false);
+    if (!next) return;
+    const saved = normalizePaintSubmittal(tradeData.paint_submittal).packet_tracking ?? "";
+    if (next === (draft.packet_tracking ?? "") && next === saved) return;
+    const nextDraft = { ...draft, packet_tracking: next };
+    setDraft(nextDraft);
+    if (next === saved) return;
+    void persist(nextDraft, history);
+  }
+
+  function clearPacketTracking() {
+    setTrackingOpen(false);
+    setTrackingDraft("");
+    const saved = normalizePaintSubmittal(tradeData.paint_submittal).packet_tracking ?? "";
+    const nextDraft = { ...draft, packet_tracking: undefined };
+    setDraft(nextDraft);
+    if (!saved) return;
+    void persist(nextDraft, history);
+  }
   const previouslyOrderedItems = useMemo(() => {
     if (draft.revision_number < 1) return [];
     const entry = previousIssuedHistoryEntryForRevision(
@@ -705,6 +739,7 @@ export function PaintSubmittalsPage() {
             date: draft.date,
             specSection: draft.spec_section,
             specSectionSecondary: draft.spec_sections?.[1],
+            packetTracking: draft.packet_tracking,
           },
         );
       }
@@ -797,7 +832,8 @@ export function PaintSubmittalsPage() {
   function onCreateRevision() {
     const next = startNextRevision(draft, history);
     if (next === draft) return;
-    setDraft(next);
+    setHistory(stampPaintPacketTracking(history, draft));
+    setDraft({ ...next, packet_tracking: undefined });
     setStatus(
       `Editing Rev ${next.revision_number} (draft). Add a revision note before issuing.`,
     );
@@ -817,9 +853,31 @@ export function PaintSubmittalsPage() {
       package_type: "Paint Brush-Outs / Color Samples" as const,
       subject: paintSubjectForType("new"),
       auto_label: false,
+      packet_tracking: undefined,
       items: withMaybeAutoLabels([emptyPaintItem()], false),
     };
     const leadOnly = (draft.spec_sections?.[0] || draft.spec_section || "").trim();
+    if (draft.packet_tracking?.trim()) {
+      setHistory(
+        addSubmittalToHistory(
+          history,
+          draft.submittal_number,
+          draft.revision_number,
+          draft.items,
+          draft.submittal_type,
+          "paint",
+          {
+            revisionNote: draft.revision_note,
+            issueStatus: draft.issue_status,
+            locked: draftLocked,
+            packageType: draft.package_type,
+            date: draft.date,
+            specSection: draft.spec_section,
+            packetTracking: draft.packet_tracking,
+          },
+        ),
+      );
+    }
     setDraft(withPaintSpecSections(nextBase, leadOnly ? [leadOnly] : ["09 91 23 - Interior Painting"]));
     setStatus("New submittal package started (Rev 0, draft).");
   }
@@ -928,11 +986,55 @@ export function PaintSubmittalsPage() {
         </div>
 
         <div className="paint-toolbar-brush" aria-label="Brush-outs">
-          <span className="paint-toolbar-label">Brush-outs</span>
           <div className="paint-toolbar-segment">
-            <button type="button" className="btn paint-toolbar-order" onClick={() => setEmailOpen(true)}>
-              Order
-            </button>
+            <div className="paint-toolbar-menu">
+              <button
+                type="button"
+                className="btn paint-toolbar-order"
+                aria-haspopup="menu"
+                aria-expanded={toolbarMenu === "order"}
+                onClick={() => setToolbarMenu((open) => (open === "order" ? null : "order"))}
+              >
+                Order
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden>
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              {toolbarMenu === "order" ? (
+                <div className="paint-toolbar-dropdown paint-toolbar-dropdown-narrow" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      setEmailOpen(true);
+                    }}
+                  >
+                    Order Brushouts
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      setSamplesOpen(true);
+                    }}
+                  >
+                    Order samples
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setToolbarMenu(null);
+                      setAtticOpen(true);
+                    }}
+                  >
+                    Attic stock
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className={`btn paint-toolbar-ordered${draft.submittal_ordered ? " is-on" : ""}`}
@@ -945,12 +1047,6 @@ export function PaintSubmittalsPage() {
               Ordered
             </button>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={() => setSamplesOpen(true)}>
-            Order samples
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => setAtticOpen(true)}>
-            Attic stock
-          </button>
         </div>
 
         <div className="paint-toolbar-end">
@@ -1000,6 +1096,42 @@ export function PaintSubmittalsPage() {
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void onSave()}>
             {saving ? "Saving…" : "Save"}
           </button>
+          {packetNumber && !trackingOpen ? (
+            <span className="paint-packet-chip">
+              {packetShipment ? (
+                <a href={packetShipment.url} target="_blank" rel="noopener noreferrer" title="Open tracking">
+                  {packetNumber}
+                </a>
+              ) : (
+                <span>{packetNumber}</span>
+              )}
+              <button type="button" aria-label="Clear tracking number" onClick={clearPacketTracking}>
+                ✕
+              </button>
+            </span>
+          ) : trackingOpen ? (
+            <input
+              className="paint-packet-tracking-input"
+              value={trackingDraft}
+              placeholder="UPS, FedEx, or USPS"
+              aria-label="Tracking number"
+              autoFocus
+              onChange={(e) => setTrackingDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitPacketTracking(e.currentTarget.value);
+                } else if (e.key === "Escape") {
+                  setTrackingOpen(false);
+                }
+              }}
+              onBlur={() => setTrackingOpen(false)}
+            />
+          ) : (
+            <button type="button" className="btn btn-secondary" onClick={openPacketTracking}>
+              Tracking
+            </button>
+          )}
           <span className="paint-toolbar-download-wrap">
             <button
               type="button"

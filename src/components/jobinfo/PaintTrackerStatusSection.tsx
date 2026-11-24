@@ -23,6 +23,8 @@ import {
   validatePaintTrackerRevisionSave,
 } from "../../lib/paintTrackerRevision";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
+import { paintPacketTrackingNumber } from "../../lib/paintPacketTracking";
+import { TrackingLink } from "../TrackingLink";
 import type { PaintTrackerState } from "../../types/fieldTracker";
 import type { ProjectForm, Json } from "../../types/database";
 
@@ -37,6 +39,17 @@ type Props = {
 };
 
 const AUTO_SAVE_MS = 700;
+
+function PacketTrackingField({ number }: { number: string }) {
+  const text = number.trim();
+  return (
+    <div>
+      <span className="paint-packet-tracking-label">Packet tracking</span>
+      {text ? <TrackingLink value={text} /> : <span className="muted">—</span>}
+      <span className="paint-editor-followup-caption">Mailed with the paint submittal</span>
+    </div>
+  );
+}
 
 function StatusPill({ label, on }: { label: string; on: boolean }) {
   return (
@@ -367,6 +380,11 @@ export function PaintTrackerStatusSection({
   }
 
   let body: ReactNode;
+  const packetTrade = parseProjectTradeData(project.data as Json);
+  const packetTracking = paintPacketTrackingNumber(
+    packetTrade.paint_submittal,
+    packetTrade.paint_submittal_history,
+  );
   if (!jobNumber) {
     body = (
       <p className="muted small">
@@ -450,6 +468,7 @@ export function PaintTrackerStatusSection({
               Sets to 14 days out when submitted for approval
             </span>
           </label>
+          <PacketTrackingField number={packetTracking} />
         </div>
 
         <div className="paint-editor-flags">
@@ -543,6 +562,7 @@ export function PaintTrackerStatusSection({
               onChange={(v) => patchTracker({ followUp: v })}
             />
           </label>
+          <PacketTrackingField number={packetTracking} />
           <label className="grid-span-2">
             Revision notes
             <textarea

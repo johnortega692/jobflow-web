@@ -193,7 +193,12 @@ function ProjectLayoutShell() {
               )}
               <div className="project-nav-section-links">
                 {modules.map((mod) => {
-                  const modTo = mod.path ? `${base}/${mod.path}` : base;
+                  const modTo =
+                    mod.id === "read-invoice" && projectId
+                      ? `/read-invoice?project=${projectId}`
+                      : mod.path
+                        ? `${base}/${mod.path}`
+                        : base;
                   return (
                   <NavLink
                     key={mod.id}

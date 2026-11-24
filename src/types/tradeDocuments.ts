@@ -290,6 +290,8 @@ export type PaintSubmittalData = {
   /** Why this revision was created — shown on PDF when revision &gt; 0. */
   revision_note?: string;
   submittal_ordered?: boolean;
+  /** Carrier number for the mailed paint submittal packet. One per submittal number and revision. */
+  packet_tracking?: string;
   paint_vendor?: string;
   brushout_prep?: BrushoutPrepLink;
   /** Last pushed brush-out line per label+floor key (merge wave tracking). */
@@ -324,6 +326,8 @@ export type SubmittalHistoryEntry = {
   spec_section_secondary_label?: string;
   /** Prior revisions are locked once a new revision is created or the package is issued. */
   locked?: boolean;
+  /** Mailed paint packet number for this submittal and revision. */
+  packet_tracking?: string;
 };
 
 export type WallcoveringSubmittalData = {
@@ -1435,6 +1439,7 @@ export function normalizePaintSubmittal(raw: Partial<PaintSubmittalData> | null 
           )
         : undefined,
     date: formatSubmittalDisplayDate((raw.date ?? base.date).trim()) || formatToday(),
+    packet_tracking: String(raw.packet_tracking ?? "").trim() || undefined,
   };
 }
 

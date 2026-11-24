@@ -35,6 +35,7 @@ import { FrpSubmittalsPage } from "./pages/FrpSubmittalsPage";
 import { ApprovedBrushoutsPage } from "./pages/ApprovedBrushoutsPage";
 import { ProjectOrdersPage } from "./pages/ProjectOrdersPage";
 import { ProjectPoPage } from "./pages/ProjectPoPage";
+import { ProjectReadInvoiceRedirect, ReadInvoicePage } from "./pages/ReadInvoicePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BrushOutRequestPage } from "./pages/BrushOutRequestPage";
 import { FieldDashboardLayout } from "./pages/field/FieldDashboardLayout";
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="/projects/materials" element={<PmMaterialsPage />} />
             <Route path="/workload" element={<CompanyWorkloadPage />} />
             <Route path="/brush-out-request" element={<BrushOutRequestPage />} />
+            <Route path="/read-invoice" element={<ReadInvoicePage />} />
             <Route path="/meetings" element={<MeetingsPage />} />
             <Route path="/meetings/:meetingId" element={<MeetingEditorPage />} />
             <Route path="/notes" element={<AllNotesPage />} />
@@ -92,6 +94,7 @@ export default function App() {
               <Route path="approved-brushouts" element={<ApprovedBrushoutsPage />} />
               <Route path="track" element={<Navigate to="../orders" replace />} />
               <Route path="po" element={<ProjectPoPage />} />
+              <Route path="read-invoice" element={<ProjectReadInvoiceRedirect />} />
               <Route path="orders" element={<ProjectOrdersPage />} />
               <Route path="budget" element={<BudgetPage />} />
               <Route path="billing" element={<BillingPage />} />

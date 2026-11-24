@@ -5,6 +5,7 @@ import { applyWcDateOrdered, applyWcLineStage, type WcFieldStatus } from "../../
 import { panelFabricationBlocked } from "../../lib/wcComponents";
 import { FlagSwitch, StageStepper } from "./StageStepper";
 import type { TrackerLineTrade, WcTrackerLineState } from "../../types/fieldTracker";
+import { trackingLink } from "../../lib/trackingLink";
 import { WcComponentEditor } from "../wallcovering/WcComponentEditor";
 
 /** Append "MM/DD/YYYY Delivered" on its own line. Skip if that stamp is already present. */
@@ -53,6 +54,7 @@ export function WcTrackerLineInlineEditor({
   const deliveryNotesId = useId();
   const [gateNote, setGateNote] = useState<string | null>(null);
   const paint = kind === "paint";
+  const shipment = trackingLink(line.tracking);
 
   function patch(p: Partial<WcTrackerLineState>) {
     onChange({ ...line, ...p });
@@ -174,6 +176,11 @@ export function WcTrackerLineInlineEditor({
           <label>
             Tracking
             <input value={line.tracking} onChange={(e) => patch({ tracking: e.target.value })} />
+            {shipment ? (
+              <a className="wc-tracking-link" href={shipment.url} target="_blank" rel="noopener noreferrer">
+                Track shipment
+              </a>
+            ) : null}
           </label>
           <label className="wc-col-2">
             Link

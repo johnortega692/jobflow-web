@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   addMaterialPriceItem,
@@ -20,6 +20,8 @@ import {
   type SundryLibraryPhoto,
 } from "../../lib/materialPrices";
 import { fileToCatalogImage } from "../../lib/catalogImage";
+import { InvoiceJobPos } from "./InvoiceJobPos";
+import { InvoicePdfStamp } from "./InvoicePdfStamp";
 import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoicePaintTarget, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
 import { invoiceReaderChoices, readVendorInvoice } from "../../lib/invoiceReaders/readInvoice";
 import { foundationGridHtml, foundationGridText } from "../../lib/invoiceReaders/foundationGrid";
@@ -29,6 +31,20 @@ import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
 
 const OPEN_VENDOR = "__open__";
+const INVOICE_SPLIT_KEY = "jobflow.readInvoice.split";
+const INVOICE_SPLIT_DEFAULT = 62;
+const INVOICE_SPLIT_MIN = 34;
+const INVOICE_SPLIT_MAX = 74;
+
+function readInvoiceSplit(): number {
+  try {
+    const saved = Number(localStorage.getItem(INVOICE_SPLIT_KEY));
+    if (Number.isFinite(saved) && saved >= INVOICE_SPLIT_MIN && saved <= INVOICE_SPLIT_MAX) return saved;
+  } catch {
+    // Keep the default when storage is unavailable.
+  }
+  return INVOICE_SPLIT_DEFAULT;
+}
 
 const PAINT_PRICE_COLUMNS = ["Flat", "Eggshell", "Semi-Gloss", "Gloss", "Primer"] as const;
 
@@ -98,7 +114,9 @@ export function MaterialPricesSettingsSection({
   readOnly = false,
   onDirtyChange,
   onBindActions,
-}: SettingsSectionBindings) {
+  invoiceOnly = false,
+  projectId,
+}: SettingsSectionBindings & { invoiceOnly?: boolean; projectId?: string }) {
   const [items, setItems] = useState<MaterialPriceItem[]>([]);
   const [drafts, setDrafts] = useState<Record<string, MaterialPriceDraft>>({});
   const [section, setSection] = useState<MaterialPriceSection>("sundry");
@@ -107,15 +125,75 @@ export function MaterialPricesSettingsSection({
   const [search, setSearch] = useState("");
   const [paste, setPaste] = useState("");
   const [pasteOpen, setPasteOpen] = useState(false);
-  const [pricePane, setPricePane] = useState<"prices" | "invoice">("prices");
   const [invoiceReader, setInvoiceReader] = useState(
     vendor === "Dunn Edwards" ? "dunn-edwards" : vendor === "PPG Paints" ? "ppg" : "sherwin-williams",
   );
   const [gallonLines, setGallonLines] = useState<Record<string, boolean>>({});
   const invoiceInputRef = useRef<HTMLInputElement>(null);
+  const invoicePdfBytesRef = useRef<Uint8Array | null>(null);
+  const [invoicePdfBytes, setInvoicePdfBytes] = useState<Uint8Array | null>(null);
+  const [invoiceFileName, setInvoiceFileName] = useState("");
   const [invoiceDragOver, setInvoiceDragOver] = useState(false);
   const [invoiceReading, setInvoiceReading] = useState(false);
   const [invoice, setInvoice] = useState<ParsedInvoiceFile | null>(null);
+  const [stampJob, setStampJob] = useState("");
+  const [stampActionsSlot, setStampActionsSlot] = useState<HTMLDivElement | null>(null);
+  const invoiceSplitRef = useRef<HTMLDivElement>(null);
+  const [invoiceSplit, setInvoiceSplit] = useState(readInvoiceSplit);
+  const invoiceSplitLive = useRef(invoiceSplit);
+  const [invoiceSplitDrag, setInvoiceSplitDrag] = useState(false);
+  const onInvoiceJob = useCallback((jobNumber: string) => {
+    setStampJob((current) => (current === jobNumber ? current : jobNumber));
+  }, []);
+
+  const rememberInvoiceSplit = useCallback((next: number) => {
+    const clamped = Math.min(INVOICE_SPLIT_MAX, Math.max(INVOICE_SPLIT_MIN, next));
+    invoiceSplitLive.current = clamped;
+    setInvoiceSplit(clamped);
+    try {
+      localStorage.setItem(INVOICE_SPLIT_KEY, String(Math.round(clamped)));
+    } catch {
+      // The width still applies for this visit.
+    }
+    return clamped;
+  }, []);
+
+  function onInvoiceSplitPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setInvoiceSplitDrag(true);
+  }
+
+  function onInvoiceSplitPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const bounds = invoiceSplitRef.current?.getBoundingClientRect();
+    if (!bounds || bounds.width <= 0) return;
+    const next = ((event.clientX - bounds.left) / bounds.width) * 100;
+    const clamped = Math.min(INVOICE_SPLIT_MAX, Math.max(INVOICE_SPLIT_MIN, next));
+    invoiceSplitLive.current = clamped;
+    setInvoiceSplit(clamped);
+  }
+
+  function onInvoiceSplitPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setInvoiceSplitDrag(false);
+    rememberInvoiceSplit(invoiceSplitLive.current);
+  }
+
+  function onInvoiceSplitKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 8 : 2;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      rememberInvoiceSplit(invoiceSplit + (event.key === "ArrowRight" ? step : -step));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      rememberInvoiceSplit(INVOICE_SPLIT_MIN);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      rememberInvoiceSplit(INVOICE_SPLIT_MAX);
+    }
+  }
   const [forcedMatch, setForcedMatch] = useState<Record<string, string>>({});
   const [sectionOverride, setSectionOverride] = useState<Record<string, MaterialPriceSection>>({});
   const [sheenChoice, setSheenChoice] = useState<Record<string, string>>({});
@@ -795,6 +873,29 @@ export function MaterialPricesSettingsSection({
     else if (!itemMatchesVendor(item, vendor)) setVendor(item.vendorNames[0] ?? "");
   }
 
+  async function rememberInvoicePdf(file: File) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    invoicePdfBytesRef.current = bytes;
+    setInvoicePdfBytes(bytes);
+    setInvoiceFileName(file.name);
+  }
+
+  function clearInvoicePdf() {
+    invoicePdfBytesRef.current = null;
+    setInvoicePdfBytes(null);
+    setInvoiceFileName("");
+  }
+
+  function clearLoadedInvoice() {
+    setInvoice(null);
+    clearInvoicePdf();
+    setLinkQuery(null);
+    setForcedMatch({});
+    setSectionOverride({});
+    setSheenChoice({});
+    setGallonLines({});
+  }
+
   function acceptInvoiceFile(file: File | null | undefined) {
     if (!file || readOnly || invoiceReading) return;
     const pdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -833,7 +934,9 @@ export function MaterialPricesSettingsSection({
     setError(null);
     setStatus(null);
     try {
-      const parsed = await readVendorInvoice(await file.arrayBuffer(), invoiceReader);
+      await rememberInvoicePdf(file);
+      const source = invoicePdfBytesRef.current;
+      const parsed = await readVendorInvoice(source ? source.slice().buffer : await file.arrayBuffer(), invoiceReader);
       setInvoice(parsed);
       setForcedMatch({});
       setSectionOverride({});
@@ -961,27 +1064,7 @@ export function MaterialPricesSettingsSection({
 
   return (
     <div className="stack material-prices">
-      <div className="settings-subtabs" role="tablist" aria-label="Material prices">
-        <button
-          type="button"
-          role="tab"
-          className={`settings-subtab${pricePane === "prices" ? " is-on" : ""}`}
-          aria-selected={pricePane === "prices"}
-          onClick={() => setPricePane("prices")}
-        >
-          Prices
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={`settings-subtab${pricePane === "invoice" ? " is-on" : ""}`}
-          aria-selected={pricePane === "invoice"}
-          onClick={() => setPricePane("invoice")}
-        >
-          Read invoice
-        </button>
-      </div>
-      {pricePane === "prices" ? (
+      {!invoiceOnly ? (
       <>
       <div className="material-prices-bar">
         <div className="material-prices-segment" role="tablist" aria-label="Price list">
@@ -1063,69 +1146,159 @@ export function MaterialPricesSettingsSection({
       ) : null}
       </>
       ) : (
-      <div className="material-prices-invoice-pane">
+      <div
+        ref={invoiceSplitRef}
+        className={`material-prices-invoice-pane read-invoice-workspace${invoiceSplitDrag ? " is-splitting" : ""}`}
+        style={{ "--read-invoice-split": `${invoiceSplit}%` } as CSSProperties}
+      >
         <div
-          className={`material-prices-drop${invoiceDragOver ? " is-over" : ""}`}
+          className={`read-invoice-sheet${invoicePdfBytes && invoiceDragOver ? " is-over" : ""}`}
           onDragEnter={onInvoiceDragEnter}
           onDragOver={onInvoiceDragOver}
           onDragLeave={onInvoiceDragLeave}
           onDrop={onInvoiceDrop}
         >
-          <p className="muted small">
-            {invoiceDragOver ? "Drop the invoice PDF." : "Pick the vendor, then drop the invoice PDF here or choose it."}
-          </p>
-          <div className="material-prices-invoice-actions">
-            <select
-              value={invoiceReader}
-              aria-label="Invoice vendor"
-              disabled={readOnly || invoiceReading}
+        {invoicePdfBytes ? (
+          <div className="read-invoice-toolbar">
+            <div className="read-invoice-toolbar-side">
+              <select
+                value={invoiceReader}
+                aria-label="Invoice vendor"
+                disabled={readOnly || invoiceReading}
+                onChange={(event) => {
+                  setInvoiceReader(event.target.value);
+                  clearLoadedInvoice();
+                }}
+              >
+                {invoiceReaderChoices.map((choice) => (
+                  <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
+                ))}
+              </select>
+              <span className="read-invoice-file-pill">
+                <svg className="read-invoice-file-pdf" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.7" />
+                  <path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.7" />
+                </svg>
+                <button
+                  type="button"
+                  className="read-invoice-file-name"
+                  title="Replace this PDF"
+                  disabled={readOnly || invoiceReading}
+                  onClick={() => invoiceInputRef.current?.click()}
+                >
+                  {invoiceFileName || "Invoice.pdf"}
+                </button>
+                <button
+                  type="button"
+                  className="read-invoice-file-clear"
+                  aria-label="Clear invoice PDF"
+                  title="Clear invoice PDF"
+                  onClick={clearLoadedInvoice}
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+            <div ref={setStampActionsSlot} className="read-invoice-stamp-slot" />
+            <input
+              ref={invoiceInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              hidden
+              aria-label="Vendor invoice PDF"
               onChange={(event) => {
-                setInvoiceReader(event.target.value);
-                setInvoice(null);
-                setLinkQuery(null);
-                setForcedMatch({});
-                setSectionOverride({});
-                setSheenChoice({});
-                setGallonLines({});
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                acceptInvoiceFile(file);
               }}
-            >
-              {invoiceReaderChoices.map((choice) => (
-                <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={readOnly || loading || invoiceReading}
-              onClick={() => invoiceInputRef.current?.click()}
-            >
-              {invoiceReading ? "Reading invoice…" : "Choose PDF"}
-            </button>
-            {invoice ? (
+            />
+          </div>
+        ) : (
+          <div className={`read-invoice-drop-stage${invoiceDragOver ? " is-over" : ""}`}>
+            <div className="read-invoice-drop-card">
+              <div className="read-invoice-drop-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 16V7" />
+                  <path d="m8 10 4-4 4 4" />
+                  <path d="M20 16.5a4.5 4.5 0 0 0-1.2-8.8A6 6 0 0 0 7.2 9.2 3.8 3.8 0 0 0 8 16.5" />
+                </svg>
+              </div>
+              <h3>{invoiceDragOver ? "Drop the invoice PDF." : "Drop invoice PDF here"}</h3>
+              <p>Select your vendor and load the PDF to scan line items and apply accounting stamps.</p>
+              <select
+                value={invoiceReader}
+                aria-label="Invoice vendor"
+                disabled={readOnly || invoiceReading}
+                onChange={(event) => {
+                  setInvoiceReader(event.target.value);
+                  clearLoadedInvoice();
+                }}
+              >
+                {invoiceReaderChoices.map((choice) => (
+                  <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
+                ))}
+              </select>
               <button
                 type="button"
-                className="btn material-prices-clear"
-                aria-label="Clear results"
-                title="Clear results"
-                onClick={() => { setInvoice(null); setLinkQuery(null); setForcedMatch({}); setSectionOverride({}); setSheenChoice({}); setGallonLines({}); }}
+                className="btn btn-primary"
+                disabled={readOnly || loading || invoiceReading}
+                onClick={() => invoiceInputRef.current?.click()}
               >
-                ✕
+                {invoiceReading
+                  ? "Reading invoice…"
+                  : `Load ${invoiceReaderChoices.find((choice) => choice.id === invoiceReader)?.vendorName ?? "vendor"} Invoice`}
               </button>
-            ) : null}
+              <input
+                ref={invoiceInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                hidden
+                aria-label="Vendor invoice PDF"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  acceptInvoiceFile(file);
+                }}
+              />
+            </div>
           </div>
-          <input
-            ref={invoiceInputRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            hidden
-            aria-label="Vendor invoice PDF"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              acceptInvoiceFile(file);
-            }}
-          />
+        )}
+        {invoicePdfBytes && status ? (
+          <p className="read-invoice-helper">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 11v6" />
+              <path d="M12 8h.01" />
+            </svg>
+            <span>{status}</span>
+          </p>
+        ) : null}
+        {invoicePdfBytes ? (
+          <InvoicePdfStamp bytes={invoicePdfBytes} suggestedJob={stampJob} actionsSlot={stampActionsSlot} />
+        ) : null}
         </div>
+        <div
+          className="read-invoice-split"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Adjust panel width"
+          aria-valuemin={INVOICE_SPLIT_MIN}
+          aria-valuemax={INVOICE_SPLIT_MAX}
+          aria-valuenow={Math.round(invoiceSplit)}
+          tabIndex={0}
+          onPointerDown={onInvoiceSplitPointerDown}
+          onPointerMove={onInvoiceSplitPointerMove}
+          onPointerUp={onInvoiceSplitPointerUp}
+          onPointerCancel={onInvoiceSplitPointerUp}
+          onDoubleClick={() => rememberInvoiceSplit(INVOICE_SPLIT_DEFAULT)}
+          onKeyDown={onInvoiceSplitKeyDown}
+        />
+        <div className="read-invoice-side">
+        <InvoiceJobPos
+          projectId={projectId}
+          onJobChange={onInvoiceJob}
+          catalogNote={invoice ? `${invoiceDifferCount} differ · ${invoiceNewRows.length} new` : undefined}
+        >
       {invoice ? (
         <section className="material-prices-invoice" aria-label="Invoice comparison">
           <div className="material-prices-invoice-head material-prices-invoice-summary">
@@ -1398,10 +1571,14 @@ export function MaterialPricesSettingsSection({
             </table>
           </div>
         </section>
-      ) : null}
+      ) : (
+        <p className="read-invoice-tab-empty muted small">Choose an invoice PDF to compare its lines with the catalog.</p>
+      )}
+        </InvoiceJobPos>
+        </div>
       </div>
       )}
-      {pricePane === "prices" ? (
+      {!invoiceOnly ? (
       <>
       <div className="material-prices-tools">
         <input
@@ -1828,16 +2005,18 @@ export function MaterialPricesSettingsSection({
         : null}
       {error ? <p className="material-prices-error">{error}</p> : null}
       {toast ? createPortal(<div className="material-prices-toast" role="status">{toast}</div>, document.body) : null}
-      <div className="material-prices-meta">
-        <span>{pricePane === "prices" ? `${filtered.length} in this list` : status}</span>
+      {invoiceOnly ? null : <div className="material-prices-meta">
+        <span>{invoiceOnly ? status : `${filtered.length} in this list`}</span>
         <div className="material-prices-meta-actions">
-          {pricePane === "prices" && status ? <span>{status}</span> : null}
-          <span>{unsavedLabel}</span>
+          {!invoiceOnly && status ? <span>{status}</span> : null}
+          {!invoiceOnly ? <span>{unsavedLabel}</span> : null}
+          {!invoiceOnly ? (
           <button type="button" className="btn btn-primary" disabled={readOnly || saving || (dirtyItems.length === 0 && !taxDirty)} onClick={() => void persist()}>
             {saving ? "Saving…" : "Save"}
           </button>
+          ) : null}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

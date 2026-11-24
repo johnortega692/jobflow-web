@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { parseFlexibleDate } from "../lib/dateInputUtils";
 import { packageLabelCopies } from "../lib/materialPackageLabel";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { TrackingLink } from "../components/TrackingLink";
 
 type PackageCard = {
   job_number: string;
@@ -304,7 +305,7 @@ export function MaterialPackagePage() {
                   {history.map((item) => (
                     <li key={`${item.label}-${item.value}`}>
                       <span>{item.label}</span>
-                      <span>{item.value}</span>
+                      {item.label === "Tracking" ? <TrackingLink value={item.value} /> : <span>{item.value}</span>}
                     </li>
                   ))}
                 </ol>
