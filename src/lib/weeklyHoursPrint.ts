@@ -23,6 +23,8 @@ export type WeeklyPrintColumn = {
   dayIndex: number | null;
   weekend: boolean;
   holiday: boolean;
+  rain: boolean;
+  delay: boolean;
 };
 
 export type WeeklyPrintRow = {
@@ -139,10 +141,14 @@ export function buildWeeklyHoursGrid(input: {
   phases: WeeklyPrintPhase[];
   cells: WeeklyPrintCell[];
   holidays: string[];
+  rainDays?: string[];
+  delayDays?: string[];
   measure: WeeklyPrintMeasure;
   layout: WeeklyPrintLayout;
 }): WeeklyPrintGrid {
   const holidaySet = new Set(input.holidays);
+  const rainSet = new Set(input.rainDays ?? []);
+  const delaySet = new Set(input.delayDays ?? []);
   const cells = new Map(input.cells.map((cell) => [`${cell.phaseId}|${cell.weekStartIso}`, cell]));
   const columns: WeeklyPrintColumn[] = [];
 
@@ -154,6 +160,8 @@ export function buildWeeklyHoursGrid(input: {
         dayIndex: null,
         weekend: false,
         holiday: isos.some((iso) => holidaySet.has(iso)),
+        rain: isos.some((iso) => rainSet.has(iso)),
+        delay: isos.some((iso) => delaySet.has(iso)),
       });
       continue;
     }
@@ -163,6 +171,8 @@ export function buildWeeklyHoursGrid(input: {
         dayIndex,
         weekend: dayIndex >= 5,
         holiday: holidaySet.has(iso),
+        rain: rainSet.has(iso),
+        delay: delaySet.has(iso),
       });
     });
   }

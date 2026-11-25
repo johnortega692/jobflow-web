@@ -19823,13 +19823,50 @@ input.readonly {
 }
 
 .billing-week-detail-day-col {
-  width: 4.25rem;
-  min-width: 4.25rem;
+  width: 5.4rem;
+  min-width: 5.4rem;
   text-align: center;
 }
 
 .billing-week-detail-day-col.is-holiday {
   background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+
+.billing-week-detail-day-col.is-rain {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.billing-week-detail-day-col.is-delay {
+  background: color-mix(in srgb, #c084fc 16%, transparent);
+}
+
+.billing-week-detail-mark-select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 1px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.billing-week-detail-mark-select.is-holiday {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 70%, var(--border));
+}
+
+.billing-week-detail-mark-select.is-rain {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+}
+
+.billing-week-detail-mark-select.is-delay {
+  color: #d8b4fe;
+  border-color: color-mix(in srgb, #c084fc 70%, var(--border));
 }
 
 .billing-week-detail-day-toggle {
@@ -19860,6 +19897,33 @@ input.readonly {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--warn);
+}
+
+.billing-week-detail-holiday-tag.is-rain {
+  color: var(--accent);
+}
+
+.billing-week-detail-holiday-tag.is-delay {
+  color: #d8b4fe;
+}
+
+.billing-week-block-mark {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.billing-week-block-mark.is-hol {
+  color: var(--warn);
+}
+
+.billing-week-block-mark.is-rain {
+  color: var(--accent);
+}
+
+.billing-week-block-mark.is-delay {
+  color: #d8b4fe;
 }
 
 .billing-week-detail-day-col .billing-week-detail-weekday {

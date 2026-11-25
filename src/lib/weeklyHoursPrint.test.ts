@@ -58,6 +58,8 @@ test("day layout uses the saved days and parks an unplanned week on Monday", () 
       { phaseId: "paint", weekStartIso: "2026-12-07", hours: 8 },
     ],
     holidays: ["2026-12-02"],
+    rainDays: ["2026-12-03"],
+    delayDays: ["2026-12-04"],
     measure: "hours",
     layout: "days",
   });
@@ -66,6 +68,8 @@ test("day layout uses the saved days and parks an unplanned week on Monday", () 
   assert.equal(grid.rows[0]!.values[7], 8);
   assert.equal(grid.rows[0]!.values[8], 0);
   assert.equal(grid.columns[2]!.holiday, true);
+  assert.equal(grid.columns[3]!.rain, true);
+  assert.equal(grid.columns[4]!.delay, true);
   assert.equal(grid.columns[5]!.weekend, true);
   assert.equal(grid.seededMonday, true);
   assert.equal(grid.rows[0]!.total, 23);

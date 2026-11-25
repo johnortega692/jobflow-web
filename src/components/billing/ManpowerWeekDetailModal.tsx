@@ -27,6 +27,27 @@ type Props = {
 
 type DraftByPhase = Record<string, string[]>;
 
+type DayBlock = "holiday" | "rain" | "delay";
+
+const DAY_BLOCKS: { kind: DayBlock; label: string }[] = [
+  { kind: "holiday", label: "Holiday" },
+  { kind: "rain", label: "Rain" },
+  { kind: "delay", label: "Delay" },
+];
+
+function savedBlocks(billing: ProjectBillingData, weekStartIso: string): Map<string, DayBlock> {
+  const holiday = new Set(billing.holidays ?? []);
+  const rain = new Set(billing.rainDays ?? []);
+  const delay = new Set(billing.delayDays ?? []);
+  const blocks = new Map<string, DayBlock>();
+  for (const col of weekDayColumnLabels(weekStartIso)) {
+    if (holiday.has(col.iso)) blocks.set(col.iso, "holiday");
+    else if (rain.has(col.iso)) blocks.set(col.iso, "rain");
+    else if (delay.has(col.iso)) blocks.set(col.iso, "delay");
+  }
+  return blocks;
+}
+
 function hoursToCrew(hours: number): number {
   if (hours <= 0) return 0;
   return hours / HOURS_PER_CREW_DAY;
@@ -92,7 +113,7 @@ export function ManpowerWeekDetailModal({
   const heldDays = useRef<Record<number, Record<string, string>>>({});
   const [draft, setDraft] = useState<DraftByPhase>(() => {
     const cols = weekDayColumnLabels(weekStartIso);
-    const saved = new Set(billing.holidays ?? []);
+    const saved = savedBlocks(billing, weekStartIso);
     const initial: DraftByPhase = {};
     const held: Record<number, Record<string, string>> = {};
     for (const phase of phases) {
@@ -108,10 +129,7 @@ export function ManpowerWeekDetailModal({
     heldDays.current = held;
     return initial;
   });
-  const [holidayDays, setHolidayDays] = useState<Set<string>>(() => {
-    const saved = new Set(billing.holidays ?? []);
-    return new Set(weekDayColumnLabels(weekStartIso).map((col) => col.iso).filter((iso) => saved.has(iso)));
-  });
+  const [blocked, setBlocked] = useState<Map<string, DayBlock>>(() => savedBlocks(billing, weekStartIso));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -122,7 +140,7 @@ export function ManpowerWeekDetailModal({
   }, [onClose]);
 
   function setPhaseDay(phaseId: ManpowerPhaseId, dayIndex: number, value: string) {
-    if (holidayDays.has(dayCols[dayIndex]?.iso ?? "")) return;
+    if (blocked.has(dayCols[dayIndex]?.iso ?? "")) return;
     setDraft((prev) => {
       const nextDays = [...(prev[phaseId] ?? hoursToCrewDraft(emptyDayHours()))];
       nextDays[dayIndex] = value;
@@ -130,19 +148,21 @@ export function ManpowerWeekDetailModal({
     });
   }
 
-  function toggleHoliday(dayIndex: number) {
+  function setBlock(dayIndex: number, kind: DayBlock | null) {
     const iso = dayCols[dayIndex]?.iso;
     if (!iso) return;
-    const turningOn = !holidayDays.has(iso);
-    setHolidayDays((prev) => {
-      const next = new Set(prev);
-      if (turningOn) next.add(iso);
+    const current = blocked.get(iso) ?? null;
+    if (current === kind) return;
+    setBlocked((prev) => {
+      const next = new Map(prev);
+      if (kind) next.set(iso, kind);
       else next.delete(iso);
       return next;
     });
+    if (kind && current) return;
     setDraft((prev) => {
       const next = { ...prev };
-      if (turningOn) {
+      if (kind) {
         const stash: Record<string, string> = {};
         for (const phase of phases) {
           const days = [...(next[phase.id] ?? hoursToCrewDraft(emptyDayHours()))];
@@ -183,20 +203,20 @@ export function ManpowerWeekDetailModal({
 
   async function handleSave() {
     const activeIds = new Set(phases.map((p) => p.id));
-    const holidayIndexes = dayCols.flatMap((col, index) => (holidayDays.has(col.iso) ? [index] : []));
+    const blockedIndexes = dayCols.flatMap((col, index) => (blocked.has(col.iso) ? [index] : []));
     let nextCells = billing.manpowerCells.filter(
       (c) => !(c.weekStartIso === weekStartIso && activeIds.has(c.phaseId)),
     );
     for (const phase of phases) {
       const hours = draftToDayHours(draft[phase.id] ?? []);
-      for (const index of holidayIndexes) hours[index] = 0;
+      for (const index of blockedIndexes) hours[index] = 0;
       nextCells = withCellDayHours(nextCells, phase.id, weekStartIso, hours);
     }
     nextCells = nextCells.flatMap((cell) => {
-      if (cell.weekStartIso !== weekStartIso || !cell.dayHours || holidayIndexes.length === 0) return [cell];
+      if (cell.weekStartIso !== weekStartIso || !cell.dayHours || blockedIndexes.length === 0) return [cell];
       let changed = false;
       const dayHours = cell.dayHours.map((hours, index) => {
-        if (!holidayIndexes.includes(index) || hours <= 0) return hours;
+        if (!blockedIndexes.includes(index) || hours <= 0) return hours;
         changed = true;
         return 0;
       });
@@ -206,11 +226,18 @@ export function ManpowerWeekDetailModal({
       return [{ ...cell, hours, dayHours }];
     });
     const weekIsos = new Set(dayCols.map((col) => col.iso));
-    const holidays = [
-      ...(billing.holidays ?? []).filter((iso) => !weekIsos.has(iso)),
-      ...dayCols.map((col) => col.iso).filter((iso) => holidayDays.has(iso)),
-    ].sort();
-    const next = { ...billing, manpowerCells: nextCells, holidays };
+    const datesFor = (kind: DayBlock, existing: string[]) =>
+      [
+        ...existing.filter((iso) => !weekIsos.has(iso)),
+        ...dayCols.map((col) => col.iso).filter((iso) => blocked.get(iso) === kind),
+      ].sort();
+    const next = {
+      ...billing,
+      manpowerCells: nextCells,
+      holidays: datesFor("holiday", billing.holidays ?? []),
+      rainDays: datesFor("rain", billing.rainDays ?? []),
+      delayDays: datesFor("delay", billing.delayDays ?? []),
+    };
     const ok = await onSave(next);
     if (ok) onClose();
   }
@@ -237,8 +264,8 @@ export function ManpowerWeekDetailModal({
         </div>
 
         <p className="muted small billing-manpower-caption">
-          Enter crew count per day (1 person = {HOURS_PER_CREW_DAY} hrs). Click a day to block it as a holiday.
-          Week totals on the plan update from these hours.
+          Enter crew count per day (1 person = {HOURS_PER_CREW_DAY} hrs). Use the day menu for a holiday,
+          rain day, or delay. Those days stay off the crew count.
         </p>
 
         <div className="billing-week-detail-scroll">
@@ -247,20 +274,27 @@ export function ManpowerWeekDetailModal({
               <tr>
                 <th className="billing-week-detail-phase-col">Cost code</th>
                 {dayCols.map((col, dayIndex) => {
-                  const holiday = holidayDays.has(col.iso);
+                  const kind = blocked.get(col.iso) ?? null;
                   return (
-                    <th key={col.iso} className={`billing-week-detail-day-col num${holiday ? " is-holiday" : ""}`}>
-                      <button
-                        type="button"
-                        className="billing-week-detail-day-toggle"
-                        aria-pressed={holiday}
-                        title={holiday ? "Holiday · click to plan this day" : "Click to block this day as a holiday"}
-                        onClick={() => toggleHoliday(dayIndex)}
+                    <th key={col.iso} className={`billing-week-detail-day-col num${kind ? ` is-${kind}` : ""}`}>
+                      <span className="billing-week-detail-weekday">{col.weekday}</span>
+                      <span className="billing-week-detail-date muted">{col.dateLabel}</span>
+                      <select
+                        className={`billing-week-detail-mark-select${kind ? ` is-${kind}` : ""}`}
+                        aria-label={`${col.weekday} ${col.dateLabel} day mark`}
+                        value={kind ?? ""}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setBlock(dayIndex, next === "holiday" || next === "rain" || next === "delay" ? next : null);
+                        }}
                       >
-                        <span className="billing-week-detail-weekday">{col.weekday}</span>
-                        <span className="billing-week-detail-date muted">{col.dateLabel}</span>
-                        {holiday ? <span className="billing-week-detail-holiday-tag">Holiday</span> : null}
-                      </button>
+                        <option value="">Work</option>
+                        {DAY_BLOCKS.map((block) => (
+                          <option key={block.kind} value={block.kind}>
+                            {block.label}
+                          </option>
+                        ))}
+                      </select>
                     </th>
                   );
                 })}
@@ -283,24 +317,25 @@ export function ManpowerWeekDetailModal({
                       <span className="billing-manpower-phase-desc">{phase.name}</span>
                     </td>
                     {days.map((value, dayIndex) => {
-                      const holiday = holidayDays.has(dayCols[dayIndex]!.iso);
+                      const kind = blocked.get(dayCols[dayIndex]!.iso) ?? null;
+                      const block = DAY_BLOCKS.find((item) => item.kind === kind);
                       return (
                         <td
                           key={dayCols[dayIndex]!.iso}
-                          className={`billing-week-detail-day-col${holiday ? " is-holiday" : ""}`}
+                          className={`billing-week-detail-day-col${kind ? ` is-${kind}` : ""}`}
                         >
                           <input
                             type="number"
                             min={0}
                             step={1}
                             className="billing-week-detail-input"
-                            value={holiday ? "" : value}
-                            placeholder={holiday ? "—" : "—"}
-                            disabled={holiday}
+                            value={kind ? "" : value}
+                            placeholder="—"
+                            disabled={Boolean(kind)}
                             aria-label={`${phaseDisplayLabel(phase)} ${dayCols[dayIndex]!.weekday} crew`}
                             title={
-                              holiday
-                                ? "Holiday"
+                              block
+                                ? block.label
                                 : `${parseCrew(value) || 0} crew × ${HOURS_PER_CREW_DAY} = ${crewToHours(parseCrew(value))} hrs`
                             }
                             onChange={(e) => setPhaseDay(phase.id, dayIndex, e.target.value)}
@@ -322,15 +357,16 @@ export function ManpowerWeekDetailModal({
               <tr className="billing-week-detail-total-row">
                 <td className="billing-week-detail-phase-col">Day crew</td>
                 {dayCrewTotals.map((total, dayIndex) => {
-                  const holiday = holidayDays.has(dayCols[dayIndex]!.iso);
+                  const kind = blocked.get(dayCols[dayIndex]!.iso) ?? null;
+                  const block = DAY_BLOCKS.find((item) => item.kind === kind);
                   return (
                     <td
                       key={dayCols[dayIndex]!.iso}
-                      className={`billing-week-detail-day-col num${holiday ? " is-holiday" : ""}`}
+                      className={`billing-week-detail-day-col num${kind ? ` is-${kind}` : ""}`}
                     >
                       <div className="billing-week-detail-day-total">
-                        {holiday ? (
-                          <span className="billing-week-detail-holiday-tag">Holiday</span>
+                        {block ? (
+                          <span className={`billing-week-detail-holiday-tag is-${block.kind}`}>{block.label}</span>
                         ) : (
                           <>
                             <span>{formatCrew(total)}</span>

@@ -31,10 +31,14 @@ const WHITE = rgb(1, 1, 1);
 const HEADER = rgb(0.16, 0.2, 0.27);
 const HEADER_WEEKEND = rgb(0.28, 0.31, 0.36);
 const HEADER_HOLIDAY = rgb(0.45, 0.32, 0.18);
+const HEADER_RAIN = rgb(0.18, 0.34, 0.52);
+const HEADER_DELAY = rgb(0.4, 0.28, 0.42);
 const LINE = rgb(0.78, 0.8, 0.84);
 const LINE_STRONG = rgb(0.28, 0.32, 0.38);
 const WEEKEND = rgb(0.94, 0.94, 0.95);
 const HOLIDAY = rgb(1, 0.94, 0.86);
+const RAIN = rgb(0.84, 0.91, 0.98);
+const DELAY = rgb(0.94, 0.88, 0.96);
 const FILLED = rgb(0.86, 0.92, 0.98);
 const FILLED_WEEKEND = rgb(0.82, 0.86, 0.9);
 const TOTAL_BG = rgb(0.93, 0.94, 0.96);
@@ -62,6 +66,8 @@ export type WeeklyHoursPdfInput = {
   phases: WeeklyPrintPhase[];
   cells: WeeklyPrintCell[];
   holidays: string[];
+  rainDays?: string[];
+  delayDays?: string[];
   measure: WeeklyPrintMeasure;
   layout: WeeklyPrintLayout;
   equipment?: WeeklyPrintEquipment[];
@@ -176,8 +182,25 @@ function totalWidth(measure: WeeklyPrintMeasure): number {
   return measure === "people" ? PEOPLE_TOTAL_W : TOTAL_W;
 }
 
+function dayHeaderColor(column: WeeklyPrintColumn) {
+  if (column.holiday) return HEADER_HOLIDAY;
+  if (column.rain) return HEADER_RAIN;
+  if (column.delay) return HEADER_DELAY;
+  if (column.weekend) return HEADER_WEEKEND;
+  return HEADER;
+}
+
+function blockedDayFill(column: WeeklyPrintColumn) {
+  if (column.dayIndex == null) return null;
+  if (column.holiday) return HOLIDAY;
+  if (column.rain) return RAIN;
+  if (column.delay) return DELAY;
+  return null;
+}
+
 function fillFor(column: WeeklyPrintColumn, value: number): ReturnType<typeof rgb> | null {
-  if (column.holiday && column.dayIndex != null) return HOLIDAY;
+  const blocked = blockedDayFill(column);
+  if (blocked) return blocked;
   if (value > 0 && column.weekend) return FILLED_WEEKEND;
   if (value > 0) return FILLED;
   if (column.weekend) return WEEKEND;
@@ -252,7 +275,7 @@ function drawEquipment(
   });
   if (dayMode) {
     cols.forEach((column, columnIndex) => {
-      const headerColor = column.holiday ? HEADER_HOLIDAY : column.weekend ? HEADER_WEEKEND : HEADER;
+      const headerColor = dayHeaderColor(column);
       page.drawRectangle({
         x: MARGIN_X + NAME_W + columnIndex * colWidth,
         y: headBottom,
@@ -305,7 +328,8 @@ function drawEquipment(
         const day = column.dayIndex ?? 0;
         const label = weekIndex >= 0 ? item.dayLabels[weekIndex * 7 + day] ?? "" : "";
         const x = MARGIN_X + NAME_W + columnIndex * colWidth;
-        const fill = column.holiday ? HOLIDAY : label ? (column.weekend ? FILLED_WEEKEND : EQUIPMENT) : column.weekend ? WEEKEND : null;
+        const blocked = blockedDayFill(column);
+        const fill = blocked ?? (label ? (column.weekend ? FILLED_WEEKEND : EQUIPMENT) : column.weekend ? WEEKEND : null);
         if (fill) {
           page.drawRectangle({ x, y: bottom, width: colWidth, height: EQUIPMENT_ROW_H, color: fill });
         }
@@ -401,7 +425,7 @@ function drawTable(
     }
     cols.forEach((column, index) => {
       const x = x0 + NAME_W + index * colWidth;
-      const headerColor = column.holiday ? HEADER_HOLIDAY : column.weekend ? HEADER_WEEKEND : HEADER;
+      const headerColor = dayHeaderColor(column);
       rect(x, headBottom, colWidth, dayH, headerColor);
       const day = column.dayIndex ?? 0;
       const [, month, date] = (printWeekDayIsos(column.weekStart)[day] ?? "").split("-");
@@ -468,7 +492,16 @@ function drawTable(
 }
 
 export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<Uint8Array> {
-  const grid = buildWeeklyHoursGrid(input);
+  const grid = buildWeeklyHoursGrid({
+    weekStarts: input.weekStarts,
+    phases: input.phases,
+    cells: input.cells,
+    holidays: input.holidays,
+    rainDays: input.rainDays,
+    delayDays: input.delayDays,
+    measure: input.measure,
+    layout: input.layout,
+  });
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -488,7 +521,13 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
   const pages = slicesFor(grid, plan.perPage, rowsPerPage);
   const layoutLabel = grid.layout === "days" ? "" : "Week totals";
   const title = grid.measure === "people" ? "Weekly Manpower" : "Weekly hours";
-  const showHolidayLegend = grid.columns.some((column) => column.holiday && column.dayIndex != null);
+  const legendItems = (
+    [
+      ["Holiday", HOLIDAY, HEADER_HOLIDAY, grid.columns.some((column) => column.holiday && column.dayIndex != null)],
+      ["Rain", RAIN, HEADER_RAIN, grid.columns.some((column) => column.rain && column.dayIndex != null)],
+      ["Delay", DELAY, HEADER_DELAY, grid.columns.some((column) => column.delay && column.dayIndex != null)],
+    ] as const
+  ).filter((item) => item[3]);
 
   pages.forEach((slice, index) => {
     const page = doc.addPage([PAGE_W, PAGE_H]);
@@ -509,10 +548,13 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
       font,
       color: INK,
     });
-    const legendLabel = "Holiday";
     const legendSize = 8;
     const legendBox = 8;
-    const legendWidth = showHolidayLegend ? legendBox + 4 + font.widthOfTextAtSize(legendLabel, legendSize) : 0;
+    const legendGap = 10;
+    const legendWidth = legendItems.reduce((sum, [label], index) => {
+      const item = legendBox + 4 + font.widthOfTextAtSize(label, legendSize);
+      return sum + item + (index > 0 ? legendGap : 0);
+    }, 0);
     page.drawText(truncate(rangeLine(input.weekStarts, grid.measure), font, 8, PAGE_W - MARGIN_X * 2 - legendWidth - 12), {
       x: MARGIN_X,
       y: PAGE_H - MARGIN_TOP - 38,
@@ -520,25 +562,26 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
       font,
       color: MUTED,
     });
-    if (showHolidayLegend) {
-      const legendX = PAGE_W - MARGIN_X - legendWidth;
-      const legendY = PAGE_H - MARGIN_TOP - 39;
+    let legendX = PAGE_W - MARGIN_X - legendWidth;
+    const legendY = PAGE_H - MARGIN_TOP - 39;
+    for (const [label, fill, border] of legendItems) {
       page.drawRectangle({
         x: legendX,
         y: legendY,
         width: legendBox,
         height: legendBox,
-        color: HOLIDAY,
-        borderColor: HEADER_HOLIDAY,
+        color: fill,
+        borderColor: border,
         borderWidth: 0.75,
       });
-      page.drawText(legendLabel, {
+      page.drawText(label, {
         x: legendX + legendBox + 4,
         y: legendY + 1,
         size: legendSize,
         font,
         color: INK,
       });
+      legendX += legendBox + 4 + font.widthOfTextAtSize(label, legendSize) + legendGap;
     }
     if (grid.columns.length > 0 && grid.rows.length > 0) {
       const tableBottom = drawTable(page, grid, slice, font, bold, tableTop, plan.width, rowH, headH);

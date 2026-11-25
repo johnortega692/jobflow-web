@@ -755,6 +755,8 @@ export function ManpowerPlanCard({
         phases: visiblePhases.map((phase) => ({ id: phase.id, costCode: phase.costCode, name: phase.name })),
         cells: billing.manpowerCells,
         holidays: billing.holidays ?? [],
+        rainDays: billing.rainDays ?? [],
+        delayDays: billing.delayDays ?? [],
         measure,
         layout,
         equipment: (billing.rentalEquipment ?? [])
@@ -1081,7 +1083,13 @@ export function ManpowerPlanCard({
               <tr>
                 <th className="billing-manpower-sticky billing-manpower-phase-col">Cost code</th>
                 {weeks.map((w, weekIdx) => {
-                  const holiday = weekDayIsos(w).some((iso) => (billing.holidays ?? []).includes(iso));
+                  const weekIsos = weekDayIsos(w);
+                  const weekMarks = [
+                    weekIsos.some((iso) => (billing.holidays ?? []).includes(iso)) ? "Hol" : "",
+                    weekIsos.some((iso) => (billing.rainDays ?? []).includes(iso)) ? "Rain" : "",
+                    weekIsos.some((iso) => (billing.delayDays ?? []).includes(iso)) ? "Delay" : "",
+                  ].filter(Boolean);
+                  const holiday = weekMarks.includes("Hol");
                   return (
                   <th
                     key={w}
@@ -1102,8 +1110,8 @@ export function ManpowerPlanCard({
                           aria-haspopup="menu"
                           aria-expanded={weekMenu?.week === w}
                           title={
-                            holiday
-                              ? `Week of ${weekColumnLabel(w)} · includes a holiday`
+                            weekMarks.length
+                              ? `Week of ${weekColumnLabel(w)} · ${weekMarks.join(", ")}`
                               : `Week of ${weekColumnLabel(w)}`
                           }
                           onClick={(event) => {
@@ -1121,7 +1129,11 @@ export function ManpowerPlanCard({
                         >
                           <ManpowerHeaderPencilIcon />
                           {weekColumnLabel(w)}
-                          {holiday ? <span className="billing-week-holiday-mark">Hol</span> : null}
+                          {weekMarks.map((mark) => (
+                            <span key={mark} className={`billing-week-block-mark is-${mark.toLowerCase()}`}>
+                              {mark}
+                            </span>
+                          ))}
                           <span className="billing-week-caret" aria-hidden>
                             ▾
                           </span>
@@ -1130,7 +1142,11 @@ export function ManpowerPlanCard({
                     ) : (
                       <span className="billing-manpower-header-pill billing-manpower-header-pill--readonly">
                         {weekColumnLabel(w)}
-                        {holiday ? <span className="billing-week-holiday-mark">Hol</span> : null}
+                        {weekMarks.map((mark) => (
+                          <span key={mark} className={`billing-week-block-mark is-${mark.toLowerCase()}`}>
+                            {mark}
+                          </span>
+                        ))}
                       </span>
                     )}
                   </th>

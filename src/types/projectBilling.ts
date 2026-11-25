@@ -82,6 +82,10 @@ export type ProjectBillingData = {
   gcSchedule?: GcScheduleSaved;
   /** ISO dates (YYYY-MM-DD) blocked out of the labor plan. */
   holidays: string[];
+  /** ISO dates lost to weather. They block crew the same way a holiday does. */
+  rainDays: string[];
+  /** ISO dates held for a delay. They block crew the same way a holiday does. */
+  delayDays: string[];
   /** Custom rental equipment counted on the same weeks as labor. */
   rentalEquipment: RentalEquipment[];
   rentalEquipmentCells: RentalEquipmentCell[];
@@ -164,6 +168,8 @@ export function defaultProjectBilling(): ProjectBillingData {
     monthMaterial: {},
     monthBilled: {},
     holidays: [],
+    rainDays: [],
+    delayDays: [],
     rentalEquipment: [],
     rentalEquipmentCells: [],
   };
@@ -370,6 +376,8 @@ export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
     monthBilled: normalizeMoneyMap(o.monthBilled),
     gcSchedule: normalizeGcSchedule(o.gcSchedule),
     holidays: normalizeHolidays(o.holidays),
+    rainDays: normalizeHolidays(o.rainDays),
+    delayDays: normalizeHolidays(o.delayDays),
     rentalEquipment,
     rentalEquipmentCells: normalizeRentalOverrides(
       o.rentalEquipmentCells,
