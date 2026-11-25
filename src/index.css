@@ -24258,6 +24258,359 @@ td.billing-manpower-week-col--beyond-contract,
   font-weight: 650;
 }
 
+.billing-rental {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.billing-rental-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.billing-rental-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.billing-rental-head p {
+  margin: 0.15rem 0 0;
+}
+
+.billing-rental-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.billing-rental-rent {
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.billing-rental-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+}
+
+.billing-rental-cols,
+.billing-rental-summary {
+  display: grid;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 44rem;
+}
+
+.billing-rental-cols-head {
+  padding: 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.billing-rental-week-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1.1;
+}
+
+.billing-rental-week-label.is-holiday {
+  color: var(--warn);
+}
+
+.billing-rental-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+  padding: 0.45rem 0.55rem;
+}
+
+.billing-rental-card.is-open {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.billing-rental-summary {
+  cursor: pointer;
+}
+
+.billing-rental-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.15rem 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.billing-rental-toggle strong,
+.billing-rental-toggle small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billing-rental-toggle strong {
+  font-size: 0.92rem;
+}
+
+.billing-rental-toggle small,
+.billing-rental-status small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.billing-rental-chevron {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: 0 0 auto;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.billing-rental-card.is-open .billing-rental-chevron {
+  transform: rotate(45deg);
+}
+
+.billing-rental-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.45rem;
+  padding: 0.15rem 0.1rem;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ok) 62%, #0c3a22);
+  color: #f4fff8;
+  font: inherit;
+  line-height: 1.05;
+  cursor: pointer;
+}
+
+.billing-rental-chip strong {
+  font-size: 0.86rem;
+}
+
+.billing-rental-chip small {
+  font-size: 0.62rem;
+  font-weight: 550;
+}
+
+.billing-rental-chip.is-empty {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+
+.billing-rental-chip.is-override {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.billing-rental-stat,
+.billing-rental-status {
+  font-size: 0.82rem;
+}
+
+.billing-rental-status {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.billing-rental-status small {
+  color: var(--warn);
+  font-weight: 650;
+}
+
+.billing-rental-form {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.55rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+
+.billing-rental-form-row {
+  display: grid;
+  gap: 0.55rem 0.7rem;
+}
+
+.billing-rental-form-row--main {
+  grid-template-columns: minmax(8rem, 1.5fr) 4.2rem minmax(8.5rem, 1fr) minmax(8.5rem, 1fr) minmax(7.5rem, 0.9fr);
+}
+
+.billing-rental-form-row--pair {
+  grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr);
+  max-width: 32rem;
+}
+
+.billing-rental-form-row--rates {
+  grid-template-columns: repeat(4, minmax(6rem, 1fr));
+  max-width: 40rem;
+}
+
+.billing-rental-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.billing-rental-form input,
+.billing-rental-form select,
+.billing-rental-qty {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.billing-rental-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.billing-rental-deadlines {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.8rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.billing-rental-deadlines .flag-switch {
+  margin-right: 0.35rem;
+}
+
+.billing-rental-warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: 0.72rem;
+}
+
+.billing-rental-reminders {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  list-style: none;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.billing-rental-reminders .is-due {
+  font-weight: 700;
+}
+
+.billing-rental-weekband {
+  text-align: center;
+}
+
+.billing-rental-day-head,
+.billing-rental-day {
+  min-width: 2.15rem;
+  padding: 0.15rem 0.05rem;
+  text-align: center;
+}
+
+.billing-rental-day-head span,
+.billing-rental-day-head small {
+  display: block;
+  line-height: 1.15;
+}
+
+.billing-rental-day-head small {
+  font-weight: 500;
+}
+
+.billing-rental-day-head.is-weekend,
+.billing-rental-day.is-weekend {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+}
+
+.billing-rental-day-head.is-holiday,
+.billing-rental-day.is-holiday {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+
+.billing-rental-qty {
+  width: 100%;
+  text-align: center;
+}
+
+.billing-rental-shift {
+  width: min(28rem, 100%);
+}
+
+.billing-rental-shift-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.billing-rental-shift-list label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.billing-rental-line-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.billing-rental-remove {
+  border: 1px solid color-mix(in srgb, var(--danger) 70%, var(--border));
+  background: transparent;
+  color: var(--danger);
+}
+
+.billing-rental-remove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+@media (max-width: 860px) {
+  .billing-rental-form-row--main,
+  .billing-rental-form-row--rates {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .lp-header {
   display: flex;
   align-items: center;

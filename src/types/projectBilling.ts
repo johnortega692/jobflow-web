@@ -3,6 +3,13 @@
  * Rows are Budget Maker Hours-PDF cost codes (per contract), not fixed coats.
  */
 
+import {
+  normalizeRentalLines,
+  normalizeRentalOverrides,
+  type RentalLine,
+  type RentalStatus,
+  type RentalWeekOverride,
+} from "../lib/rentalEquipment";
 import type { TransmittalContract } from "../lib/jobInfo";
 import { normalizeTransmittalContract } from "../lib/jobInfo";
 import {
@@ -53,6 +60,10 @@ export type ManpowerPeriodActual = {
   actualHours: number;
 };
 
+export type { RentalStatus };
+export type RentalEquipment = RentalLine;
+export type RentalEquipmentCell = RentalWeekOverride;
+
 /** Hours + monthly calculator fields persisted per project in projects.data.billing. */
 export type ProjectBillingData = {
   version: 1;
@@ -71,6 +82,9 @@ export type ProjectBillingData = {
   gcSchedule?: GcScheduleSaved;
   /** ISO dates (YYYY-MM-DD) blocked out of the labor plan. */
   holidays: string[];
+  /** Custom rental equipment counted on the same weeks as labor. */
+  rentalEquipment: RentalEquipment[];
+  rentalEquipmentCells: RentalEquipmentCell[];
 };
 
 export type GcScheduleStatus = "projection" | "upcoming" | "open";
@@ -150,6 +164,8 @@ export function defaultProjectBilling(): ProjectBillingData {
     monthMaterial: {},
     monthBilled: {},
     holidays: [],
+    rentalEquipment: [],
+    rentalEquipmentCells: [],
   };
 }
 
@@ -342,6 +358,7 @@ export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
   }
   const o = raw as Record<string, unknown>;
   const rates = normalizeCalculatorLaborRates(o.calculatorLaborRates);
+  const rentalEquipment = normalizeRentalLines(o.rentalEquipment);
   return {
     version: 1,
     manpowerPhases: normalizeManpowerPhases(o.manpowerPhases),
@@ -353,6 +370,11 @@ export function normalizeProjectBilling(raw: unknown): ProjectBillingData {
     monthBilled: normalizeMoneyMap(o.monthBilled),
     gcSchedule: normalizeGcSchedule(o.gcSchedule),
     holidays: normalizeHolidays(o.holidays),
+    rentalEquipment,
+    rentalEquipmentCells: normalizeRentalOverrides(
+      o.rentalEquipmentCells,
+      new Set(rentalEquipment.map((item) => item.id)),
+    ),
   };
 }
 

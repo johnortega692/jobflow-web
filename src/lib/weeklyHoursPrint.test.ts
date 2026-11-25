@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
 import { buildWeeklyHoursPdf } from "./weeklyHoursPdf.ts";
-import { buildWeeklyHoursGrid, formatWeeklyPrintQuantity } from "./weeklyHoursPrint.ts";
+import { buildWeeklyHoursGrid, formatWeeklyPrintQuantity, formatWeeklyPrintTotal } from "./weeklyHoursPrint.ts";
 
 const phases = [
   { id: "paint", costCode: "099100", name: "Interior paint" },
@@ -44,6 +44,9 @@ test("week totals stay in hours or become people at eight hours each", () => {
   assert.equal(formatWeeklyPrintQuantity(0.5, "people"), "0.5");
   assert.equal(formatWeeklyPrintQuantity(5 / 8, "people"), "0.625");
   assert.equal(formatWeeklyPrintQuantity(1.5, "hours"), "1.5");
+  assert.equal(formatWeeklyPrintTotal(5, "people"), "5 (40h)");
+  assert.equal(formatWeeklyPrintTotal(1.5, "people"), "1.5 (12h)");
+  assert.equal(formatWeeklyPrintTotal(52, "hours"), "52");
 });
 
 test("day layout uses the saved days and parks an unplanned week on Monday", () => {
@@ -99,7 +102,10 @@ test("the pdf prints week totals on one page and days across pages", async () =>
     layout: "week",
   });
   assert.equal(String.fromCharCode(...weekBytes.slice(0, 4)), "%PDF");
-  assert.equal((await PDFDocument.load(weekBytes)).getPageCount(), 1);
+  const weekDoc = await PDFDocument.load(weekBytes);
+  assert.equal(weekDoc.getPageCount(), 1);
+  const weekPage = weekDoc.getPage(0);
+  assert.ok(weekPage.getWidth() > weekPage.getHeight());
 
   const manyWeeks = Array.from({ length: 8 }, (_, index) => {
     const date = new Date(2026, 10, 30 + index * 7);

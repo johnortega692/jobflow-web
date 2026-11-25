@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
+import { FlagSwitch } from "../jobinfo/StageStepper";
 import { PEOPLE_PRINT_KEY, type WeeklyPrintLayout, type WeeklyPrintMeasure } from "../../lib/weeklyHoursPrint";
 
 type Props = {
   busy: boolean;
   error: string | null;
   onClose: () => void;
-  onPrint: (measure: WeeklyPrintMeasure, layout: WeeklyPrintLayout) => void;
+  onPrint: (measure: WeeklyPrintMeasure, layout: WeeklyPrintLayout, hideEquipmentPricing: boolean) => void;
 };
 
 export function WeeklyHoursPrintDialog({ busy, error, onClose, onPrint }: Props) {
   const [measure, setMeasure] = useState<WeeklyPrintMeasure>("hours");
   const [layout, setLayout] = useState<WeeklyPrintLayout>("week");
+  const [hideEquipmentPricing, setHideEquipmentPricing] = useState(false);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -64,12 +66,21 @@ export function WeeklyHoursPrintDialog({ busy, error, onClose, onPrint }: Props)
           </p>
         </div>
 
+        <FlagSwitch
+          label="Hide equipment pricing"
+          tone="accent"
+          checked={hideEquipmentPricing}
+          disabled={busy}
+          onChange={setHideEquipmentPricing}
+        />
+        <p className="muted small">Turn this on to leave equipment rates and estimates off the PDF.</p>
+
         {error ? <p className="banner banner-error">{error}</p> : null}
 
         <div className="row-between">
           <span />
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onPrint(measure, layout)}>
-            {busy ? "Preparing…" : "Print"}
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => onPrint(measure, layout, hideEquipmentPricing)}>
+            {busy ? "Preparing…" : "Save PDF"}
           </button>
         </div>
       </div>

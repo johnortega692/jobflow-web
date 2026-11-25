@@ -2,7 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import {
   buildWeeklyHoursGrid,
   formatWeeklyPrintQuantity,
-  PEOPLE_PRINT_KEY,
+  formatWeeklyPrintTotal,
   printDateLabel,
   printWeekDayIsos,
   printWeekLabel,
@@ -22,6 +22,7 @@ const MARGIN_TOP = 20;
 const MARGIN_BOTTOM = 22;
 const NAME_W = 118;
 const TOTAL_W = 34;
+const PEOPLE_TOTAL_W = 72;
 const TOTAL_ROW_H = 14;
 
 const INK = rgb(0.12, 0.14, 0.18);
@@ -37,6 +38,21 @@ const HOLIDAY = rgb(1, 0.94, 0.86);
 const FILLED = rgb(0.86, 0.92, 0.98);
 const FILLED_WEEKEND = rgb(0.82, 0.86, 0.9);
 const TOTAL_BG = rgb(0.93, 0.94, 0.96);
+const EQUIPMENT = rgb(0.85, 0.93, 0.88);
+const EQUIPMENT_ROW_H = 16;
+const EQUIPMENT_HEAD_H = 16;
+const EQUIPMENT_DAY_H = 12;
+
+export type WeeklyPrintEquipment = {
+  name: string;
+  /** Cell text for each weekStarts entry. Used on the week-totals layout. */
+  labels: string[];
+  /** Quantity text for each day, weekStarts order, Monday through Sunday. Used on the day layout. */
+  dayLabels: string[];
+  /** Unit count for each weekStarts entry. The total column sums these as unit-weeks. */
+  quantities: number[];
+  costLabel: string;
+};
 
 export type WeeklyHoursPdfInput = {
   jobNumber: string;
@@ -48,10 +64,11 @@ export type WeeklyHoursPdfInput = {
   holidays: string[];
   measure: WeeklyPrintMeasure;
   layout: WeeklyPrintLayout;
+  equipment?: WeeklyPrintEquipment[];
 };
 
 function pdfSafe(value: string): string {
-  return value.replace(/[^\x20-\x7E\u00BC\u00BD\u00BE]/g, " ").replace(/\s+/g, " ").trim();
+  return value.replace(/[^\x20-\x7E\u00B7\u00BC\u00BD\u00BE]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function truncate(text: string, font: PDFFont, size: number, maxWidth: number): string {
@@ -99,12 +116,13 @@ function jobLine(input: WeeklyHoursPdfInput): string {
 }
 
 function rangeLine(weekStarts: string[], measure: WeeklyPrintMeasure): string {
-  const measureText = measure === "people" ? "People" : "Hours";
+  const measureText = measure === "hours" ? "Hours" : "";
   if (weekStarts.length === 0) return measureText;
   const first = weekStarts[0]!;
   const lastDays = printWeekDayIsos(weekStarts[weekStarts.length - 1]!);
   const last = lastDays[6] ?? weekStarts[weekStarts.length - 1]!;
-  return `${dateLabel(first)} - ${dateLabel(last)}    ${measureText}`;
+  const dates = `${dateLabel(first)} - ${dateLabel(last)}`;
+  return measureText ? `${dates}    ${measureText}` : dates;
 }
 
 function columnPlan(layout: WeeklyPrintLayout, columnCount: number, available: number) {
@@ -154,12 +172,178 @@ function slicesFor(grid: WeeklyPrintGrid, perPage: number, rowsPerPage: number):
   return pages.length > 0 ? pages : [{ colStart: 0, colCount: 0, rowStart: 0, rowCount: 0 }];
 }
 
+function totalWidth(measure: WeeklyPrintMeasure): number {
+  return measure === "people" ? PEOPLE_TOTAL_W : TOTAL_W;
+}
+
 function fillFor(column: WeeklyPrintColumn, value: number): ReturnType<typeof rgb> | null {
   if (column.holiday && column.dayIndex != null) return HOLIDAY;
   if (value > 0 && column.weekend) return FILLED_WEEKEND;
   if (value > 0) return FILLED;
   if (column.weekend) return WEEKEND;
   return null;
+}
+
+function quantityLabel(value: number): string {
+  if (!(value > 0)) return "";
+  const rounded = Math.round(value);
+  return String(rounded);
+}
+
+function drawEquipment(
+  page: PDFPage,
+  input: WeeklyHoursPdfInput,
+  grid: WeeklyPrintGrid,
+  slice: Slice,
+  font: PDFFont,
+  bold: PDFFont,
+  top: number,
+  colWidth: number,
+  totalW: number,
+) {
+  const rows = (input.equipment ?? []).filter((item) => item.name.trim());
+  if (rows.length === 0 || top < MARGIN_BOTTOM + 40) return;
+  const cols = grid.columns.slice(slice.colStart, slice.colStart + slice.colCount);
+  const spans: { weekIndex: number; x: number; width: number }[] = [];
+  let index = 0;
+  while (index < cols.length) {
+    const week = cols[index]!.weekStart;
+    let end = index;
+    while (end < cols.length && cols[end]!.weekStart === week) end += 1;
+    spans.push({
+      weekIndex: input.weekStarts.indexOf(week),
+      x: MARGIN_X + NAME_W + index * colWidth,
+      width: (end - index) * colWidth,
+    });
+    index = end;
+  }
+  const dayMode = grid.layout === "days";
+  const dayH = dayMode ? EQUIPMENT_DAY_H : 0;
+  const tableW = NAME_W + cols.length * colWidth + totalW;
+  const totalX = MARGIN_X + NAME_W + cols.length * colWidth;
+  page.drawText("Rental equipment", {
+    x: MARGIN_X,
+    y: top - 11,
+    size: 10,
+    font: bold,
+    color: INK,
+  });
+  const headBottom = top - 16 - EQUIPMENT_HEAD_H - dayH;
+  page.drawRectangle({
+    x: MARGIN_X,
+    y: headBottom,
+    width: NAME_W,
+    height: EQUIPMENT_HEAD_H + dayH,
+    color: HEADER,
+  });
+  page.drawRectangle({
+    x: totalX,
+    y: headBottom,
+    width: totalW,
+    height: EQUIPMENT_HEAD_H + dayH,
+    color: HEADER,
+  });
+  page.drawRectangle({
+    x: MARGIN_X + NAME_W,
+    y: headBottom + dayH,
+    width: cols.length * colWidth,
+    height: EQUIPMENT_HEAD_H,
+    color: HEADER,
+  });
+  if (dayMode) {
+    cols.forEach((column, columnIndex) => {
+      const headerColor = column.holiday ? HEADER_HOLIDAY : column.weekend ? HEADER_WEEKEND : HEADER;
+      page.drawRectangle({
+        x: MARGIN_X + NAME_W + columnIndex * colWidth,
+        y: headBottom,
+        width: colWidth,
+        height: dayH,
+        color: headerColor,
+      });
+    });
+  }
+  drawCentered(page, "Equipment", bold, 7, MARGIN_X, headBottom, NAME_W, EQUIPMENT_HEAD_H + dayH, WHITE);
+  spans.forEach((span) => {
+    const label = span.weekIndex >= 0 ? printWeekLabel(input.weekStarts[span.weekIndex] ?? "") : "";
+    drawCentered(page, label, bold, 7, span.x, headBottom + dayH, span.width, EQUIPMENT_HEAD_H, WHITE);
+  });
+  if (dayMode) {
+    cols.forEach((column, columnIndex) => {
+      const x = MARGIN_X + NAME_W + columnIndex * colWidth;
+      const day = column.dayIndex ?? 0;
+      const iso = printWeekDayIsos(column.weekStart)[day] ?? "";
+      const [, month, date] = iso.split("-");
+      const when = month && date ? `${Number(month)}/${Number(date)}` : "";
+      drawCentered(page, colWidth < 14 ? weekdayShort(day).slice(0, 1) : weekdayShort(day), bold, 6, x, headBottom + 5, colWidth, 7, WHITE);
+      if (colWidth >= 14) drawCentered(page, when, font, 5.5, x, headBottom, colWidth, 6, WHITE);
+    });
+  }
+  drawCentered(page, "Unit-weeks", bold, 6, totalX, headBottom, totalW, EQUIPMENT_HEAD_H + dayH, WHITE);
+
+  rows.forEach((item, rowIndex) => {
+    const bottom = headBottom - (rowIndex + 1) * EQUIPMENT_ROW_H;
+    const cost = item.costLabel ? ` · ${item.costLabel}` : "";
+    page.drawRectangle({
+      x: MARGIN_X,
+      y: bottom,
+      width: tableW,
+      height: EQUIPMENT_ROW_H,
+      borderColor: LINE,
+      borderWidth: 0.4,
+    });
+    page.drawText(truncate(`${item.name.trim()}${cost}`, font, 7, NAME_W - 6), {
+      x: MARGIN_X + 3,
+      y: bottom + 5,
+      size: 7,
+      font,
+      color: INK,
+    });
+    let shown = 0;
+    if (dayMode) {
+      cols.forEach((column, columnIndex) => {
+        const weekIndex = input.weekStarts.indexOf(column.weekStart);
+        const day = column.dayIndex ?? 0;
+        const label = weekIndex >= 0 ? item.dayLabels[weekIndex * 7 + day] ?? "" : "";
+        const x = MARGIN_X + NAME_W + columnIndex * colWidth;
+        const fill = column.holiday ? HOLIDAY : label ? (column.weekend ? FILLED_WEEKEND : EQUIPMENT) : column.weekend ? WEEKEND : null;
+        if (fill) {
+          page.drawRectangle({ x, y: bottom, width: colWidth, height: EQUIPMENT_ROW_H, color: fill });
+        }
+        page.drawRectangle({
+          x,
+          y: bottom,
+          width: colWidth,
+          height: EQUIPMENT_ROW_H,
+          borderColor: column.dayIndex === 0 ? LINE_STRONG : LINE,
+          borderWidth: 0.35,
+        });
+        drawCentered(page, label, font, 7, x, bottom, colWidth, EQUIPMENT_ROW_H);
+      });
+      spans.forEach((span) => {
+        shown += span.weekIndex >= 0 ? item.quantities[span.weekIndex] ?? 0 : 0;
+      });
+    } else {
+      spans.forEach((span) => {
+        const quantity = span.weekIndex >= 0 ? item.quantities[span.weekIndex] ?? 0 : 0;
+        const label = span.weekIndex >= 0 ? item.labels[span.weekIndex] ?? "" : "";
+        shown += quantity;
+        if (quantity > 0) {
+          page.drawRectangle({ x: span.x, y: bottom, width: span.width, height: EQUIPMENT_ROW_H, color: EQUIPMENT });
+        }
+        page.drawRectangle({
+          x: span.x,
+          y: bottom,
+          width: span.width,
+          height: EQUIPMENT_ROW_H,
+          borderColor: LINE,
+          borderWidth: 0.35,
+        });
+        drawCentered(page, label, font, 7, span.x, bottom, span.width, EQUIPMENT_ROW_H);
+      });
+    }
+    page.drawRectangle({ x: totalX, y: bottom, width: totalW, height: EQUIPMENT_ROW_H, color: TOTAL_BG });
+    drawCentered(page, quantityLabel(shown), bold, 7, totalX, bottom, totalW, EQUIPMENT_ROW_H);
+  });
 }
 
 function drawTable(
@@ -172,10 +356,11 @@ function drawTable(
   colWidth: number,
   rowH: number,
   headH: number,
-) {
+): number {
   const cellSize = colWidth < 14 ? 6 : 7;
   const cols = grid.columns.slice(slice.colStart, slice.colStart + slice.colCount);
-  const tableW = NAME_W + cols.length * colWidth + TOTAL_W;
+  const totalW = totalWidth(grid.measure);
+  const tableW = NAME_W + cols.length * colWidth + totalW;
   const x0 = MARGIN_X;
 
   function rect(x: number, bottom: number, w: number, h: number, color: ReturnType<typeof rgb>) {
@@ -236,10 +421,10 @@ function drawTable(
   }
 
   const totalX = x0 + NAME_W + cols.length * colWidth;
-  rect(totalX, headBottom, TOTAL_W, headH, HEADER);
-  drawCentered(page, "Total", bold, cellSize, totalX, headBottom, TOTAL_W, headH, WHITE);
+  rect(totalX, headBottom, totalW, headH, HEADER);
+  drawCentered(page, "Total", bold, cellSize, totalX, headBottom, totalW, headH, WHITE);
   border(x0, headBottom, NAME_W, headH, LINE_STRONG, 0.6);
-  border(totalX, headBottom, TOTAL_W, headH, LINE_STRONG, 0.6);
+  border(totalX, headBottom, totalW, headH, LINE_STRONG, 0.6);
 
   const rows = grid.rows.slice(slice.rowStart, slice.rowStart + slice.rowCount);
   const shownColumnTotal = (index: number) =>
@@ -263,9 +448,9 @@ function drawTable(
       border(x, bottom, colWidth, rowH, column.dayIndex === 0 ? LINE_STRONG : LINE, column.dayIndex === 0 ? 0.8 : 0.35);
       drawCentered(page, formatWeeklyPrintQuantity(value, grid.measure), font, cellSize, x, bottom, colWidth, rowH);
     });
-    rect(totalX, bottom, TOTAL_W, rowH, TOTAL_BG);
-    border(totalX, bottom, TOTAL_W, rowH, LINE_STRONG, 0.5);
-    drawCentered(page, formatWeeklyPrintQuantity(row.total, grid.measure), bold, cellSize, totalX, bottom, TOTAL_W, rowH);
+    rect(totalX, bottom, totalW, rowH, TOTAL_BG);
+    border(totalX, bottom, totalW, rowH, LINE_STRONG, 0.5);
+    drawCentered(page, formatWeeklyPrintTotal(row.total, grid.measure), bold, cellSize, totalX, bottom, totalW, rowH);
   });
 
   const totalBottom = headBottom - rows.length * rowH - TOTAL_ROW_H;
@@ -278,7 +463,8 @@ function drawTable(
     border(x, totalBottom, colWidth, TOTAL_ROW_H, column.dayIndex === 0 ? LINE_STRONG : LINE, column.dayIndex === 0 ? 0.8 : 0.35);
     drawCentered(page, formatWeeklyPrintQuantity(value, grid.measure), bold, cellSize, x, totalBottom, colWidth, TOTAL_ROW_H);
   });
-  drawCentered(page, formatWeeklyPrintQuantity(shownGrand, grid.measure), bold, cellSize, totalX, totalBottom, TOTAL_W, TOTAL_ROW_H);
+  drawCentered(page, formatWeeklyPrintTotal(shownGrand, grid.measure), bold, cellSize, totalX, totalBottom, totalW, TOTAL_ROW_H);
+  return totalBottom;
 }
 
 export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<Uint8Array> {
@@ -286,31 +472,36 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const available = PAGE_W - MARGIN_X * 2 - NAME_W - TOTAL_W;
+  const available = PAGE_W - MARGIN_X * 2 - NAME_W - totalWidth(grid.measure);
   const plan = columnPlan(grid.layout, grid.columns.length, available);
   const headH = headerHeight(grid.layout, plan.width);
-  const titleBlock = grid.measure === "people" ? 52 : 40;
+  const titleBlock = 40;
   const tableTop = PAGE_H - MARGIN_TOP - titleBlock;
-  const bodyHeight = tableTop - headH - TOTAL_ROW_H - (MARGIN_BOTTOM + 10);
+  const equipmentCount = (input.equipment ?? []).filter((item) => item.name.trim()).length;
+  const equipmentDayHead = input.layout === "days" && equipmentCount > 0 ? EQUIPMENT_DAY_H : 0;
+  const equipmentBlock = equipmentCount > 0 ? 22 + EQUIPMENT_HEAD_H + equipmentDayHead + equipmentCount * EQUIPMENT_ROW_H : 0;
+  const bodyHeight = tableTop - headH - TOTAL_ROW_H - (MARGIN_BOTTOM + 10) - equipmentBlock;
   const naturalRow = 13;
   const rowCount = Math.max(grid.rows.length, 1);
   const rowH = rowCount * naturalRow <= bodyHeight ? naturalRow : Math.max(11, bodyHeight / rowCount);
   const rowsPerPage = Math.max(1, Math.floor(bodyHeight / rowH));
   const pages = slicesFor(grid, plan.perPage, rowsPerPage);
-  const layoutLabel = grid.layout === "days" ? "Monday through Sunday" : "Week totals";
+  const layoutLabel = grid.layout === "days" ? "" : "Week totals";
   const title = grid.measure === "people" ? "Weekly Manpower" : "Weekly hours";
   const showHolidayLegend = grid.columns.some((column) => column.holiday && column.dayIndex != null);
 
   pages.forEach((slice, index) => {
     const page = doc.addPage([PAGE_W, PAGE_H]);
     page.drawText(title, { x: MARGIN_X, y: PAGE_H - MARGIN_TOP - 12, size: 14, font: bold, color: INK });
-    page.drawText(truncate(layoutLabel, font, 9, 220), {
-      x: PAGE_W - MARGIN_X - font.widthOfTextAtSize(layoutLabel, 9),
-      y: PAGE_H - MARGIN_TOP - 11,
-      size: 9,
-      font,
-      color: MUTED,
-    });
+    if (layoutLabel) {
+      page.drawText(truncate(layoutLabel, font, 9, 220), {
+        x: PAGE_W - MARGIN_X - font.widthOfTextAtSize(layoutLabel, 9),
+        y: PAGE_H - MARGIN_TOP - 11,
+        size: 9,
+        font,
+        color: MUTED,
+      });
+    }
     page.drawText(truncate(jobLine(input), font, 9, PAGE_W - MARGIN_X * 2), {
       x: MARGIN_X,
       y: PAGE_H - MARGIN_TOP - 26,
@@ -349,18 +540,9 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
         color: INK,
       });
     }
-    if (grid.measure === "people") {
-      page.drawText(truncate(PEOPLE_PRINT_KEY, font, 8, PAGE_W - MARGIN_X * 2), {
-        x: MARGIN_X,
-        y: PAGE_H - MARGIN_TOP - 50,
-        size: 8,
-        font,
-        color: MUTED,
-      });
-    }
-
     if (grid.columns.length > 0 && grid.rows.length > 0) {
-      drawTable(page, grid, slice, font, bold, tableTop, plan.width, rowH, headH);
+      const tableBottom = drawTable(page, grid, slice, font, bold, tableTop, plan.width, rowH, headH);
+      drawEquipment(page, input, grid, slice, font, bold, tableBottom - 8, plan.width, totalWidth(grid.measure));
     } else {
       page.drawText("No weekly hours to print.", {
         x: MARGIN_X,

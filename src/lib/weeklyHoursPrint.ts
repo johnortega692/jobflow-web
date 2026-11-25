@@ -108,6 +108,14 @@ export function formatWeeklyPrintQuantity(value: number, measure: WeeklyPrintMea
   return rounded.toFixed(2);
 }
 
+/** People totals keep the headcount and add the hours those people represent. */
+export function formatWeeklyPrintTotal(value: number, measure: WeeklyPrintMeasure): string {
+  const shown = formatWeeklyPrintQuantity(value, measure);
+  if (!shown || measure !== "people") return shown;
+  const hours = Math.round(value * HOURS_PER_PERSON);
+  return `${shown} (${hours}h)`;
+}
+
 function dayHoursForCell(cell: WeeklyPrintCell | undefined): { days: number[]; seeded: boolean } {
   const days = [0, 0, 0, 0, 0, 0, 0];
   if (!cell || !(cell.hours > 0)) return { days, seeded: false };

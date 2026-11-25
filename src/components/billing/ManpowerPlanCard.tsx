@@ -44,13 +44,15 @@ import {
   type ProjectBillingData,
 } from "../../types/projectBilling";
 import { weeklyHoursPdfFilename } from "../../lib/pdfFilenames";
-import { printPdfBytes } from "../../lib/pdfDownload";
+import { downloadPdfBytes } from "../../lib/pdfDownload";
 import type { WeeklyPrintLayout, WeeklyPrintMeasure } from "../../lib/weeklyHoursPrint";
 import { GcScheduleImport } from "./GcScheduleImport";
 import { GcSchedulePanel } from "./GcSchedulePanel";
 import { ManpowerHeaderPencilIcon } from "./ManpowerHeaderPillIcons";
 import { ManpowerWeekDetailModal } from "./ManpowerWeekDetailModal";
 import { CarryWeekSheet } from "./CarryWeekSheet";
+import { addDaysIso, rentalDayFill, rentalQuoteForLine, rentalWeekFill, shiftRentalLine } from "../../lib/rentalEquipment";
+import { RentalEquipmentSection, RentalShiftDialog } from "./RentalEquipmentSection";
 import { WeeklyHoursPrintDialog } from "./WeeklyHoursPrintDialog";
 
 type Props = {
@@ -212,6 +214,8 @@ export function ManpowerPlanCard({
   const [printOpen, setPrintOpen] = useState(false);
   const [printBusy, setPrintBusy] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [rentalShift, setRentalShift] = useState<{ dayDelta: number } | null>(null);
+  const [rentalShiftIds, setRentalShiftIds] = useState<string[]>([]);
   const [weekMenu, setWeekMenu] = useState<{ week: string; top: number; left: number } | null>(null);
   const [carryWeek, setCarryWeek] = useState<string | null>(null);
   const [carryToast, setCarryToast] = useState<{
@@ -273,6 +277,14 @@ export function ManpowerPlanCard({
       const next = { ...billing, manpowerCells: rest };
       onBillingChange(next);
       await onPersistQuiet(next);
+      const lines = billing.rentalEquipment ?? [];
+      const dayDelta = weekIndex(anchorWeek, endWeek) * 7;
+      const movable =
+        lines.some((line) => line.onRentIso || line.offRentIso) || (billing.rentalEquipmentCells ?? []).length > 0;
+      if (dayDelta && movable) {
+        setRentalShift({ dayDelta });
+        setRentalShiftIds(lines.filter((line) => line.status === "needed").map((line) => line.id));
+      }
     },
     [billing, canEditCells, onBillingChange, onPersistQuiet, weeks],
   );
@@ -540,6 +552,13 @@ export function ManpowerPlanCard({
       cells: snapshot,
     });
     await onPersistQuiet(next);
+    const lines = billing.rentalEquipment ?? [];
+    const movable =
+      lines.some((line) => line.onRentIso || line.offRentIso) || (billing.rentalEquipmentCells ?? []).length > 0;
+    if (movable) {
+      setRentalShift({ dayDelta: 7 });
+      setRentalShiftIds(lines.filter((line) => line.status === "needed").map((line) => line.id));
+    }
   }
 
   async function clearWeek(weekStartIso: string) {
@@ -723,7 +742,7 @@ export function ManpowerPlanCard({
   );
   const showWeekly = isField || !monthlyBilling || planView === "weekly";
 
-  async function printWeeklyHours(measure: WeeklyPrintMeasure, layout: WeeklyPrintLayout) {
+  async function printWeeklyHours(measure: WeeklyPrintMeasure, layout: WeeklyPrintLayout, hideEquipmentPricing = false) {
     setPrintBusy(true);
     setPrintError(null);
     try {
@@ -738,10 +757,39 @@ export function ManpowerPlanCard({
         holidays: billing.holidays ?? [],
         measure,
         layout,
+        equipment: (billing.rentalEquipment ?? [])
+          .filter((item) => item.name.trim())
+          .map((item) => {
+            const weekOverrides = new Map<string, number>();
+            const dayOverrides = new Map<string, number>();
+            for (const cell of billing.rentalEquipmentCells ?? []) {
+              if (cell.equipmentId !== item.id) continue;
+              if (cell.dayIso) dayOverrides.set(cell.dayIso, cell.quantity);
+              else weekOverrides.set(cell.weekStartIso, cell.quantity);
+            }
+            const holidays = billing.holidays ?? [];
+            const quote = rentalQuoteForLine(item, holidays);
+            const weekQuantity = (week: string) => (weekOverrides.has(week) ? weekOverrides.get(week)! : null);
+            const dayQuantity = (iso: string) => (dayOverrides.has(iso) ? dayOverrides.get(iso)! : null);
+            return {
+              name: item.name.trim(),
+              labels: weeks.map(
+                (week) => rentalWeekFill(item, week, weekQuantity(week), holidays)?.label ?? "",
+              ),
+              dayLabels: weeks.flatMap((week) =>
+                weekDayIsos(week).map((iso) => {
+                  const fill = rentalDayFill(item, iso, weekQuantity(week), dayQuantity(iso), holidays);
+                  return fill && fill.quantity > 0 ? "X" : "";
+                }),
+              ),
+              quantities: weeks.map((week) => rentalWeekFill(item, week, weekQuantity(week), holidays)?.quantity ?? 0),
+              costLabel: hideEquipmentPricing || !(quote && quote.total > 0) ? "" : formatMoney0(quote.total),
+            };
+          }),
       });
-      printPdfBytes(bytes, weeklyHoursPdfFilename(jobName, jobNumber));
+      downloadPdfBytes(bytes, weeklyHoursPdfFilename(jobName, jobNumber));
     } catch (error) {
-      setPrintError(error instanceof Error ? error.message : "Could not print the weekly hours.");
+      setPrintError(error instanceof Error ? error.message : "Could not save the weekly hours.");
     } finally {
       setPrintBusy(false);
     }
@@ -1267,6 +1315,19 @@ export function ManpowerPlanCard({
         </div>
       )}
 
+      {!gcOpen && showWeekly && !isField ? (
+        <RentalEquipmentSection
+          billing={billing}
+          weeks={weeks}
+          canEdit={canEditCells}
+          saving={saving}
+          onSave={(next) => {
+            onBillingChange(next);
+            void onPersistQuiet(next);
+          }}
+        />
+      ) : null}
+
       {!gcOpen && !showWeekly ? monthlyBilling : null}
 
       {!gcOpen && (showWeekly || canEditSchedule) ? (
@@ -1405,12 +1466,47 @@ export function ManpowerPlanCard({
         />
       ) : null}
 
+      {rentalShift ? (
+        <RentalShiftDialog
+          dayDelta={rentalShift.dayDelta}
+          lines={billing.rentalEquipment ?? []}
+          checked={new Set(rentalShiftIds)}
+          onToggle={(id) =>
+            setRentalShiftIds((current) =>
+              current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+            )
+          }
+          onCancel={() => setRentalShift(null)}
+          onApply={() => {
+            const ids = new Set(rentalShiftIds);
+            const next = {
+              ...billing,
+              rentalEquipment: billing.rentalEquipment.map((line) =>
+                ids.has(line.id) ? shiftRentalLine(line, rentalShift.dayDelta) : line,
+              ),
+              rentalEquipmentCells: billing.rentalEquipmentCells.map((cell) =>
+                ids.has(cell.equipmentId)
+                  ? {
+                      ...cell,
+                      weekStartIso: addDaysIso(cell.weekStartIso, rentalShift.dayDelta),
+                      ...(cell.dayIso ? { dayIso: addDaysIso(cell.dayIso, rentalShift.dayDelta) } : {}),
+                    }
+                  : cell,
+              ),
+            };
+            onBillingChange(next);
+            void onPersistQuiet(next);
+            setRentalShift(null);
+          }}
+        />
+      ) : null}
+
       {printOpen ? (
         <WeeklyHoursPrintDialog
           busy={printBusy}
           error={printError}
           onClose={() => { if (!printBusy) setPrintOpen(false); }}
-          onPrint={(measure, layout) => void printWeeklyHours(measure, layout)}
+          onPrint={(measure, layout, hideEquipmentPricing) => void printWeeklyHours(measure, layout, hideEquipmentPricing)}
         />
       ) : null}
 
