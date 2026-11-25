@@ -1,10 +1,11 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import {
   buildWeeklyHoursGrid,
   formatWeeklyPrintQuantity,
   formatWeeklyPrintTotal,
   printDateLabel,
   printWeekDayIsos,
+  PEOPLE_PRINT_KEY,
   printWeekLabel,
   weekdayShort,
   type WeeklyPrintCell,
@@ -71,6 +72,11 @@ export type WeeklyHoursPdfInput = {
   measure: WeeklyPrintMeasure;
   layout: WeeklyPrintLayout;
   equipment?: WeeklyPrintEquipment[];
+  /** Profile letterhead. Empty values are left off the page. */
+  companyName?: string;
+  logoUrl?: string;
+  /** When the PDF was saved. Defaults to the moment it is built. */
+  printedAt?: Date;
 };
 
 function pdfSafe(value: string): string {
@@ -113,6 +119,41 @@ function drawCentered(
 
 function dateLabel(iso: string): string {
   return printDateLabel(iso);
+}
+
+function formatPrintStamp(date: Date): string {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const year = date.getFullYear();
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const suffix = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  return `${month}/${day}/${year} ${hours}:${minutes} ${suffix}`;
+}
+
+function logoFetchUrl(logoUrl: string): string {
+  const trimmed = logoUrl.trim();
+  if (!trimmed || typeof window === "undefined") return trimmed;
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `${window.location.protocol}${trimmed}`;
+  if (trimmed.startsWith("/")) return `${window.location.origin}${trimmed}`;
+  return trimmed;
+}
+
+async function embedLogo(doc: PDFDocument, logoUrl: string): Promise<PDFImage | null> {
+  const url = logoFetchUrl(logoUrl);
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const type = response.headers.get("content-type") ?? "";
+    if (type.includes("png") || url.toLowerCase().includes(".png")) return await doc.embedPng(bytes);
+    return await doc.embedJpg(bytes);
+  } catch {
+    return null;
+  }
 }
 
 function jobLine(input: WeeklyHoursPdfInput): string {
@@ -505,10 +546,17 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const printedAt = input.printedAt ?? new Date();
+  const companyName = pdfSafe(input.companyName ?? "");
+  const stamp = formatPrintStamp(printedAt);
+  const logo = await embedLogo(doc, input.logoUrl ?? "");
+  const logoScale = logo ? Math.min(140 / logo.width, 28 / logo.height, 1) : 0;
+  const logoW = logo ? logo.width * logoScale : 0;
+  const logoH = logo ? logo.height * logoScale : 0;
   const available = PAGE_W - MARGIN_X * 2 - NAME_W - totalWidth(grid.measure);
   const plan = columnPlan(grid.layout, grid.columns.length, available);
   const headH = headerHeight(grid.layout, plan.width);
-  const titleBlock = 40;
+  const titleBlock = grid.measure === "people" ? 52 : 40;
   const tableTop = PAGE_H - MARGIN_TOP - titleBlock;
   const equipmentCount = (input.equipment ?? []).filter((item) => item.name.trim()).length;
   const equipmentDayHead = input.layout === "days" && equipmentCount > 0 ? EQUIPMENT_DAY_H : 0;
@@ -531,7 +579,26 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
 
   pages.forEach((slice, index) => {
     const page = doc.addPage([PAGE_W, PAGE_H]);
-    page.drawText(title, { x: MARGIN_X, y: PAGE_H - MARGIN_TOP - 12, size: 14, font: bold, color: INK });
+    const logoBottom = logo ? PAGE_H - MARGIN_TOP - logoH : PAGE_H;
+    const textWidth = (textY: number, size: number) => {
+      const overlapsLogo = logo && textY + size > logoBottom;
+      return PAGE_W - MARGIN_X * 2 - (overlapsLogo ? logoW + 10 : 0);
+    };
+    if (logo) {
+      page.drawImage(logo, {
+        x: PAGE_W - MARGIN_X - logoW,
+        y: logoBottom,
+        width: logoW,
+        height: logoH,
+      });
+    }
+    page.drawText(truncate(title, bold, 14, textWidth(PAGE_H - MARGIN_TOP - 12, 14)), {
+      x: MARGIN_X,
+      y: PAGE_H - MARGIN_TOP - 12,
+      size: 14,
+      font: bold,
+      color: INK,
+    });
     if (layoutLabel) {
       page.drawText(truncate(layoutLabel, font, 9, 220), {
         x: PAGE_W - MARGIN_X - font.widthOfTextAtSize(layoutLabel, 9),
@@ -541,10 +608,14 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
         color: MUTED,
       });
     }
-    page.drawText(truncate(jobLine(input), font, 9, PAGE_W - MARGIN_X * 2), {
-      x: MARGIN_X,
-      y: PAGE_H - MARGIN_TOP - 26,
-      size: 9,
+    const jobY = PAGE_H - MARGIN_TOP - 26;
+    const jobSize = 9;
+    const jobText = truncate(jobLine(input), font, jobSize, textWidth(jobY, jobSize));
+    const jobWidth = font.widthOfTextAtSize(jobText, jobSize);
+    page.drawText(jobText, {
+      x: MARGIN_X + (textWidth(jobY, jobSize) - jobWidth) / 2,
+      y: jobY,
+      size: jobSize,
       font,
       color: INK,
     });
@@ -562,6 +633,15 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
       font,
       color: MUTED,
     });
+    if (grid.measure === "people") {
+      page.drawText(truncate(PEOPLE_PRINT_KEY, font, 8, textWidth(PAGE_H - MARGIN_TOP - 48, 8)), {
+        x: MARGIN_X,
+        y: PAGE_H - MARGIN_TOP - 48,
+        size: 8,
+        font,
+        color: MUTED,
+      });
+    }
     let legendX = PAGE_W - MARGIN_X - legendWidth;
     const legendY = PAGE_H - MARGIN_TOP - 39;
     for (const [label, fill, border] of legendItems) {
@@ -608,19 +688,30 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
     } else if (pages.length > 1 && firstWeek && lastWeek) {
       notes.push(`Weeks of ${printWeekLabel(firstWeek)} through ${printWeekLabel(lastWeek)}`);
     }
+    const pageLabel = `${index + 1} of ${pages.length}`;
+    const pageLabelW = font.widthOfTextAtSize(pageLabel, 8);
+    const footerLeft = [companyName, stamp].filter(Boolean).join("  ·  ");
     const footLeft = notes.join("  ");
     if (footLeft) {
-      page.drawText(truncate(footLeft, font, 7.5, 520), {
+      page.drawText(truncate(footLeft, font, 7.5, PAGE_W - MARGIN_X * 2 - pageLabelW - 12), {
         x: MARGIN_X,
-        y: foot,
+        y: foot + 10,
         size: 7.5,
         font,
         color: MUTED,
       });
     }
-    const pageLabel = `${index + 1} of ${pages.length}`;
+    if (footerLeft) {
+      page.drawText(truncate(footerLeft, font, 8, PAGE_W - MARGIN_X * 2 - pageLabelW - 12), {
+        x: MARGIN_X,
+        y: foot,
+        size: 8,
+        font,
+        color: MUTED,
+      });
+    }
     page.drawText(pageLabel, {
-      x: PAGE_W - MARGIN_X - font.widthOfTextAtSize(pageLabel, 8),
+      x: PAGE_W - MARGIN_X - pageLabelW,
       y: foot,
       size: 8,
       font,
@@ -630,5 +721,7 @@ export async function buildWeeklyHoursPdf(input: WeeklyHoursPdfInput): Promise<U
 
   const documentTitle = pdfSafe([input.jobNumber, input.jobName, title].filter((part) => part.trim()).join(" - "));
   doc.setTitle(documentTitle || title);
+  doc.setCreationDate(printedAt);
+  doc.setModificationDate(printedAt);
   return doc.save();
 }

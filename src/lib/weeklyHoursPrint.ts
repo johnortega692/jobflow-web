@@ -93,7 +93,7 @@ export function weeklyPrintQuantity(hours: number, measure: WeeklyPrintMeasure):
 }
 
 /** 1 person is 8 hours. 1.5 is 12 hours. */
-export const PEOPLE_PRINT_KEY = "1 person = 8 hours. 1.5 is one person plus 4 hours.";
+export const PEOPLE_PRINT_KEY = "1 person = 8 hours. 0.5 person = 4 hours.";
 
 export function formatWeeklyPrintQuantity(value: number, measure: WeeklyPrintMeasure = "hours"): string {
   if (!(value > 0) || !Number.isFinite(value)) return "";

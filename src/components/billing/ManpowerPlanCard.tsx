@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useLetterhead } from "../../contexts/LetterheadContext";
 import { DateInput } from "../DateInput";
 import {
   cellHours,
@@ -138,6 +139,7 @@ export function ManpowerPlanCard({
   jobName = "",
   monthlyBilling,
 }: Props) {
+  const { branding } = useLetterhead();
   const contracts = useMemo<TransmittalContract[]>(() => {
     if (contractsProp?.length) return contractsProp;
     const fromPhases = [...new Set(billing.manpowerPhases.map((p) => p.contract))];
@@ -759,6 +761,9 @@ export function ManpowerPlanCard({
         delayDays: billing.delayDays ?? [],
         measure,
         layout,
+        companyName: branding.companyName,
+        logoUrl: branding.logoUrl,
+        printedAt: new Date(),
         equipment: (billing.rentalEquipment ?? [])
           .filter((item) => item.name.trim())
           .map((item) => {
