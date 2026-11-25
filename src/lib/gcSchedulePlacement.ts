@@ -153,12 +153,13 @@ export function placeGcActivity(input: {
   return upcoming(activityDate, `Not on the projection calendar — adds to Upcoming on ${weekColumnLabel(monday)}`);
 }
 
-/** Mon–Fri dates in this projection week that the activity covers, skipping holidays. */
+/** Dates in this projection week that the activity covers, skipping holidays. Weekends count only when requested. */
 export function gcWorkingDayIndexes(
   weekStartIso: string,
   startIso: string | null,
   finishIso: string | null,
   holidays: readonly string[] = [],
+  includeWeekends = false,
 ): number[] {
   const days = weekDayIsos(weekStartIso);
   const start = startIso?.trim() || days[0]!;
@@ -166,7 +167,7 @@ export function gcWorkingDayIndexes(
   const blocked = new Set(holidays);
   const indexes: number[] = [];
   days.forEach((iso, index) => {
-    if (index > 4) return;
+    if (!includeWeekends && index > 4) return;
     if (iso < start || iso > finish) return;
     if (blocked.has(iso)) return;
     indexes.push(index);
@@ -220,11 +221,13 @@ export function gcProjectionAdds(input: {
   startIso: string | null;
   finishIso: string | null;
   holidays?: readonly string[];
+  includeWeekends?: boolean;
 }): GcHourAdd[] {
   if (!input.phaseId || !(input.hours > 0) || input.weeks.length === 0) return [];
   const holidays = input.holidays ?? [];
+  const includeWeekends = input.includeWeekends === true;
   const daySets = input.weeks.map((week) =>
-    gcWorkingDayIndexes(week, input.startIso, input.finishIso, holidays),
+    gcWorkingDayIndexes(week, input.startIso, input.finishIso, holidays, includeWeekends),
   );
   const weights = daySets.map((days) => days.length);
   const weekHours =
@@ -264,6 +267,14 @@ export function addGcHours(cells: ManpowerCell[], adds: GcHourAdd[]): ManpowerCe
     next = withCellDayHours(next, add.phaseId, add.weekStartIso, base);
   }
   return next;
+}
+
+/** Finish date when the activity runs past its start. Empty when it is one day. */
+export function upcomingSpanEnd(startIso: string | null | undefined, finishIso: string | null | undefined): string {
+  const start = (startIso ?? "").trim();
+  const finish = (finishIso ?? "").trim();
+  if (!start || !finish || finish <= start) return "";
+  return finish;
 }
 
 export function upcomingEventTitle(jobNumber: string, activityName: string): string {

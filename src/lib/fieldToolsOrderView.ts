@@ -249,8 +249,8 @@ export function buildOrderDetailRows(order: FieldToolsOrder, scope: PoViewScope 
   if (order.order_type === "last_min") {
     const store = asString(payload.storeName);
     if (store) rows.push({ label: "Store", value: store });
-    const amount = asString(payload.amount);
-    if (amount) rows.push({ label: "Amount", value: amount.startsWith("$") ? amount : `$${amount}` });
+    const placed = asString(payload.placedAmount) || asString(payload.amount);
+    if (placed) rows.push({ label: "Order placed", value: placed.startsWith("$") ? placed : `$${placed}` });
   }
 
   const pm = asString(payload.pm);

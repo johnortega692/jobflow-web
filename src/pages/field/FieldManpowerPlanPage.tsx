@@ -170,6 +170,7 @@ export function FieldManpowerPlanPage() {
           onPersistQuiet={persistQuiet}
           projectId={plan.projectId}
           jobNumber={plan.jobNumber}
+          jobName={plan.jobName}
         />
       </div>
     );

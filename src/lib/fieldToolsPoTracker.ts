@@ -400,6 +400,61 @@ export function lastMinAmountText(payload: Record<string, unknown> | null | unde
   return parsed == null ? raw.replace(/[$,\s]/g, "") : parsed.toFixed(2);
 }
 
+/** The total submitted with the order. Stays put after the invoice amount is updated. */
+export function lastMinPlacedAmountText(payload: Record<string, unknown> | null | undefined): string {
+  const raw = typeof payload?.placedAmount === "string" ? payload.placedAmount : "";
+  const parsed = parseLastMinAmount(raw);
+  if (parsed != null) return parsed.toFixed(2);
+  return lastMinAmountText(payload);
+}
+
+export type FieldOrderMoney = {
+  orderId: string;
+  placed: number;
+  invoice: number | null;
+  unpriced: number;
+};
+
+/** Catalog total, with sales tax, for each field request and PM order on a job. */
+export async function listFieldOrderTotals(jobNumber: string): Promise<FieldOrderMoney[]> {
+  const job = jobNumber.trim();
+  if (!job) return [];
+  const { data, error } = await supabase.rpc(
+    "jobflow_field_order_totals" as never,
+    { p_job_number: job } as never,
+  );
+  if (error) throw new Error(error.message);
+  const result = (data ?? {}) as { ok?: boolean; error?: string; orders?: unknown };
+  if (!result.ok) throw new Error(result.error ?? "Could not load order totals.");
+  if (!Array.isArray(result.orders)) return [];
+  return result.orders.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const record = row as { order_id?: unknown; placed?: unknown; invoice?: unknown; unpriced?: unknown };
+    const orderId = typeof record.order_id === "string" ? record.order_id : "";
+    const placed = Number(record.placed);
+    if (!orderId || !Number.isFinite(placed)) return [];
+    const invoiceNumber = record.invoice == null ? null : Number(record.invoice);
+    const unpriced = Number(record.unpriced);
+    return [{
+      orderId,
+      placed,
+      invoice: invoiceNumber != null && Number.isFinite(invoiceNumber) ? invoiceNumber : null,
+      unpriced: Number.isFinite(unpriced) ? unpriced : 0,
+    }];
+  });
+}
+
+export async function saveFieldOrderInvoice(orderId: string, amount: number): Promise<string> {
+  const { data, error } = await supabase.rpc(
+    "jobflow_set_field_order_invoice" as never,
+    { p_order_id: orderId, p_amount: amount } as never,
+  );
+  if (error) throw new Error(error.message);
+  const result = (data ?? {}) as { ok?: boolean; error?: string; amount?: unknown };
+  if (!result.ok) throw new Error(result.error ?? "Could not save the invoice.");
+  return typeof result.amount === "string" ? result.amount : amount.toFixed(2);
+}
+
 export async function saveLastMinAmount(orderId: string, amount: number): Promise<string> {
   const { data, error } = await supabase.rpc(
     "jobflow_set_last_min_amount" as never,

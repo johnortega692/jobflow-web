@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { DateInput } from "../DateInput";
+import { FlagSwitch } from "../jobinfo/StageStepper";
 import { toIsoDateValue } from "../../lib/dateInputUtils";
 import type { GcScheduleActivity, GcTrade } from "../../lib/gcScheduleImport";
 import {
-  addGcHours,
   defaultPhaseId,
-  gcProjectionAdds,
   phasesForTrade,
   placeGcActivity,
   upcomingEventTitle,
+  upcomingSpanEnd,
 } from "../../lib/gcSchedulePlacement";
-import { addUpcomingFromGcSchedule } from "../../lib/gcScheduleUpcoming";
+import { addUpcomingFromGcSchedule, updateUpcomingFromGcSchedule } from "../../lib/gcScheduleUpcoming";
+import type { SpreadActivityHours } from "../../lib/spreadBudgetHours";
+import { SpreadBudgetHours } from "./SpreadBudgetHours";
 import {
   phaseDisplayLabel,
   type GcScheduleSavedItem,
@@ -28,6 +30,12 @@ type Props = {
   jobNumber: string;
   saving: boolean;
   canEdit: boolean;
+  gridStart: string;
+  weekCount: number;
+  spreadCanUndo: boolean;
+  onSpreadPreview: (rows: { id: string; hours: number[] }[] | null) => void;
+  onSpreadApply: (rows: { id: string; hours: number[]; dayHours: number[][] }[], savedItems: GcScheduleSavedItem[]) => void;
+  onSpreadUndo: () => void;
   onBillingChange: (next: ProjectBillingData) => void;
   onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
 };
@@ -101,15 +109,6 @@ function FileIcon() {
   );
 }
 
-function ProjectionIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M4 9h16M9 9v10" fill="none" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
 function UpcomingIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -137,40 +136,62 @@ export function GcSchedulePanel({
   jobNumber,
   saving,
   canEdit,
+  gridStart,
+  weekCount,
+  spreadCanUndo,
+  onSpreadPreview,
+  onSpreadApply,
+  onSpreadUndo,
   onBillingChange,
   onPersistQuiet,
 }: Props) {
   const storedKey = JSON.stringify(billing.gcSchedule?.items ?? []);
   const [items, setItems] = useState<GcScheduleSavedItem[]>(() => billing.gcSchedule?.items ?? []);
-  const [hourText, setHourText] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [spreadOff, setSpreadOff] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setItems(billing.gcSchedule?.items ?? []);
-    setHourText({});
     // storedKey is the saved list; local edits stay until the projection is saved again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storedKey]);
 
   const saved = billing.gcSchedule;
   const busy = saving || busyId !== null;
-  const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
+  const allSpread = items.length > 0 && items.every((item) => !spreadOff.has(item.id));
 
-  function toggleSelected(id: string, on: boolean) {
-    setSelected((current) => {
+  function setSpread(id: string, on: boolean) {
+    setSpreadOff((current) => {
       const next = new Set(current);
-      if (on) next.add(id);
-      else next.delete(id);
+      if (on) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
-  function toggleAll(on: boolean) {
-    setSelected(on ? new Set(items.map((item) => item.id)) : new Set());
+  function setAllSpread(on: boolean) {
+    setSpreadOff(on ? new Set() : new Set(items.map((item) => item.id)));
   }
+
+  const phaseById = new Map(phases.map((phase) => [phase.id, phase]));
+  const spreadActivities: SpreadActivityHours[] = items.flatMap((item) => {
+    const phase = item.phaseId ? phaseById.get(item.phaseId) : undefined;
+    if (!item.name.trim() || !phase || phase.hidden || spreadOff.has(item.id)) return [];
+    const budgetHours = phase.budgetHours;
+    if (!(item.hours > 0) && !(budgetHours > 0)) return [];
+    if (!(item.startIso || item.finishIso)) return [];
+    return [{
+      id: item.id,
+      phaseId: item.phaseId,
+      hours: item.hours,
+      budgetHours,
+      startIso: item.startIso,
+      endIso: item.finishIso || item.startIso,
+      includeWeekends: item.includeWeekends,
+    }];
+  });
 
   function toggleExpanded(id: string) {
     setExpandedId((current) => (current === id ? null : id));
@@ -180,6 +201,16 @@ export function GcSchedulePanel({
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...next } : item)));
   }
 
+  function setWeekends(item: GcScheduleSavedItem, includeWeekends: boolean) {
+    const nextItems = items.map((row) => (row.id === item.id ? { ...row, includeWeekends } : row));
+    setItems(nextItems);
+    if (!item.name.trim()) return;
+    void persist(
+      scheduleBilling(billing, nextItems.filter((row) => row.name.trim())),
+      includeWeekends ? "Weekends included for this activity." : "This activity stays on weekdays.",
+    );
+  }
+
   async function persist(next: ProjectBillingData, note: string) {
     onBillingChange(next);
     const ok = await onPersistQuiet(next);
@@ -187,11 +218,71 @@ export function GcSchedulePanel({
     return ok;
   }
 
-  async function saveList() {
+  async function prepareSchedule(): Promise<{ items: GcScheduleSavedItem[]; upcomingNote: string } | null> {
+    if (busy) return null;
     const cleaned = items
       .map((item) => ({ ...item, name: item.name.replace(/\s+/g, " ").trim() }))
       .filter((item) => item.name);
-    await persist(scheduleBilling(billing, cleaned), "GC schedule saved.");
+    const previous = new Map((billing.gcSchedule?.items ?? []).map((item) => [item.id, item]));
+    const edits = cleaned.flatMap((item) => {
+      if (item.status !== "upcoming") return [];
+      const prev = previous.get(item.id);
+      if (!prev || prev.status !== "upcoming") return [];
+      const previousDate = prev.upcomingDateIso || prev.startIso || prev.finishIso;
+      const previousTitle = prev.upcomingTitle || upcomingEventTitle(jobNumber, prev.name);
+      const eventDate = item.startIso || item.finishIso;
+      const title = upcomingEventTitle(jobNumber, item.name);
+      const previousEnd = upcomingSpanEnd(previousDate, prev.finishIso);
+      const endDate = upcomingSpanEnd(eventDate, item.finishIso);
+      if (!previousDate || !previousTitle || !eventDate || !title) return [];
+      if (previousDate === eventDate && previousTitle === title && previousEnd === endDate) return [];
+      return [{
+        id: item.id,
+        previous_date: previousDate,
+        previous_title: previousTitle,
+        event_date: eventDate,
+        end_date: endDate,
+        title,
+      }];
+    });
+    let nextItems = cleaned;
+    let upcomingNote = "";
+    if (edits.length && projectId) {
+      setBusyId("save");
+      try {
+        const result = await updateUpcomingFromGcSchedule(projectId, edits);
+        if (result.error) {
+          upcomingNote = `Upcoming was not updated: ${result.error}`;
+        } else {
+          const updated = new Set(result.updatedIds);
+          nextItems = cleaned.map((item) => {
+            const edit = edits.find((row) => row.id === item.id);
+            if (!edit || !updated.has(item.id)) return item;
+            return { ...item, upcomingDateIso: edit.event_date, upcomingTitle: edit.title };
+          });
+          upcomingNote = result.errors[0]
+            ? `${result.errors[0].title || "An activity"}: ${result.errors[0].message}`
+            : "Upcoming was updated.";
+        }
+      } finally {
+        setBusyId(null);
+      }
+    }
+    return { items: nextItems, upcomingNote };
+  }
+
+  async function saveList() {
+    const prepared = await prepareSchedule();
+    if (!prepared) return;
+    const note = prepared.upcomingNote ? `Schedule saved. ${prepared.upcomingNote}` : "Schedule saved.";
+    await persist(scheduleBilling(billing, prepared.items), note);
+  }
+
+  async function placeOnWeeks(rows: { id: string; hours: number[]; dayHours: number[][] }[]) {
+    const prepared = await prepareSchedule();
+    if (!prepared) return;
+    await onSpreadApply(rows, prepared.items);
+    setMessage(prepared.upcomingNote ? `Hours placed on the weeks. ${prepared.upcomingNote}` : "Hours placed on the weeks.");
   }
 
   function addRow() {
@@ -211,16 +302,11 @@ export function GcSchedulePanel({
         status: "open",
         upcomingDateIso: "",
         upcomingTitle: "",
+        includeWeekends: false,
       },
     ]);
     setExpandedId(id);
     setMessage(null);
-  }
-
-  function resolveTargets(seed: GcScheduleSavedItem): GcScheduleSavedItem[] {
-    if (!selected.has(seed.id)) return [seed];
-    const picked = items.filter((row) => selected.has(row.id));
-    return picked.length ? picked : [seed];
   }
 
   async function removeRow(id: string) {
@@ -229,89 +315,13 @@ export function GcSchedulePanel({
     await persist(scheduleBilling(billing, nextItems.filter((item) => item.name.trim())), "Activity removed.");
   }
 
-  async function addToProjection(seed: GcScheduleSavedItem) {
-    const targets = resolveTargets(seed);
-    const problems: string[] = [];
-    const placed = new Map<string, string>();
-    let cells = billing.manpowerCells;
-    for (const item of targets) {
-      const name = item.name.trim() || "An activity";
-      if (!item.name.trim()) {
-        problems.push("Name each activity before adding it to the projection.");
-        continue;
-      }
-      if (!(item.hours > 0)) {
-        problems.push(`${name} needs hours.`);
-        continue;
-      }
-      const placement = placeGcActivity({
-        activity: activityFromItem(item),
-        trade: item.trade,
-        phaseId: item.phaseId,
-        phases,
-        weekStarts,
-        projectStartIso,
-        projectEndIso,
-      });
-      if (placement.destination !== "projection" || !placement.phaseId || placement.projectionWeeks.length === 0) {
-        problems.push(placement.note || `${name} does not fall on the projection weeks.`);
-        continue;
-      }
-      cells = addGcHours(
-        cells,
-        gcProjectionAdds({
-          phaseId: placement.phaseId,
-          hours: item.hours,
-          weeks: placement.projectionWeeks,
-          startIso: item.startIso || null,
-          finishIso: item.finishIso || null,
-          holidays: billing.holidays,
-        }),
-      );
-      placed.set(item.id, placement.phaseId);
-    }
-    if (!placed.size) {
-      setMessage(problems[0] ?? "Nothing could be added to the projection.");
-      return;
-    }
-    setBusyId(seed.id);
-    setMessage(null);
-    try {
-      const nextItems = items.map((row) =>
-        placed.has(row.id)
-          ? {
-              ...row,
-              name: row.name.trim(),
-              status: "projection" as const,
-              phaseId: placed.get(row.id) ?? row.phaseId,
-              upcomingDateIso: "",
-              upcomingTitle: "",
-            }
-          : row,
-      );
-      const note =
-        placed.size === 1
-          ? "Hours added on the projection."
-          : `Hours added for ${placed.size} activities on the projection.`;
-      await persist(
-        {
-          ...scheduleBilling(billing, nextItems.filter((row) => row.name.trim())),
-          manpowerCells: cells,
-        },
-        problems.length ? `${note} ${problems[0]}` : note,
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function addToUpcoming(seed: GcScheduleSavedItem) {
     if (!projectId) {
       setMessage("This job has no id, so Upcoming was not updated.");
       return;
     }
-    const targets = resolveTargets(seed);
-    const ready: { item: GcScheduleSavedItem; eventDate: string; title: string }[] = [];
+    const targets = [seed];
+    const ready: { item: GcScheduleSavedItem; eventDate: string; endDate: string; title: string }[] = [];
     const problems: string[] = [];
     for (const item of targets) {
       const name = item.name.trim();
@@ -333,7 +343,12 @@ export function GcSchedulePanel({
         problems.push(`${name} needs a date before it can go on Upcoming.`);
         continue;
       }
-      ready.push({ item, eventDate, title: upcomingEventTitle(jobNumber, name) });
+      ready.push({
+        item,
+        eventDate,
+        endDate: upcomingSpanEnd(eventDate, item.finishIso),
+        title: upcomingEventTitle(jobNumber, name),
+      });
     }
     if (!ready.length) {
       setMessage(problems[0] ?? "Nothing could be added to Upcoming.");
@@ -344,7 +359,7 @@ export function GcSchedulePanel({
     try {
       const result = await addUpcomingFromGcSchedule(
         projectId,
-        ready.map((row) => ({ event_date: row.eventDate, title: row.title })),
+        ready.map((row) => ({ event_date: row.eventDate, end_date: row.endDate, title: row.title })),
       );
       if (result.error) {
         setMessage(result.error);
@@ -388,10 +403,10 @@ export function GcSchedulePanel({
         {canEdit ? (
           <input
             type="checkbox"
-            aria-label="Select all activities"
-            checked={allSelected}
+            aria-label="Include every activity's hours in the spread"
+            checked={allSpread}
             disabled={busy || items.length === 0}
-            onChange={(event) => toggleAll(event.target.checked)}
+            onChange={(event) => setAllSpread(event.target.checked)}
           />
         ) : (
           <span />
@@ -412,17 +427,16 @@ export function GcSchedulePanel({
           const code = phase ? formatCostCode(phase.costCode) : "";
           const tradeLabel = code ? `${tradeShort(item.trade)} · ${code}` : tradeShort(item.trade);
           const open = expandedId === item.id;
-          const hourValue = hourText[item.id] ?? (item.hours ? String(item.hours) : "");
           return (
-            <article key={item.id} className={`gc-schedule-row${open ? " is-open" : ""}${selected.has(item.id) ? " is-selected" : ""}`}>
+            <article key={item.id} className={`gc-schedule-row${open ? " is-open" : ""}`}>
               <div className="gc-schedule-line">
                 {canEdit ? (
                   <input
                     type="checkbox"
-                    aria-label={`Select ${item.name || "activity"}`}
-                    checked={selected.has(item.id)}
+                    aria-label={`Include ${item.name || "activity"} hours in the spread`}
+                    checked={!spreadOff.has(item.id)}
                     disabled={busy}
-                    onChange={(event) => toggleSelected(item.id, event.target.checked)}
+                    onChange={(event) => setSpread(item.id, event.target.checked)}
                   />
                 ) : (
                   <span />
@@ -437,23 +451,25 @@ export function GcSchedulePanel({
                   {item.name || "Untitled activity"}
                 </button>
                 <span className="gc-schedule-trade-code">{tradeLabel}</span>
-                <span className="gc-schedule-dates">{dateRange(item.startIso, item.finishIso)}</span>
+                <span className="gc-schedule-dates">
+                  {dateRange(item.startIso, item.finishIso)}
+                  {item.includeWeekends ? <span className="gc-schedule-weekend">Weekends</span> : null}
+                </span>
                 {canEdit ? (
                   <input
                     className="gc-schedule-hour-box"
                     type="number"
                     min={0}
-                    step={0.5}
-                    placeholder="—"
-                    aria-label={`Hours for ${item.name || "activity"}`}
-                    value={hourValue}
+                    step={1}
+                    placeholder="0"
+                    aria-label={`Hours to spread for ${item.name || "activity"}`}
+                    value={item.hours || ""}
                     disabled={busy}
                     onChange={(event) => {
                       const raw = event.target.value;
-                      setHourText((prev) => ({ ...prev, [item.id]: raw }));
                       const n = Number(raw);
                       if (raw.trim() === "") patch(item.id, { hours: 0 });
-                      else if (Number.isFinite(n) && n >= 0) patch(item.id, { hours: Math.round(n * 10) / 10 });
+                      else if (Number.isFinite(n) && n >= 0) patch(item.id, { hours: Math.round(n) });
                     }}
                   />
                 ) : (
@@ -462,16 +478,6 @@ export function GcSchedulePanel({
                 <span className="gc-schedule-sent">
                   {canEdit ? (
                     <>
-                      <button
-                        type="button"
-                        className={`gc-schedule-icon${item.status === "projection" ? " is-on" : ""}`}
-                        aria-label={`Add ${item.name || "activity"} to the projection`}
-                        title={item.status === "projection" ? "On the projection" : "Add to projection"}
-                        disabled={busy}
-                        onClick={() => void addToProjection(item)}
-                      >
-                        <ProjectionIcon />
-                      </button>
                       <button
                         type="button"
                         className={`gc-schedule-icon${item.status === "upcoming" ? " is-on" : ""}`}
@@ -537,6 +543,20 @@ export function GcSchedulePanel({
                       <span>{item.finishIso ? shortDate(item.finishIso) : "—"}</span>
                     )}
                   </label>
+                  <div className="gc-schedule-days">
+                    <span>Days</span>
+                    {canEdit ? (
+                      <FlagSwitch
+                        label="Include weekends"
+                        tone="accent"
+                        checked={item.includeWeekends}
+                        disabled={busy}
+                        onChange={(on) => setWeekends(item, on)}
+                      />
+                    ) : (
+                      <span>{item.includeWeekends ? "Includes weekends" : "Weekdays"}</span>
+                    )}
+                  </div>
                   <label>
                     Trade
                     {canEdit ? (
@@ -575,7 +595,6 @@ export function GcSchedulePanel({
                       <span>{code || "—"}</span>
                     )}
                   </label>
-                  <p className="gc-schedule-need">Needed for projection</p>
                   {canEdit ? (
                     <button
                       type="button"
@@ -598,10 +617,23 @@ export function GcSchedulePanel({
           <button type="button" className="btn btn-secondary btn-small" disabled={busy} onClick={addRow}>
             + Add activity
           </button>
-          <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={() => void saveList()}>
-            {saving ? "Saving…" : "Save"}
+          <button type="button" className="btn btn-secondary btn-small" disabled={busy} onClick={() => void saveList()}>
+            {saving ? "Saving…" : "Save schedule"}
           </button>
         </div>
+      ) : null}
+      {canEdit && weekCount > 0 ? (
+        <SpreadBudgetHours
+          activities={spreadActivities}
+          gridStart={gridStart}
+          weekCount={weekCount}
+          holidays={billing.holidays}
+          saving={saving}
+          canUndo={spreadCanUndo}
+          onPreview={onSpreadPreview}
+          onApply={(rows) => void placeOnWeeks(rows)}
+          onUndo={onSpreadUndo}
+        />
       ) : null}
     </div>
   );

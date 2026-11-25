@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { lastMinAmountText, parseLastMinAmount, saveLastMinAmount } from "../../lib/fieldToolsPoTracker";
+import { lastMinAmountText, lastMinPlacedAmountText, parseLastMinAmount, saveLastMinAmount } from "../../lib/fieldToolsPoTracker";
 
 type Props = {
   orderId: string;
@@ -10,6 +10,7 @@ type Props = {
 
 export function LastMinAmountEditor({ orderId, payload, canEdit, onSaved }: Props) {
   const saved = lastMinAmountText(payload);
+  const placed = lastMinPlacedAmountText(payload);
   const [amount, setAmount] = useState(saved);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export function LastMinAmountEditor({ orderId, payload, canEdit, onSaved }: Prop
       const savedAmount = await saveLastMinAmount(orderId, value);
       setAmount(savedAmount);
       onSaved(savedAmount);
-      setStatus("Total saved. It counts on the material budget.");
+      setStatus("Invoice saved. It counts on the material budget.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the total.");
     } finally {
@@ -41,10 +42,16 @@ export function LastMinAmountEditor({ orderId, payload, canEdit, onSaved }: Prop
   return (
     <div className="field-tools-order-cart" id="last-min-amount">
       <p className="field-tools-order-cart-title">Receipt total</p>
-      <p className="muted small">This amount counts on the material budget. Sales tax is not added again.</p>
+      <p className="muted small">
+        Order placed is the total submitted with the order. The invoice amount counts on the material budget. Sales tax is not added again.
+      </p>
       {error ? <div className="banner banner-error">{error}</div> : null}
       <div className="last-min-paint-row">
-        <label htmlFor="last-min-amount-input">Amount</label>
+        <span>Order placed</span>
+        <strong>{placed ? `$${placed}` : "—"}</strong>
+      </div>
+      <div className="last-min-paint-row">
+        <label htmlFor="last-min-amount-input">Invoice amount</label>
         {canEdit ? (
           <input
             id="last-min-amount-input"
@@ -52,7 +59,7 @@ export function LastMinAmountEditor({ orderId, payload, canEdit, onSaved }: Prop
             inputMode="decimal"
             value={amount}
             placeholder="0.00"
-            aria-label="Last-Min receipt total"
+            aria-label="Last-Min invoice amount"
             disabled={busy}
             onChange={(e) => {
               setAmount(e.target.value);
@@ -66,7 +73,7 @@ export function LastMinAmountEditor({ orderId, payload, canEdit, onSaved }: Prop
       {canEdit ? (
         <div className="row-gap wrap">
           <button type="button" className="btn btn-primary" disabled={busy || !dirty} onClick={() => void onSave()}>
-            {busy ? "Saving…" : "Save total"}
+            {busy ? "Saving…" : "Save invoice"}
           </button>
           {status ? <p className="muted small">{status}</p> : null}
         </div>

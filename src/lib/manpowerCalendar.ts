@@ -46,6 +46,17 @@ export function addWeeksIso(mondayIso: string, weeks: number): string {
   return isoLocal(date);
 }
 
+/** Move a job date by whole days. Returns YYYY-MM-DD. */
+export function shiftIsoDate(value: string, days: number): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const iso = toIsoDateValue(trimmed);
+  const parsed = iso ? parseFlexibleDate(iso) : parseFlexibleDate(trimmed);
+  if (!parsed) return null;
+  parsed.setDate(parsed.getDate() + days);
+  return isoLocal(parsed);
+}
+
 /** M/D label for a Monday ISO date. */
 export function weekColumnLabel(mondayIso: string): string {
   const [, m, d] = mondayIso.split("-").map(Number);
@@ -78,9 +89,9 @@ export type ManpowerWeekRange = {
 };
 
 /**
- * Week columns from anchor through the latest of: end_date's Monday (when set),
- * latest crew cell, manpowerWeekCount (Add week), or DEFAULT_MANPOWER_WEEK_COUNT
- * when end_date is missing.
+ * Week columns from the Monday of the job start through the Monday of the job end.
+ * A week that already has hours stays on the grid. With no end date, the range is
+ * manpowerWeekCount or the default 8 weeks.
  */
 export function manpowerWeekStarts(
   projectStartIso: string,
@@ -99,15 +110,12 @@ export function manpowerWeekStarts(
       contractEndWeekIndex = endIdx;
       lastIndex = endIdx;
     } else {
-      // end_date is before the anchor week — ignore for sizing (fall back below)
       contractEndWeekIndex = null;
       lastIndex = Math.max(DEFAULT_MANPOWER_WEEK_COUNT, weekCount) - 1;
     }
   } else {
     lastIndex = Math.max(DEFAULT_MANPOWER_WEEK_COUNT, weekCount) - 1;
   }
-
-  lastIndex = Math.max(lastIndex, weekCount - 1);
 
   for (const cell of cells) {
     if (!cell.weekStartIso) continue;

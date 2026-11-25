@@ -3,6 +3,10 @@ import { DateInput } from "../DateInput";
 import {
   cellHours,
   addWeeksIso,
+  DEFAULT_MANPOWER_WEEK_COUNT,
+  mondayIsoFromDateInput,
+  shiftIsoDate,
+  weekIndex,
   formatJobDateLabel,
   hoursToManWeeks,
   manpowerEndDateHint,
@@ -12,6 +16,8 @@ import {
   weekColumnLabel,
   weekDayIsos,
   weekHasPhaseOverlap,
+  sumDayHours,
+  withCellDayHours,
   withCellHours,
 } from "../../lib/manpowerCalendar";
 import { carryOver, type CarryDest } from "../../lib/carryOver";
@@ -31,17 +37,21 @@ import {
   phaseColorAtIndex,
   phaseDisplayLabel,
   plannedHoursForPhase,
+  type GcScheduleSavedItem,
   type ManpowerCell,
   type ManpowerPhase,
   type ManpowerPhaseId,
   type ProjectBillingData,
 } from "../../types/projectBilling";
+import { weeklyHoursPdfFilename } from "../../lib/pdfFilenames";
+import { printPdfBytes } from "../../lib/pdfDownload";
+import type { WeeklyPrintLayout, WeeklyPrintMeasure } from "../../lib/weeklyHoursPrint";
 import { GcScheduleImport } from "./GcScheduleImport";
 import { GcSchedulePanel } from "./GcSchedulePanel";
-import { SpreadBudgetHours } from "./SpreadBudgetHours";
 import { ManpowerHeaderPencilIcon } from "./ManpowerHeaderPillIcons";
 import { ManpowerWeekDetailModal } from "./ManpowerWeekDetailModal";
 import { CarryWeekSheet } from "./CarryWeekSheet";
+import { WeeklyHoursPrintDialog } from "./WeeklyHoursPrintDialog";
 
 type Props = {
   billing: ProjectBillingData;
@@ -62,6 +72,7 @@ type Props = {
   onScheduleDatesChange?: (startIso: string, endIso: string) => Promise<boolean>;
   projectId?: string;
   jobNumber?: string;
+  jobName?: string;
   /** Office monthly billing table. Hidden on the field variant. */
   monthlyBilling?: ReactNode;
 };
@@ -122,6 +133,7 @@ export function ManpowerPlanCard({
   onScheduleDatesChange,
   projectId = "",
   jobNumber = "",
+  jobName = "",
   monthlyBilling,
 }: Props) {
   const contracts = useMemo<TransmittalContract[]>(() => {
@@ -166,6 +178,8 @@ export function ManpowerPlanCard({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [phaseColPx, setPhaseColPx] = useState(0);
   const [gcOpen, setGcOpen] = useState(false);
+  const [gcMenu, setGcMenu] = useState(false);
+  const [importLaunch, setImportLaunch] = useState(0);
   const [datesOpen, setDatesOpen] = useState(false);
   const [planView, setPlanView] = useState<"weekly" | "monthly">("weekly");
 
@@ -174,10 +188,13 @@ export function ManpowerPlanCard({
     if (!root) return;
     const cell = root.querySelector<HTMLElement>("tbody .billing-manpower-phase-col");
     if (!cell) {
-      setPhaseColPx(0);
+      setPhaseColPx((current) => (current === 0 ? current : 0));
       return;
     }
-    const sync = () => setPhaseColPx(Math.ceil(cell.getBoundingClientRect().width));
+    const sync = () => {
+      const next = Math.ceil(cell.getBoundingClientRect().width);
+      setPhaseColPx((current) => (current === next ? current : next));
+    };
     sync();
     const ro = new ResizeObserver(sync);
     ro.observe(cell);
@@ -192,9 +209,17 @@ export function ManpowerPlanCard({
   );
   const endDateHint = manpowerEndDateHint(projectStartIso, projectEndIso);
   const [detailWeek, setDetailWeek] = useState<string | null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printBusy, setPrintBusy] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
   const [weekMenu, setWeekMenu] = useState<{ week: string; top: number; left: number } | null>(null);
   const [carryWeek, setCarryWeek] = useState<string | null>(null);
-  const [carryToast, setCarryToast] = useState<{ message: string; cells: ManpowerCell[] } | null>(null);
+  const [carryToast, setCarryToast] = useState<{
+    message: string;
+    cells: ManpowerCell[];
+    weekCount?: number;
+    endIso?: string;
+  } | null>(null);
   const [draftStart, setDraftStart] = useState(projectStartIso);
   const [draftEnd, setDraftEnd] = useState(projectEndIso);
   const dragRef = useRef<{
@@ -273,17 +298,24 @@ export function ManpowerPlanCard({
   );
 
   const showSpreadPreview = useCallback((rows: { id: string; hours: number[] }[] | null) => {
-    if (!rows) {
-      setSpreadPreview(null);
-      return;
-    }
-    const next: Record<string, number[]> = {};
-    for (const row of rows) next[row.id] = row.hours;
-    setSpreadPreview(next);
+    setSpreadPreview((current) => {
+      if (!rows) return current === null ? current : null;
+      const next: Record<string, number[]> = {};
+      for (const row of rows) next[row.id] = row.hours;
+      if (!current) return next;
+      const keys = Object.keys(next);
+      if (Object.keys(current).length !== keys.length) return next;
+      const same = keys.every((key) => {
+        const left = current[key];
+        const right = next[key];
+        return !!left && !!right && left.length === right.length && left.every((hours, index) => hours === right[index]);
+      });
+      return same ? current : next;
+    });
   }, []);
 
   const applySpread = useCallback(
-    async (rows: { id: string; hours: number[] }[]) => {
+    async (rows: { id: string; hours: number[]; dayHours: number[][] }[], savedItems?: GcScheduleSavedItem[]) => {
       if (!canEditCells || rows.length === 0) return;
       const phaseIds = new Set(rows.map((row) => row.id));
       const snapshot = billing.manpowerCells
@@ -292,13 +324,31 @@ export function ManpowerPlanCard({
       let cells = billing.manpowerCells;
       for (const row of rows) {
         weeks.forEach((week, index) => {
-          cells = withCellHours(cells, row.id, week, row.hours[index] ?? 0);
+          const weekHours = row.hours[index] ?? 0;
+          const days = row.dayHours[index];
+          if (days && weekHours > 0 && sumDayHours(days) === weekHours) {
+            cells = withCellDayHours(cells, row.id, week, days);
+          } else {
+            cells = withCellHours(cells, row.id, week, weekHours);
+          }
         });
       }
       spreadUndoRef.current = { phaseIds: [...phaseIds], cells: snapshot };
       setSpreadCanUndo(true);
       setSpreadPreview(null);
-      const next = { ...billing, manpowerCells: cells };
+      const next = {
+        ...billing,
+        ...(savedItems
+          ? {
+              gcSchedule: {
+                fileName: billing.gcSchedule?.fileName ?? "",
+                importedAt: billing.gcSchedule?.importedAt || new Date().toISOString(),
+                items: savedItems,
+              },
+            }
+          : {}),
+        manpowerCells: cells,
+      };
       onBillingChange(next);
       await onPersistQuiet(next);
     },
@@ -320,6 +370,24 @@ export function ManpowerPlanCard({
     onBillingChange(next);
     await onPersistQuiet(next);
   }, [billing, canEditCells, onBillingChange, onPersistQuiet]);
+
+  useEffect(() => {
+    if (!gcMenu) return;
+    function onPointer(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-gc-menu]")) return;
+      setGcMenu(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setGcMenu(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [gcMenu]);
 
   useEffect(() => {
     if (!weekMenu) return;
@@ -360,6 +428,7 @@ export function ManpowerPlanCard({
           id: activity.id,
           startIso: activity.startIso,
           endIso: activity.finishIso || activity.startIso,
+          includeWeekends: activity.includeWeekends,
         }));
       const { weights } = weekActivityWeights(
         activities,
@@ -418,15 +487,27 @@ export function ManpowerPlanCard({
   const undoCarry = useCallback(async () => {
     if (!canEditCells || !carryToast) return;
     const cells = carryToast.cells.map((cell) => ({ ...cell, dayHours: cell.dayHours?.slice() }));
+    const weekCount = carryToast.weekCount;
+    const endIso = carryToast.endIso;
     setCarryToast(null);
-    const next = { ...billing, manpowerCells: cells };
+    const next = {
+      ...billing,
+      manpowerCells: cells,
+      ...(weekCount != null ? { manpowerWeekCount: weekCount } : {}),
+    };
     onBillingChange(next);
     await onPersistQuiet(next);
-  }, [billing, canEditCells, carryToast, onBillingChange, onPersistQuiet]);
+    if (endIso != null && onScheduleDatesChange) await onScheduleDatesChange(projectStartIso, endIso);
+  }, [billing, canEditCells, carryToast, onBillingChange, onPersistQuiet, onScheduleDatesChange, projectStartIso]);
 
   async function addWeek() {
     if (!canEditSchedule) return;
-    const next = { ...billing, manpowerWeekCount: billing.manpowerWeekCount + 1 };
+    const nextEnd = projectEndIso.trim() ? shiftIsoDate(projectEndIso, 7) : null;
+    if (nextEnd && onScheduleDatesChange) {
+      await onScheduleDatesChange(projectStartIso, nextEnd);
+      return;
+    }
+    const next = { ...billing, manpowerWeekCount: Math.max(billing.manpowerWeekCount, weeks.length) + 1 };
     onBillingChange(next);
     await onPersistQuiet(next);
   }
@@ -459,6 +540,71 @@ export function ManpowerPlanCard({
       cells: snapshot,
     });
     await onPersistQuiet(next);
+  }
+
+  async function clearWeek(weekStartIso: string) {
+    if (!canEditCells || saving) return;
+    const phaseIds = new Set(contractPhases.map((phase) => phase.id));
+    const hasHours = billing.manpowerCells.some(
+      (cell) => cell.hours > 0 && phaseIds.has(cell.phaseId) && cell.weekStartIso === weekStartIso,
+    );
+    if (!hasHours) return;
+    const snapshot = billing.manpowerCells.map((cell) => ({
+      ...cell,
+      dayHours: cell.dayHours?.slice(),
+    }));
+    const next = {
+      ...billing,
+      manpowerCells: billing.manpowerCells.filter(
+        (cell) => !(phaseIds.has(cell.phaseId) && cell.weekStartIso === weekStartIso),
+      ),
+    };
+    onBillingChange(next);
+    setCarryToast({
+      message: `Cleared hours for the week of ${weekColumnLabel(weekStartIso)}.`,
+      cells: snapshot,
+    });
+    await onPersistQuiet(next);
+  }
+
+  function canDeleteWeek(weekStartIso: string): boolean {
+    if (!canEditSchedule || weeks.length < 2 || weeks[weeks.length - 1] !== weekStartIso) return false;
+    const endMonday = mondayIsoFromDateInput(projectEndIso);
+    if (endMonday && endMonday >= weekStartIso) {
+      const nextEnd = shiftIsoDate(projectEndIso, -7);
+      const nextMonday = nextEnd ? mondayIsoFromDateInput(nextEnd) : null;
+      const startMonday = mondayIsoFromDateInput(projectStartIso) ?? weeks[0] ?? weekStartIso;
+      return Boolean(nextMonday && weekIndex(startMonday, nextMonday) >= 0);
+    }
+    if (!projectEndIso.trim()) return weeks.length > DEFAULT_MANPOWER_WEEK_COUNT;
+    return billing.manpowerCells.some((cell) => cell.weekStartIso === weekStartIso);
+  }
+
+  async function deleteWeek(weekStartIso: string) {
+    if (!canDeleteWeek(weekStartIso) || saving) return;
+    const snapshot = billing.manpowerCells.map((cell) => ({
+      ...cell,
+      dayHours: cell.dayHours?.slice(),
+    }));
+    const previousCount = billing.manpowerWeekCount;
+    const previousEnd = projectEndIso;
+    const cells = billing.manpowerCells.filter((cell) => cell.weekStartIso !== weekStartIso);
+    const next = { ...billing, manpowerCells: cells, manpowerWeekCount: Math.max(1, weeks.length - 1) };
+    onBillingChange(next);
+    const saved = await onPersistQuiet(next);
+    const endMonday = mondayIsoFromDateInput(projectEndIso);
+    const nextEnd = endMonday && endMonday >= weekStartIso ? shiftIsoDate(projectEndIso, -7) : null;
+    let restoredEnd: string | undefined;
+    if (saved && nextEnd && onScheduleDatesChange) {
+      const datesSaved = await onScheduleDatesChange(projectStartIso, nextEnd);
+      if (datesSaved) restoredEnd = previousEnd;
+    }
+    setCarryToast({
+      message: `Deleted the week of ${weekColumnLabel(weekStartIso)}.`,
+      cells: snapshot,
+      weekCount: previousCount,
+      ...(restoredEnd ? { endIso: restoredEnd } : {}),
+    });
   }
 
   async function persistDates(nextStart: string, nextEnd: string) {
@@ -577,6 +723,30 @@ export function ManpowerPlanCard({
   );
   const showWeekly = isField || !monthlyBilling || planView === "weekly";
 
+  async function printWeeklyHours(measure: WeeklyPrintMeasure, layout: WeeklyPrintLayout) {
+    setPrintBusy(true);
+    setPrintError(null);
+    try {
+      const { buildWeeklyHoursPdf } = await import("../../lib/weeklyHoursPdf");
+      const bytes = await buildWeeklyHoursPdf({
+        jobNumber,
+        jobName,
+        contractLabel: TRANSMITTAL_CONTRACT_LABELS[activeContract],
+        weekStarts: weeks,
+        phases: visiblePhases.map((phase) => ({ id: phase.id, costCode: phase.costCode, name: phase.name })),
+        cells: billing.manpowerCells,
+        holidays: billing.holidays ?? [],
+        measure,
+        layout,
+      });
+      printPdfBytes(bytes, weeklyHoursPdfFilename(jobName, jobNumber));
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : "Could not print the weekly hours.");
+    } finally {
+      setPrintBusy(false);
+    }
+  }
+
   return (
     <section
       data-contract={gcOpen ? undefined : activeContract}
@@ -668,38 +838,71 @@ export function ManpowerPlanCard({
             </button>
           );
         })}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={gcOpen}
-          className={`lp-scope-card lp-scope-card--gc${gcOpen ? " active" : ""}`}
-          onClick={() => setGcOpen(true)}
-        >
-          <span className="billing-manpower-tab-name">
-            <GcFileIcon />
-            GC schedule
-            {gcItems.length > 0 ? <span className="billing-manpower-gc-count">{gcItems.length}</span> : null}
-          </span>
-          <span className="billing-manpower-tab-budget">
-            {gcItems.length === 0 ? "No schedule" : gcUnsent > 0 ? `${gcUnsent} not sent` : "All sent"}
-          </span>
-        </button>
-        {gcOpen && canEditCells ? (
-          <div className="lp-scope-import">
-            <GcScheduleImport
-              billing={billing}
-              phases={billing.manpowerPhases}
-              weekStarts={weeks}
-              projectStartIso={projectStartIso}
-              projectEndIso={projectEndIso}
-              projectId={projectId}
-              jobNumber={jobNumber}
-              saving={saving}
-              onBillingChange={onBillingChange}
-              onPersistQuiet={onPersistQuiet}
-              onStored={() => setGcOpen(true)}
-            />
-          </div>
+        <div className={`lp-scope-gc${gcOpen ? " is-open" : ""}`} data-gc-menu="">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={gcOpen}
+            className={`lp-scope-card lp-scope-card--gc${gcOpen ? " active" : ""}`}
+            onClick={() => {
+              setGcMenu(false);
+              setGcOpen(true);
+            }}
+          >
+            <span className="billing-manpower-tab-name">
+              <GcFileIcon />
+              GC schedule
+              {gcItems.length > 0 ? <span className="billing-manpower-gc-count">{gcItems.length}</span> : null}
+            </span>
+            <span className="billing-manpower-tab-budget">
+              {gcItems.length === 0 ? "No schedule" : gcUnsent > 0 ? `${gcUnsent} not sent` : "All sent"}
+            </span>
+          </button>
+          {canEditCells ? (
+            <button
+              type="button"
+              className="lp-scope-gc-caret"
+              aria-haspopup="menu"
+              aria-expanded={gcMenu}
+              aria-label="GC schedule menu"
+              onClick={() => setGcMenu((open) => !open)}
+            >
+              ▾
+            </button>
+          ) : null}
+          {gcMenu && canEditCells ? (
+            <div className="billing-week-menu lp-scope-gc-pop" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={saving}
+                onClick={() => {
+                  setGcMenu(false);
+                  setGcOpen(true);
+                  setImportLaunch((current) => current + 1);
+                }}
+              >
+                Import GC schedule
+              </button>
+            </div>
+          ) : null}
+        </div>
+        {canEditCells ? (
+          <GcScheduleImport
+            billing={billing}
+            phases={billing.manpowerPhases}
+            weekStarts={weeks}
+            projectStartIso={projectStartIso}
+            projectEndIso={projectEndIso}
+            projectId={projectId}
+            jobNumber={jobNumber}
+            saving={saving}
+            onBillingChange={onBillingChange}
+            onPersistQuiet={onPersistQuiet}
+            onStored={() => setGcOpen(true)}
+            launch={importLaunch}
+            hideButton
+          />
         ) : null}
       </div>
 
@@ -771,22 +974,14 @@ export function ManpowerPlanCard({
           jobNumber={jobNumber}
           saving={saving}
           canEdit={canEditCells}
-          onBillingChange={onBillingChange}
-          onPersistQuiet={onPersistQuiet}
-        />
-      ) : null}
-      {gcOpen && canEditCells && weeks.length > 0 ? (
-        <SpreadBudgetHours
-          phases={visiblePhases}
-          activities={billing.gcSchedule?.items ?? []}
-          cells={billing.manpowerCells}
           gridStart={weeks[0] ?? ""}
           weekCount={weeks.length}
-          saving={saving}
-          canUndo={spreadCanUndo}
-          onPreview={showSpreadPreview}
-          onApply={(rows) => void applySpread(rows)}
-          onUndo={() => void undoSpread()}
+          spreadCanUndo={spreadCanUndo}
+          onSpreadPreview={showSpreadPreview}
+          onSpreadApply={(rows, savedItems) => void applySpread(rows, savedItems)}
+          onSpreadUndo={() => void undoSpread()}
+          onBillingChange={onBillingChange}
+          onPersistQuiet={onPersistQuiet}
         />
       ) : null}
 
@@ -1085,11 +1280,18 @@ export function ManpowerPlanCard({
           ) : (
             <span />
           )}
-          {canEditSchedule ? (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void addWeek()} disabled={saving}>
-              + Add week
-            </button>
-          ) : null}
+          <div className="lp-week-foot-actions">
+            {showWeekly && visiblePhases.length > 0 ? (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setPrintError(null); setPrintOpen(true); }}>
+                Print
+              </button>
+            ) : null}
+            {canEditSchedule ? (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void addWeek()} disabled={saving}>
+                + Add week
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -1145,6 +1347,35 @@ export function ManpowerPlanCard({
           >
             Push 1 week
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={saving || !billing.manpowerCells.some(
+              (cell) => cell.weekStartIso === weekMenu.week && cell.hours > 0 && contractPhases.some((phase) => phase.id === cell.phaseId),
+            )}
+            onClick={() => {
+              const week = weekMenu.week;
+              setWeekMenu(null);
+              void clearWeek(week);
+            }}
+          >
+            Clear week
+          </button>
+          {canDeleteWeek(weekMenu.week) ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="is-danger"
+              disabled={saving}
+              onClick={() => {
+                const week = weekMenu.week;
+                setWeekMenu(null);
+                void deleteWeek(week);
+              }}
+            >
+              Delete week
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -1171,6 +1402,15 @@ export function ManpowerPlanCard({
           saving={saving}
           onCancel={() => setCarryWeek(null)}
           onApply={(actuals, dest) => void applyCarry(carryWeek, actuals, dest)}
+        />
+      ) : null}
+
+      {printOpen ? (
+        <WeeklyHoursPrintDialog
+          busy={printBusy}
+          error={printError}
+          onClose={() => { if (!printBusy) setPrintOpen(false); }}
+          onPrint={(measure, layout) => void printWeeklyHours(measure, layout)}
         />
       ) : null}
 

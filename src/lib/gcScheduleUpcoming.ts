@@ -3,6 +3,8 @@ import { supabase } from "./supabase";
 
 export type UpcomingGcItem = {
   event_date: string;
+  /** Finish date when the activity runs past event_date. Empty means one day. */
+  end_date?: string;
   title: string;
 };
 
@@ -18,6 +20,7 @@ const CODE_MESSAGE: Record<string, string> = {
   EVENT_TOO_FAR: "That date is too far out to add to Upcoming.",
   EVENT_TITLE_REQUIRED: "Activity name is required.",
   EVENT_TITLE_TOO_LONG: "Activity name is too long.",
+  EVENT_ALREADY_EXISTS: "Upcoming already has that activity on the new date.",
   WEEK_LABEL_TAKEN: "That week label is already used by another year.",
   PROJECT_NOT_FOUND: "Project was not found.",
 };
@@ -49,4 +52,42 @@ export async function addUpcomingFromGcSchedule(
       }))
     : [];
   return { added: Number(payload.added ?? 0) || 0, errors, error: null };
+}
+
+export type UpcomingGcEdit = {
+  id: string;
+  previous_date: string;
+  previous_title: string;
+  event_date: string;
+  /** Finish date when the activity runs past event_date. Empty means one day. */
+  end_date?: string;
+  title: string;
+};
+
+export async function updateUpcomingFromGcSchedule(
+  projectId: string,
+  items: UpcomingGcEdit[],
+): Promise<{ updatedIds: string[]; errors: { title: string; message: string }[]; error: string | null }> {
+  if (!items.length) return { updatedIds: [], errors: [], error: null };
+  const { data, error } = await supabase.rpc("jobflow_update_upcoming_from_gc" as never, {
+    p_project_id: projectId,
+    p_items: items,
+    ...fieldViewRpcAuthArgs(loadFieldViewSession()),
+  } as never);
+  if (error) {
+    noteFieldViewSessionFailure(error.message);
+    return { updatedIds: [], errors: [], error: messageForCode(error.message) };
+  }
+  const payload = (data ?? {}) as {
+    updated?: string[];
+    errors?: { title?: string; code?: string }[];
+  };
+  const updatedIds = Array.isArray(payload.updated) ? payload.updated.map((id) => String(id)) : [];
+  const errors = Array.isArray(payload.errors)
+    ? payload.errors.map((row) => ({
+        title: String(row.title ?? "").trim(),
+        message: messageForCode(String(row.code ?? "")),
+      }))
+    : [];
+  return { updatedIds, errors, error: null };
 }

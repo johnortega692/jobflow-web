@@ -7,6 +7,7 @@ import {
   phasesForTrade,
   placeGcActivity,
   upcomingEventTitle,
+  upcomingSpanEnd,
 } from "../../lib/gcSchedulePlacement";
 import { addUpcomingFromGcSchedule } from "../../lib/gcScheduleUpcoming";
 import { formatJobDateLabel } from "../../lib/manpowerCalendar";
@@ -38,6 +39,9 @@ type Props = {
   onBillingChange: (next: ProjectBillingData) => void;
   onPersistQuiet: (next: ProjectBillingData) => Promise<boolean>;
   onStored?: () => void;
+  /** When this number changes, open a fresh import. */
+  launch?: number;
+  hideButton?: boolean;
 };
 
 function parseHours(raw: string): number {
@@ -63,6 +67,8 @@ export function GcScheduleImport({
   onBillingChange,
   onPersistQuiet,
   onStored,
+  launch = 0,
+  hideButton = false,
 }: Props) {
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -132,6 +138,13 @@ export function GcScheduleImport({
     resetFile();
     setOpen(true);
   }
+
+  useEffect(() => {
+    if (!launch) return;
+    openFresh();
+    // launch is the only signal. openFresh resets the dialog for that open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launch]);
 
   function draftsFor(result: GcScheduleParseResult): Record<string, Draft> {
     const next: Record<string, Draft> = {};
@@ -259,6 +272,7 @@ export function GcScheduleImport({
         status,
         upcomingDateIso: status === "upcoming" ? row.placement.upcomingDateIso ?? "" : "",
         upcomingTitle: status === "upcoming" ? title : "",
+        includeWeekends: false,
       };
     });
     return {
@@ -313,6 +327,7 @@ export function GcScheduleImport({
       return [
         {
           event_date: row.placement.upcomingDateIso,
+          end_date: upcomingSpanEnd(row.placement.upcomingDateIso, row.activity.finishIso),
           title: upcomingEventTitle(jobNumber, row.activity.name),
         },
       ];
@@ -401,9 +416,11 @@ export function GcScheduleImport({
 
   return (
     <>
-      <button type="button" className="btn btn-secondary btn-sm" onClick={openFresh} disabled={saving}>
-        Import GC schedule
-      </button>
+      {hideButton ? null : (
+        <button type="button" className="btn btn-secondary btn-sm" onClick={openFresh} disabled={saving}>
+          Import GC schedule
+        </button>
+      )}
       {open ? (
         <div className="modal-backdrop" role="presentation" onClick={close}>
           <div

@@ -8,8 +8,10 @@ import { userJobRoleIsPm } from "../types/jobRoles";
 import { projectTradeJobIdentities, type TransmittalContract } from "../lib/jobInfo";
 import {
   formatPoOrderMeta,
+  listFieldOrderTotals,
   listPoDispatchesForJobs,
   normalizeFieldToolsJobCode,
+  type FieldOrderMoney,
   type FieldToolsPoDispatchRow,
   updatePoDispatchTracking,
 } from "../lib/fieldToolsPoTracker";
@@ -239,6 +241,8 @@ export function ProjectPoPage() {
   const [materialBudgets, setMaterialBudgets] = useState<PoMaterialBudget[]>([]);
   const [materialBudgetLoading, setMaterialBudgetLoading] = useState(false);
   const [materialBudgetTick, setMaterialBudgetTick] = useState(0);
+  const [orderMoneyTick, setOrderMoneyTick] = useState(0);
+  const [orderMoney, setOrderMoney] = useState<Map<string, FieldOrderMoney>>(() => new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -336,6 +340,29 @@ export function ProjectPoPage() {
       cancelled = true;
     };
   }, [visibilityLoaded, hiddenFromFieldApps, jobLookups, materialBudgetTick]);
+
+  useEffect(() => {
+    if (!visibilityLoaded || hiddenFromFieldApps || jobLookups.length === 0) {
+      setOrderMoney(new Map());
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(jobLookups.map((lookup) => listFieldOrderTotals(lookup.jobNumber)))
+      .then((loaded) => {
+        if (cancelled) return;
+        const next = new Map<string, FieldOrderMoney>();
+        for (const rows of loaded) {
+          for (const row of rows) next.set(row.orderId, row);
+        }
+        setOrderMoney(next);
+      })
+      .catch(() => {
+        if (!cancelled) setOrderMoney(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibilityLoaded, hiddenFromFieldApps, jobLookups, orderMoneyTick]);
 
   const filteredRows = useMemo(() => {
     if (contractFilter === "all") return rows;
@@ -488,7 +515,7 @@ export function ProjectPoPage() {
                 </p>
               ) : null}
               <p className="muted small po-material-budget-note">
-                Left is the Budget Maker amount minus ordered paint and sundries, including sales tax, and Last-Min receipt amounts.
+                Left is the Budget Maker amount minus ordered paint and sundries, including sales tax, Last-Min receipt amounts, and any field-request invoice amount.
               </p>
             </>
           )}
@@ -543,6 +570,7 @@ export function ProjectPoPage() {
               <col className="po-tracker-col-vendor" />
               <col className="po-tracker-col-by" />
               <col className="po-tracker-col-needed" />
+              <col className="po-tracker-col-total" />
               <col className="po-tracker-col-check" />
               <col className="po-tracker-col-check" />
               <col className="po-tracker-col-actions" />
@@ -556,6 +584,9 @@ export function ProjectPoPage() {
                 <th>Vendor</th>
                 <th>By</th>
                 <th>Needed</th>
+                <th className="po-tracker-total" title="Order placed. An invoice amount replaces it on the material budget.">
+                  Total
+                </th>
                 <th className="po-tracker-check-col" title="Received Field">
                   <span className="po-tracker-th-icon">
                     <PoReceivedFieldIcon size={15} />
@@ -583,6 +614,15 @@ export function ProjectPoPage() {
                 const vendorCode = vendorFull ? vendorShortCode(vendorFull) : null;
                 const byFull = row.submittedBy.trim();
                 const byShort = byFull ? shortPersonName(byFull) : "";
+                const money =
+                  row.orderType === "field_request" || row.orderType === "pm_order"
+                    ? orderMoney.get(row.orderId)
+                    : undefined;
+                const moneyTitle = money
+                  ? money.invoice != null
+                    ? `Order placed ${formatMaterialDollars(money.placed)}. Invoice ${formatMaterialDollars(money.invoice)}.`
+                    : `Order placed ${formatMaterialDollars(money.placed)}.`
+                  : undefined;
                 return (
                   <tr key={row.dispatchId} className={row.completed ? "po-tracker-row--done" : undefined}>
                     <td title={row.poNumber}>
@@ -610,6 +650,9 @@ export function ProjectPoPage() {
                     <td title={vendorFull || undefined}>{vendorCode || vendorFull || "—"}</td>
                     <td title={byFull || undefined}>{byShort || "—"}</td>
                     <td>{formatNeededDate(row.dateNeeded)}</td>
+                    <td className={`po-tracker-total${money?.invoice != null ? " is-invoice" : ""}`} title={moneyTitle}>
+                      {money ? formatMaterialDollars(money.invoice ?? money.placed) : "—"}
+                    </td>
                     <td className="po-tracker-check-col">
                       <label className="po-tracker-check">
                         <input
@@ -731,8 +774,17 @@ export function ProjectPoPage() {
           hasReceipt={viewRow.hasReceipt}
           trackingBusy={busyId === viewRow.dispatchId}
           projectId={projectId}
-          canEditPaint={canAdjustPoSequence}
+          canEditPaint={isAdmin}
           onAmountSaved={() => setMaterialBudgetTick((tick) => tick + 1)}
+          onFieldInvoiceSaved={(money) => {
+            setOrderMoney((current) => {
+              const next = new Map(current);
+              next.set(money.orderId, money);
+              return next;
+            });
+            setOrderMoneyTick((tick) => tick + 1);
+            setMaterialBudgetTick((tick) => tick + 1);
+          }}
           onPaintSaved={(entered) =>
             setRows((current) =>
               current.map((row) => (row.orderId === viewOrder.orderId ? { ...row, paintEntered: entered } : row)),

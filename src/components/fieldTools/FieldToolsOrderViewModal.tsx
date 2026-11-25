@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { FieldOrderInvoiceEditor } from "./FieldOrderInvoiceEditor";
 import { LastMinAmountEditor } from "./LastMinAmountEditor";
+import type { FieldOrderMoney } from "../../lib/fieldToolsPoTracker";
 import { LastMinPaintEditor } from "./LastMinPaintEditor";
 import { ReceiptImageViewer } from "./ReceiptImageViewer";
 import {
@@ -38,6 +40,7 @@ type Props = {
   canEditPaint?: boolean;
   onPaintSaved?: (entered: boolean) => void;
   onAmountSaved?: () => void;
+  onFieldInvoiceSaved?: (money: FieldOrderMoney) => void;
 };
 
 const RECEIPT_ORDER_TYPES = new Set(["field_request", "job_scope_kit", "last_min"]);
@@ -66,6 +69,7 @@ export function FieldToolsOrderViewModal({
   canEditPaint = false,
   onPaintSaved,
   onAmountSaved,
+  onFieldInvoiceSaved,
 }: Props) {
   const { isAdmin } = useAuth();
   const [order, setOrder] = useState<FieldToolsOrder | null>(null);
@@ -97,6 +101,7 @@ export function FieldToolsOrderViewModal({
   }, [orderId]);
 
   const isLastMin = order?.order_type === "last_min";
+  const isFieldOrder = order?.order_type === "field_request" || order?.order_type === "pm_order";
   const expectReceipt = isLastMin || hasReceipt;
 
   useEffect(() => {
@@ -216,22 +221,39 @@ export function FieldToolsOrderViewModal({
         ) : null}
         {paperError ? <div className="banner banner-error">{paperError}</div> : null}
 
-        {order && !loading && isLastMin ? (
+        {order && !loading && isFieldOrder ? (
+          <FieldOrderInvoiceEditor
+            key={order.id}
+            orderId={order.id}
+            jobNumber={order.job_number}
+            canEdit={canEditPaint}
+            onSaved={(money) => onFieldInvoiceSaved?.(money)}
+          />
+        ) : null}
+
+        {order && !loading && isLastMin && canEditPaint ? (
           <LastMinAmountEditor
             key={order.id}
             orderId={order.id}
             payload={order.payload}
             canEdit={canEditPaint}
             onSaved={(amount) => {
-              setOrder((current) =>
-                current ? { ...current, payload: { ...current.payload, amount } } : current,
-              );
+              setOrder((current) => {
+                if (!current) return current;
+                const placed =
+                  typeof current.payload.placedAmount === "string" && current.payload.placedAmount.trim()
+                    ? current.payload.placedAmount
+                    : typeof current.payload.amount === "string"
+                      ? current.payload.amount
+                      : amount;
+                return { ...current, payload: { ...current.payload, amount, placedAmount: placed } };
+              });
               onAmountSaved?.();
             }}
           />
         ) : null}
 
-        {order && !loading && isLastMin && projectId ? (
+        {order && !loading && isLastMin && projectId && canEditPaint ? (
           <LastMinPaintEditor
             orderId={order.id}
             projectId={projectId}

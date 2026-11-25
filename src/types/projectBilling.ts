@@ -88,6 +88,8 @@ export type GcScheduleSavedItem = {
   status: GcScheduleStatus;
   upcomingDateIso: string;
   upcomingTitle: string;
+  /** When set, Saturday and Sunday inside the activity dates are planned. */
+  includeWeekends: boolean;
 };
 
 export type GcScheduleSaved = {
@@ -317,6 +319,7 @@ function normalizeGcScheduleItem(raw: unknown): GcScheduleSavedItem | null {
     status,
     upcomingDateIso: str(o.upcomingDateIso).trim(),
     upcomingTitle: str(o.upcomingTitle).trim().slice(0, 120),
+    includeWeekends: o.includeWeekends === true,
   };
 }
 

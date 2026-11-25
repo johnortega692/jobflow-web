@@ -138,6 +138,10 @@ export function budgetHoursPdfFilename(jobName: string, jobNumber: string): stri
   return `${projectFilenamePart(jobName, jobNumber)}_Budget_Hours.pdf`;
 }
 
+export function weeklyHoursPdfFilename(jobName: string, jobNumber: string): string {
+  return `${projectFilenamePart(jobName, jobNumber)} - Weekly hours.pdf`;
+}
+
 export function procurementLogFilename(jobName: string, jobNumber: string, d = new Date()): string {
   const datePart = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}-${d.getFullYear()}`;
   const num = sanitizeFilenamePart(jobNumber.trim() || "Job");

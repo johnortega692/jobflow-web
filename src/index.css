@@ -3389,6 +3389,15 @@ th {
 .po-tracker-col-vendor { width: 48px; }
 .po-tracker-col-by { width: 82px; }
 .po-tracker-col-needed { width: 64px; }
+.po-tracker-col-total { width: 84px; }
+.po-tracker-total {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.po-tracker-total.is-invoice {
+  color: var(--accent);
+}
 .po-tracker-col-check { width: 30px; }
 .po-tracker-col-actions { width: 62px; }
 
@@ -3595,7 +3604,8 @@ th {
   min-width: 0;
 }
 
-.last-min-paint-row .input {
+.last-min-paint-row .input,
+.last-min-paint-row > strong {
   width: 100%;
   text-align: right;
 }
@@ -18386,7 +18396,7 @@ input.readonly {
 
 .gc-schedule-board {
   display: grid;
-  grid-template-columns: 1.25rem 3.4rem minmax(0, 1.6fr) minmax(7.5rem, 0.8fr) 13rem 4.6rem max-content;
+  grid-template-columns: 1.25rem 3.4rem minmax(0, 1.6fr) minmax(7.5rem, 0.8fr) minmax(10rem, 1fr) 4.6rem max-content;
   column-gap: 0.75rem;
   row-gap: 0.2rem;
   align-items: center;
@@ -18404,6 +18414,29 @@ input.readonly {
 .gc-schedule-row,
 .gc-schedule-line {
   display: contents;
+}
+
+.gc-schedule-row.is-open {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  margin: 0.2rem 0 0.45rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 0 0 1px #6e7d99;
+}
+
+.gc-schedule-row.is-open .gc-schedule-line {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+}
+
+.gc-schedule-row.is-open .gc-schedule-line > * {
+  padding-top: 0.5rem;
+  padding-bottom: 0.4rem;
 }
 
 .gc-schedule-line--head > * {
@@ -18462,19 +18495,11 @@ input.readonly {
   white-space: nowrap;
 }
 
-.gc-schedule-activity {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  font-weight: 650;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
+.gc-schedule-weekend {
+  margin-left: 0.4rem;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .gc-schedule-hour-box {
@@ -18495,6 +18520,26 @@ input.readonly {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.gc-schedule-board > .spread-budget {
+  grid-column: 1 / -1;
+  margin-top: 0.75rem;
+}
+
+.gc-schedule-activity {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .gc-schedule-sent {
@@ -18535,17 +18580,19 @@ input.readonly {
   display: grid;
   grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(8.5rem, 0.9fr) auto;
   gap: 0.75rem 1rem;
-  margin: 0.15rem 0 0.45rem;
-  padding: 0.85rem 0.75rem 0.75rem;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.18);
+  margin: 0;
+  padding: 0.8rem 0.75rem 0.7rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0 0 12px 12px;
+  background: transparent;
 }
 
 .gc-schedule-detail label:first-child {
   grid-column: 1 / 3;
 }
 
-.gc-schedule-detail label {
+.gc-schedule-detail label,
+.gc-schedule-detail .gc-schedule-days {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -18554,19 +18601,17 @@ input.readonly {
   font-size: 0.75rem;
 }
 
+.gc-schedule-detail .gc-schedule-days .flag-switch {
+  width: auto;
+  align-self: flex-start;
+}
+
 .gc-schedule-detail input,
 .gc-schedule-detail select {
   width: 100%;
   min-width: 0;
   color: var(--text);
   font-size: 0.92rem;
-}
-
-.gc-schedule-need {
-  align-self: end;
-  margin: 0 0 0.45rem;
-  color: var(--muted);
-  font-size: 0.75rem;
 }
 
 .gc-schedule-remove {
@@ -19196,9 +19241,23 @@ input.readonly {
   cursor: pointer;
 }
 
-.billing-week-menu button:hover {
+.billing-week-menu button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
+}
+
+.billing-week-menu button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.billing-week-menu button.is-danger {
+  color: var(--danger);
+}
+
+.billing-week-menu button.is-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
 }
 
 .carry-sheet-backdrop {
@@ -19623,6 +19682,22 @@ td.billing-manpower-week-col--beyond-contract,
   gap: 0.2rem;
 }
 
+.spread-budget-activity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.spread-budget-activity label {
+  min-width: 0;
+}
+
+.spread-budget-activity .flag-switch {
+  flex-shrink: 0;
+  width: auto;
+}
+
 .spread-budget-list li.spread-budget-code {
   display: flex;
   align-items: center;
@@ -19658,9 +19733,54 @@ td.billing-manpower-week-col--beyond-contract,
   font-size: 0.75rem;
 }
 
+.spread-budget-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .spread-budget-weight {
   border: 0;
   padding: 0;
+}
+
+.spread-budget-weight:hover,
+.spread-budget-weight:focus-within {
+  position: relative;
+  z-index: 2;
+}
+
+.spread-budget-weight label {
+  position: relative;
+  cursor: help;
+}
+
+.spread-budget-tip {
+  display: none;
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: calc(100% + 6px);
+  width: max-content;
+  max-width: 18rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.spread-budget-weight label:hover .spread-budget-tip,
+.spread-budget-weight label:focus-within .spread-budget-tip {
+  display: block;
 }
 
 .spread-budget-weight legend {
@@ -23768,7 +23888,34 @@ td.billing-manpower-week-col--beyond-contract,
 
 .lp-week-foot .btn {
   flex: 0 0 auto;
+}
+
+.lp-week-foot-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.4rem;
   margin-left: auto;
+}
+
+.weekly-print-dialog {
+  width: min(32rem, 100%);
+}
+
+.weekly-print-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.weekly-print-field > span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.weekly-print-field .transmittal-segment button {
+  width: auto;
 }
 
 .lp-date-chip {
@@ -23816,7 +23963,46 @@ td.billing-manpower-week-col--beyond-contract,
 }
 
 .lp-scope-card--gc {
+  flex: 1 1 auto;
+  width: 100%;
+  padding-right: 1.7rem;
+}
+
+.lp-scope-gc {
+  position: relative;
   flex: 0 1 11rem;
+  display: flex;
+  min-width: 0;
+}
+
+.lp-scope-gc-caret {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lp-scope-gc-caret:hover,
+.lp-scope-gc-caret[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+
+.billing-week-menu.lp-scope-gc-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
 }
 
 .lp-scope-card[data-contract="paint"],
@@ -23964,7 +24150,8 @@ td.billing-manpower-week-col--beyond-contract,
   }
 
   .lp-scope-card,
-  .lp-scope-card--gc {
+  .lp-scope-card--gc,
+  .lp-scope-gc {
     flex: 1 1 auto;
     width: 100%;
   }

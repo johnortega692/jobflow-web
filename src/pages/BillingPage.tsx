@@ -318,6 +318,7 @@ export function BillingPage() {
         onScheduleDatesChange={persistScheduleDates}
         projectId={projectId}
         jobNumber={project.job_number}
+        jobName={project.job_name}
         monthlyBilling={
           <ManpowerMonthlyBudgetCard
             embedded
