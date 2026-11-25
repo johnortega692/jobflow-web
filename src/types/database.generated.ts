@@ -94,6 +94,9 @@ export type Database = {
           created_by: string | null;
           data: Json | null;
           id: string;
+          is_exterior: boolean;
+          lat: number | null;
+          lng: number | null;
           job_address: string | null;
           job_address2: string | null;
           job_name: string;
@@ -105,6 +108,8 @@ export type Database = {
           owner: string | null;
           site_address_override: string;
           emergency_contacts: Json;
+          exterior_start: string | null;
+          exterior_end: string | null;
           updated_at: string | null;
           updated_by: string | null;
         };
@@ -115,6 +120,9 @@ export type Database = {
           created_by?: string | null;
           data?: Json | null;
           id?: string;
+          is_exterior?: boolean;
+          lat?: number | null;
+          lng?: number | null;
           job_address?: string | null;
           job_address2?: string | null;
           job_name?: string;
@@ -126,6 +134,8 @@ export type Database = {
           owner?: string | null;
           site_address_override?: string;
           emergency_contacts?: Json;
+          exterior_start?: string | null;
+          exterior_end?: string | null;
           updated_at?: string | null;
           updated_by?: string | null;
         };
@@ -136,6 +146,9 @@ export type Database = {
           created_by?: string | null;
           data?: Json | null;
           id?: string;
+          is_exterior?: boolean;
+          lat?: number | null;
+          lng?: number | null;
           job_address?: string | null;
           job_address2?: string | null;
           job_name?: string;
@@ -147,6 +160,8 @@ export type Database = {
           owner?: string | null;
           site_address_override?: string;
           emergency_contacts?: Json;
+          exterior_start?: string | null;
+          exterior_end?: string | null;
           updated_at?: string | null;
           updated_by?: string | null;
         };
@@ -156,6 +171,62 @@ export type Database = {
             columns: ["organization_id"];
             isOneToOne: false;
             referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      job_weather: {
+        Row: {
+          alert_text: string | null;
+          condition_now: string | null;
+          daily: Json;
+          fetched_at: string;
+          hourly_times: Json | null;
+          next_rain_at: string | null;
+          precip_prob_next_hours: Json;
+          project_id: string;
+          raining_now: boolean;
+          source: string;
+          temp_now: number | null;
+          wind_dir: string | null;
+          wind_mph: number | null;
+        };
+        Insert: {
+          alert_text?: string | null;
+          condition_now?: string | null;
+          daily: Json;
+          fetched_at: string;
+          hourly_times?: Json | null;
+          next_rain_at?: string | null;
+          precip_prob_next_hours: Json;
+          project_id: string;
+          raining_now: boolean;
+          source: string;
+          temp_now?: number | null;
+          wind_dir?: string | null;
+          wind_mph?: number | null;
+        };
+        Update: {
+          alert_text?: string | null;
+          condition_now?: string | null;
+          daily?: Json;
+          fetched_at?: string;
+          hourly_times?: Json | null;
+          next_rain_at?: string | null;
+          precip_prob_next_hours?: Json;
+          project_id?: string;
+          raining_now?: boolean;
+          source?: string;
+          temp_now?: number | null;
+          wind_dir?: string | null;
+          wind_mph?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "job_weather_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: true;
+            referencedRelation: "projects";
             referencedColumns: ["id"];
           },
         ];

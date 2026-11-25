@@ -6,6 +6,7 @@ import { ProjectStartupChecklist } from "../components/jobinfo/ProjectStartupChe
 import { ProjectDashboardHeader } from "../components/jobinfo/ProjectDashboardHeader";
 import { NeedsAttentionStrip } from "../components/jobinfo/NeedsAttentionStrip";
 import { DashboardMetricCards, type DashboardMetric } from "../components/jobinfo/DashboardMetricCards";
+import { ProjectWeatherCard } from "../components/jobinfo/ProjectWeatherCard";
 import { listProjectBrushouts } from "../lib/approvedBrushouts";
 import { parseProjectDataBlob } from "../lib/jobInfo";
 import { isRfiClosed } from "../lib/rfiStatus";
@@ -207,6 +208,8 @@ export function ProjectOverviewPage() {
       <NeedsAttentionStrip items={attentionItems} onItemClick={onAttentionItem} />
 
       <DashboardMetricCards metrics={metrics} />
+
+      {project.is_exterior === true ? <ProjectWeatherCard projectId={projectId} /> : null}
 
       <div ref={startupRef}>
         <ProjectStartupChecklist

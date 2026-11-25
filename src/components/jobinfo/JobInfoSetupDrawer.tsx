@@ -1,5 +1,10 @@
 import { FormEvent, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "../DateInput";
+import { isoDateToDisplay } from "../../lib/dateInputUtils";
+import {
+  exteriorWindowOrderError,
+  normalizeExteriorDate,
+} from "../../lib/exteriorWorkWindow";
 import { GcNameCombobox } from "./GcNameCombobox";
 import { EmailAddressWarning } from "../EmailAddressWarning";
 import { useAuth } from "../../contexts/AuthContext";
@@ -406,6 +411,12 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
 
   async function saveProject(e: FormEvent) {
     e.preventDefault();
+    if (
+      project.is_exterior === true &&
+      exteriorWindowOrderError(project.exterior_start, project.exterior_end)
+    ) {
+      return;
+    }
     setSaving(true);
     setError(null);
     setSyncStatus(null);
@@ -450,6 +461,9 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
         contractor: project.contractor,
         architect: project.architect,
         owner: project.owner,
+        is_exterior: project.is_exterior === true,
+        exterior_start: normalizeExteriorDate(project.exterior_start),
+        exterior_end: normalizeExteriorDate(project.exterior_end),
         data: {
           ...baseData,
           job_info: jobInfo,
@@ -770,6 +784,49 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
                   <input className={inputClass(j.job_zip)} value={j.job_zip} onChange={(e) => setJobInfo({ job_zip: e.target.value })} />
                 </label>
               </div>
+              <label className="checkbox-row job-info-wc-toggle job-info-switch job-info-nonfield">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={project.is_exterior === true}
+                  onChange={(e) => setProject({ ...project, is_exterior: e.target.checked })}
+                />
+                Exterior
+              </label>
+              {project.is_exterior === true ? (
+                <div className="job-info-exterior-window">
+                  <p className="job-info-exterior-window-title">Exterior work window</p>
+                  <div className="job-info-grid">
+                    <label className="job-info-span-3">
+                      Starts
+                      <DateInput
+                        value={isoDateToDisplay(project.exterior_start ?? "")}
+                        onChange={(value) =>
+                          setProject({ ...project, exterior_start: normalizeExteriorDate(value) })
+                        }
+                      />
+                    </label>
+                    <label className="job-info-span-3">
+                      Ends
+                      <DateInput
+                        value={isoDateToDisplay(project.exterior_end ?? "")}
+                        onChange={(value) =>
+                          setProject({ ...project, exterior_end: normalizeExteriorDate(value) })
+                        }
+                      />
+                    </label>
+                  </div>
+                  {exteriorWindowOrderError(project.exterior_start, project.exterior_end) ? (
+                    <p className="job-info-field-error" role="alert">
+                      Ends can't be before Starts.
+                    </p>
+                  ) : (
+                    <p className="muted small job-info-field-help">
+                      Rain watch uses this window. Leave both blank to watch the whole job.
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </div>
             <div className="job-info-subgroup">
               <h4 className="job-info-subgroup-heading">Contract &amp; schedule</h4>

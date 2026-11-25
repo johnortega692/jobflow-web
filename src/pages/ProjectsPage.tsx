@@ -5,6 +5,8 @@ import { BrushoutsAddedPill } from "../components/projects/BrushoutsAddedPill";
 import { ProjectsActiveFilters } from "../components/projects/ProjectsActiveFilters";
 import { ProjectsFiltersMenu } from "../components/projects/ProjectsFiltersMenu";
 import { ProjectsListSortControl } from "../components/projects/ProjectsListSortControl";
+import { ProjectWeatherChip } from "../components/projects/ProjectWeatherChip";
+import { ProjectsRainWatchBanner } from "../components/projects/ProjectsRainWatchBanner";
 import { ProjectsStatusChips } from "../components/projects/ProjectsStatusChips";
 import { ProjectsAttentionCard } from "../components/projects/ProjectsAttentionCard";
 import { FollowUpsColumnPill } from "../components/projects/ProjectsFollowUpsCard";
@@ -62,6 +64,12 @@ import { applyCustomGcStartupItems, loadDefaultStartupItems } from "../lib/proje
 import { listProjectIdsWithApprovedBrushouts } from "../lib/approvedBrushouts";
 import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
 import { isRfiClosed } from "../lib/rfiStatus";
+import {
+  isRainWatchChip,
+  projectWeatherChip,
+  type ProjectWeatherRow,
+} from "../lib/projectWeatherDisplay";
+import { isRainRelevant } from "../lib/exteriorWorkWindow";
 import { type Project } from "../types/database";
 
 function normalizeJobNumber(value: string): string {
@@ -119,6 +127,8 @@ export function ProjectsPage() {
     loadProjectsListSortState(),
   );
   const [listFilters, setListFilters] = useState<ProjectsListFilters>(() => loadProjectsListFilters());
+  const [weatherByProject, setWeatherByProject] = useState<Map<string, ProjectWeatherRow>>(new Map());
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [followUps, setFollowUps] = useState<OpenProjectFollowUp[]>([]);
   const [followUpsError, setFollowUpsError] = useState<string | null>(null);
@@ -188,12 +198,34 @@ export function ProjectsPage() {
       summaries,
       brushoutsAdded: approvedBrushoutIds,
       doneIds,
+      weatherByProject,
+      nowMs,
     }),
-    [search, summaries, approvedBrushoutIds, doneIds],
+    [search, summaries, approvedBrushoutIds, doneIds, weatherByProject, nowMs],
   );
   const listUniverse = useMemo(
     () => (listFilters.includeClosed ? projects : openProjects),
     [projects, openProjects, listFilters.includeClosed],
+  );
+  const rainWatchJobs = useMemo(
+    () =>
+      listUniverse.flatMap((project) => {
+        const chip = projectWeatherChip(project, weatherByProject.get(project.id), nowMs);
+        if (!isRainWatchChip(chip)) return [];
+        const today = new Date(nowMs);
+        const tomorrow = new Date(nowMs);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        if (!isRainRelevant(project, today) && !isRainRelevant(project, tomorrow)) return [];
+        return [
+          {
+            id: project.id,
+            jobNumber: project.job_number,
+            jobName: project.job_name ?? "",
+            label: chip.label,
+          },
+        ];
+      }),
+    [listUniverse, weatherByProject, nowMs],
   );
   const gcOptions = useMemo(() => generalContractorOptions(listUniverse), [listUniverse]);
   const statusPool = useMemo(
@@ -246,7 +278,7 @@ export function ProjectsPage() {
 
   async function loadProjects() {
     setLoading(true);
-    const [{ data, error: err }, doneRes, brushoutIds, , rfiRes, followUpsRes] = await Promise.all([
+    const [{ data, error: err }, doneRes, brushoutIds, , rfiRes, followUpsRes, weatherRes] = await Promise.all([
       supabase.from("projects").select("*").order("updated_at", { ascending: false }),
       listDoneProjectIds(),
       listProjectIdsWithApprovedBrushouts().catch(() => new Set<string>()),
@@ -258,6 +290,9 @@ export function ProjectsPage() {
           rows: [] as OpenProjectFollowUp[],
           error: err instanceof Error ? err.message : "Could not load follow-ups.",
         })),
+      supabase
+        .from("job_weather")
+        .select("project_id, fetched_at, raining_now, precip_prob_next_hours, next_rain_at, daily"),
     ]);
     setLoading(false);
     if (err) {
@@ -279,8 +314,26 @@ export function ProjectsPage() {
     setOpenRfiCounts(rfiCounts);
     setFollowUps(followUpsRes.rows);
     setFollowUpsError(followUpsRes.error);
+    const weather = new Map<string, ProjectWeatherRow>();
+    if (!weatherRes.error) {
+      for (const row of weatherRes.data ?? []) {
+        weather.set(row.project_id, {
+          fetched_at: row.fetched_at,
+          raining_now: row.raining_now,
+          precip_prob_next_hours: row.precip_prob_next_hours,
+          next_rain_at: row.next_rain_at,
+          daily: row.daily,
+        });
+      }
+    }
+    setWeatherByProject(weather);
     setProjects(data ?? []);
   }
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     void loadProjects();
@@ -579,6 +632,26 @@ export function ProjectsPage() {
               onToggle={(id) => applyListFilters(toggleStatusFilter(listFilters, id))}
               onClear={() => applyListFilters({ ...listFilters, stages: [] })}
             />
+            <div className="projects-weather-filters" role="group" aria-label="Weather filters">
+              <button
+                type="button"
+                className={`projects-status-chip${listFilters.exteriorOnly ? " projects-status-chip--active" : ""}`}
+                aria-pressed={listFilters.exteriorOnly}
+                onClick={() =>
+                  applyListFilters({ ...listFilters, exteriorOnly: !listFilters.exteriorOnly })
+                }
+              >
+                Exterior only
+              </button>
+              <button
+                type="button"
+                className={`projects-status-chip${listFilters.rainRisk ? " projects-status-chip--active" : ""}`}
+                aria-pressed={listFilters.rainRisk}
+                onClick={() => applyListFilters({ ...listFilters, rainRisk: !listFilters.rainRisk })}
+              >
+                Rain risk
+              </button>
+            </div>
             <span className="projects-chips-count">
               {filteredProjects.length} of {listUniverse.length}
             </span>
@@ -588,6 +661,15 @@ export function ProjectsPage() {
             filters={listFilters}
             onRemove={(key) => applyListFilters(removeProjectsListFilterPill(listFilters, key))}
             onClear={() => applyListFilters(defaultProjectsListFilters())}
+          />
+
+          <ProjectsRainWatchBanner
+            jobs={rainWatchJobs}
+            active={listFilters.rainWatchOnly}
+            onShowOnly={() =>
+              applyListFilters({ ...listFilters, rainWatchOnly: !listFilters.rainWatchOnly })
+            }
+            onOpen={(projectId) => navigate(`/projects/${projectId}`)}
           />
 
           <div className="card projects-table-shell">
@@ -626,6 +708,14 @@ export function ProjectsPage() {
                               </button>
                             </th>
                           );
+                          if (column === "submittal") {
+                            return [
+                              header,
+                              <th key="weather">
+                                <span className="projects-followups-colhead">Weather</span>
+                              </th>,
+                            ];
+                          }
                           if (column !== "attention") return [header];
                           return [
                             header,
@@ -639,7 +729,7 @@ export function ProjectsPage() {
                     <tbody>
                       {filteredProjects.length === 0 ? (
                         <tr>
-                          <td className="projects-table-empty" colSpan={7}>
+                          <td className="projects-table-empty" colSpan={8}>
                             No jobs match these filters.{" "}
                             <button
                               type="button"
@@ -673,6 +763,12 @@ export function ProjectsPage() {
                             </td>
                             <td>
                               <SubmittalStagePill stage={summary.submittalStage} />
+                            </td>
+                            <td>
+                              <ProjectWeatherChip
+                                chip={projectWeatherChip(p, weatherByProject.get(p.id), nowMs)}
+                                onOpen={() => navigate(`/projects/${p.id}`)}
+                              />
                             </td>
                             <td>
                               <BrushoutsAddedPill added={approvedBrushoutIds.has(p.id)} />

@@ -1206,6 +1206,7 @@ label {
 
 .projects-chips-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
@@ -1303,6 +1304,114 @@ label {
 
 .projects-status-chip--active .projects-status-chip-count {
   color: var(--accent);
+}
+
+.projects-weather-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.project-weather-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 16rem;
+  margin: 0;
+  padding: 0.22rem 0.55rem;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.project-weather-chip svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.project-weather-chip:focus-visible,
+.projects-rain-watch-jobs button:focus-visible,
+.projects-rain-watch-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.projects-rain-watch {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.projects-rain-watch-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.projects-rain-watch-jobs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.projects-rain-watch-jobs li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.projects-rain-watch-jobs button {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.projects-rain-watch-job {
+  font-variant-numeric: tabular-nums;
+}
+
+.projects-rain-watch-detail {
+  font-size: 0.75rem;
+}
+
+.projects-rain-watch-action {
+  flex: none;
+  margin: 0;
+  padding: 0.4rem 0.7rem;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.projects-rain-watch-action--on {
+  box-shadow: inset 0 0 0 2px #1a1408;
 }
 
 .pm-materials-page {
@@ -14032,6 +14141,263 @@ tr.budget-hours-pdf-hidden td {
   color: var(--muted);
 }
 
+.job-weather-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem 0.9rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.job-weather-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.job-weather-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.job-weather-card-header h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.job-weather-updated,
+.job-weather-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.job-weather-empty {
+  text-align: left;
+}
+
+.job-weather-badge {
+  flex: none;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #143528;
+  color: #d7ffe6;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.job-weather-banner {
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+}
+
+.job-weather-banner-alert {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.job-weather-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.job-weather-temp {
+  margin: 0;
+  font-size: 4rem;
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+.job-weather-condition {
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.job-weather-pill {
+  display: inline-block;
+  margin: 0.35rem 0 0;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.job-weather-stats {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+.job-weather-stat {
+  min-width: 7.2rem;
+  padding: 0.55rem 0.7rem 0.6rem;
+  border-radius: 0.55rem;
+  background: var(--surface2);
+}
+
+.job-weather-stat-label,
+.job-weather-stat-value,
+.job-weather-stat-meta {
+  display: block;
+}
+
+.job-weather-stat-label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.job-weather-stat-value {
+  margin-top: 0.15rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.job-weather-stat-meta {
+  margin-top: 0.05rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.job-weather-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.job-weather-outlook-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.job-weather-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.job-weather-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  min-width: 0;
+  padding: 0.4rem 0.45rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface2);
+}
+
+.job-weather-day--wet {
+  border-color: var(--accent);
+}
+
+.job-weather-day--watch {
+  border-color: var(--warn);
+}
+
+.job-weather-day h3,
+.job-weather-day p {
+  margin: 0;
+}
+
+.job-weather-day h3 {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.job-weather-day-icon {
+  display: block;
+}
+
+.job-weather-day-percent {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.job-weather-day-bar {
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.job-weather-day-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+}
+
+.job-weather-day-condition {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.job-weather-day-temps {
+  display: flex;
+  gap: 0.28rem;
+  margin-top: auto;
+  font-size: 0.78rem;
+}
+
+.job-weather-day-lo {
+  color: var(--muted);
+}
+
+.job-weather-day--wet .job-weather-day-lo,
+.job-weather-day--watch .job-weather-day-lo {
+  color: inherit;
+}
+
+@media (max-width: 900px) {
+  .job-weather-card-header,
+  .job-weather-hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .job-weather-updated {
+    text-align: left;
+  }
+
+  .job-weather-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .job-weather-days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 .job-dashboard-metric-value--compact {
   font-size: 1.05rem;
 }
@@ -14736,6 +15102,26 @@ a.job-tracker-tab {
 .jobinfo-form .job-info-field-help {
   display: block;
   margin-top: 0.25rem;
+}
+
+.jobinfo-form .job-info-exterior-window {
+  margin-top: 0.65rem;
+  padding: 0.65rem 0.75rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.jobinfo-form .job-info-exterior-window-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.jobinfo-form .job-info-field-error {
+  margin: 0.45rem 0 0;
+  color: var(--danger);
+  font-size: 0.78rem;
 }
 
 .startup-config-group {

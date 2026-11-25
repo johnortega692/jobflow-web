@@ -7,6 +7,12 @@ import type { SendVendorEmailRequest } from "./sendVendorEmail.js";
 import { supabase } from "./supabase.js";
 import { getSupabaseAdmin, isSupabaseAdminConfigured } from "./supabaseAdmin.js";
 import { resolveTrackerNotificationRecipients, type TrackerNotificationBranding } from "./trackerNotificationEmail.js";
+import { WEATHER_CHIP_COLORS } from "./projectWeatherDisplay.js";
+import {
+  buildRainWatchSection,
+  rainWatchSubjectClause,
+  type RainWatchDigestRow,
+} from "./rainWatchDigest.js";
 
 const THEME = {
   header: "#3a4d5c",
@@ -171,8 +177,10 @@ export function buildNotesDigestModel(rows: NoteRow[], todayIso: string): NotesD
   return { overdueCount, dueTodayCount, flagCount, projects: grouped, comingUp };
 }
 
-export function notesDigestSubject(dueToday: number, overdue: number): string {
-  return `Follow-ups: ${dueToday} due today, ${overdue} overdue`;
+export function notesDigestSubject(dueToday: number, overdue: number, rainJobs = 0): string {
+  const base = `Follow-ups: ${dueToday} due today, ${overdue} overdue`;
+  const rain = rainWatchSubjectClause(rainJobs);
+  return rain ? `${rain} · ${base}` : base;
 }
 
 function formatTodayLong(today: Date): string {
@@ -231,6 +239,22 @@ function projectSection(project: NotesDigestProject): string {
   </table>`;
 }
 
+function rainWatchSection(rows: RainWatchDigestRow[]): string {
+  if (!rows.length) return "";
+  const body = rows
+    .map((row) => {
+      const colors = WEATHER_CHIP_COLORS[row.chipTone];
+      const href = `${jobflowPublicOrigin()}/projects/${row.projectId}`;
+      return `<p style="margin: 0 0 10px 0; font-size: 14px; line-height: 1.45; font-family: Arial, Helvetica, sans-serif;">
+        <a href="${escHtml(href)}" style="color: ${THEME.header}; font-weight: bold; text-decoration: none;">${escHtml(jobLabel(row.jobNumber, row.jobName))}</a>
+        <span style="color: ${THEME.muted};"> · ${escHtml(row.workLabel)}</span>
+        <span style="display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: ${colors.background}; color: ${colors.color}; font-size: 12px; font-weight: bold; font-family: Arial, Helvetica, sans-serif;">${escHtml(row.chipLabel)}</span>
+      </p>`;
+    })
+    .join("");
+  return `<p style="margin: 12px 0 8px 0; font-size: 16px; font-weight: bold; color: ${THEME.header}; font-family: Arial, Helvetica, sans-serif;">Rain watch</p>${body}`;
+}
+
 function comingUpSection(items: NotesDigestLine[]): string {
   if (!items.length) return "";
   const rows = items
@@ -254,8 +278,10 @@ export function buildNotesDigestHtml(options: {
   model: NotesDigestModel;
   branding: TrackerNotificationBranding;
   today: Date;
+  rainWatch?: RainWatchDigestRow[];
 }): string {
   const { model, branding, today } = options;
+  const rainWatch = options.rainWatch ?? [];
   const companyName = branding.companyName.trim() || "JobFlow";
   const companyAddress = branding.companyAddress.trim();
   const primaryName = escHtml(branding.primaryName.trim() || "PM");
@@ -292,6 +318,7 @@ export function buildNotesDigestHtml(options: {
                     </table>
                   </td></tr>
                 <tr><td style="padding: 8px 20px 20px 20px;">
+                    ${rainWatchSection(rainWatch)}
                     ${sections}
                     ${comingUpSection(model.comingUp)}
                   </td></tr>
@@ -312,8 +339,15 @@ export function buildNotesDigestHtml(options: {
     </html>`;
 }
 
-function digestPlainText(model: NotesDigestModel): string {
-  const lines = [notesDigestSubject(model.dueTodayCount, model.overdueCount), ""];
+function digestPlainText(model: NotesDigestModel, rainWatch: RainWatchDigestRow[] = []): string {
+  const lines = [notesDigestSubject(model.dueTodayCount, model.overdueCount, rainWatch.length), ""];
+  if (rainWatch.length) {
+    lines.push("Rain watch");
+    for (const row of rainWatch) {
+      lines.push(`- ${jobLabel(row.jobNumber, row.jobName)} · ${row.workLabel} · ${row.chipLabel}`);
+    }
+    lines.push("");
+  }
   for (const project of model.projects) {
     lines.push(jobLabel(project.jobNumber, project.jobName));
     lines.push(project.href);
@@ -380,6 +414,37 @@ async function loadOpenFollowUpRows(allowedProjectIds: Set<string>): Promise<Not
   return rows;
 }
 
+async function loadRainWatchRows(projectIds: string[], now: Date): Promise<RainWatchDigestRow[]> {
+  if (!projectIds.length) return [];
+  try {
+    const client = isSupabaseAdminConfigured() ? getSupabaseAdmin() : supabase;
+    const { data: projects, error: projectError } = await client
+      .from("projects")
+      .select("id, job_number, job_name, is_exterior, exterior_start, exterior_end")
+      .in("id", projectIds);
+    if (projectError || !projects) return [];
+    const { data: weather, error: weatherError } = await client
+      .from("job_weather")
+      .select("project_id, fetched_at, raining_now, precip_prob_next_hours, next_rain_at, daily")
+      .in("project_id", projectIds);
+    if (weatherError || !weather) return [];
+    return buildRainWatchSection(
+      projects.map((project) => ({
+        id: project.id,
+        jobNumber: project.job_number,
+        jobName: project.job_name,
+        is_exterior: project.is_exterior,
+        exterior_start: project.exterior_start,
+        exterior_end: project.exterior_end,
+      })),
+      weather,
+      now,
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function sendNotesDigest(options: {
   projects: { id: string }[];
   primaryEmail: string;
@@ -397,6 +462,10 @@ export async function sendNotesDigest(options: {
   const rows = await loadOpenFollowUpRows(new Set(options.projects.map((project) => project.id)));
   const model = buildNotesDigestModel(rows, todayIso);
   if (!model) return empty;
+  const rainWatch = await loadRainWatchRows(
+    options.projects.map((project) => project.id),
+    new Date(),
+  );
 
   const recipients = resolveTrackerNotificationRecipients(options.primaryEmail);
   if (!recipients) {
@@ -409,15 +478,15 @@ export async function sendNotesDigest(options: {
     primaryName: options.primaryName,
   };
   const html = await embedLogoUrlInHtml(
-    buildNotesDigestHtml({ model, branding, today: options.today }),
+    buildNotesDigestHtml({ model, branding, today: options.today, rainWatch }),
     options.logoUrl ?? "",
   );
   const payload: SendVendorEmailRequest = {
     to: recipients.to,
     cc: [],
-    subject: notesDigestSubject(model.dueTodayCount, model.overdueCount),
+    subject: notesDigestSubject(model.dueTodayCount, model.overdueCount, rainWatch.length),
     html,
-    text: digestPlainText(model),
+    text: digestPlainText(model, rainWatch),
     from_name: options.fromName,
   };
 

@@ -49,3 +49,9 @@ verify_jwt = false
 
 [functions.field-tools-material-weekly]
 verify_jwt = false
+
+[functions.job-exterior-geocode]
+verify_jwt = false
+
+[functions.job-weather-refresh]
+verify_jwt = false

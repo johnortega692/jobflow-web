@@ -1,6 +1,13 @@
 import { projectStartDaysUntil, type ProjectListSummary, type ProjectsListStageFilter } from "./projectListSummary";
 import { gcCompanyName } from "./gcCompanyName";
 import type { Project } from "../types/database";
+import {
+  isRainRiskChip,
+  isRainWatchChip,
+  projectWeatherChip,
+  type ProjectWeatherRow,
+} from "./projectWeatherDisplay";
+import { isRainRelevant } from "./exteriorWorkWindow";
 
 export type ProjectsListStatusId = Exclude<ProjectsListStageFilter, "all">;
 
@@ -14,6 +21,9 @@ export type ProjectsListFilters = {
   start: ProjectsStartFilter;
   flaggedOnly: boolean;
   includeClosed: boolean;
+  exteriorOnly: boolean;
+  rainRisk: boolean;
+  rainWatchOnly: boolean;
 };
 
 export type ProjectsStatusChip = {
@@ -46,6 +56,9 @@ export function defaultProjectsListFilters(): ProjectsListFilters {
     start: "any",
     flaggedOnly: false,
     includeClosed: false,
+    exteriorOnly: false,
+    rainRisk: false,
+    rainWatchOnly: false,
   };
 }
 
@@ -91,6 +104,9 @@ export function projectsListActiveFilterPills(filters: ProjectsListFilters): Pro
   }
   if (filters.flaggedOnly) pills.push({ key: "flagged", label: "Flagged only" });
   if (filters.includeClosed) pills.push({ key: "closed", label: "Including closed" });
+  if (filters.exteriorOnly) pills.push({ key: "exterior", label: "Exterior only" });
+  if (filters.rainRisk) pills.push({ key: "rain", label: "Rain risk" });
+  if (filters.rainWatchOnly) pills.push({ key: "rainWatch", label: "Rain watch" });
   return pills;
 }
 
@@ -110,6 +126,9 @@ export function removeProjectsListFilterPill(
   if (key === "start") return { ...filters, start: "any" };
   if (key === "flagged") return { ...filters, flaggedOnly: false };
   if (key === "closed") return { ...filters, includeClosed: false };
+  if (key === "exterior") return { ...filters, exteriorOnly: false };
+  if (key === "rain") return { ...filters, rainRisk: false };
+  if (key === "rainWatch") return { ...filters, rainWatchOnly: false };
   return filters;
 }
 
@@ -153,6 +172,9 @@ function parseFilters(raw: string): ProjectsListFilters | null {
     start,
     flaggedOnly: Boolean(parsed.flaggedOnly),
     includeClosed: Boolean(parsed.includeClosed),
+    exteriorOnly: Boolean(parsed.exteriorOnly),
+    rainRisk: Boolean(parsed.rainRisk),
+    rainWatchOnly: Boolean(parsed.rainWatchOnly),
   };
 }
 
@@ -193,6 +215,8 @@ export type ProjectsFilterContext = {
   summaries: Map<string, ProjectListSummary>;
   brushoutsAdded: ReadonlySet<string>;
   doneIds: ReadonlySet<string>;
+  weatherByProject: ReadonlyMap<string, ProjectWeatherRow>;
+  nowMs: number;
 };
 
 function matchesSearch(project: Project, search: string): boolean {
@@ -214,6 +238,13 @@ function matchesStart(project: Project, start: ProjectsStartFilter): boolean {
   return days > 90;
 }
 
+function countsForRainWatch(project: Project, nowMs: number): boolean {
+  const today = new Date(nowMs);
+  const tomorrow = new Date(nowMs);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return isRainRelevant(project, today) || isRainRelevant(project, tomorrow);
+}
+
 export function projectMatchesListFilters(
   project: Project,
   filters: ProjectsListFilters,
@@ -230,6 +261,13 @@ export function projectMatchesListFilters(
   if (filters.brushouts === "not_added" && ctx.brushoutsAdded.has(project.id)) return false;
   if (!matchesStart(project, filters.start)) return false;
   if (filters.flaggedOnly && (ctx.summaries.get(project.id)?.attentionCount ?? 0) <= 0) return false;
+  if (filters.exteriorOnly && project.is_exterior !== true) return false;
+  if (filters.rainRisk || filters.rainWatchOnly) {
+    const chip = projectWeatherChip(project, ctx.weatherByProject.get(project.id), ctx.nowMs);
+    if (filters.rainRisk && !isRainRiskChip(chip)) return false;
+    if (filters.rainWatchOnly && !isRainWatchChip(chip)) return false;
+    if (filters.rainWatchOnly && !countsForRainWatch(project, ctx.nowMs)) return false;
+  }
   if (!options?.ignoreStatus && filters.stages.length) {
     const stage = ctx.summaries.get(project.id)?.submittalStage ?? "";
     const id = stageIdForLabel(stage);
