@@ -32,6 +32,7 @@ import { fieldAppsSyncReady, syncProjectTradeApps } from "../../lib/tradeAppsSyn
 import { resolvePaintTracker } from "../../lib/fieldTrackerProject";
 import { parseProjectTradeData } from "../../types/tradeDocuments";
 import { IcbiInfoSection } from "./IcbiInfoSection";
+import { ProjectActivityPanel } from "./ProjectActivityPanel";
 import { ReassignJobNumbersModal } from "./ReassignJobNumbersModal";
 import { StartupChecklistConfigSection } from "./StartupChecklistConfigSection";
 import { TradeAppsSyncSection } from "./TradeAppsSyncSection";
@@ -39,7 +40,7 @@ import type { Json, ProjectForm } from "../../types/database";
 import type { GcEntry } from "../../types/contactDirectory";
 import { JOB_COST_TYPES, JOB_TYPES, type JobInfoData } from "../../types/jobInfo";
 
-type JobSetupTab = "info" | "startup";
+type JobSetupTab = "info" | "startup" | "activity";
 
 type Props = {
   open: boolean;
@@ -49,6 +50,8 @@ type Props = {
   onSaved: (project: ProjectForm) => void;
   /** Which tab to show when the drawer opens. */
   initialTab?: JobSetupTab;
+  /** Bumps when project activity should reload. */
+  activityRefreshKey?: number;
 };
 
 function patchJobInfo(info: JobInfoData, patch: Partial<JobInfoData>): JobInfoData {
@@ -147,7 +150,7 @@ function JobSection({
   );
 }
 
-export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose, onSaved, initialTab = "info" }: Props) {
+export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose, onSaved, initialTab = "info", activityRefreshKey = 0 }: Props) {
   const { user } = useAuth();
   const [project, setProject] = useState(initial);
   const [activeTab, setActiveTab] = useState<JobSetupTab>(initialTab);
@@ -612,6 +615,17 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             onClick={() => setActiveTab("startup")}
           >
             Startup &amp; field
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="job-setup-tab-activity"
+            aria-selected={activeTab === "activity"}
+            aria-controls="job-setup-panel-activity"
+            className={`job-info-drawer-tab${activeTab === "activity" ? " job-info-drawer-tab--active" : ""}`}
+            onClick={() => setActiveTab("activity")}
+          >
+            Recent activity
           </button>
         </div>
 
@@ -1264,6 +1278,17 @@ export function JobInfoSetupDrawer({ open, project: initial, projectId, onClose,
             <StartupChecklistConfigSection value={startupItems} jobInfo={j} onChange={setStartupItems} embedded />
             <TradeAppsSyncSection project={project} projectId={projectId} embedded />
           </div>
+
+          {activeTab === "activity" ? (
+            <div
+              id="job-setup-panel-activity"
+              role="tabpanel"
+              aria-labelledby="job-setup-tab-activity"
+              className="job-info-drawer-tab-panel stack"
+            >
+              <ProjectActivityPanel project={project} refreshKey={activityRefreshKey} embedded />
+            </div>
+          ) : null}
         </form>
       </aside>
       <ReassignJobNumbersModal

@@ -12,6 +12,8 @@ export type StartupCatalogSeed = {
   dateSensitive?: boolean;
   /** Default off on paint-only jobs; auto-managed when wallcovering contract is toggled. */
   requiresWallcovering?: boolean;
+  /** Project page opened from the startup row. */
+  modulePath?: string;
 };
 
 export const STARTUP_CHECKLIST_GROUP_META: Record<
@@ -212,7 +214,15 @@ export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
     group: "billing",
     label: "Add Budget into folder",
     source: "manual",
-    defaultEnabled: false,
+    defaultEnabled: true,
+  },
+  {
+    id: "labor_projection",
+    group: "billing",
+    label: "Set up Labor Projection",
+    source: "manual",
+    defaultEnabled: true,
+    modulePath: "billing",
   },
   {
     id: "billing_portal",
@@ -282,6 +292,7 @@ export const CUSTOM_GC_STARTUP_ITEM_IDS = [
   "crew_orientation",
   "schedule_obtained",
   "budget_into_folder",
+  "labor_projection",
   "autodesk_ost",
   "autodesk_scope",
   "autodesk_hours_cost_codes",

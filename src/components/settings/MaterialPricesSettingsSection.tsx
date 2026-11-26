@@ -23,6 +23,7 @@ import { fileToCatalogImage } from "../../lib/catalogImage";
 import { InvoiceJobPos } from "./InvoiceJobPos";
 import { InvoicePdfStamp } from "./InvoicePdfStamp";
 import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoicePaintTarget, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
+import { invoiceReaderIdFromFileName } from "../../lib/invoiceReaders/invoiceFileVendor";
 import { invoiceReaderChoices, readVendorInvoice } from "../../lib/invoiceReaders/readInvoice";
 import { foundationGridHtml, foundationGridText } from "../../lib/invoiceReaders/foundationGrid";
 import { ecoFeeAmount, formatTaxPercent, paintFeeAmount } from "../../lib/invoiceReaders/invoiceCharges";
@@ -929,14 +930,18 @@ export function MaterialPricesSettingsSection({
     acceptInvoiceFile(event.dataTransfer.files?.[0]);
   }
 
-  async function readInvoice(file: File) {
+  function applyInvoiceVendor(readerId: string) {
+    setInvoiceReader(readerId);
+    const name = invoiceReaderChoices.find((choice) => choice.id === readerId)?.vendorName;
+    if (name) setVendor(name);
+  }
+
+  async function parseInvoiceBytes(bytes: Uint8Array, readerId: string) {
     setInvoiceReading(true);
     setError(null);
     setStatus(null);
     try {
-      await rememberInvoicePdf(file);
-      const source = invoicePdfBytesRef.current;
-      const parsed = await readVendorInvoice(source ? source.slice().buffer : await file.arrayBuffer(), invoiceReader);
+      const parsed = await readVendorInvoice(bytes.slice().buffer, readerId);
       setInvoice(parsed);
       setForcedMatch({});
       setSectionOverride({});
@@ -956,6 +961,28 @@ export function MaterialPricesSettingsSection({
     } finally {
       setInvoiceReading(false);
     }
+  }
+
+  async function readInvoice(file: File) {
+    const detected = invoiceReaderIdFromFileName(file.name);
+    const readerId = detected ?? invoiceReader;
+    if (detected) applyInvoiceVendor(detected);
+    try {
+      await rememberInvoicePdf(file);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read that invoice.");
+      return;
+    }
+    const source = invoicePdfBytesRef.current;
+    if (!source) return;
+    await parseInvoiceBytes(source, readerId);
+  }
+
+  async function rereadLoadedInvoice(readerId: string) {
+    applyInvoiceVendor(readerId);
+    const source = invoicePdfBytesRef.current;
+    if (!source) return;
+    await parseInvoiceBytes(source, readerId);
   }
 
   async function linkFoundItem(row: InvoiceCompareRow, choice: MaterialPriceItem, key: string, byGallon: boolean) {
@@ -1166,8 +1193,7 @@ export function MaterialPricesSettingsSection({
                 aria-label="Invoice vendor"
                 disabled={readOnly || invoiceReading}
                 onChange={(event) => {
-                  setInvoiceReader(event.target.value);
-                  clearLoadedInvoice();
+                  void rereadLoadedInvoice(event.target.value);
                 }}
               >
                 {invoiceReaderChoices.map((choice) => (
@@ -1224,15 +1250,12 @@ export function MaterialPricesSettingsSection({
                 </svg>
               </div>
               <h3>{invoiceDragOver ? "Drop the invoice PDF." : "Drop invoice PDF here"}</h3>
-              <p>Select your vendor and load the PDF to scan line items and apply accounting stamps.</p>
+              <p>The vendor is chosen from the file name. You can change it after the PDF loads.</p>
               <select
                 value={invoiceReader}
                 aria-label="Invoice vendor"
                 disabled={readOnly || invoiceReading}
-                onChange={(event) => {
-                  setInvoiceReader(event.target.value);
-                  clearLoadedInvoice();
-                }}
+                onChange={(event) => applyInvoiceVendor(event.target.value)}
               >
                 {invoiceReaderChoices.map((choice) => (
                   <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
@@ -1244,9 +1267,7 @@ export function MaterialPricesSettingsSection({
                 disabled={readOnly || loading || invoiceReading}
                 onClick={() => invoiceInputRef.current?.click()}
               >
-                {invoiceReading
-                  ? "Reading invoice…"
-                  : `Load ${invoiceReaderChoices.find((choice) => choice.id === invoiceReader)?.vendorName ?? "vendor"} Invoice`}
+                {invoiceReading ? "Reading invoice…" : "Load invoice PDF"}
               </button>
               <input
                 ref={invoiceInputRef}

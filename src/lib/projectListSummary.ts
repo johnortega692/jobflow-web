@@ -1,5 +1,4 @@
 import { gcCompanyName } from "./gcCompanyName";
-import { formatJobDateLabel } from "./manpowerCalendar";
 import { toIsoDateValue } from "./dateInputUtils";
 import { normalizeProject, type Project } from "../types/database";
 import {
@@ -155,10 +154,6 @@ const SORT_VALUES = Object.keys(PROJECTS_LIST_SORT_DEFAULT_DIR) as ProjectsListS
 /** Default direction when first selecting a sort mode. */
 export function defaultSortDir(sort: ProjectsListSort): ProjectsListSortDir {
   return PROJECTS_LIST_SORT_DEFAULT_DIR[sort];
-}
-
-export function projectJobStartLabel(project: Project): string {
-  return formatJobDateLabel(normalizeProject(project).jobInfo.start_date) ?? "—";
 }
 
 function projectJobStartMs(project: Project): number | null {
@@ -355,14 +350,6 @@ function startingSoonRank(iso: string): number {
 function submittalRank(stage: string): number {
   const index = SUBMITTAL_STAGE_ORDER.indexOf(stage);
   return index === -1 ? SUBMITTAL_STAGE_ORDER.length : index;
-}
-
-export function projectJobStartRelative(project: Project): { text: string; soon: boolean } | null {
-  const days = projectStartDaysUntil(project);
-  if (days === null) return null;
-  if (days === 0) return { text: "today", soon: true };
-  if (days > 0) return { text: `in ${days}d`, soon: days <= 30 };
-  return { text: `${-days}d ago`, soon: false };
 }
 
 export function compareProjectsForListSort(

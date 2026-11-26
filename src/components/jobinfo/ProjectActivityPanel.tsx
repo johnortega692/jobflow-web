@@ -11,6 +11,8 @@ type Props = {
   project: ProjectForm;
   refreshKey?: string | number;
   limit?: number;
+  /** Inside Job info. Shows the full list without the dashboard card. */
+  embedded?: boolean;
 };
 
 function ActivityFeed({ rows, compact }: { rows: ProjectActivityRow[]; compact?: boolean }) {
@@ -57,7 +59,7 @@ function ActivityFeed({ rows, compact }: { rows: ProjectActivityRow[]; compact?:
   );
 }
 
-export function ProjectActivityPanel({ project, refreshKey = 0, limit }: Props) {
+export function ProjectActivityPanel({ project, refreshKey = 0, limit, embedded = false }: Props) {
   const [rows, setRows] = useState<ProjectActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function ProjectActivityPanel({ project, refreshKey = 0, limit }: Props) 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const fetchLimit = limit ? Math.max(limit, 12) : 12;
+    const fetchLimit = embedded ? 40 : limit ? Math.max(limit, 12) : 12;
     const result = await loadProjectActivity(project.id, fetchLimit);
     setLoading(false);
     if (result.error) {
@@ -75,14 +77,23 @@ export function ProjectActivityPanel({ project, refreshKey = 0, limit }: Props) 
       return;
     }
     setRows(result.rows);
-  }, [project.id, limit]);
+  }, [project.id, limit, embedded]);
 
   useEffect(() => {
     void reload();
   }, [reload, refreshKey]);
 
-  const visibleRows = limit ? rows.slice(0, limit) : rows;
-  const hasMore = limit ? rows.length > limit : false;
+  const visibleRows = !embedded && limit ? rows.slice(0, limit) : rows;
+  const hasMore = !embedded && limit ? rows.length > limit : false;
+
+  if (embedded) {
+    return (
+      <div className="job-activity-embedded">
+        {error && <div className="banner banner-error">{error}</div>}
+        {loading ? <p className="muted small">Loading activity…</p> : <ActivityFeed rows={rows} />}
+      </div>
+    );
+  }
 
   return (
     <>

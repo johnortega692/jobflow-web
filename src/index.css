@@ -612,6 +612,16 @@ label {
   background: var(--accent);
 }
 
+.project-mini-pipeline-dot--revision {
+  border-color: var(--warn);
+  background: var(--warn);
+}
+
+.project-mini-pipeline-dot--approved {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
 .project-mini-pipeline-dot--current {
   border-color: var(--warn);
   background: transparent;
@@ -626,6 +636,10 @@ label {
 
 .project-mini-pipeline-connector--done {
   background: var(--accent);
+}
+
+.project-mini-pipeline-connector--revision {
+  background: var(--warn);
 }
 
 .project-mini-pipeline-stage {
@@ -1008,10 +1022,29 @@ label {
 }
 
 .projects-table-gc {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   margin-top: 0.1rem;
+  min-width: 0;
+}
+
+.projects-table-gc-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.projects-table-gc .project-weather-chip--plain {
+  flex: none;
+}
+
+.projects-table-attention {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .projects-search-wrap {
@@ -1193,15 +1226,35 @@ label {
   white-space: nowrap;
 }
 
-.projects-start-relative {
-  margin-top: 0.1rem;
-  font-size: 0.72rem;
-  color: var(--muted);
+.projects-start-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 8.75rem;
+  white-space: nowrap;
 }
 
-.projects-start-relative--soon {
+.projects-start-date {
+  white-space: nowrap;
+}
+
+.projects-start-day {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.projects-start-soon {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
   color: var(--warn);
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .projects-chips-row {
@@ -1335,6 +1388,13 @@ label {
   flex: none;
   width: 14px;
   height: 14px;
+}
+
+.project-weather-chip--plain {
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
 }
 
 .project-weather-chip:focus-visible,
@@ -14478,6 +14538,18 @@ tr.budget-hours-pdf-hidden td {
   color: var(--muted);
 }
 
+.job-header-submittal-node--revision {
+  border-color: var(--warn);
+  background: var(--warn);
+  color: #1a1404;
+}
+
+.job-header-submittal-node--approved {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #062214;
+}
+
 .job-header-submittal-label {
   font-size: 0.78rem;
   white-space: nowrap;
@@ -14496,6 +14568,23 @@ tr.budget-hours-pdf-hidden td {
   color: var(--muted);
 }
 
+.job-header-submittal-label--revision {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.job-header-submittal-label--approved {
+  color: var(--text);
+}
+
+.job-header-submittal-badge {
+  margin-left: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
 .job-header-submittal-connector {
   flex: 1;
   height: 2px;
@@ -14506,6 +14595,10 @@ tr.budget-hours-pdf-hidden td {
 
 .job-header-submittal-connector--done {
   background: var(--accent);
+}
+
+.job-header-submittal-connector--revision {
+  background: var(--warn);
 }
 
 .job-tracker-edit-modal {
@@ -15258,6 +15351,10 @@ a.job-tracker-tab {
 
 .job-activity-panel {
   padding: 0.85rem 1rem;
+}
+
+.job-activity-embedded .job-activity-list {
+  max-height: none;
 }
 
 .job-activity-header {
@@ -23469,11 +23566,29 @@ td.billing-manpower-week-col--beyond-contract,
   flex: 1 1 auto;
 }
 
+.read-invoice-po-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .read-invoice-po-summary strong,
 .read-invoice-po-summary small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.read-invoice-po-kind {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 24%, transparent);
+  color: var(--text);
+  font-size: 0.65rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
 }
 
 .read-invoice-po-summary small {

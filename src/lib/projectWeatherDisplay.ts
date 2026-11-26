@@ -327,3 +327,15 @@ export function projectWeatherChip(
   const days = fromDaily == null || fromDaily === 0 ? fromHours : Math.min(fromHours, fromDaily);
   return { kind: "dry", label: dryLabel(days), tone: "dry" };
 }
+
+/** Compact projects-list label. Dry sits beside the GC; other pills use the full phrase. */
+export function projectListWeatherLabel(chip: WeatherChip): string {
+  if (chip.kind === "dry") {
+    const days = chip.label.match(/^Dry for (\d+)/)?.[1];
+    return days ? `Dry ${days}d` : "Dry";
+  }
+  if (chip.kind === "soon" || chip.kind === "later") {
+    return chip.label.replace(/^Rain in ~(\d+) hrs?/, "Rain ~$1h");
+  }
+  return chip.label;
+}

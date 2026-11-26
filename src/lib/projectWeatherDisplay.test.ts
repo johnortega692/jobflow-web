@@ -15,6 +15,7 @@ import {
   hourlyRainChances,
   isRainRiskChip,
   isRainWatchChip,
+  projectListWeatherLabel,
   projectWeatherChip,
   weatherUpdatedLabel,
   type ProjectWeatherRow,
@@ -104,6 +105,7 @@ test("rain inside 3 hours is amber and uses the hourly percent", () => {
   assert.equal(chip.kind, "soon");
   assert.equal(chip.tone, "soon");
   assert.equal(chip.label, "Rain in ~2 hrs · 55%");
+  assert.equal(projectListWeatherLabel(chip), "Rain ~2h · 55%");
   assert.equal(isRainWatchChip(chip), true);
   assert.equal(isRainRiskChip(chip), true);
 });
@@ -172,6 +174,7 @@ test("a wet day in the outlook shortens the dry count", () => {
   ];
   const chip = projectWeatherChip({ is_exterior: true }, row({ daily }), NOW);
   assert.equal(chip.label, "Dry for 4 days");
+  assert.equal(projectListWeatherLabel(chip), "Dry 4d");
 });
 
 test("rain beyond 48 hours counts dry days from the forecast window", () => {

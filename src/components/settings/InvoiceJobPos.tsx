@@ -375,7 +375,10 @@ export function InvoiceJobPos({
                     >
                       <span className="read-invoice-po-chevron" aria-hidden />
                       <span className="read-invoice-po-summary">
-                        <strong>{row.poNumber}</strong>
+                        <span className="read-invoice-po-title">
+                          <strong>{row.poNumber}</strong>
+                          {row.orderType === "last_min" ? <span className="read-invoice-po-kind">Last-Min</span> : null}
+                        </span>
                         <small>{row.vendorLabel || "—"}</small>
                       </span>
                       <span className="read-invoice-po-summary-side">
@@ -389,7 +392,7 @@ export function InvoiceJobPos({
                       {row.orderedItems.length > 0 ? (
                         row.orderedItems.map((item, index) => <p key={`${row.dispatchId}-${index}`}>{item}</p>)
                       ) : (
-                        <p className="muted">No items listed</p>
+                        <p className="muted">{row.orderType === "last_min" ? "Last-Min receipt" : "No items listed"}</p>
                       )}
                     </div>
                     {total ? (

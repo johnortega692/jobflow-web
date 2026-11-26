@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { JobInfoSetupDrawer } from "../components/jobinfo/JobInfoSetupDrawer";
-import { ProjectActivityPanel } from "../components/jobinfo/ProjectActivityPanel";
 import { ProjectStartupChecklist } from "../components/jobinfo/ProjectStartupChecklist";
 import { ProjectDashboardHeader } from "../components/jobinfo/ProjectDashboardHeader";
 import { NeedsAttentionStrip } from "../components/jobinfo/NeedsAttentionStrip";
@@ -30,7 +29,7 @@ export function ProjectOverviewPage() {
   const navigate = useNavigate();
   const [project, setProject] = useState(initial);
   const [setupOpen, setSetupOpen] = useState(false);
-  const [setupInitialTab, setSetupInitialTab] = useState<"info" | "startup">("info");
+  const [setupInitialTab, setSetupInitialTab] = useState<"info" | "startup" | "activity">("info");
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [startupItems, setStartupItems] = useState(() => parseDashboardStartupItems(initial));
   const [startupFocus, setStartupFocus] = useState<{ group: StartupChecklistGroup; itemId: string } | null>(null);
@@ -106,7 +105,7 @@ export function ProjectOverviewPage() {
   const jobSetupCounts = jobSetupStepCounts(project);
   const startupCounts = startupTaskCounts(startupItems);
 
-  function openJobSetup(tab: "info" | "startup" = "info") {
+  function openJobSetup(tab: "info" | "startup" | "activity" = "info") {
     setSetupInitialTab(tab);
     setSetupOpen(true);
   }
@@ -232,9 +231,8 @@ export function ProjectOverviewPage() {
         onClose={() => setSetupOpen(false)}
         onSaved={onSaved}
         initialTab={setupInitialTab}
+        activityRefreshKey={activityRefreshKey}
       />
-
-      <ProjectActivityPanel project={project} refreshKey={activityRefreshKey} limit={3} />
     </div>
   );
 }

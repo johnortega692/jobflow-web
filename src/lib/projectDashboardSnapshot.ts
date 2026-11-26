@@ -15,12 +15,11 @@ import { parseProjectTradeData } from "../types/tradeDocuments";
 import type { PaintTrackerState } from "../types/fieldTracker";
 import type { ProjectForm, Json } from "../types/database";
 
-export type SubmittalPipelineStep = {
-  id: "ordered" | "submitted" | "revision" | "approved";
-  label: string;
-  done: boolean;
-  current: boolean;
-};
+export {
+  paintPackageRevisionNumber,
+  paintSubmittalPipelineSteps,
+  type SubmittalPipelineStep,
+} from "./submittalPipeline";
 
 export type AttentionItem = {
   id: string;
@@ -45,31 +44,6 @@ export function paintSubmittalStageLabel(tracker: PaintTrackerState): string {
   if (tracker.submittedForApproval) return "Submitted";
   if (tracker.submittalOrdered) return "Ordered";
   return "Not started";
-}
-
-export function paintSubmittalPipelineSteps(tracker: PaintTrackerState): SubmittalPipelineStep[] {
-  const ordered = tracker.submittalOrdered;
-  const submitted = tracker.submittedForApproval;
-  const revision = tracker.revision;
-  const approved = tracker.approved;
-
-  const raw = [
-    { id: "ordered" as const, label: "Ordered", done: ordered },
-    { id: "submitted" as const, label: "Submitted", done: submitted },
-    { id: "revision" as const, label: "Revision", done: revision || approved },
-    { id: "approved" as const, label: "Approved", done: approved },
-  ];
-
-  let currentId: SubmittalPipelineStep["id"] | null = null;
-  if (!ordered) currentId = "ordered";
-  else if (!submitted) currentId = "submitted";
-  else if (revision && !approved) currentId = "revision";
-  else if (!approved) currentId = "approved";
-
-  return raw.map((step) => ({
-    ...step,
-    current: currentId === step.id,
-  }));
 }
 
 export function paintTrackerFlagsLabel(tracker: PaintTrackerState): string {

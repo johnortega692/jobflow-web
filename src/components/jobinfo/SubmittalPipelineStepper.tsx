@@ -6,23 +6,31 @@ import {
 import type { PaintTrackerState } from "../../types/fieldTracker";
 
 function stepNodeClass(step: SubmittalPipelineStep): string {
-  if (step.done) return "job-header-submittal-node job-header-submittal-node--done";
-  if (step.current) return "job-header-submittal-node job-header-submittal-node--current";
-  return "job-header-submittal-node job-header-submittal-node--future";
+  const base = "job-header-submittal-node";
+  if (step.done && step.tone === "approved") return `${base} ${base}--approved`;
+  if (step.done && step.tone === "revision") return `${base} ${base}--revision`;
+  if (step.done) return `${base} ${base}--done`;
+  if (step.current) return `${base} ${base}--current`;
+  return `${base} ${base}--future`;
 }
 
 function stepLabelClass(step: SubmittalPipelineStep): string {
-  if (step.done) return "job-header-submittal-label job-header-submittal-label--done";
-  if (step.current) return "job-header-submittal-label job-header-submittal-label--current";
-  return "job-header-submittal-label job-header-submittal-label--future";
+  const base = "job-header-submittal-label";
+  if (step.done && step.tone === "revision") return `${base} ${base}--revision`;
+  if (step.done && step.tone === "approved") return `${base} ${base}--approved`;
+  if (step.done) return `${base} ${base}--done`;
+  if (step.current) return `${base} ${base}--current`;
+  return `${base} ${base}--future`;
 }
 
 type Props = {
   tracker: PaintTrackerState;
+  /** Highest paint package revision. 0 means the original was never returned. */
+  revisionNumber?: number;
 };
 
-export function SubmittalPipelineStepper({ tracker }: Props) {
-  const steps = paintSubmittalPipelineSteps(tracker);
+export function SubmittalPipelineStepper({ tracker, revisionNumber = 0 }: Props) {
+  const steps = paintSubmittalPipelineSteps(tracker, revisionNumber);
 
   return (
     <div className="job-header-submittal-row">
@@ -37,10 +45,17 @@ export function SubmittalPipelineStepper({ tracker }: Props) {
             <div className="job-header-submittal-step-main">
               <div className={stepNodeClass(step)}>{step.done ? <DashboardTablerIcon name="check" size={12} /> : index + 1}</div>
               <span className={stepLabelClass(step)}>{step.label}</span>
+              {step.badge ? <span className="job-header-submittal-badge">{step.badge}</span> : null}
             </div>
             {index < steps.length - 1 && (
               <div
-                className={`job-header-submittal-connector${step.done ? " job-header-submittal-connector--done" : ""}`}
+                className={`job-header-submittal-connector${
+                  step.done && step.tone === "revision"
+                    ? " job-header-submittal-connector--revision"
+                    : step.done
+                      ? " job-header-submittal-connector--done"
+                      : ""
+                }`}
                 aria-hidden
               />
             )}

@@ -26,8 +26,6 @@ import {
   computeProjectListSummaries,
   defaultSortDir,
   getSpotlight,
-  projectJobStartLabel,
-  projectJobStartRelative,
   loadProjectsListSortState,
   projectsListColumnForSort,
   saveProjectsListSortState,
@@ -66,11 +64,13 @@ import { listDoneProjectIds, fetchProjectIsDone } from "../lib/projectDone";
 import { isRfiClosed } from "../lib/rfiStatus";
 import {
   isRainWatchChip,
+  projectListWeatherLabel,
   projectWeatherChip,
   type ProjectWeatherRow,
 } from "../lib/projectWeatherDisplay";
 import { isRainRelevant } from "../lib/exteriorWorkWindow";
-import { type Project } from "../types/database";
+import { normalizeProject, type Project } from "../types/database";
+import { formatJobStart } from "../lib/jobStartDisplay";
 
 function normalizeJobNumber(value: string): string {
   return value.trim().toLowerCase();
@@ -708,14 +708,6 @@ export function ProjectsPage() {
                               </button>
                             </th>
                           );
-                          if (column === "submittal") {
-                            return [
-                              header,
-                              <th key="weather">
-                                <span className="projects-followups-colhead">Weather</span>
-                              </th>,
-                            ];
-                          }
                           if (column !== "attention") return [header];
                           return [
                             header,
@@ -729,7 +721,7 @@ export function ProjectsPage() {
                     <tbody>
                       {filteredProjects.length === 0 ? (
                         <tr>
-                          <td className="projects-table-empty" colSpan={8}>
+                          <td className="projects-table-empty" colSpan={7}>
                             No jobs match these filters.{" "}
                             <button
                               type="button"
@@ -743,7 +735,11 @@ export function ProjectsPage() {
                       ) : null}
                       {filteredProjects.map((p) => {
                         const summary = summaries.get(p.id)!;
-                        const startRelative = projectJobStartRelative(p);
+                        const weatherChip = projectWeatherChip(p, weatherByProject.get(p.id), nowMs);
+                        const jobStart = formatJobStart(normalizeProject(p).jobInfo.start_date);
+                        const gcName = gcCompanyName(p.contractor ?? "");
+                        const dryNote = weatherChip.kind === "dry" ? projectListWeatherLabel(weatherChip) : "";
+                        const weatherInAttention = weatherChip.kind !== "interior" && weatherChip.kind !== "dry";
                         return (
                           <tr
                             key={p.id}
@@ -757,37 +753,53 @@ export function ProjectsPage() {
                           <td>{p.job_number}</td>
                             <td className="projects-table-name" title={p.job_name ?? undefined}>
                               <div className="projects-table-job-name">{p.job_name || "Untitled job"}</div>
-                              {gcCompanyName(p.contractor ?? "") ? (
-                                <div className="projects-table-gc muted small">{gcCompanyName(p.contractor ?? "")}</div>
+                              {gcName || dryNote ? (
+                                <div className="projects-table-gc muted small">
+                                  {gcName ? <span className="projects-table-gc-name">{gcName}</span> : null}
+                                  {dryNote ? (
+                                    <ProjectWeatherChip
+                                      plain
+                                      chip={{ ...weatherChip, label: dryNote }}
+                                      onOpen={() => navigate(`/projects/${p.id}`)}
+                                    />
+                                  ) : null}
+                                </div>
                               ) : null}
                             </td>
                             <td>
                               <SubmittalStagePill stage={summary.submittalStage} />
                             </td>
                             <td>
-                              <ProjectWeatherChip
-                                chip={projectWeatherChip(p, weatherByProject.get(p.id), nowMs)}
-                                onOpen={() => navigate(`/projects/${p.id}`)}
-                              />
-                            </td>
-                            <td>
                               <BrushoutsAddedPill added={approvedBrushoutIds.has(p.id)} />
                             </td>
                             <td>
-                              <ProjectStatusBadge summary={summary} tableMode />
+                              <div className="projects-table-attention">
+                                {weatherInAttention ? (
+                                  <ProjectWeatherChip
+                                    chip={{ ...weatherChip, label: projectListWeatherLabel(weatherChip) }}
+                                    onOpen={() => navigate(`/projects/${p.id}`)}
+                                  />
+                                ) : null}
+                                <ProjectStatusBadge
+                                  summary={summary}
+                                  tableMode
+                                  suppressClear={weatherInAttention}
+                                />
+                              </div>
                             </td>
                             <td>
                               <FollowUpsColumnPill rows={followUpsByProject.get(p.id)} />
                             </td>
                             <td>
-                              <div className="muted">{projectJobStartLabel(p)}</div>
-                              {startRelative && (
-                                <div
-                                  className={`projects-start-relative${startRelative.soon ? " projects-start-relative--soon" : ""}`}
-                                >
-                                  {startRelative.text}
-                                </div>
-                              )}
+                              <div className="projects-start-cell" title={jobStart.title || undefined}>
+                                <span className="projects-start-date">{jobStart.dateLabel}</span>
+                                {jobStart.marker?.kind === "day" ? (
+                                  <span className="projects-start-day">{jobStart.marker.text}</span>
+                                ) : null}
+                                {jobStart.marker?.kind === "soon" ? (
+                                  <span className="projects-start-soon">{jobStart.marker.text}</span>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );

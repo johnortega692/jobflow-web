@@ -15,7 +15,7 @@ import {
   trackJobLabel,
   wcTrackerJobLabel,
 } from "../../lib/jobInfo";
-import { paintTrackerActiveFlags } from "../../lib/projectDashboardSnapshot";
+import { paintPackageRevisionNumber, paintTrackerActiveFlags } from "../../lib/projectDashboardSnapshot";
 import { SubmittalPipelineStepper } from "./SubmittalPipelineStepper";
 import type { PaintTrackerState } from "../../types/fieldTracker";
 import type { ProjectForm } from "../../types/database";
@@ -219,7 +219,10 @@ export function ProjectDashboardHeader({
 
         <div className="job-dashboard-header-divider" />
 
-        <SubmittalPipelineStepper tracker={paintTracker} />
+        <SubmittalPipelineStepper
+          tracker={paintTracker}
+          revisionNumber={paintPackageRevisionNumber(project.data)}
+        />
       </div>
       {billingDueLabel ? (
         <div className="job-dashboard-billing-due" title={`Billing due on the ${billingDueLabel} of each month`}>

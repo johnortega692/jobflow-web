@@ -24,15 +24,27 @@ export function ProjectMiniPipeline({ tracker, stage }: Props) {
           <div key={step.id} className="project-mini-pipeline-step">
             <div
               className={`project-mini-pipeline-dot${
-                step.done
-                  ? " project-mini-pipeline-dot--done"
-                  : step.current
-                    ? " project-mini-pipeline-dot--current"
-                    : ""
+                step.done && step.tone === "approved"
+                  ? " project-mini-pipeline-dot--approved"
+                  : step.done && step.tone === "revision"
+                    ? " project-mini-pipeline-dot--revision"
+                    : step.done
+                      ? " project-mini-pipeline-dot--done"
+                      : step.current
+                        ? " project-mini-pipeline-dot--current"
+                        : ""
               }`}
             />
             {index < steps.length - 1 && (
-              <div className={`project-mini-pipeline-connector${step.done ? " project-mini-pipeline-connector--done" : ""}`} />
+              <div
+                className={`project-mini-pipeline-connector${
+                  step.done && step.tone === "revision"
+                    ? " project-mini-pipeline-connector--revision"
+                    : step.done
+                      ? " project-mini-pipeline-connector--done"
+                      : ""
+                }`}
+              />
             )}
           </div>
         ))}

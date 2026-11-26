@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { STARTUP_CHECKLIST_GROUP_META, STARTUP_SOURCE_LABELS } from "../../config/projectStartupItemsCatalog";
+import { Link } from "react-router-dom";
+import { catalogSeedForId, STARTUP_CHECKLIST_GROUP_META, STARTUP_SOURCE_LABELS } from "../../config/projectStartupItemsCatalog";
 import { DashboardTablerIcon } from "./DashboardTablerIcon";
 import {
   dueBadgeForItem,
@@ -15,6 +16,7 @@ import type { JobInfoData } from "../../types/jobInfo";
 
 type Props = {
   items: StartupItemsState;
+  projectId: string;
   jobInfo: JobInfoData;
   focus?: { group: StartupChecklistGroup; itemId: string } | null;
   onFocusHandled?: () => void;
@@ -33,6 +35,7 @@ function groupCountClass(done: number, total: number): string {
 
 function ItemRow({
   item,
+  projectId,
   jobInfo,
   highlighted,
   saving,
@@ -40,6 +43,7 @@ function ItemRow({
   onOpenJobSetup,
 }: {
   item: StartupChecklistItem;
+  projectId: string;
   jobInfo: JobInfoData;
   highlighted: boolean;
   saving: boolean;
@@ -49,6 +53,7 @@ function ItemRow({
   const dueBadge = dueBadgeForItem(item, jobInfo);
   const isManual = item.source === "manual";
   const canToggle = isManual && !saving;
+  const modulePath = catalogSeedForId(item.id)?.modulePath;
 
   return (
     <div
@@ -72,6 +77,11 @@ function ItemRow({
         </span>
       </button>
       <div className="job-startup-item-badges">
+        {modulePath ? (
+          <Link to={`/projects/${projectId}/${modulePath}`} className="link-btn small">
+            Open
+          </Link>
+        ) : null}
         {item.source !== "manual" && (
           <span className="job-startup-badge job-startup-badge--source">
             auto · {STARTUP_SOURCE_LABELS[item.source]}
@@ -101,6 +111,7 @@ function ItemRow({
 
 export function ProjectStartupItemsCard({
   items,
+  projectId,
   jobInfo,
   focus,
   onFocusHandled,
@@ -163,6 +174,7 @@ export function ProjectStartupItemsCard({
                     <ItemRow
                       key={item.id}
                       item={item}
+                      projectId={projectId}
                       jobInfo={jobInfo}
                       highlighted={focus?.itemId === item.id}
                       saving={savingId === item.id}

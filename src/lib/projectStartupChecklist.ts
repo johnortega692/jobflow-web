@@ -84,6 +84,7 @@ export function startupStepIsVisible(
   step: (typeof PROJECT_STARTUP_STEPS)[number],
   jobInfo: JobInfoData,
 ): boolean {
+  if (step.id === "brushouts_ordered") return false;
   if (step.id === "wc_samples_ordered") {
     return projectHasWallcovering(jobInfo);
   }

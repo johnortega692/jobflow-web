@@ -3,6 +3,8 @@ import { WEATHER_CHIP_COLORS, type WeatherChip, type WeatherChipKind } from "../
 type Props = {
   chip: WeatherChip;
   onOpen: () => void;
+  /** Icon and text color only, with no pill fill. */
+  plain?: boolean;
 };
 
 function WeatherIcon({ kind }: { kind: WeatherChipKind }) {
@@ -61,13 +63,13 @@ function WeatherIcon({ kind }: { kind: WeatherChipKind }) {
   );
 }
 
-export function ProjectWeatherChip({ chip, onOpen }: Props) {
+export function ProjectWeatherChip({ chip, onOpen, plain = false }: Props) {
   const colors = WEATHER_CHIP_COLORS[chip.tone];
   return (
     <button
       type="button"
-      className={`project-weather-chip project-weather-chip--${chip.tone}`}
-      style={{ background: colors.background, color: colors.color }}
+      className={`project-weather-chip project-weather-chip--${chip.tone}${plain ? " project-weather-chip--plain" : ""}`}
+      style={plain ? { color: colors.color } : { background: colors.background, color: colors.color }}
       onClick={(event) => {
         event.stopPropagation();
         onOpen();
