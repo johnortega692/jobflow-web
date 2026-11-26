@@ -23420,11 +23420,83 @@ td.billing-manpower-week-col--beyond-contract,
   padding: 0;
 }
 
+.read-invoice-po-hint {
+  margin: 0.35rem 0 0.15rem;
+}
+
 .read-invoice-po-list li {
   display: grid;
   gap: 0.35rem;
-  padding: 0.6rem 0.75rem;
+  padding: 0.35rem 0.55rem;
   border-bottom: 1px solid var(--border);
+}
+
+.read-invoice-po-list li.is-open {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.read-invoice-po-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.2rem 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.read-invoice-po-chevron {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: 0 0 auto;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+}
+
+.read-invoice-po-list li.is-open .read-invoice-po-chevron {
+  transform: rotate(45deg);
+}
+
+.read-invoice-po-summary {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.read-invoice-po-summary strong,
+.read-invoice-po-summary small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.read-invoice-po-summary small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.read-invoice-po-summary-side {
+  display: grid;
+  justify-items: end;
+  flex: 0 0 auto;
+  gap: 0.05rem;
+}
+
+.read-invoice-po-summary-total {
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.read-invoice-po-body {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.15rem 0 0.25rem 0.9rem;
 }
 
 .read-invoice-po-list li:last-child {
@@ -23446,14 +23518,53 @@ td.billing-manpower-week-col--beyond-contract,
   white-space: nowrap;
 }
 
-.read-invoice-po-main span {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
+.read-invoice-po-main span,
+.read-invoice-po-date {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.read-invoice-po-vendor {
   color: var(--muted);
   font-size: 0.8rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.read-invoice-po-items {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.read-invoice-po-items p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.read-invoice-po-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.read-invoice-po-total input {
+  width: 6.25rem;
+  min-height: 1.75rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.read-invoice-po-placed,
+.read-invoice-po-total-error {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.read-invoice-po-total-error {
+  color: var(--danger, #b42318);
 }
 
 .read-invoice-po-actions {

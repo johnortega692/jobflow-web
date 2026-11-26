@@ -2,6 +2,7 @@ import { lastMinOrderHasPaint } from "./paintEstimates";
 import { supabase } from "./supabase";
 
 import type { FieldToolsOrder, FieldToolsOrderType } from "../types/fieldToolsOrder";
+import { poOrderedItemLabels } from "./fieldToolsOrderView";
 import {
   listMaterialOrderPosForJobs,
   materialOrderScopeLabel,
@@ -32,6 +33,12 @@ export type FieldToolsPoDispatchRow = {
   paperReceiptBy: string;
   /** Last-Min receipt already has paint gallons for the estimate. */
   paintEntered: boolean;
+  /** What this PO ordered, one line per item. */
+  orderedItems: string[];
+  /** Last-Min total submitted with the order. Blank for other orders. */
+  lastMinPlaced: string;
+  /** Last-Min invoice total. Blank for other orders. */
+  lastMinAmount: string;
 };
 
 type DispatchRecord = {
@@ -192,6 +199,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
           : {};
       const poNumbersOnOrder = byOrder.get(row.order.id) ?? [row.po_number];
       const jobCode = normalizeFieldToolsJobCode(row.order.job_number);
+      const vendorLabel = vendorFromOrder(payload, row.dispatch_type, row.po_number, poNumbersOnOrder) || row.to_email;
 
       return {
         dispatchId: row.id,
@@ -206,7 +214,7 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         submittedBy: row.order.submitted_by_name,
         dateNeeded: row.order.date_needed,
         submittedAt: row.order.created_at,
-        vendorLabel: vendorFromOrder(payload, row.dispatch_type, row.po_number, poNumbersOnOrder) || row.to_email,
+        vendorLabel,
         emailStatus: row.email_status,
         receivedField: row.received_field,
         completed: row.completed,
@@ -214,6 +222,9 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
         paperReceiptAt: row.order.paper_receipt_at ?? null,
         paperReceiptBy: row.order.paper_receipt_by ?? "",
         paintEntered: row.order.order_type === "last_min" && lastMinOrderHasPaint(payload),
+        orderedItems: poOrderedItemLabels(payload, row.order.order_type, row.dispatch_type, vendorLabel),
+        lastMinPlaced: row.order.order_type === "last_min" ? lastMinPlacedAmountText(payload) : "",
+        lastMinAmount: row.order.order_type === "last_min" ? lastMinAmountText(payload) : "",
       };
     });
 
@@ -242,6 +253,9 @@ export async function listPoDispatchesForJobs(lookups: PoJobLookup[]): Promise<F
       paperReceiptAt: null,
       paperReceiptBy: "",
       paintEntered: false,
+      orderedItems: [materialOrderScopeLabel(row.scope)],
+      lastMinPlaced: "",
+      lastMinAmount: "",
     };
   });
 

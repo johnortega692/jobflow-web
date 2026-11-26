@@ -291,3 +291,46 @@ export function orderHaulOffPhotoSrc(order: FieldToolsOrder): string | null {
 export function countCartGroups(groups: OrderCartGroup[]): number {
   return groups.reduce((n, g) => n + g.items.length, 0);
 }
+
+/** Line labels for one PO: quantity, name, and detail such as sheen. */
+export function poOrderedItemLabels(
+  payload: Record<string, unknown>,
+  orderType: FieldToolsOrder["order_type"],
+  dispatchType: string,
+  vendorLabel: string,
+): string[] {
+  const scope = resolvePoViewScope({ dispatchType, vendorLabel, payload });
+  const groups = buildOrderDetailGroups(
+    {
+      id: "",
+      job_number: "",
+      order_type: orderType,
+      phase: "",
+      submitted_by_name: "",
+      submitted_by_email: "",
+      crew_kit: "",
+      crew_count: 0,
+      site_contact: "",
+      notes: "",
+      delivery_type: "",
+      date_needed: null,
+      scopes: null,
+      materials: null,
+      paint: null,
+      payload,
+      status: "",
+      created_at: "",
+    },
+    scope,
+  );
+  const labels = groups.flatMap((group) =>
+    group.items.map((item) => {
+      const name = [item.name, item.detail].filter(Boolean).join(" · ");
+      const quantity = item.quantity.trim();
+      return quantity ? `${quantity} ${name}` : name;
+    }),
+  );
+  if (labels.length) return labels;
+  const notes = asString(payload.notes);
+  return notes ? [notes] : [];
+}

@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useAuth } from "../../contexts/AuthContext";
 import { LastMinReceiptsModal } from "../fieldTools/LastMinReceiptsModal";
 import { reloadProject } from "../../lib/fieldTrackerProject";
 import {
+  listFieldOrderTotals,
   listPoDispatchesForJobs,
+  parseLastMinAmount,
+  saveFieldOrderInvoice,
+  saveLastMinAmount,
   updatePoDispatchTracking,
+  type FieldOrderMoney,
   type FieldToolsPoDispatchRow,
 } from "../../lib/fieldToolsPoTracker";
+import { formatMaterialDollars } from "../../lib/materialOrderSpend";
 import { projectTradeJobIdentities } from "../../lib/jobInfo";
 import { supabase } from "../../lib/supabase";
 
@@ -14,6 +21,78 @@ type JobChoice = {
   jobNumber: string;
   jobName: string;
 };
+
+function formatPoDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+}
+
+function PoTotalField({
+  poNumber,
+  saved,
+  placed,
+  canEdit,
+  onSave,
+}: {
+  poNumber: string;
+  saved: string;
+  placed: string | null;
+  canEdit: boolean;
+  onSave: (amount: number) => Promise<string>;
+}) {
+  const [amount, setAmount] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = amount.trim() !== saved;
+
+  async function save() {
+    const value = parseLastMinAmount(amount);
+    if (value == null) {
+      setError("Enter the order total, like 119.63.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await onSave(value);
+      setAmount(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the order total.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="read-invoice-po-total">
+      <span>Order total</span>
+      {canEdit ? (
+        <>
+          <input
+            className="input"
+            inputMode="decimal"
+            value={amount}
+            placeholder="0.00"
+            aria-label={`Order total for ${poNumber}`}
+            disabled={busy}
+            onChange={(event) => {
+              setAmount(event.target.value);
+              setError(null);
+            }}
+          />
+          <button type="button" className="btn btn-small" disabled={busy || !dirty} onClick={() => void save()}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </>
+      ) : (
+        <strong>{saved ? `$${saved}` : "—"}</strong>
+      )}
+      {placed ? <span className="read-invoice-po-placed">Placed {placed}</span> : null}
+      {error ? <span className="read-invoice-po-total-error">{error}</span> : null}
+    </div>
+  );
+}
 
 export function InvoiceJobPos({
   projectId,
@@ -37,6 +116,9 @@ export function InvoiceJobPos({
   const [showAll, setShowAll] = useState(false);
   const [receipt, setReceipt] = useState<{ orderId: string; poNumber: string } | null>(null);
   const [tab, setTab] = useState<"catalog" | "pos">("catalog");
+  const [moneyByOrder, setMoneyByOrder] = useState<Map<string, FieldOrderMoney>>(() => new Map());
+  const [openPoId, setOpenPoId] = useState<string | null>(null);
+  const { isAdmin } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
@@ -76,11 +158,14 @@ export function InvoiceJobPos({
   useEffect(() => {
     if (!selectedId) {
       setRows([]);
+      setMoneyByOrder(new Map());
+      setOpenPoId(null);
       setLoading(false);
       setError(null);
       return;
     }
     let cancelled = false;
+    setOpenPoId(null);
     setShowAll(false);
     setLoading(true);
     setError(null);
@@ -96,7 +181,14 @@ export function InvoiceJobPos({
             ? [{ jobNumber: selected.jobNumber, contractLabel: "Paint" }]
             : [];
         const next = lookups.length ? await listPoDispatchesForJobs(lookups) : [];
-        if (!cancelled) setRows(next);
+        const jobNumbers = [...new Set([...lookups.map((lookup) => lookup.jobNumber), ...next.map((row) => row.jobNumber)])].filter(Boolean);
+        const totals = (
+          await Promise.all(jobNumbers.map((jobNumber) => listFieldOrderTotals(jobNumber).catch(() => [] as FieldOrderMoney[])))
+        ).flat();
+        if (!cancelled) {
+          setRows(next);
+          setMoneyByOrder(new Map(totals.map((money) => [money.orderId, money])));
+        }
       } catch (e) {
         if (!cancelled) {
           setRows([]);
@@ -229,6 +321,7 @@ export function InvoiceJobPos({
               </button>
             </div>
           ) : null}
+          {selected && shown.length > 0 ? <p className="read-invoice-po-hint muted small">Select a PO to see what was ordered.</p> : null}
           {error ? <p className="material-prices-error">{error}</p> : null}
           {!selected ? (
             <p className="read-invoice-tab-empty muted small">Search a job above. Received and Completed update that job’s POs.</p>
@@ -242,12 +335,96 @@ export function InvoiceJobPos({
           {shown.length > 0 ? (
             <div className="read-invoice-po-scroll">
               <ul className="read-invoice-po-list">
-                {shown.map((row) => (
-                  <li key={row.dispatchId}>
-                    <div className="read-invoice-po-main">
-                      <strong>{row.poNumber}</strong>
-                      <span>{row.vendorLabel || "—"}</span>
+                {shown.map((row) => {
+                  const orderedOn = formatPoDate(row.submittedAt);
+                  const money = moneyByOrder.get(row.orderId);
+                  const fieldTotal =
+                    row.orderType === "field_request" || row.orderType === "pm_order"
+                      ? {
+                          saved: money ? (money.invoice ?? money.placed).toFixed(2) : "",
+                          placed:
+                            money && money.invoice != null && money.invoice !== money.placed
+                              ? formatMaterialDollars(money.placed)
+                              : null,
+                        }
+                      : null;
+                  const lastMinTotal =
+                    row.orderType === "last_min"
+                      ? {
+                          saved: row.lastMinAmount,
+                          placed:
+                            row.lastMinPlaced && row.lastMinAmount && row.lastMinPlaced !== row.lastMinAmount
+                              ? `$${row.lastMinPlaced}`
+                              : null,
+                        }
+                      : null;
+                  const total = fieldTotal ?? lastMinTotal;
+                  const totalText = total?.saved
+                    ? Number.isFinite(Number(total.saved))
+                      ? formatMaterialDollars(Number(total.saved))
+                      : `$${total.saved}`
+                    : "";
+                  const expanded = openPoId === row.dispatchId;
+                  return (
+                  <li key={row.dispatchId} className={expanded ? "is-open" : undefined}>
+                    <button
+                      type="button"
+                      className="read-invoice-po-toggle"
+                      aria-expanded={expanded}
+                      onClick={() => setOpenPoId(expanded ? null : row.dispatchId)}
+                    >
+                      <span className="read-invoice-po-chevron" aria-hidden />
+                      <span className="read-invoice-po-summary">
+                        <strong>{row.poNumber}</strong>
+                        <small>{row.vendorLabel || "—"}</small>
+                      </span>
+                      <span className="read-invoice-po-summary-side">
+                        {orderedOn ? <span className="read-invoice-po-date">{orderedOn}</span> : null}
+                        {totalText ? <span className="read-invoice-po-summary-total">{totalText}</span> : null}
+                      </span>
+                    </button>
+                    {expanded ? (
+                    <div className="read-invoice-po-body">
+                    <div className="read-invoice-po-items">
+                      {row.orderedItems.length > 0 ? (
+                        row.orderedItems.map((item, index) => <p key={`${row.dispatchId}-${index}`}>{item}</p>)
+                      ) : (
+                        <p className="muted">No items listed</p>
+                      )}
                     </div>
+                    {total ? (
+                      <PoTotalField
+                        key={`${row.orderId}-${total.saved}`}
+                        poNumber={row.poNumber}
+                        saved={total.saved}
+                        placed={total.placed}
+                        canEdit={isAdmin}
+                        onSave={async (amount) => {
+                          if (row.orderType === "last_min") {
+                            const next = await saveLastMinAmount(row.orderId, amount);
+                            setRows((current) =>
+                              current.map((item) => (item.orderId === row.orderId ? { ...item, lastMinAmount: next } : item)),
+                            );
+                            return next;
+                          }
+                          const next = await saveFieldOrderInvoice(row.orderId, amount);
+                          const invoice = Number(next);
+                          setMoneyByOrder((current) => {
+                            const copy = new Map(current);
+                            const prev = copy.get(row.orderId);
+                            const invoiceAmount = Number.isFinite(invoice) ? invoice : amount;
+                            copy.set(
+                              row.orderId,
+                              prev
+                                ? { ...prev, invoice: invoiceAmount }
+                                : { orderId: row.orderId, placed: invoiceAmount, invoice: invoiceAmount, unpriced: 0 },
+                            );
+                            return copy;
+                          });
+                          return next;
+                        }}
+                      />
+                    ) : null}
                     <div className="read-invoice-po-actions">
                       <label className="read-invoice-po-check">
                         <input
@@ -275,8 +452,11 @@ export function InvoiceJobPos({
                         </button>
                       ) : null}
                     </div>
+                    </div>
+                    ) : null}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           ) : null}
