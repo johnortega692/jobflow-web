@@ -10,12 +10,16 @@ import {
   localIsoDate,
   shiftIsoDate,
   snoozeProjectNote,
+  toggleProjectNoteCor,
   toggleProjectNoteDone,
   type ProjectNote,
   type ProjectNoteSnooze,
   type ProjectNoteType,
 } from "../lib/projectNotes";
 import type { ProjectForm } from "../types/database";
+import { CorFlagButton } from "../components/notes/CorFlagButton";
+import { NoteBody, noteSubject } from "../components/notes/NoteBody";
+import { NoteInboxHint } from "../components/notes/NoteInboxHint";
 import { FollowUpHelp } from "../components/notes/FollowUpHelp";
 import "./NotesPage.css";
 
@@ -68,7 +72,7 @@ function sortNotes(rows: ProjectNote[], filter: NoteFilter): ProjectNote[] {
 }
 
 function noteLabel(body: string): string {
-  const trimmed = body.trim().replace(/\s+/g, " ");
+  const trimmed = noteSubject(body).replace(/\s+/g, " ");
   return trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
 }
 
@@ -97,7 +101,7 @@ function errorMessage(err: unknown): string {
 }
 
 export function NotesPage() {
-  const { projectId } = useOutletContext<Ctx>();
+  const { project, projectId } = useOutletContext<Ctx>();
   const customDateId = useId();
   const waitingId = useId();
   const [notes, setNotes] = useState<ProjectNote[]>([]);
@@ -105,6 +109,7 @@ export function NotesPage() {
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState<ProjectNoteType>("note");
   const [problem, setProblem] = useState(false);
+  const [cor, setCor] = useState(false);
   const [body, setBody] = useState("");
   const [waitingOn, setWaitingOn] = useState("");
   const [datePick, setDatePick] = useState<DatePick | null>(null);
@@ -179,11 +184,13 @@ export function NotesPage() {
         type: type === "follow_up" && problem ? "flag" : type,
         followUpDate: resolvedDate(),
         waitingOn,
+        cor,
       });
       setNotes((rows) => [created, ...rows]);
       setBody("");
       setWaitingOn("");
       setProblem(false);
+      setCor(false);
       setDatePick(null);
       setCustomDate("");
       if (!matchesFilter(created, filter)) setFilter("open");
@@ -239,6 +246,10 @@ export function NotesPage() {
             {saving ? "Adding…" : "Add"}
           </button>
         </div>
+        <div className="project-notes-meta">
+          <CorFlagButton on={cor} disabled={saving} onToggle={() => setCor((current) => !current)} />
+        </div>
+        <NoteInboxHint jobNumber={project.job_number} />
         {showSchedule ? (
           <div className="project-notes-meta">
             <button
@@ -375,12 +386,19 @@ export function NotesPage() {
                         />
                       </td>
                       <td data-col="type">
-                        <span className={`project-notes-pill project-notes-pill--${note.type}`}>
-                          {TYPE_LABEL[note.type]}
+                        <span className="project-notes-type">
+                          <span className={`project-notes-pill project-notes-pill--${note.type}`}>
+                            {TYPE_LABEL[note.type]}
+                          </span>
+                          <CorFlagButton
+                            on={note.cor}
+                            disabled={busy}
+                            onToggle={() => void withRow(note.id, () => toggleProjectNoteCor(note.id, !note.cor))}
+                          />
                         </span>
                       </td>
                       <td data-col="note">
-                        <div className="project-notes-body">{note.body}</div>
+                        <NoteBody body={note.body} />
                         <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}{note.updated_by_name?.trim() ? ` · Edited ${formatNoteStamp(note.updated_at)} · ${note.updated_by_name.trim()}` : ""}</div>
                       </td>
                       <td className="project-notes-waiting-cell" data-col="waiting">

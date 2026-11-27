@@ -113,6 +113,13 @@ export const STARTUP_CHECKLIST_CATALOG: StartupCatalogSeed[] = [
     defaultEnabled: true,
   },
   {
+    id: "submitted_for_approval",
+    group: "submittals_samples",
+    label: "Submitted for approval",
+    source: "manual",
+    defaultEnabled: true,
+  },
+  {
     id: "submit_brushouts",
     group: "submittals_samples",
     label: "Submit brushouts or wallcovering",
@@ -287,6 +294,7 @@ export function catalogSeedForId(id: string): StartupCatalogSeed | undefined {
 export const CUSTOM_GC_STARTUP_ITEM_IDS = [
   "product_data_submitted",
   "color_finish_schedule",
+  "submitted_for_approval",
   "submit_brushouts",
   "jhas_scopes",
   "crew_orientation",

@@ -18,6 +18,8 @@ export type ProjectNote = {
   updated_at: string;
   updated_by: string | null;
   updated_by_name: string | null;
+  /** Change order request. Open notes with this on show in Needs attention. */
+  cor: boolean;
 };
 
 export type AddProjectNoteInput = {
@@ -25,6 +27,7 @@ export type AddProjectNoteInput = {
   type: ProjectNoteType;
   followUpDate?: string | null;
   waitingOn?: string | null;
+  cor?: boolean;
 };
 
 export type UpdateProjectNotePatch = {
@@ -34,11 +37,20 @@ export type UpdateProjectNotePatch = {
   followUpDate?: string | null;
   waitingOn?: string | null;
   completedAt?: string | null;
+  cor?: boolean;
 };
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** When a note was written, without seconds. */
+/** Needs attention chip for an open COR note. */
+export function corAttentionLabel(body: string): string {
+  const trimmed = body.trim().replace(/\s+/g, " ");
+  if (!trimmed) return "COR";
+  const text = trimmed.length > 72 ? `${trimmed.slice(0, 69)}…` : trimmed;
+  return `COR · ${text}`;
+}
+
 export function formatNoteStamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -160,6 +172,7 @@ function mapNote(row: {
   updated_at: string;
   updated_by?: string | null;
   updated_by_name?: string | null;
+  cor?: boolean | null;
 }): ProjectNote {
   return {
     id: row.id,
@@ -175,6 +188,7 @@ function mapNote(row: {
     updated_at: row.updated_at,
     updated_by: row.updated_by ?? null,
     updated_by_name: row.updated_by_name?.trim() || null,
+    cor: row.cor === true,
   };
 }
 
@@ -292,6 +306,7 @@ export async function addProjectNote(projectId: string, input: AddProjectNoteInp
       type: input.type,
       follow_up_date: input.type === "note" ? null : cleanDate(input.followUpDate),
       waiting_on: input.type === "note" ? null : cleanWaitingOn(input.waitingOn),
+      cor: input.cor === true,
       created_by: userData.user?.id ?? null,
     })
     .select("*")
@@ -311,6 +326,7 @@ export async function updateProjectNote(id: string, patch: UpdateProjectNotePatc
     follow_up_date?: string | null;
     waiting_on?: string | null;
     completed_at?: string | null;
+    cor?: boolean;
   } = {};
   if (patch.body !== undefined) row.body = cleanBody(patch.body);
   if (patch.type !== undefined) row.type = patch.type;
@@ -318,6 +334,7 @@ export async function updateProjectNote(id: string, patch: UpdateProjectNotePatc
   if (patch.followUpDate !== undefined) row.follow_up_date = cleanDate(patch.followUpDate);
   if (patch.waitingOn !== undefined) row.waiting_on = cleanWaitingOn(patch.waitingOn);
   if (patch.completedAt !== undefined) row.completed_at = patch.completedAt;
+  if (patch.cor !== undefined) row.cor = patch.cor;
   const { resolveActivityUser } = await import("./projectActivity.js");
   const actor = await resolveActivityUser();
   const stamped = {
@@ -332,6 +349,38 @@ export async function updateProjectNote(id: string, patch: UpdateProjectNotePatc
   const note = mapNote(data);
   notifyProjectNotesChanged();
   return note;
+}
+
+/** Open notes marked as a change order request. */
+export async function listOpenCorNotes(projectId: string): Promise<ProjectNote[]> {
+  const { data, error } = await supabase
+    .from("project_notes")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("status", "open")
+    .eq("cor", true)
+    .order("created_at", { ascending: false });
+  fail(error);
+  return (data ?? []).map(mapNote);
+}
+
+/** How many open COR notes each project has. */
+export async function listOpenCorNoteCounts(): Promise<Map<string, number>> {
+  const { data, error } = await supabase
+    .from("project_notes")
+    .select("project_id")
+    .eq("status", "open")
+    .eq("cor", true);
+  fail(error);
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    counts.set(row.project_id, (counts.get(row.project_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export async function toggleProjectNoteCor(id: string, cor: boolean): Promise<ProjectNote> {
+  return updateProjectNote(id, { cor });
 }
 
 /** Mark done and stamp completed_at, or reopen and clear it. */

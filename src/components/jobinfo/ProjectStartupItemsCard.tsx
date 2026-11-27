@@ -134,20 +134,33 @@ export function ProjectStartupItemsCard({
   }, [focus, onFocusHandled]);
 
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const allDone = progress.total > 0 && progress.done === progress.total;
 
   return (
     <div className="job-startup-items-card stack">
       <div className="job-startup-items-head">
         <div className="row-between wrap gap">
           <h3 className="job-startup-stepper-title">Project startup</h3>
-          <span className="job-startup-stepper-count muted small">
+          <span className={`job-startup-stepper-count small${allDone ? " job-startup-stepper-count--done" : " muted"}`}>
             {progress.done}/{progress.total}
           </span>
         </div>
         <div className="job-startup-progress" aria-hidden>
-          <div className="job-startup-progress-bar" style={{ width: `${pct}%` }} />
+          <div
+            className={`job-startup-progress-bar${allDone ? " job-startup-progress-bar--done" : ""}`}
+            style={{ width: `${pct}%` }}
+          />
         </div>
       </div>
+
+      {allDone ? (
+        <p className="job-startup-complete" role="status">
+          <DashboardTablerIcon name="check" size={16} />
+          <span>
+            Startup complete — all {groups.length} group{groups.length === 1 ? "" : "s"} done
+          </span>
+        </p>
+      ) : null}
 
       <div className="job-startup-groups">
         {groups.map((group) => {
@@ -155,12 +168,16 @@ export function ProjectStartupItemsCard({
           const groupItems = itemsForGroup(items, group);
           const { done, total } = groupProgress(items, group);
           const open = expanded === group;
+          const complete = total > 0 && done === total;
 
           return (
-            <div key={group} className={`job-startup-group${open ? " job-startup-group--open" : ""}`}>
+            <div
+              key={group}
+              className={`job-startup-group${open ? " job-startup-group--open" : ""}${complete ? " job-startup-group--done" : ""}`}
+            >
               <button type="button" className="job-startup-group-row" onClick={() => setExpanded(open ? null : group)}>
-                <span className="job-startup-group-icon">
-                  <DashboardTablerIcon name={meta.icon} size={16} />
+                <span className={`job-startup-group-icon${complete ? " job-startup-group-icon--done" : ""}`}>
+                  <DashboardTablerIcon name={complete ? "circle-check" : meta.icon} size={16} />
                 </span>
                 <span className="job-startup-group-label">{meta.label}</span>
                 <span className={`job-startup-group-count ${groupCountClass(done, total)}`}>

@@ -1,6 +1,6 @@
 import type { PaintTrackerState } from "../types/fieldTracker";
 
-export type SubmittalPipelineTone = "default" | "revision" | "approved";
+export type SubmittalPipelineTone = "default" | "revision" | "approved" | "match" | "skipped";
 
 export type SubmittalPipelineStep = {
   id: string;
@@ -10,12 +10,15 @@ export type SubmittalPipelineStep = {
   tone: SubmittalPipelineTone;
   /** Shown beside Approved when the submittal never went through a revision. */
   badge?: string;
+  /** A standing tracker state, not a numbered pipeline step. */
+  status?: boolean;
 };
 
 type PipelineFlags = Pick<
   PaintTrackerState,
   "submittalOrdered" | "submittedForApproval" | "revision" | "approved"
->;
+> &
+  Partial<Pick<PaintTrackerState, "matchExisting" | "noPaint">>;
 
 function wholeRevision(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value ?? 0);
@@ -38,14 +41,33 @@ export function paintPackageRevisionNumber(data: unknown): number {
   return max;
 }
 
+function standingStatus(tracker: PipelineFlags): SubmittalPipelineStep | null {
+  if (tracker.noPaint && tracker.matchExisting) {
+    return { id: "match-existing", label: "Match Existing", done: false, current: false, tone: "match", status: true };
+  }
+  if (tracker.noPaint) {
+    return { id: "not-needed", label: "Not Needed", done: false, current: false, tone: "skipped", status: true };
+  }
+  const inPipeline =
+    tracker.submittalOrdered || tracker.submittedForApproval || tracker.revision || tracker.approved;
+  if (tracker.matchExisting && !inPipeline) {
+    return { id: "match-existing", label: "Match Existing", done: false, current: false, tone: "match", status: true };
+  }
+  return null;
+}
+
 /**
  * Ordered → Submitted → Revision N (only after a return) → Approved.
  * A first-pass approval never inserts a revision step.
+ * Match Existing and Not Needed replace the pipeline unless a submittal is already underway.
  */
 export function paintSubmittalPipelineSteps(
   tracker: PipelineFlags,
   revisionNumber = 0,
 ): SubmittalPipelineStep[] {
+  const standing = standingStatus(tracker);
+  if (standing) return [standing];
+
   const packageRev = wholeRevision(revisionNumber);
   const approved = tracker.approved;
   const revisionFlag = tracker.revision;

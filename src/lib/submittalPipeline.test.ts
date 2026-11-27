@@ -45,6 +45,28 @@ test("an approved revision stays in the chain without First pass", () => {
   assert.equal(steps.at(-1)?.badge, undefined);
 });
 
+test("match existing replaces the pipeline until a submittal starts", () => {
+  const idle = { submittalOrdered: false, submittedForApproval: false, revision: false, approved: false };
+  const matched = paintSubmittalPipelineSteps({ ...idle, matchExisting: true }, 0);
+  assert.deepEqual(labels(matched), ["Match Existing"]);
+  assert.equal(matched[0]?.status, true);
+
+  const both = paintSubmittalPipelineSteps({ ...waiting, matchExisting: true, noPaint: true }, 2);
+  assert.deepEqual(labels(both), ["Match Existing"]);
+
+  const underway = paintSubmittalPipelineSteps({ ...waiting, matchExisting: true }, 0);
+  assert.deepEqual(labels(underway), ["Ordered", "Submitted", "Approved"]);
+});
+
+test("not needed replaces the pipeline", () => {
+  const steps = paintSubmittalPipelineSteps(
+    { submittalOrdered: true, submittedForApproval: false, revision: false, approved: false, noPaint: true },
+    0,
+  );
+  assert.deepEqual(labels(steps), ["Not Needed"]);
+  assert.equal(steps[0]?.tone, "skipped");
+});
+
 test("a second round keeps Revision 1 done and Revision 2 current", () => {
   const steps = paintSubmittalPipelineSteps({ ...waiting, revision: true }, 2);
   assert.deepEqual(labels(steps), ["Ordered", "Submitted", "Revision 1", "Revision 2", "Approved"]);

@@ -101,6 +101,7 @@ export type Database = {
           job_address2: string | null;
           job_name: string;
           job_number: string;
+          job_number_key: string;
           muster_point: string;
           nearest_hospital: string;
           occupational_clinic: string;
@@ -628,6 +629,8 @@ export type Database = {
           updated_at: string;
           updated_by: string | null;
           updated_by_name: string | null;
+          cor: boolean;
+          email_message_id: string | null;
         };
         Insert: {
           id?: string;
@@ -643,6 +646,8 @@ export type Database = {
           updated_at?: string;
           updated_by?: string | null;
           updated_by_name?: string | null;
+          cor?: boolean;
+          email_message_id?: string | null;
         };
         Update: {
           id?: string;
@@ -658,6 +663,8 @@ export type Database = {
           updated_at?: string;
           updated_by?: string | null;
           updated_by_name?: string | null;
+          cor?: boolean;
+          email_message_id?: string | null;
         };
         Relationships: [
           {

@@ -52,6 +52,28 @@
   color: var(--danger);
 }
 
+.project-notes-cor-toggle--on,
+.project-notes-cor-toggle--on:hover {
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+
+.project-notes-type {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.note-inbox-hint {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .project-notes-dates {
   display: flex;
   flex-wrap: wrap;
@@ -128,6 +150,50 @@
 }
 
 .project-notes-body {
+  overflow-wrap: anywhere;
+}
+
+.project-notes-subject {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-notes-details {
+  margin-top: 0.28rem;
+}
+
+.project-notes-details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: fit-content;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.project-notes-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-notes-details summary::before {
+  content: "";
+  width: 0.35rem;
+  height: 0.35rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+
+.project-notes-details[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.project-notes-details-body {
+  margin-top: 0.35rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

@@ -20,6 +20,7 @@ import {
   type SundryLibraryPhoto,
 } from "../../lib/materialPrices";
 import { fileToCatalogImage } from "../../lib/catalogImage";
+import { InvoiceDriveQueue } from "./InvoiceDriveQueue";
 import { InvoiceJobPos } from "./InvoiceJobPos";
 import { InvoicePdfStamp } from "./InvoicePdfStamp";
 import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoicePaintTarget, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
@@ -134,6 +135,7 @@ export function MaterialPricesSettingsSection({
   const invoicePdfBytesRef = useRef<Uint8Array | null>(null);
   const [invoicePdfBytes, setInvoicePdfBytes] = useState<Uint8Array | null>(null);
   const [invoiceFileName, setInvoiceFileName] = useState("");
+  const [driveFileId, setDriveFileId] = useState<string | null>(null);
   const [invoiceDragOver, setInvoiceDragOver] = useState(false);
   const [invoiceReading, setInvoiceReading] = useState(false);
   const [invoice, setInvoice] = useState<ParsedInvoiceFile | null>(null);
@@ -889,6 +891,7 @@ export function MaterialPricesSettingsSection({
 
   function clearLoadedInvoice() {
     setInvoice(null);
+    setDriveFileId(null);
     clearInvoicePdf();
     setLinkQuery(null);
     setForcedMatch({});
@@ -897,8 +900,9 @@ export function MaterialPricesSettingsSection({
     setGallonLines({});
   }
 
-  function acceptInvoiceFile(file: File | null | undefined) {
+  function acceptInvoiceFile(file: File | null | undefined, fromDriveId: string | null = null) {
     if (!file || readOnly || invoiceReading) return;
+    setDriveFileId(fromDriveId);
     const pdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!pdf) {
       setError("Drop a PDF invoice.");
@@ -1185,6 +1189,12 @@ export function MaterialPricesSettingsSection({
           onDragLeave={onInvoiceDragLeave}
           onDrop={onInvoiceDrop}
         >
+          <InvoiceDriveQueue
+            disabled={readOnly || invoiceReading}
+            activeFileId={driveFileId}
+            onOpen={(file, fileId) => acceptInvoiceFile(file, fileId)}
+            onFinished={() => setDriveFileId(null)}
+          />
         {invoicePdfBytes ? (
           <div className="read-invoice-toolbar">
             <div className="read-invoice-toolbar-side">

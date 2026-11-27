@@ -54,7 +54,7 @@ import {
   jobInfoPatchFromProfilePm,
   shouldDefaultPmFromProfile,
 } from "../lib/icbiPmDefaults";
-import { listOpenProjectFollowUps, type OpenProjectFollowUp } from "../lib/projectNotes";
+import { listOpenCorNoteCounts, listOpenProjectFollowUps, type OpenProjectFollowUp } from "../lib/projectNotes";
 import { supabase } from "../lib/supabase";
 import { recordProjectActivity, resolveActivityUser } from "../lib/projectActivity";
 import { CUSTOM_GC_STARTUP_ITEM_IDS, catalogSeedForId } from "../config/projectStartupItemsCatalog";
@@ -106,6 +106,7 @@ export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [approvedBrushoutIds, setApprovedBrushoutIds] = useState<Set<string>>(new Set());
   const [openRfiCounts, setOpenRfiCounts] = useState<Map<string, number>>(new Map());
+  const [openCorCounts, setOpenCorCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -138,19 +139,20 @@ export function ProjectsPage() {
 
   const summaries = useMemo(() => {
     const base = computeProjectListSummaries(projects);
-    if (!openRfiCounts.size) return base;
+    if (!openRfiCounts.size && !openCorCounts.size) return base;
     const next = new Map(base);
     for (const [id, summary] of next) {
       const openRfiCount = openRfiCounts.get(id) ?? 0;
-      if (!openRfiCount) continue;
+      const corCount = openCorCounts.get(id) ?? 0;
+      if (!openRfiCount && !corCount) continue;
       next.set(id, {
         ...summary,
         openRfiCount,
-        attentionCount: summary.attentionCount + openRfiCount,
+        attentionCount: summary.attentionCount + openRfiCount + corCount,
       });
     }
     return next;
-  }, [projects, openRfiCounts]);
+  }, [projects, openRfiCounts, openCorCounts]);
 
   const openProjects = useMemo(
     () => projects.filter((project) => !doneIds.has(project.id)),
@@ -278,12 +280,13 @@ export function ProjectsPage() {
 
   async function loadProjects() {
     setLoading(true);
-    const [{ data, error: err }, doneRes, brushoutIds, , rfiRes, followUpsRes, weatherRes] = await Promise.all([
+    const [{ data, error: err }, doneRes, brushoutIds, , rfiRes, corCounts, followUpsRes, weatherRes] = await Promise.all([
       supabase.from("projects").select("*").order("updated_at", { ascending: false }),
       listDoneProjectIds(),
       listProjectIdsWithApprovedBrushouts().catch(() => new Set<string>()),
       loadDefaultStartupItems(),
       supabase.from("rfis").select("project_id, status"),
+      listOpenCorNoteCounts().catch(() => new Map<string, number>()),
       listOpenProjectFollowUps()
         .then((rows) => ({ rows, error: null as string | null }))
         .catch((err: unknown) => ({
@@ -312,6 +315,7 @@ export function ProjectsPage() {
       rfiCounts.set(projectId, (rfiCounts.get(projectId) ?? 0) + 1);
     }
     setOpenRfiCounts(rfiCounts);
+    setOpenCorCounts(corCounts);
     setFollowUps(followUpsRes.rows);
     setFollowUpsError(followUpsRes.error);
     const weather = new Map<string, ProjectWeatherRow>();

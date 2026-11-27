@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { SegmentedControl } from "../SegmentedControl";
 import { SnoozeButton } from "../../pages/NotesPage";
+import { CorFlagButton } from "../notes/CorFlagButton";
+import { NoteBody, noteSubject } from "../notes/NoteBody";
+import { NoteInboxHint } from "../notes/NoteInboxHint";
 import {
   addProjectNote,
   calendarDaysBetween,
@@ -9,6 +12,8 @@ import {
   listProjectNotes,
   localIsoDate,
   snoozeProjectNote,
+  subscribeProjectNotesChanged,
+  toggleProjectNoteCor,
   toggleProjectNoteDone,
   type ProjectNote,
   type ProjectNoteType,
@@ -38,7 +43,10 @@ const FILTERS: { id: NoteFilter; label: string }[] = [
 
 type Props = {
   projectId: string;
+  jobNumber?: string;
   onOpenCount?: (count: number) => void;
+  focusNoteId?: string | null;
+  onFocusHandled?: () => void;
 };
 
 function matchesFilter(note: ProjectNote, filter: NoteFilter): boolean {
@@ -48,7 +56,7 @@ function matchesFilter(note: ProjectNote, filter: NoteFilter): boolean {
 }
 
 function noteLabel(body: string): string {
-  const trimmed = body.trim().replace(/\s+/g, " ");
+  const trimmed = noteSubject(body).replace(/\s+/g, " ");
   return trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
 }
 
@@ -76,11 +84,12 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
 }
 
-export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
+export function DashboardProjectNotes({ projectId, jobNumber, onOpenCount, focusNoteId, onFocusHandled }: Props) {
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState<Extract<ProjectNoteType, "note" | "follow_up">>("note");
+  const [cor, setCor] = useState(false);
   const [body, setBody] = useState("");
   const [filter, setFilter] = useState<NoteFilter>("open");
   const [saving, setSaving] = useState(false);
@@ -108,6 +117,12 @@ export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
     };
   }, [projectId]);
 
+  useEffect(() => subscribeProjectNotesChanged(() => {
+    void listProjectNotes(projectId)
+      .then(setNotes)
+      .catch((err: unknown) => setError(errorMessage(err)));
+  }), [projectId]);
+
   const openCount = notes.filter((note) => note.status !== "done").length;
   useEffect(() => {
     onOpenCount?.(openCount);
@@ -123,7 +138,19 @@ export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
   );
 
   const filtered = notes.filter((note) => matchesFilter(note, filter));
-  const shown = filtered.slice(0, PREVIEW_LIMIT);
+  const preview = filtered.slice(0, PREVIEW_LIMIT);
+  const focused = focusNoteId ? notes.find((note) => note.id === focusNoteId) : undefined;
+  const shown = focused && !preview.some((note) => note.id === focused.id) ? [focused, ...preview] : preview;
+
+  useEffect(() => {
+    if (!focusNoteId || loading) return;
+    setFilter("open");
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(`dashboard-note-${focusNoteId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      onFocusHandled?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusNoteId, loading, notes, onFocusHandled]);
 
   async function onAdd(event: FormEvent) {
     event.preventDefault();
@@ -131,9 +158,10 @@ export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const created = await addProjectNote(projectId, { body, type });
+      const created = await addProjectNote(projectId, { body, type, cor });
       setNotes((rows) => [created, ...rows]);
       setBody("");
+      setCor(false);
       if (!matchesFilter(created, filter)) setFilter("open");
     } catch (err) {
       setError(errorMessage(err));
@@ -177,6 +205,8 @@ export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
         <button className="btn btn-primary" type="submit" disabled={saving || !body.trim()}>
           {saving ? "Adding…" : "Add"}
         </button>
+        <CorFlagButton on={cor} disabled={saving} onToggle={() => setCor((current) => !current)} />
+        {jobNumber ? <NoteInboxHint jobNumber={jobNumber} /> : null}
       </form>
 
       {error ? (
@@ -214,7 +244,11 @@ export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
             const done = note.status === "done";
             const canSnooze = !done && note.type !== "note";
             return (
-              <li key={note.id} className={`dashboard-notes-row${done ? " dashboard-notes-row--done" : ""}`}>
+              <li
+                key={note.id}
+                id={`dashboard-note-${note.id}`}
+                className={`dashboard-notes-row${done ? " dashboard-notes-row--done" : ""}${focusNoteId === note.id ? " dashboard-notes-row--focus" : ""}`}
+              >
                 <input
                   type="checkbox"
                   checked={done}
@@ -223,8 +257,13 @@ export function DashboardProjectNotes({ projectId, onOpenCount }: Props) {
                   onChange={() => void withRow(note.id, () => toggleProjectNoteDone(note.id, note.status))}
                 />
                 <span className={`project-notes-pill project-notes-pill--${note.type}`}>{TYPE_LABEL[note.type]}</span>
+                <CorFlagButton
+                  on={note.cor}
+                  disabled={busy}
+                  onToggle={() => void withRow(note.id, () => toggleProjectNoteCor(note.id, !note.cor))}
+                />
                 <div className="dashboard-notes-copy">
-                  <div className="project-notes-body">{note.body}</div>
+                  <NoteBody body={note.body} />
                   <div className="project-notes-stamp">{formatNoteStamp(note.created_at)}{note.updated_by_name?.trim() ? ` · Edited ${formatNoteStamp(note.updated_at)} · ${note.updated_by_name.trim()}` : ""}</div>
                 </div>
                 {pill ? (

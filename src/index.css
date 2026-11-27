@@ -280,6 +280,12 @@ label {
   background: var(--surface2);
 }
 
+.projects-nav-dropdown .projects-nav-item--accent,
+.projects-nav-dropdown .projects-nav-item--accent:hover,
+.projects-nav-dropdown .projects-nav-item--accent svg {
+  color: var(--accent);
+}
+
 .topnav-badge {
   display: inline-flex;
   align-items: center;
@@ -620,6 +626,16 @@ label {
 .project-mini-pipeline-dot--approved {
   border-color: var(--ok);
   background: var(--ok);
+}
+
+.project-mini-pipeline-dot--match {
+  border-color: #7ee0d4;
+  background: #7ee0d4;
+}
+
+.project-mini-pipeline-dot--skipped {
+  border-color: #c5ccd9;
+  background: #c5ccd9;
 }
 
 .project-mini-pipeline-dot--current {
@@ -3144,7 +3160,8 @@ th {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .project-sidebar {
+  .project-sidebar,
+  .project-nav-group-chevron {
     transition: none;
   }
 }
@@ -3158,7 +3175,8 @@ th {
 }
 
 .project-sidebar-admin {
-  padding: 0.35rem 0.35rem 0.15rem;
+  margin-top: auto;
+  padding: 0.85rem 0.35rem 0.15rem;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -3181,7 +3199,69 @@ th {
 }
 
 .project-nav-section + .project-nav-section {
-  margin-top: 1rem;
+  margin-top: 0.15rem;
+}
+
+.project-nav-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.38rem 0.45rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.project-nav-group:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.project-nav-group:focus {
+  outline: none;
+}
+
+.project-nav-group:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.project-nav-group-main {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.project-nav-group-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 150ms ease;
+}
+
+.project-nav-group-chevron--open {
+  transform: rotate(90deg);
+}
+
+.project-nav-group-count {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.project-nav-section--open .project-nav-section-links {
+  margin-top: 0.1rem;
+}
+
+.project-nav-section--open .project-nav-link {
+  padding-left: 1.15rem;
 }
 
 .project-nav-section-label {
@@ -3193,6 +3273,11 @@ th {
   text-transform: uppercase;
   color: var(--muted);
   opacity: 0.85;
+}
+
+.project-nav-group .project-nav-section-label {
+  margin: 0;
+  padding: 0;
 }
 
 .project-nav-section-links {
@@ -14585,6 +14670,29 @@ tr.budget-hours-pdf-hidden td {
   white-space: nowrap;
 }
 
+.job-header-submittal-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.job-header-submittal-status--match {
+  background: rgba(38, 166, 154, 0.16);
+  color: #7ee0d4;
+  border-color: rgba(38, 166, 154, 0.38);
+}
+
+.job-header-submittal-status--skipped {
+  background: rgba(90, 101, 124, 0.4);
+  color: #c5ccd9;
+  border-color: var(--border-strong);
+}
+
 .job-header-submittal-connector {
   flex: 1;
   height: 2px;
@@ -14951,6 +15059,11 @@ a.job-tracker-tab {
   border-top: 1px solid var(--border);
 }
 
+.dashboard-notes-row--focus {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-radius: 0.4rem;
+}
+
 .dashboard-notes-row input[type="checkbox"] {
   width: 1.05rem;
   height: 1.05rem;
@@ -15004,6 +15117,29 @@ a.job-tracker-tab {
   transition: width 0.2s ease;
 }
 
+.job-startup-progress-bar--done {
+  background: var(--ok);
+}
+
+.job-startup-stepper-count--done {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.job-startup-complete {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 .job-startup-groups {
   display: flex;
   flex-direction: column;
@@ -15029,9 +15165,22 @@ a.job-tracker-tab {
   background: var(--surface);
 }
 
+.job-startup-group--done .job-startup-group-row {
+  background: color-mix(in srgb, var(--ok) 10%, var(--surface2));
+  border-color: color-mix(in srgb, var(--ok) 32%, var(--border));
+}
+
+.job-startup-group--done .job-startup-group-row:hover {
+  background: color-mix(in srgb, var(--ok) 16%, var(--surface));
+}
+
 .job-startup-group-icon {
-  color: var(--accent);
+  color: var(--muted);
   display: inline-flex;
+}
+
+.job-startup-group-icon--done {
+  color: var(--ok);
 }
 
 .job-startup-group-label {
@@ -15044,12 +15193,17 @@ a.job-tracker-tab {
   font-weight: 700;
 }
 
+.job-startup-group-count--none {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .job-startup-group-count--partial {
-  color: #f0c96a;
+  color: var(--warn);
 }
 
 .job-startup-group-count--done {
-  color: #86efac;
+  color: var(--ok);
 }
 
 .job-startup-group-chevron {
@@ -22732,6 +22886,165 @@ td.billing-manpower-week-col--beyond-contract,
 .read-invoice-sheet.is-over .read-invoice-pdf-pages {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.read-invoice-drive {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface2) 55%, var(--bg));
+}
+
+.read-invoice-drive-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.read-invoice-drive-trigger.is-open .read-invoice-drive-chevron {
+  transform: rotate(180deg);
+}
+
+.read-invoice-drive-chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.read-invoice-drive-current {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.read-invoice-drive-panel {
+  inset: auto;
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.read-invoice-drive-panel:popover-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow: hidden;
+}
+
+.read-invoice-drive-panel-head,
+.read-invoice-drive-note,
+.read-invoice-drive-error {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.read-invoice-drive-panel-head,
+.read-invoice-drive-note {
+  color: var(--muted);
+}
+
+.read-invoice-drive-error {
+  color: var(--danger);
+}
+
+.read-invoice-drive-toggle {
+  margin-left: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.read-invoice-drive-list {
+  display: grid;
+  gap: 0.1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.read-invoice-drive-list li {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 8px;
+}
+
+.read-invoice-drive-list li:hover,
+.read-invoice-drive-list li.is-open {
+  background: var(--surface2);
+}
+
+.read-invoice-drive-check {
+  display: grid;
+  place-items: center;
+  padding-left: 0.4rem;
+  cursor: pointer;
+}
+
+.read-invoice-drive-check input {
+  margin: 0;
+  accent-color: var(--ok);
+}
+
+.read-invoice-drive-list button {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.82rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.read-invoice-drive-list li.is-open button {
+  color: var(--accent);
+}
+
+.read-invoice-drive-list button.is-checked {
+  color: var(--muted);
+}
+
+.read-invoice-drive-folder {
+  border-top: 1px solid var(--border);
+  padding-top: 0.35rem;
+}
+
+.read-invoice-drive-folder summary {
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.read-invoice-drive-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.read-invoice-drive-row input {
+  flex: 1;
+  min-width: 0;
 }
 
 .read-invoice-drop-stage {

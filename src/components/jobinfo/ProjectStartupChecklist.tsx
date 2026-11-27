@@ -1,6 +1,8 @@
-﻿import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { parseProjectDataBlob, projectHasWallcovering } from "../../lib/jobInfo";
 import { commitProjectUpdate, resolveActivityUser } from "../../lib/projectActivity";
+import { addDaysToTodayDisplay } from "../../lib/dateInputUtils";
+import { reloadProject, resolvePaintTracker, savePaintTrackerState } from "../../lib/fieldTrackerProject";
 import {
   defaultStartupChecklist,
   parseStartupChecklist,
@@ -21,7 +23,8 @@ import {
   type StartupItemsState,
 } from "../../lib/projectStartupItems";
 import { supabase } from "../../lib/supabase";
-import type { ProjectForm } from "../../types/database";
+import { parseProjectTradeData } from "../../types/tradeDocuments";
+import type { Json, ProjectForm } from "../../types/database";
 import { DashboardProjectNotes } from "./DashboardProjectNotes";
 import { ProjectStartupItemsCard } from "./ProjectStartupItemsCard";
 
@@ -34,8 +37,11 @@ type Props = {
   onOpenJobSetup: () => void;
   onConfigureStartup?: () => void;
   onActivity?: () => void;
+  onProjectUpdate?: (project: ProjectForm) => void;
   focus?: { group: StartupChecklistGroup; itemId: string } | null;
   onFocusHandled?: () => void;
+  noteFocus?: string | null;
+  onNoteFocusHandled?: () => void;
   refreshKey?: string | number;
 };
 
@@ -45,8 +51,11 @@ export function ProjectStartupChecklist({
   onOpenJobSetup,
   onConfigureStartup,
   onActivity,
+  onProjectUpdate,
   focus,
   onFocusHandled,
+  noteFocus,
+  onNoteFocusHandled,
   refreshKey = 0,
 }: Props) {
   const [checklist, setChecklist] = useState<StartupChecklistState>(() => defaultStartupChecklist());
@@ -107,6 +116,28 @@ export function ProjectStartupChecklist({
     setStartupItems(next);
     if (nextChecklist !== checklist) setChecklist(nextChecklist);
     setSavingId(itemId);
+
+    if (item.id === "submitted_for_approval") {
+      const trade = parseProjectTradeData(project.data as Json);
+      const tracker = resolvePaintTracker(trade);
+      const trackerErr = await savePaintTrackerState(
+        projectId,
+        complete
+          ? { ...tracker, submittedForApproval: true, followUp: addDaysToTodayDisplay(14) }
+          : { ...tracker, submittedForApproval: false },
+        complete ? "Submitted for approval" : "Submitted for approval cleared",
+      );
+      if (trackerErr) {
+        setStartupItems(startupItems);
+        if (nextChecklist !== checklist) setChecklist(checklist);
+        setError(trackerErr);
+        setSavingId(null);
+        return;
+      }
+      const updated = await reloadProject(projectId);
+      if (updated) onProjectUpdate?.(updated);
+    }
+
     const err = await commitProjectUpdate({
       projectId,
       mergeData:
@@ -133,7 +164,16 @@ export function ProjectStartupChecklist({
   const startupProgress = startupItemsProgress(startupItems);
   const startupComplete = startupProgress.total > 0 && startupProgress.done === startupProgress.total;
   const tabOrder: PanelTab[] = startupComplete ? ["notes", "startup"] : ["startup", "notes"];
-  const activeTab: PanelTab = focus ? "startup" : (manualTab ?? (startupComplete ? "notes" : "startup"));
+  const activeTab: PanelTab = noteFocus
+    ? "notes"
+    : focus
+      ? "startup"
+      : (manualTab ?? (startupComplete ? "notes" : "startup"));
+
+  useEffect(() => {
+    if (!noteFocus) return;
+    setManualTab("notes");
+  }, [noteFocus]);
 
   const rememberStartupFocus = useCallback(() => {
     setManualTab("startup");
@@ -142,6 +182,7 @@ export function ProjectStartupChecklist({
 
   function selectTab(next: PanelTab, focusTab = false) {
     setManualTab(next);
+    if (noteFocus) onNoteFocusHandled?.();
     if (focusTab) tabRefs.current[next]?.focus();
   }
 
@@ -230,7 +271,13 @@ export function ProjectStartupChecklist({
         aria-labelledby="dashboard-panel-tab-notes"
         hidden={activeTab !== "notes"}
       >
-        <DashboardProjectNotes projectId={projectId} onOpenCount={setOpenNoteCount} />
+        <DashboardProjectNotes
+          projectId={projectId}
+          jobNumber={project.job_number}
+          onOpenCount={setOpenNoteCount}
+          focusNoteId={noteFocus}
+          onFocusHandled={onNoteFocusHandled}
+        />
       </div>
     </section>
   );

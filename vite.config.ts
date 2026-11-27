@@ -7,6 +7,7 @@ import { createFindProductSheetsMiddleware } from "./server/findProductSheetsDev
 import { createRfiAssistMiddleware } from "./server/rfiAssistDev";
 import { createGoogleSheetsMiddleware } from "./server/googleSheetsDev";
 import { createSendVendorEmailMiddleware } from "./server/sendVendorEmailDev";
+import { createDriveFolderMiddleware } from "./server/driveFolderDev";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -24,6 +25,9 @@ export default defineConfig(({ mode }) => {
   }
   if (env.VITE_SUPABASE_ANON_KEY) {
     process.env.VITE_SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY;
+  }
+  if (env.GOOGLE_DRIVE_API_KEY) {
+    process.env.GOOGLE_DRIVE_API_KEY = env.GOOGLE_DRIVE_API_KEY;
   }
 
   return {
@@ -45,6 +49,7 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use(createFetchImageMiddleware());
           server.middlewares.use(createGoogleSheetsMiddleware());
           server.middlewares.use(createSendVendorEmailMiddleware());
+          server.middlewares.use(createDriveFolderMiddleware());
         },
       },
     ],

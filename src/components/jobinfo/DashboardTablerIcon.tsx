@@ -11,9 +11,10 @@ type IconName =
   | "receipt"
   | "cube"
   | "chevron-right"
-  | "chevron-down";
+  | "chevron-down"
+  | "circle-check";
 
-const PATHS: Record<IconName, string> = {
+const PATHS: Record<IconName, string | readonly string[]> = {
   user: "M8 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2",
   "hard-hat":
     "M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1 -1v-6a6 6 0 0 0 -12 0v6M12 9v-6m-4 6h8",
@@ -31,7 +32,13 @@ const PATHS: Record<IconName, string> = {
   cube: "M21 16.042v-8.084a2 2 0 0 0 -1 -1.732l-7 -4.042a2 2 0 0 0 -2 0l-7 4.042a2 2 0 0 0 -1 1.732v8.084a2 2 0 0 0 1 1.732l7 4.042a2 2 0 0 0 2 0l7 -4.042a2 2 0 0 0 1 -1.732",
   "chevron-right": "M9 6l6 6l-6 6",
   "chevron-down": "M6 9l6 6l6 -6",
+  "circle-check": ["M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0", "M9 12l2 2l4 -4"],
 };
+
+function iconPaths(name: IconName): readonly string[] {
+  const value = PATHS[name];
+  return typeof value === "string" ? [value] : value;
+}
 
 type Props = {
   name: IconName;
@@ -53,7 +60,9 @@ export function DashboardTablerIcon({ name, className, size = 16 }: Props) {
       strokeLinejoin="round"
       aria-hidden
     >
-      <path d={PATHS[name]} />
+      {iconPaths(name).map((d) => (
+        <path key={d} d={d} />
+      ))}
     </svg>
   );
 }

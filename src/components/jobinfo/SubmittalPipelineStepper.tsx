@@ -43,9 +43,19 @@ export function SubmittalPipelineStepper({ tracker, revisionNumber = 0 }: Props)
             role="listitem"
           >
             <div className="job-header-submittal-step-main">
-              <div className={stepNodeClass(step)}>{step.done ? <DashboardTablerIcon name="check" size={12} /> : index + 1}</div>
-              <span className={stepLabelClass(step)}>{step.label}</span>
-              {step.badge ? <span className="job-header-submittal-badge">{step.badge}</span> : null}
+              {step.status ? (
+                <span className={`job-header-submittal-status job-header-submittal-status--${step.tone}`}>
+                  {step.label}
+                </span>
+              ) : (
+                <>
+                  <div className={stepNodeClass(step)}>
+                    {step.done ? <DashboardTablerIcon name="check" size={12} /> : index + 1}
+                  </div>
+                  <span className={stepLabelClass(step)}>{step.label}</span>
+                  {step.badge ? <span className="job-header-submittal-badge">{step.badge}</span> : null}
+                </>
+              )}
             </div>
             {index < steps.length - 1 && (
               <div

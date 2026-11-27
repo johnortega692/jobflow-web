@@ -55,3 +55,6 @@ verify_jwt = false
 
 [functions.job-weather-refresh]
 verify_jwt = false
+
+[functions.inbound-note]
+verify_jwt = false

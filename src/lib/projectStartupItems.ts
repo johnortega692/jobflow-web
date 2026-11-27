@@ -377,14 +377,24 @@ export function withSubmitBrushoutsFromMaterialTracker(
       ? (project.data as Record<string, unknown>)
       : {};
   const trade = parseProjectTradeData(blob as Json);
+  const paintSubmitted = resolvePaintTracker(trade).submittedForApproval;
   const submitted =
-    resolvePaintTracker(trade).submittedForApproval ||
+    paintSubmitted ||
     resolveWcTracker(trade).submittedForApproval ||
     resolveWcTrackerLines(trade).some((line) => line.sentForApproval);
 
   return {
     ...state,
     items: state.items.map((item) => {
+      if (item.id === "submitted_for_approval") {
+        if (item.complete === paintSubmitted) return item;
+        return {
+          ...item,
+          complete: paintSubmitted,
+          completedBy: paintSubmitted ? item.completedBy ?? "Material Tracker" : null,
+          completedAt: paintSubmitted ? item.completedAt ?? new Date().toISOString() : null,
+        };
+      }
       if (item.id !== "submit_brushouts") return item;
       if (item.complete === submitted) return item;
       return {

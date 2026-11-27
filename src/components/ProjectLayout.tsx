@@ -17,6 +17,20 @@ import { supabase } from "../lib/supabase";
 import type { ProjectForm } from "../types/database";
 import { normalizeProject } from "../types/database";
 
+const DEFAULT_NAV_GROUP_ID = "documents";
+
+function sectionIdForModule(moduleId: string): string | null {
+  const section = PROJECT_NAV_SECTIONS.find(
+    (item) => item.label && item.modules.some((mod) => mod.id === moduleId),
+  );
+  return section?.id ?? null;
+}
+
+/** The page's group, or Documents when the page sits outside a group (Dashboard). */
+function openGroupForModule(moduleId: string): string {
+  return sectionIdForModule(moduleId) ?? DEFAULT_NAV_GROUP_ID;
+}
+
 function matchModule(pathname: string, base: string) {
   let active = PROJECT_MODULES[0];
   let bestLen = -1;
@@ -57,6 +71,11 @@ function ProjectLayoutShell() {
     } catch {
       return false;
     }
+  });
+  const [openGroupId, setOpenGroupId] = useState<string | null>(() => {
+    const basePath = projectId ? `/projects/${projectId}` : "";
+    const initial = basePath ? matchModule(location.pathname, basePath).activeModule : PROJECT_MODULES[0];
+    return openGroupForModule(initial.id);
   });
 
   function setNavCollapsedPersist(next: boolean) {
@@ -125,6 +144,14 @@ function ProjectLayoutShell() {
     setNavOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    setOpenGroupId(openGroupForModule(activeModule.id));
+  }, [activeModule.id]);
+
+  function toggleNavGroup(id: string) {
+    setOpenGroupId((current) => (current === id ? null : id));
+  }
+
   if (loading) return <p className="muted">Loading project…</p>;
   if (!project || !projectId) {
     return <p className="banner banner-error">{error ?? "Project not found"}</p>;
@@ -187,11 +214,37 @@ function ProjectLayoutShell() {
             const modules = section.modules.filter(showModule);
             if (!modules.length) return null;
             return (
-            <div key={section.id} className="project-nav-section">
-              {section.label && (
-                <p className="project-nav-section-label">{section.label}</p>
-              )}
-              <div className="project-nav-section-links">
+            <div key={section.id} className={`project-nav-section${section.label && openGroupId === section.id ? " project-nav-section--open" : ""}`}>
+              {section.label ? (
+                <button
+                  type="button"
+                  className="project-nav-group"
+                  aria-expanded={openGroupId === section.id}
+                  aria-controls={`project-nav-${section.id}`}
+                  onClick={() => toggleNavGroup(section.id)}
+                >
+                  <span className="project-nav-group-main">
+                    <svg
+                      className={`project-nav-group-chevron${openGroupId === section.id ? " project-nav-group-chevron--open" : ""}`}
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M9 6l6 6l-6 6" />
+                    </svg>
+                    <span className="project-nav-section-label">{section.label}</span>
+                  </span>
+                  <span className="project-nav-group-count">{modules.length}</span>
+                </button>
+              ) : null}
+              {!section.label || openGroupId === section.id ? (
+              <div className="project-nav-section-links" id={section.label ? `project-nav-${section.id}` : undefined}>
                 {modules.map((mod) => {
                   const modTo = mod.path ? `${base}/${mod.path}` : base;
                   return (
@@ -213,33 +266,34 @@ function ProjectLayoutShell() {
                   );
                 })}
               </div>
-              {section.id === "main" && !roleLoading && isAdmin ? (
-                <div className="project-sidebar-admin">
-                  {isDone ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm project-sidebar-reopen-btn"
-                      disabled={doneBusy}
-                      onClick={() => void onToggleCompleted(false)}
-                    >
-                      {doneBusy ? "Reopening…" : "Reopen project"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm project-sidebar-done-btn"
-                      disabled={doneBusy}
-                      onClick={() => void onToggleCompleted(true)}
-                    >
-                      {doneBusy ? "Marking…" : "Mark completed"}
-                    </button>
-                  )}
-                  {doneError ? <p className="project-sidebar-done-error">{doneError}</p> : null}
-                </div>
               ) : null}
             </div>
             );
           })}
+          {!roleLoading && isAdmin ? (
+            <div className="project-sidebar-admin">
+              {isDone ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm project-sidebar-reopen-btn"
+                  disabled={doneBusy}
+                  onClick={() => void onToggleCompleted(false)}
+                >
+                  {doneBusy ? "Reopening…" : "Reopen project"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm project-sidebar-done-btn"
+                  disabled={doneBusy}
+                  onClick={() => void onToggleCompleted(true)}
+                >
+                  {doneBusy ? "Marking…" : "Mark completed"}
+                </button>
+              )}
+              {doneError ? <p className="project-sidebar-done-error">{doneError}</p> : null}
+            </div>
+          ) : null}
         </nav>
       </aside>
 
@@ -270,7 +324,7 @@ function ProjectLayoutShell() {
         {isDone ? (
           <div className="banner banner-warn project-completed-banner" role="status">
             This project is marked completed. It is hidden from the active projects list, Manpower, and Field Tools
-            {!roleLoading && isAdmin ? " — admins can reopen it under Dashboard." : "."}
+            {!roleLoading && isAdmin ? " — admins can reopen it from the bottom of the project menu." : "."}
           </div>
         ) : null}
 

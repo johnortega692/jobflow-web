@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { addProjectNote, localIsoDate, shiftIsoDate, type ProjectNoteType } from "../../lib/projectNotes";
+import { CorFlagButton } from "../notes/CorFlagButton";
 import { JobSearchCombo, type JobSearchProject } from "./JobSearchCombo";
 
 type DatePick = "tomorrow" | "plus3" | "nextWeek" | "custom";
@@ -19,6 +20,7 @@ export function QuickNoteModal({ projects, onClose }: Props) {
   const [body, setBody] = useState("");
   const [followUp, setFollowUp] = useState(false);
   const [flag, setFlag] = useState(false);
+  const [cor, setCor] = useState(false);
   const [datePick, setDatePick] = useState<DatePick | null>(null);
   const [customDate, setCustomDate] = useState("");
   const [saving, setSaving] = useState(false);
@@ -90,6 +92,7 @@ export function QuickNoteModal({ projects, onClose }: Props) {
         body,
         type,
         followUpDate: type === "note" ? null : resolvedDate(),
+        cor,
       });
       onClose();
     } catch (err) {
@@ -140,7 +143,7 @@ export function QuickNoteModal({ projects, onClose }: Props) {
             disabled={saving}
           />
         </label>
-        <div className="quick-note-toggles" role="group" aria-label="Follow-up, flag, and SOV">
+        <div className="quick-note-toggles" role="group" aria-label="Follow-up, flag, COR, and SOV">
           <button
             type="button"
             className={`filter-chip${followUp ? " filter-chip--active" : ""}`}
@@ -160,6 +163,7 @@ export function QuickNoteModal({ projects, onClose }: Props) {
           >
             ⚑ Flag
           </button>
+          <CorFlagButton on={cor} disabled={saving} onToggle={() => setCor((current) => !current)} />
           <button
             type="button"
             className="filter-chip"

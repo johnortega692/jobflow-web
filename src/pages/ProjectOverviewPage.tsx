@@ -20,6 +20,7 @@ import {
   type AttentionItem,
 } from "../lib/projectDashboardSnapshot";
 import { loadDefaultStartupItems, type StartupChecklistGroup } from "../lib/projectStartupItems";
+import { corAttentionLabel, listOpenCorNotes, subscribeProjectNotesChanged, type ProjectNote } from "../lib/projectNotes";
 import type { Json, ProjectForm } from "../types/database";
 
 type Ctx = { project: ProjectForm; projectId: string; setProject: (p: ProjectForm) => void };
@@ -33,6 +34,8 @@ export function ProjectOverviewPage() {
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const [startupItems, setStartupItems] = useState(() => parseDashboardStartupItems(initial));
   const [startupFocus, setStartupFocus] = useState<{ group: StartupChecklistGroup; itemId: string } | null>(null);
+  const [noteFocus, setNoteFocus] = useState<string | null>(null);
+  const [corNotes, setCorNotes] = useState<ProjectNote[]>([]);
   const [brushoutsAdded, setBrushoutsAdded] = useState<boolean | null>(null);
   const [openRfis, setOpenRfis] = useState<{ id: string; rfi_number: string | null; subject: string | null }[]>([]);
 
@@ -87,6 +90,25 @@ export function ProjectOverviewPage() {
     };
   }, [projectId, activityRefreshKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    function loadCorNotes() {
+      void listOpenCorNotes(projectId)
+        .then((rows) => {
+          if (!cancelled) setCorNotes(rows);
+        })
+        .catch(() => {
+          if (!cancelled) setCorNotes([]);
+        });
+    }
+    loadCorNotes();
+    const unsubscribe = subscribeProjectNotesChanged(loadCorNotes);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [projectId]);
+
   const paintTracker = useMemo(() => resolveDashboardPaintTracker(project), [project]);
   const submittalStage = paintSubmittalStageLabel(paintTracker);
   const attentionItems = useMemo(() => {
@@ -100,8 +122,14 @@ export function ProjectOverviewPage() {
         rfiId: rfi.id,
       };
     });
-    return [...rfiItems, ...buildAttentionItems(project, startupItems)];
-  }, [openRfis, project, startupItems]);
+    const corItems: AttentionItem[] = corNotes.map((note) => ({
+      id: `cor-${note.id}`,
+      label: corAttentionLabel(note.body),
+      kind: "cor",
+      noteId: note.id,
+    }));
+    return [...corItems, ...rfiItems, ...buildAttentionItems(project, startupItems)];
+  }, [corNotes, openRfis, project, startupItems]);
   const jobSetupCounts = jobSetupStepCounts(project);
   const startupCounts = startupTaskCounts(startupItems);
 
@@ -129,8 +157,14 @@ export function ProjectOverviewPage() {
   }, []);
 
   const clearStartupFocus = useCallback(() => setStartupFocus(null), []);
+  const clearNoteFocus = useCallback(() => setNoteFocus(null), []);
 
   function onAttentionItem(item: AttentionItem) {
+    if (item.kind === "cor" && item.noteId) {
+      setNoteFocus(item.noteId);
+      startupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (item.kind === "rfi" && item.rfiId) {
       void navigate(`/projects/${projectId}/rfis/${item.rfiId}`);
       return;
@@ -218,8 +252,15 @@ export function ProjectOverviewPage() {
           onOpenJobSetup={() => openJobSetup("info")}
           onConfigureStartup={() => openJobSetup("startup")}
           onActivity={() => setActivityRefreshKey((k) => k + 1)}
+          onProjectUpdate={(next) => {
+            setProject(next);
+            setProjectCtx(next);
+            setStartupItems(parseDashboardStartupItems(next));
+          }}
           focus={startupFocus}
           onFocusHandled={clearStartupFocus}
+          noteFocus={noteFocus}
+          onNoteFocusHandled={clearNoteFocus}
           refreshKey={activityRefreshKey}
         />
       </div>

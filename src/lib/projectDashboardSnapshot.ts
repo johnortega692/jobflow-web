@@ -24,9 +24,10 @@ export {
 export type AttentionItem = {
   id: string;
   label: string;
-  kind: "setup" | "startup-item" | "rfi";
+  kind: "setup" | "startup-item" | "rfi" | "cor";
   itemId?: string;
   rfiId?: string;
+  noteId?: string;
   group?: StartupChecklistGroup;
   openJobSetup?: boolean;
   sortDays?: number;
