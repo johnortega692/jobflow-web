@@ -1,4 +1,4 @@
-import { isRainRelevant, type ExteriorWindowProject } from "./exteriorWorkWindow.ts";
+import { isRainRelevant, type ExteriorWindowProject } from "./exteriorWorkWindow.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 const STALE_MS = 45 * 60 * 1000;
