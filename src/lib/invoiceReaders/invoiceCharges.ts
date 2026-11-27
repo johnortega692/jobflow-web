@@ -1,4 +1,4 @@
-import type { InvoiceLine, PdfRow } from "./types.ts";
+import type { InvoiceLine, PdfRow } from "./types.js";
 
 export type InvoiceCharges = {
   total: number | null;
@@ -19,7 +19,7 @@ function moneyAmounts(text: string): number[] {
 }
 
 function isTotalRow(text: string): boolean {
-  if (/SUBTOTAL|TENDERED|PENDING/i.test(text)) return false;
+  if (/SUBTOTAL|TENDERED|PENDING|\bTAX\s+TOTAL\b|\bTOTAL\s+TAX\b|\bTOTAL\s+GROSS\b|\bTOTAL\s+(?:SHIPPING|HANDLING)\b/i.test(text)) return false;
   if (/\bTOTAL AMOUNT\b/i.test(text)) return true;
   if (/(^|\s)TOTAL(\s|$)/i.test(text)) return true;
   return /\bCHARGE\b/i.test(text) && /\$\s*\d/.test(text);
@@ -46,12 +46,14 @@ export function readInvoiceCharges(rows: PdfRow[]): InvoiceCharges {
   let total: number | null = null;
   for (const row of rows) {
     const text = rowText(row);
-    const printed = text.match(/([\d.]+)\s*%\s*SALES TAX/i) ?? text.match(/\bTAX:\s*([\d.]+)\s*%/i);
+    const printed = text.match(/([\d.]+)\s*%\s*SALES TAX/i)
+      ?? text.match(/\bTAX:\s*([\d.]+)\s*%/i)
+      ?? text.match(/\bTAX(?:\s+TOTAL)?\s*\(\s*([\d.]+)\s*%\s*\)/i);
     if (printed?.[1]) {
       printedPercent = Number(printed[1]);
       const last = moneyAmounts(text).at(-1);
       if (last != null && Math.abs(last - printedPercent) > 0.001) taxAmount = last;
-    } else if (/\bSALES TAX\b/i.test(text) && !/SUBTOTAL/i.test(text)) {
+    } else if (/\bTOTAL\s+TAX\b/i.test(text) || (/\bSALES TAX\b/i.test(text) && !/SUBTOTAL/i.test(text))) {
       const last = moneyAmounts(text).at(-1);
       if (last != null) taxAmount = last;
     }
@@ -65,6 +67,9 @@ export function readInvoiceCharges(rows: PdfRow[]): InvoiceCharges {
 }
 
 const PAINT_FEE = /PAINT\s*CARE|\bPAINT FEE\b/i;
+const ECO_FEE = /\bECO\s*FEE\b/i;
+const RECOVERY_FEE = /\bRECOVERY\s*FEE\b/i;
+const VENDOR_FEE = new RegExp(`${PAINT_FEE.source}|${ECO_FEE.source}|${RECOVERY_FEE.source}`, "i");
 
 /** Several paint-fee rows become one line whose price is their total. */
 export function combinePaintFeeLines(lines: InvoiceLine[]): InvoiceLine[] {
@@ -99,7 +104,12 @@ export function paintFeeAmount(lines: InvoiceLine[]): number {
 }
 
 export function ecoFeeAmount(lines: InvoiceLine[]): number {
-  return feeAmount(lines, /\bECO\s*FEE\b/i);
+  return feeAmount(lines, ECO_FEE);
+}
+
+/** Paint, eco, and recovery fees are one amount. One vendor invoice is open at a time. */
+export function invoiceFeeAmount(lines: InvoiceLine[]): number {
+  return feeAmount(lines, VENDOR_FEE);
 }
 
 function feeAmount(lines: InvoiceLine[], pattern: RegExp): number {

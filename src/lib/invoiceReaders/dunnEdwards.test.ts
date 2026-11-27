@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseDunnEdwards } from "./dunnEdwards.ts";
 import { foundationGridHtml, foundationGridText } from "./foundationGrid.ts";
-import { ecoFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
+import { ecoFeeAmount, invoiceFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
 import type { PdfRow } from "./types.ts";
 
 function row(parts: [number, string][]): PdfRow {
@@ -93,6 +93,7 @@ test("Dunn Edwards invoice keeps paint lines and fees for Foundation", () => {
   assert.equal(parsed.taxPercent, 9);
   assert.equal(paintFeeAmount(parsed.lines), 3);
   assert.equal(ecoFeeAmount(parsed.lines), 0);
+  assert.equal(invoiceFeeAmount(parsed.lines), 3);
   assert.deepEqual(
     parsed.lines.filter((line) => line.catalogItem !== false).map((line) => [line.section, line.productId, line.sheen, line.netPrice, line.color]),
     [

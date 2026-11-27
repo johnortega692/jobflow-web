@@ -4,6 +4,7 @@ import { CompletedProjectsSettingsSection } from "../components/settings/Complet
 import { StorageSettingsSection } from "../components/settings/StorageSettingsSection";
 import { BudgetCatalogSettingsSection } from "../components/settings/BudgetCatalogSettingsSection";
 import { MaterialPricesSettingsSection } from "../components/settings/MaterialPricesSettingsSection";
+import { ReadInvoicesSettingsSection } from "../components/settings/ReadInvoicesSettingsSection";
 import { DeliverySettingsSection } from "../components/settings/DeliverySettingsSection";
 import { GoogleSheetsSettingsSection } from "../components/settings/GoogleSheetsSettingsSection";
 import { PaintCatalogSettingsSection } from "../components/settings/PaintCatalogSettingsSection";
@@ -104,6 +105,10 @@ export function SettingsPage() {
   const onBudgetDirty = useCallback((dirty: boolean) => setTabDirty("budget", dirty), [setTabDirty]);
   const onMaterialPricesDirty = useCallback(
     (dirty: boolean) => setTabDirty("material-prices", dirty),
+    [setTabDirty],
+  );
+  const onReadInvoicesDirty = useCallback(
+    (dirty: boolean) => setTabDirty("read-invoices", dirty),
     [setTabDirty],
   );
   const onPaintCatalogDirty = useCallback(
@@ -878,6 +883,17 @@ export function SettingsPage() {
           readOnly={!isAdmin}
           onDirtyChange={isAdmin ? onMaterialPricesDirty : undefined}
           onBindActions={(actions) => bindSectionActions("material-prices", actions)}
+        />
+      </div>
+
+      <div
+        className={`card stack settings-form settings-tab-panel${activeTab === "read-invoices" ? "" : " settings-tab-panel--hidden"}`}
+        aria-hidden={activeTab !== "read-invoices"}
+      >
+        <ReadInvoicesSettingsSection
+          readOnly={!isAdmin}
+          onDirtyChange={isAdmin ? onReadInvoicesDirty : undefined}
+          onBindActions={(actions) => bindSectionActions("read-invoices", actions)}
         />
       </div>
 

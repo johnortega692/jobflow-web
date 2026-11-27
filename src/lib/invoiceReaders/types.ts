@@ -35,6 +35,7 @@ export type ParsedInvoice = {
 
 export type ParsedInvoiceFile = {
   vendorName: string;
+  readerId: string;
   invoices: ParsedInvoice[];
 };
 
@@ -46,6 +47,8 @@ export function invoiceProductCode(line: InvoiceLine): string {
 export type InvoiceReader = {
   id: string;
   vendorName: string;
+  /** Paint and sundry vendors compare lines with the catalog. Other vendors are stamp and print. */
+  catalog?: boolean;
   detect: (text: string) => boolean;
   parse: (rows: PdfRow[]) => ParsedInvoice | null;
 };

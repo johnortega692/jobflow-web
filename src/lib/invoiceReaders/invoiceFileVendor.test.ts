@@ -6,5 +6,7 @@ test("invoice file names pick Dunn Edwards, PPG, and Sherwin Williams", () => {
   assert.equal(invoiceReaderIdFromFileName("DE2007A13711.pdf"), "dunn-edwards");
   assert.equal(invoiceReaderIdFromFileName("PPC_Invoices_322551370000_p.pdf"), "ppg");
   assert.equal(invoiceReaderIdFromFileName("INVOICES-E_20261103093724_.pdf"), "sherwin-williams");
+  assert.equal(invoiceReaderIdFromFileName("BM Nat Acct Invoice 5500945061.PDF"), "benjamin-moore");
+  assert.equal(invoiceReaderIdFromFileName("WG-Invoice-INV1421614-20261110.23.08.08.pdf"), "wolf-gordon");
   assert.equal(invoiceReaderIdFromFileName("notes.pdf"), null);
 });

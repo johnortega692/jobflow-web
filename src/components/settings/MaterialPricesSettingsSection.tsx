@@ -25,9 +25,12 @@ import { InvoiceJobPos } from "./InvoiceJobPos";
 import { InvoicePdfStamp } from "./InvoicePdfStamp";
 import { compareInvoiceLines, invoiceComparePrice, invoiceLineKey, invoiceLinkChoices, invoicePaintTarget, type InvoiceCompareRow } from "../../lib/invoiceReaders/compareInvoice";
 import { invoiceReaderIdFromFileName } from "../../lib/invoiceReaders/invoiceFileVendor";
-import { invoiceReaderChoices, readVendorInvoice } from "../../lib/invoiceReaders/readInvoice";
+import { invoiceReaderChoicesWith, invoiceReaderUsesCatalog, readVendorInvoice, type InvoiceReaderChoice } from "../../lib/invoiceReaders/readInvoice";
+import { listCustomInvoiceReaders } from "../../lib/invoiceReaders/customInvoiceReaders";
+import { readCustomInvoice } from "../../lib/invoiceReaders/readInvoiceAi";
+import type { CustomInvoiceReader } from "../../lib/invoiceReaders/genericInvoice";
 import { foundationGridHtml, foundationGridText } from "../../lib/invoiceReaders/foundationGrid";
-import { ecoFeeAmount, formatTaxPercent, paintFeeAmount } from "../../lib/invoiceReaders/invoiceCharges";
+import { formatTaxPercent, invoiceFeeAmount } from "../../lib/invoiceReaders/invoiceCharges";
 import { invoiceProductCode, type InvoiceLine, type ParsedInvoice, type ParsedInvoiceFile } from "../../lib/invoiceReaders/types";
 import { useSettingsDirtyTracker } from "../../lib/useSettingsDirtyTracker";
 import type { SettingsSectionBindings } from "./settingsSectionTypes";
@@ -106,6 +109,160 @@ function draftChanged(item: MaterialPriceItem, draft: MaterialPriceDraft | undef
   return false;
 }
 
+function InvoiceVendorOptions({ choices }: { choices: InvoiceReaderChoice[] }) {
+  const paint = choices.filter((choice) => choice.catalog);
+  const others = choices.filter((choice) => !choice.catalog);
+  return (
+    <>
+      <optgroup label="Paint">
+        {paint.map((choice) => (
+          <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
+        ))}
+      </optgroup>
+      {others.length > 0 ? (
+        <optgroup label="Others">
+          {others.map((choice) => (
+            <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
+          ))}
+        </optgroup>
+      ) : null}
+    </>
+  );
+}
+
+function InvoiceCopyButton({ label, title, onCopy }: { label: string; title: string; onCopy: () => void }) {
+  return (
+    <button type="button" className="material-prices-copy" aria-label={label} title={title} onClick={onCopy}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+    </button>
+  );
+}
+
+function OtherInvoiceBill({
+  file,
+  onCopy,
+  onCopyFoundation,
+}: {
+  file: ParsedInvoiceFile;
+  onCopy: (text: string, label: string) => void;
+  onCopyFoundation: (entry: ParsedInvoice) => void;
+}) {
+  return (
+    <section className="material-prices-invoice" aria-label="Invoice lines">
+      <div className="material-prices-invoice-head material-prices-invoice-summary">
+        <strong>{file.vendorName} {file.invoices.length === 1 ? "invoice" : `${file.invoices.length} invoices`}</strong>
+        <span className="muted small">Stamp and print from the PDF. Prices are listed when the invoice prints them.</span>
+      </div>
+      <div className="material-prices-invoice-scroll">
+        <table className="material-prices-table material-prices-invoice-table">
+          <thead>
+            <tr>
+              <th>Invoice line</th>
+              <th className="material-prices-qty">Qty</th>
+              <th className="material-prices-money">Price</th>
+              <th className="material-prices-invoice-action" aria-hidden="true"><div className="material-prices-invoice-action-slot" /></th>
+            </tr>
+          </thead>
+          <tbody>
+            {file.invoices.map((entry) => (
+              <Fragment key={`${entry.invoiceNo}-${entry.firstPage}`}>
+                <tr className="material-prices-invoice-break">
+                  <td colSpan={4}>
+                    <div className="material-prices-invoice-break-row">
+                      <div>
+                        <div className="material-prices-invoice-id">
+                          <strong>{entry.invoiceNo ? `#${entry.invoiceNo}` : "Invoice"}</strong>
+                          {entry.invoiceNo ? (
+                            <InvoiceCopyButton
+                              label={`Copy invoice ${entry.invoiceNo}`}
+                              title="Copy invoice number"
+                              onCopy={() => onCopy(entry.invoiceNo, entry.invoiceNo)}
+                            />
+                          ) : null}
+                          <span className="muted small">{[entry.invoiceDate, invoicePageLabel(entry)].filter(Boolean).join(" · ")}</span>
+                        </div>
+                        <div className="material-prices-invoice-charges">
+                          <span>Total {entry.total == null ? "—" : `$${entry.total.toFixed(2)}`}</span>
+                          <span>Tax {entry.taxPercent == null ? "—" : formatTaxPercent(entry.taxPercent)}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn material-prices-foundation"
+                        aria-label={`Copy ${entry.invoiceNo ? `invoice ${entry.invoiceNo}` : "this invoice"} for Foundation`}
+                        title="Copy for Foundation"
+                        onClick={() => onCopyFoundation(entry)}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" aria-hidden="true">
+                          <rect width="200" height="200" fill="#000" />
+                          <path d="M100 50 L190 150 L150 150 L100 95 L50 150 L10 150 Z" fill="#FFC72C" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {entry.lines.map((line, index) => {
+                  const code = line.productId.trim();
+                  const qty = invoiceQtyText(line.qty);
+                  const price = line.netPrice.toFixed(2);
+                  return (
+                    <tr key={`${entry.invoiceNo}-${index}`}>
+                      <td className="material-prices-invoice-line">
+                        <div className="material-prices-copy-line">
+                          <div className="material-prices-name">{line.description}</div>
+                          <InvoiceCopyButton
+                            label={`Copy ${line.description}`}
+                            title="Copy description"
+                            onCopy={() => onCopy(line.description, line.description)}
+                          />
+                        </div>
+                        <div className="material-prices-invoice-sub">
+                          <span className="material-prices-invoice-sub-text">{[code, line.size, line.color].filter(Boolean).join(" · ")}</span>
+                          {code ? (
+                            <InvoiceCopyButton
+                              label={`Copy catalog ${code}`}
+                              title="Copy catalog number"
+                              onCopy={() => onCopy(code, code)}
+                            />
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="material-prices-qty">
+                        <span className="material-prices-money-copy">
+                          <strong>{qty}</strong>
+                          <InvoiceCopyButton
+                            label={`Copy quantity ${qty}`}
+                            title="Copy quantity"
+                            onCopy={() => onCopy(qty, qty)}
+                          />
+                        </span>
+                      </td>
+                      <td className="material-prices-money">
+                        <span className="material-prices-money-copy">
+                          <strong>${price}</strong>
+                          <InvoiceCopyButton
+                            label={`Copy price ${price}`}
+                            title="Copy price"
+                            onCopy={() => onCopy(price, `$${price}`)}
+                          />
+                        </span>
+                      </td>
+                      <td className="material-prices-invoice-action"><div className="material-prices-invoice-action-slot" /></td>
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function MaterialPricesSettingsSection({
   readOnly = false,
   onDirtyChange,
@@ -122,7 +279,7 @@ export function MaterialPricesSettingsSection({
   const [paste, setPaste] = useState("");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [invoiceReader, setInvoiceReader] = useState(
-    vendor === "Dunn Edwards" ? "dunn-edwards" : vendor === "PPG Paints" ? "ppg" : "sherwin-williams",
+    vendor === "Dunn Edwards" ? "dunn-edwards" : vendor === "PPG Paints" ? "ppg" : vendor === "Benjamin Moore" ? "benjamin-moore" : "sherwin-williams",
   );
   const [gallonLines, setGallonLines] = useState<Record<string, boolean>>({});
   const invoiceInputRef = useRef<HTMLInputElement>(null);
@@ -133,6 +290,19 @@ export function MaterialPricesSettingsSection({
   const [invoiceDragOver, setInvoiceDragOver] = useState(false);
   const [invoiceReading, setInvoiceReading] = useState(false);
   const [invoice, setInvoice] = useState<ParsedInvoiceFile | null>(null);
+  const [customReaders, setCustomReaders] = useState<CustomInvoiceReader[]>([]);
+  const readerChoices = useMemo(() => invoiceReaderChoicesWith(customReaders), [customReaders]);
+  useEffect(() => {
+    let cancelled = false;
+    listCustomInvoiceReaders()
+      .then((rows) => {
+        if (!cancelled) setCustomReaders(rows);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [stampJob, setStampJob] = useState("");
   const [stampActionsSlot, setStampActionsSlot] = useState<HTMLDivElement | null>(null);
   const invoiceSplitRef = useRef<HTMLDivElement>(null);
@@ -799,6 +969,7 @@ export function MaterialPricesSettingsSection({
       : []),
     [drafts, forcedMatch, gallonLines, invoice, items, sectionOverride, sheenChoice],
   );
+  const otherBill = Boolean(invoice && !invoiceReaderUsesCatalog(invoice.readerId, customReaders));
   const invoiceRows = invoiceGroups.flatMap((group) => group.rows);
   const invoiceMatchCount = invoiceRows.filter((row) => invoiceRowRole(row) === "matched").length;
   const invoiceDifferCount = invoiceRows.filter((row) => invoiceRowRole(row) === "differs").length;
@@ -926,8 +1097,8 @@ export function MaterialPricesSettingsSection({
 
   function applyInvoiceVendor(readerId: string) {
     setInvoiceReader(readerId);
-    const name = invoiceReaderChoices.find((choice) => choice.id === readerId)?.vendorName;
-    if (name) setVendor(name);
+    const name = readerChoices.find((choice) => choice.id === readerId)?.vendorName;
+    if (name && vendors.names.includes(name)) setVendor(name);
   }
 
   async function parseInvoiceBytes(bytes: Uint8Array, readerId: string) {
@@ -935,8 +1106,14 @@ export function MaterialPricesSettingsSection({
     setError(null);
     setStatus(null);
     try {
-      const parsed = await readVendorInvoice(bytes.slice().buffer, readerId);
+      const custom = customReaders.find((reader) => reader.id === readerId);
+      let parsed = custom
+        ? await readCustomInvoice(bytes, custom)
+        : await readVendorInvoice(bytes.slice().buffer, readerId, customReaders);
+      const sniffed = custom ? null : customReaders.find((reader) => reader.id === parsed.readerId);
+      if (sniffed) parsed = await readCustomInvoice(bytes, sniffed);
       setInvoice(parsed);
+      applyInvoiceVendor(parsed.readerId);
       setForcedMatch({});
       setSectionOverride({});
       setSheenChoice({});
@@ -958,7 +1135,7 @@ export function MaterialPricesSettingsSection({
   }
 
   async function readInvoice(file: File) {
-    const detected = invoiceReaderIdFromFileName(file.name);
+    const detected = invoiceReaderIdFromFileName(file.name, customReaders);
     const readerId = detected ?? invoiceReader;
     if (detected) applyInvoiceVendor(detected);
     try {
@@ -1302,9 +1479,7 @@ export function MaterialPricesSettingsSection({
                   void rereadLoadedInvoice(event.target.value);
                 }}
               >
-                {invoiceReaderChoices.map((choice) => (
-                  <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
-                ))}
+                <InvoiceVendorOptions choices={readerChoices} />
               </select>
               <span className="read-invoice-file-pill">
                 <svg className="read-invoice-file-pdf" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1356,16 +1531,14 @@ export function MaterialPricesSettingsSection({
                 </svg>
               </div>
               <h3>{invoiceDragOver ? "Drop the invoice PDF." : "Drop invoice PDF here"}</h3>
-              <p>The vendor is chosen from the file name. You can change it after the PDF loads.</p>
+              <p>The vendor is chosen from the file name or the invoice itself. You can change it after the PDF loads.</p>
               <select
                 value={invoiceReader}
                 aria-label="Invoice vendor"
                 disabled={readOnly || invoiceReading}
                 onChange={(event) => applyInvoiceVendor(event.target.value)}
               >
-                {invoiceReaderChoices.map((choice) => (
-                  <option key={choice.id} value={choice.id}>{choice.vendorName}</option>
-                ))}
+                <InvoiceVendorOptions choices={readerChoices} />
               </select>
               <button
                 type="button"
@@ -1424,9 +1597,15 @@ export function MaterialPricesSettingsSection({
         <InvoiceJobPos
           projectId={projectId}
           onJobChange={onInvoiceJob}
-          catalogNote={invoice ? `${invoiceDifferCount} differ · ${invoiceNewRows.length} new` : undefined}
+          catalogNote={invoice && !otherBill ? `${invoiceDifferCount} differ · ${invoiceNewRows.length} new` : undefined}
         >
-      {invoice ? (
+      {invoice && otherBill ? (
+        <OtherInvoiceBill
+          file={invoice}
+          onCopy={(text, label) => void copyText(text, label)}
+          onCopyFoundation={(entry) => void copyFoundation(entry)}
+        />
+      ) : invoice ? (
         <section className="material-prices-invoice" aria-label="Invoice comparison">
           <div className="material-prices-invoice-head material-prices-invoice-summary">
             <strong>{invoice.vendorName} {invoice.invoices.length === 1 ? "invoice" : `${invoice.invoices.length} invoices`}</strong>
@@ -1475,8 +1654,7 @@ export function MaterialPricesSettingsSection({
                             </div>
                             <div className="material-prices-invoice-charges">
                               <span>Total {group.invoice.total == null ? "—" : `$${group.invoice.total.toFixed(2)}`}</span>
-                              <span>Paint fee ${paintFeeAmount(group.invoice.lines).toFixed(2)}</span>
-                              <span>Eco fee ${ecoFeeAmount(group.invoice.lines).toFixed(2)}</span>
+                              <span>Fee ${invoiceFeeAmount(group.invoice.lines).toFixed(2)}</span>
                               <span>Tax {group.invoice.taxPercent == null ? "—" : formatTaxPercent(group.invoice.taxPercent)}</span>
                             </div>
                           </div>
@@ -1731,7 +1909,7 @@ export function MaterialPricesSettingsSection({
           </div>
         </section>
       ) : (
-        <p className="read-invoice-tab-empty muted small">Choose an invoice PDF to compare its lines with the catalog.</p>
+        <p className="read-invoice-tab-empty muted small">Choose an invoice PDF. Paint invoices compare with the catalog. Other vendors are ready to stamp and print.</p>
       )}
         </InvoiceJobPos>
         </div>

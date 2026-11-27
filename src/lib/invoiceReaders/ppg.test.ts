@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { foundationGridText } from "./foundationGrid.ts";
-import { ecoFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
+import { ecoFeeAmount, invoiceFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
 import { parsePpgPages } from "./ppg.ts";
 import type { PdfRow } from "./types.ts";
 
@@ -84,6 +84,7 @@ test("PPG invoice keeps each price, a gallon primer, and the eco fee", () => {
   assert.equal(invoice.taxPercent, 8.625);
   assert.equal(paintFeeAmount(invoice.lines), 0);
   assert.equal(ecoFeeAmount(invoice.lines), 1.95);
+  assert.equal(invoiceFeeAmount(invoice.lines), 1.95);
 
   const pasted = foundationGridText(invoice.lines);
   assert.match(pasted, /SXA110 GL STIX BONDING PRIMER IXP20771\t3\t\t88\.95/);

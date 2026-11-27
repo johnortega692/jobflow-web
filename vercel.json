@@ -1,5 +1,9 @@
 {
   "functions": {
+    "api/read-invoice.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
     "api/extract-paint.ts": {
       "memory": 1024,
       "maxDuration": 60

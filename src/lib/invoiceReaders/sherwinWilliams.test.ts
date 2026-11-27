@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compareInvoiceLines, invoiceComparePrice, invoiceLinkChoices } from "./compareInvoice.ts";
-import { ecoFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
+import { ecoFeeAmount, invoiceFeeAmount, paintFeeAmount } from "./invoiceCharges.ts";
 import { parseSherwinWilliams, parseSherwinWilliamsPages } from "./sherwinWilliams.ts";
 import type { PdfRow } from "./types.ts";
 import type { InvoiceCatalogItem } from "./compareInvoice.ts";
@@ -105,6 +105,7 @@ test("Sherwin Williams invoice lines keep net price after the line discount", ()
   assert.equal(parsed.taxPercent, 10);
   assert.equal(paintFeeAmount(parsed.lines), 0);
   assert.equal(ecoFeeAmount(parsed.lines), 0);
+  assert.equal(invoiceFeeAmount(parsed.lines), 0);
   assert.deepEqual(
     parsed.lines.map((line) => [line.section, line.productId || line.salesNumber, line.sheen, line.netPrice, line.color]),
     [
@@ -157,6 +158,7 @@ test("a Sherwin Williams paint fee stays on the bill and out of the catalog comp
   assert.equal(fee.qty, 1);
   assert.equal(fee.netPrice, 2.6);
   assert.equal(paintFeeAmount(parsed.lines), 2.6);
+  assert.equal(invoiceFeeAmount(parsed.lines), 2.6);
   assert.equal(parsed.taxPercent, 8.75);
   assert.equal(parsed.total, 1.41);
   const compared = compareInvoiceLines(parsed.lines, [], {}, "Sherwin Williams");
@@ -217,8 +219,8 @@ test("catalog compare matches a sundry code, suggests a close name, and leaves u
   assert.equal(rows[1]?.item?.id, "grid");
   assert.equal(rows[1]?.samePrice, true);
   assert.equal(rows[3]?.kind, "missing");
-  assert.equal(rows[4]?.kind, "missing");
-  assert.equal(rows[4]?.item, null);
+  assert.equal(rows[4]?.kind, "match");
+  assert.equal(rows[4]?.item?.id, "pail");
 });
 
 test("find item includes a product saved for all vendors and keeps that link", () => {
@@ -242,7 +244,7 @@ test("find item includes a product saved for all vendors and keeps that link", (
     section: "sundry" as const,
     sheen: null,
   };
-  assert.equal(compareInvoiceLines([line], [open], {}, "Sherwin Williams")[0]?.item, null);
+  assert.equal(compareInvoiceLines([line], [open], {}, "Sherwin Williams")[0]?.item?.id, "open");
   const linked = compareInvoiceLines([line], [open], {}, "Sherwin Williams", { ":0::124-2197": "open" });
   assert.equal(linked[0]?.item?.id, "open");
 });

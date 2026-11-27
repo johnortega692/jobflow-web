@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { createExtractGcScheduleMiddleware } from "./server/extractGcScheduleDev";
+import { createReadInvoiceMiddleware } from "./server/readInvoiceDev";
 import { createExtractPaintMiddleware } from "./server/extractPaintDev";
 import { createFetchImageMiddleware } from "./server/fetchImageDev";
 import { createFindProductSheetsMiddleware } from "./server/findProductSheetsDev";
@@ -42,6 +43,7 @@ export default defineConfig(({ mode }) => {
       {
         name: "extract-paint-api",
         configureServer(server) {
+          server.middlewares.use(createReadInvoiceMiddleware());
           server.middlewares.use(createExtractPaintMiddleware());
           server.middlewares.use(createExtractGcScheduleMiddleware());
           server.middlewares.use(createRfiAssistMiddleware());
