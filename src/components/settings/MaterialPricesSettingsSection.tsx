@@ -598,22 +598,6 @@ export function MaterialPricesSettingsSection({
     setStatus(null);
   }
 
-  function setPaintPrice(item: MaterialPriceItem, price: string) {
-    setDrafts((current) => {
-      const draft = current[item.id] ?? draftFromItem(item);
-      const keys = new Set<string>();
-      for (const sheen of [...item.sheens, ...Object.keys(item.sheenCosts), ...Object.keys(draft.sheenCosts)]) {
-        if (sheen.trim()) keys.add(sheen);
-      }
-      if (keys.size === 0) {
-        for (const sheen of PAINT_PRICE_COLUMNS) keys.add(sheen);
-      }
-      const sheenCosts = { ...draft.sheenCosts };
-      for (const sheen of keys) sheenCosts[sheen] = price;
-      return { ...current, [item.id]: { ...draft, sheenCosts } };
-    });
-  }
-
   function refreshSundryCategories() {
     void listSundryCategories().then(setSundryCategories).catch(() => undefined);
   }
@@ -1032,7 +1016,12 @@ export function MaterialPricesSettingsSection({
   function editLinkedRow(row: InvoiceCompareRow, byGallon: boolean) {
     if (!row.item || readOnly || linkedSaving) return;
     const price = invoiceComparePrice(row.line, byGallon).toFixed(2);
-    openLinkedEditor(row.item, price, row.sheenKey ?? "", row.line.description);
+    openLinkedEditor(
+      { ...row.item, nickname: row.item.nickname ?? "" },
+      price,
+      row.sheenKey ?? "",
+      row.line.description,
+    );
   }
 
   async function saveLinkedEdit(event: FormEvent) {
@@ -1157,6 +1146,7 @@ export function MaterialPricesSettingsSection({
       }]);
       const saved: MaterialPriceItem = {
         ...item,
+        nickname: item.nickname ?? "",
         unitCost: item.section === "sundry" ? price : item.unitCost,
         sheenCosts: item.section === "paint_product" ? sheenCosts : item.sheenCosts,
       };
