@@ -112,12 +112,12 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { runTrackerEmailCron } = await import("../src/lib/trackerEmailCronCore.js");
-    const { runPinLockoutNotify } = await import("../src/lib/pinLockoutNotifyCore.js");
     const slots = await parseSlots(req);
     if (!slots.length) {
       return res.status(200).json({ ok: true, skipped: "outside_send_hour" });
     }
+    const { runTrackerEmailCron } = await import("../src/lib/trackerEmailCronCore.js");
+    const { runPinLockoutNotify } = await import("../src/lib/pinLockoutNotifyCore.js");
     const results: CronRunResult[] = [];
     for (const slot of slots) {
       results.push(await runTrackerEmailCron(slot));
