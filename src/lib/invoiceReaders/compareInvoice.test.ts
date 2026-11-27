@@ -47,6 +47,29 @@ test("a shorter invoice stock number still finds the catalog product id", () => 
   assert.equal(rows[0]?.item?.id, "three");
 });
 
+test("an all-vendor catalog item matches by product id on another vendor's invoice", () => {
+  const raven = item({
+    id: "raven",
+    name: "LG RAVEN NTRL BLACK 100PK",
+    productId: "SSS66518",
+    akas: ["SU 66518 LG RAVEN NTRL BLACK 100PK"],
+    vendorNames: [],
+  });
+  const otherVendor = item({
+    id: "other",
+    name: "LG RAVEN NTRL BLACK 100PK",
+    productId: "SSS66518",
+    vendorNames: ["Dunn Edwards"],
+  });
+  const rows = compareInvoiceLines(
+    [line({ productId: "SSS66518", description: "SU 66518 LG RAVEN NTRL BLACK 100PK" })],
+    [otherVendor, raven],
+    {},
+    "PPG Paints",
+  );
+  assert.equal(rows[0]?.item?.id, "raven");
+});
+
 test("an also-known-as name matches the invoice wording", () => {
   const named = item({
     id: "aka",

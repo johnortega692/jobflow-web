@@ -96,7 +96,7 @@ function vendorKey(name: string): string {
 }
 
 function inInvoiceCatalog(item: InvoiceCatalogItem, vendorName: string): boolean {
-  return vendorHit(item, vendorName);
+  return linkableItem(item, vendorName);
 }
 
 function linkableItem(item: InvoiceCatalogItem, vendorName: string): boolean {
