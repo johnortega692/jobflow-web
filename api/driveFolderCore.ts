@@ -1,4 +1,4 @@
-import { driveFolderId, folderNeedsAccess, parseDriveFolderPage, type DriveFolderFile } from "../src/lib/driveFolder.js";
+import { driveFolderId, folderNeedsAccess, parseDriveFolderPage, parseEmbeddedFolder, type DriveFolderFile } from "../src/lib/driveFolder.js";
 
 const MAX_PDF_BYTES = 20_000_000;
 
@@ -11,17 +11,26 @@ export async function listSharedDrivePdfs(folder: string): Promise<DriveFolderFi
 }
 
 async function listPublicFolder(id: string): Promise<DriveFolderFile[]> {
-  const response = await fetch(`https://drive.google.com/drive/folders/${encodeURIComponent(id)}?usp=sharing`, {
+  const embedded = await readFolderPage(`https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(id)}`);
+  if (embedded.ok && !folderNeedsAccess(embedded.html)) {
+    const files = parseEmbeddedFolder(embedded.html);
+    if (files.length) return files;
+  }
+  const page = await readFolderPage(`https://drive.google.com/drive/folders/${encodeURIComponent(id)}?usp=sharing`);
+  if (!page.ok || folderNeedsAccess(page.html) || folderNeedsAccess(embedded.html)) {
+    throw new Error("Share that folder as Anyone with the link can view.");
+  }
+  const files = parseDriveFolderPage(page.html);
+  if (!files.length) throw new Error("No PDFs are waiting in that folder.");
+  return files;
+}
+
+async function readFolderPage(url: string): Promise<{ ok: boolean; html: string }> {
+  const response = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" },
     redirect: "follow",
   });
-  const html = await response.text();
-  if (!response.ok || folderNeedsAccess(html)) {
-    throw new Error("Share that folder as Anyone with the link can view.");
-  }
-  const files = parseDriveFolderPage(html);
-  if (!files.length) throw new Error("No PDFs are waiting in that folder.");
-  return files;
+  return { ok: response.ok, html: await response.text() };
 }
 
 export async function downloadSharedDrivePdf(fileId: string): Promise<Uint8Array> {

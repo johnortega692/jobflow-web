@@ -7,6 +7,7 @@ export type InvoiceCatalogItem = {
   name: string;
   productId: string;
   akas: string[];
+  nickname?: string;
   unitCost: number | null;
   sheenCosts: Record<string, number>;
   sheens: string[];
@@ -57,14 +58,28 @@ function normId(value: string): string {
 function tokens(value: string): string[] {
   const cleaned = value
     .toUpperCase()
+    .replace(/½/g, ".5")
+    .replace(/¼/g, ".25")
     .replace(/\b(SEMI[-\s]?GLOSS|S\/G|EGGSHELL|SATIN|PRIMER|GLOSS|FLAT|MATTE|VELVET|SG|EG|FL|GL|PR|SAT)\b/g, " ");
   const out: string[] = [];
-  for (const token of cleaned.split(/[^A-Z0-9]+/)) {
+  for (const token of cleaned.split(/[^A-Z0-9.]+/)) {
     if (token.length < 2 || NAME_STOP.has(token)) continue;
     const gallons = token.match(/^(\d+)G(?:AL(?:LON)?)?$/);
     out.push(gallons ? `${gallons[1]}GAL` : token);
   }
+  for (const match of cleaned.matchAll(/(\d+(?:\.\d+)?)\s*(?:"|''|IN(?:CH(?:ES)?)?)(?!\w)/g)) {
+    const size = match[1]?.replace(".", "PT");
+    if (size) out.push(`${size}IN`);
+  }
   return out;
+}
+
+function idsMatch(lineId: string, itemId: string): boolean {
+  if (!lineId || !itemId || lineId.length < 3 || itemId.length < 3) return false;
+  if (lineId === itemId) return true;
+  const shorter = lineId.length <= itemId.length ? lineId : itemId;
+  const longer = shorter === lineId ? itemId : lineId;
+  return shorter.length >= 6 && longer.includes(shorter);
 }
 
 function jaccard(a: string[], b: string[]): number {
@@ -169,12 +184,12 @@ function rank(line: InvoiceLine, item: InvoiceCatalogItem, vendorName: string): 
   if (item.section !== line.section) return 0;
   const lineIds = [normId(line.productId), normId(line.salesNumber)].filter((id) => id.length >= 3);
   const itemId = normId(item.productId);
-  if (itemId && lineIds.includes(itemId)) return 100;
+  if (itemId && lineIds.some((id) => idsMatch(id, itemId))) return 100;
   const described = new Set(tokens(`${line.description} ${line.productId}`));
   if (itemId.length >= 3 && described.has(itemId.toUpperCase())) return 92;
   const lineFold = fold(line.description);
   let score = 0;
-  for (const name of [item.name, ...(item.akas ?? [])]) {
+  for (const name of [item.name, item.nickname ?? "", ...(item.akas ?? [])]) {
     if (lineFold && fold(name) === lineFold) return 100;
     score = Math.max(score, jaccard(tokens(line.description), tokens(name)));
   }

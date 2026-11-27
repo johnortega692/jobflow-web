@@ -22721,6 +22721,22 @@ td.billing-manpower-week-col--beyond-contract,
   flex: 0 0 auto;
 }
 
+.read-invoice-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.read-invoice-title-row .read-invoice-drive {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .app-shell:has(.read-invoice-page) {
   height: 100vh;
   height: 100dvh;
@@ -22746,7 +22762,7 @@ td.billing-manpower-week-col--beyond-contract,
 .read-invoice-page .material-prices-invoice-pane.read-invoice-workspace {
   flex: 1;
   min-height: 0;
-  height: 100%;
+  height: auto;
   align-items: stretch;
 }
 
@@ -24343,6 +24359,13 @@ td.billing-manpower-week-col--beyond-contract,
   font-variant-numeric: tabular-nums;
 }
 
+.material-prices-sku-input {
+  width: 100%;
+  max-width: 11rem;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+}
+
 .material-prices-changed {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -24817,22 +24840,36 @@ td.billing-manpower-week-col--beyond-contract,
   position: fixed;
   z-index: 260;
   display: grid;
-  min-width: 11.5rem;
-  max-width: 18rem;
+  min-width: 16.5rem;
+  max-width: 20rem;
   margin: 0;
-  padding: 0.3rem;
+  padding: 0.35rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
+.material-prices-menu-label {
+  padding: 0.4rem 0.55rem 0.15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.material-prices-menu button + .material-prices-menu-label {
+  margin-top: 0.2rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
 .material-prices-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   width: 100%;
   margin: 0;
-  padding: 0.45rem 0.6rem;
-  border: 0;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--text);
@@ -24841,8 +24878,23 @@ td.billing-manpower-week-col--beyond-contract,
   cursor: pointer;
 }
 
-.material-prices-menu button:hover:not(:disabled) {
-  background: var(--surface2);
+.material-prices-menu button:hover:not(:disabled),
+.material-prices-menu button:focus-visible {
+  border-color: var(--accent);
+  background: transparent;
+}
+
+.material-prices-menu-hint {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.material-prices-menu-check {
+  width: 0.85rem;
+  flex: 0 0 0.85rem;
+  color: var(--ok);
+  font-weight: 700;
 }
 
 .material-prices-menu button:disabled {

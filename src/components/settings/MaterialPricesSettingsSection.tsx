@@ -83,13 +83,6 @@ function invoicePageLabel(invoice: ParsedInvoice): string {
   return `Pages ${invoice.firstPage}–${invoice.lastPage} of ${invoice.pageCount}`;
 }
 
-function knownAlias(item: { name: string; akas?: string[] }, alias: string): boolean {
-  const key = alias.trim().toLowerCase();
-  if (!key) return true;
-  if (item.name.trim().toLowerCase() === key) return true;
-  return (item.akas ?? []).some((name) => name.trim().toLowerCase() === key);
-}
-
 function sheenField(costs: Record<string, string>, label: string): string | null {
   const want = foldSheen(label);
   return Object.keys(costs).find((key) => foldSheen(key) === want) ?? null;
@@ -103,6 +96,7 @@ function itemMatchesVendor(item: MaterialPriceItem, vendor: string): boolean {
 
 function draftChanged(item: MaterialPriceItem, draft: MaterialPriceDraft | undefined): boolean {
   if (!draft) return false;
+  if (draft.productId.trim() !== item.productId.trim()) return true;
   if (item.section === "sundry") return draft.unitCost.trim() !== moneyInput(item.unitCost);
   const saved = draftFromItem(item).sheenCosts;
   const keys = new Set([...Object.keys(saved), ...Object.keys(draft.sheenCosts)]);
@@ -235,6 +229,9 @@ export function MaterialPricesSettingsSection({
   const [akaText, setAkaText] = useState("");
   const [akaSaving, setAkaSaving] = useState(false);
   const [infoItem, setInfoItem] = useState<MaterialPriceItem | null>(null);
+  const [linkedEdit, setLinkedEdit] = useState<{ id: string; name: string; productId: string; akas: string; price: string; sheen: string } | null>(null);
+  const [linkedSaving, setLinkedSaving] = useState(false);
+  const [priceSavingKey, setPriceSavingKey] = useState<string | null>(null);
   const [actionMenu, setActionMenu] = useState<{ key: string; top: number; right: number } | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const ready = !loading && !readOnly;
@@ -251,18 +248,19 @@ export function MaterialPricesSettingsSection({
   }, [drafts, markSaved, ready, saveGeneration, taxPercent]);
 
   useEffect(() => {
-    if (!addOpen && !akaItem && !infoItem && !linkQuery && !actionMenu) return;
+    if (!addOpen && !akaItem && !infoItem && !linkQuery && !linkedEdit && !actionMenu) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key !== "Escape" || adding || akaSaving) return;
+      if (event.key !== "Escape" || adding || akaSaving || linkedSaving) return;
       if (actionMenu) setActionMenu(null);
       else if (linkQuery) setLinkQuery(null);
+      else if (linkedEdit) setLinkedEdit(null);
       else if (infoItem) setInfoItem(null);
       else if (akaItem) setAkaItem(null);
       else setAddOpen(false);
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [actionMenu, addOpen, adding, akaItem, akaSaving, infoItem, linkQuery]);
+  }, [actionMenu, addOpen, adding, akaItem, akaSaving, infoItem, linkQuery, linkedEdit, linkedSaving]);
 
   useLayoutEffect(() => {
     const menu = actionMenuRef.current;
@@ -451,7 +449,7 @@ export function MaterialPricesSettingsSection({
     const changes = items.filter((item) => draftChanged(item, drafts[item.id]));
     const taxChanged = nextTax !== Number(savedTax);
     if (changes.length === 0 && !taxChanged) return true;
-    const rows: { id: string; section: MaterialPriceSection; unitCost: number | null; sheenCosts: Record<string, number> }[] = [];
+    const rows: { id: string; section: MaterialPriceSection; unitCost: number | null; sheenCosts: Record<string, number>; productId: string }[] = [];
     for (const item of changes) {
       const draft = drafts[item.id] ?? draftFromItem(item);
       if (item.section === "sundry") {
@@ -460,7 +458,7 @@ export function MaterialPricesSettingsSection({
           setError(`Enter a price for ${item.name} like 12.50, or leave it blank.`);
           return false;
         }
-        rows.push({ id: item.id, section: item.section, unitCost: price, sheenCosts: {} });
+        rows.push({ id: item.id, section: item.section, unitCost: price, sheenCosts: {}, productId: draft.productId.trim() });
       } else {
         const sheenCosts: Record<string, number> = {};
         for (const [sheen, raw] of Object.entries(draft.sheenCosts)) {
@@ -471,7 +469,7 @@ export function MaterialPricesSettingsSection({
           }
           if (price != null) sheenCosts[sheen] = price;
         }
-        rows.push({ id: item.id, section: item.section, unitCost: null, sheenCosts });
+        rows.push({ id: item.id, section: item.section, unitCost: null, sheenCosts, productId: draft.productId.trim() });
       }
     }
     setSaving(true);
@@ -488,19 +486,19 @@ export function MaterialPricesSettingsSection({
       setItems((current) => current.map((item) => {
         const saved = savedById.get(item.id);
         if (!saved) return item;
-        if (item.section === "sundry") return { ...item, unitCost: saved.unitCost };
-        return { ...item, sheenCosts: saved.sheenCosts };
+        if (item.section === "sundry") return { ...item, unitCost: saved.unitCost, productId: saved.productId };
+        return { ...item, sheenCosts: saved.sheenCosts, productId: saved.productId };
       }));
       setDrafts((current) => {
         const next = { ...current };
         for (const row of rows) {
-          const draft = next[row.id] ?? { unitCost: "", sheenCosts: {} };
+          const draft = next[row.id] ?? { unitCost: "", sheenCosts: {}, productId: "" };
           if (row.section === "sundry") {
-            next[row.id] = { ...draft, unitCost: moneyInput(row.unitCost) };
+            next[row.id] = { ...draft, unitCost: moneyInput(row.unitCost), productId: row.productId };
           } else {
             const sheenCosts = { ...draft.sheenCosts };
             for (const sheen of Object.keys(sheenCosts)) sheenCosts[sheen] = moneyInput(row.sheenCosts[sheen]);
-            next[row.id] = { ...draft, sheenCosts };
+            next[row.id] = { ...draft, sheenCosts, productId: row.productId };
           }
         }
         return next;
@@ -562,7 +560,7 @@ export function MaterialPricesSettingsSection({
     setDrafts((current) => {
       const next = { ...current };
       for (const update of updates) {
-        const draft = next[update.id] ?? { unitCost: "", sheenCosts: {} };
+        const draft = next[update.id] ?? { unitCost: "", sheenCosts: {}, productId: "" };
         next[update.id] = { ...draft, unitCost: update.price };
       }
       return next;
@@ -579,14 +577,22 @@ export function MaterialPricesSettingsSection({
   function setUnit(id: string, unitCost: string) {
     setDrafts((current) => ({
       ...current,
-      [id]: { ...(current[id] ?? { unitCost: "", sheenCosts: {} }), unitCost },
+      [id]: { ...(current[id] ?? { unitCost: "", sheenCosts: {}, productId: "" }), unitCost },
+    }));
+    setStatus(null);
+  }
+
+  function setProductId(id: string, productId: string) {
+    setDrafts((current) => ({
+      ...current,
+      [id]: { ...(current[id] ?? { unitCost: "", sheenCosts: {}, productId: "" }), productId },
     }));
     setStatus(null);
   }
 
   function setSheen(id: string, sheen: string, value: string) {
     setDrafts((current) => {
-      const draft = current[id] ?? { unitCost: "", sheenCosts: {} };
+      const draft = current[id] ?? { unitCost: "", sheenCosts: {}, productId: "" };
       return { ...current, [id]: { ...draft, sheenCosts: { ...draft.sheenCosts, [sheen]: value } } };
     });
     setStatus(null);
@@ -989,36 +995,102 @@ export function MaterialPricesSettingsSection({
     await parseInvoiceBytes(source, readerId);
   }
 
-  async function linkFoundItem(row: InvoiceCompareRow, choice: MaterialPriceItem, key: string, byGallon: boolean) {
-    if (readOnly || akaSaving) return;
-    setForcedMatch((current) => ({ ...current, [key]: choice.id }));
+  function aliasLines(item: MaterialPriceItem, alias: string): string {
+    const extra = alias.trim();
+    const lines = [...item.akas];
+    if (extra && extra.toLowerCase() !== item.name.trim().toLowerCase() && !lines.some((line) => line.toLowerCase() === extra.toLowerCase())) {
+      lines.unshift(extra);
+    }
+    return lines.join("\n");
+  }
+
+  function openLinkedEditor(item: MaterialPriceItem, invoicePrice: string, sheen: string, alias: string) {
     setLinkQuery(null);
+    setInfoItem(null);
+    setAkaItem(null);
+    setActionMenu(null);
+    setLinkedEdit({
+      id: item.id,
+      name: item.name,
+      productId: item.productId,
+      akas: aliasLines(item, alias),
+      price: invoicePrice,
+      sheen,
+    });
+    setError(null);
+  }
+
+  function linkFoundItem(row: InvoiceCompareRow, choice: MaterialPriceItem, key: string, byGallon: boolean) {
+    if (readOnly || linkedSaving) return;
+    setForcedMatch((current) => ({ ...current, [key]: choice.id }));
     const price = invoiceComparePrice(row.line, byGallon).toFixed(2);
     const paint = choice.section === "paint_product" ? invoicePaintTarget(choice, drafts[choice.id], sheenChoice[key] ?? null) : null;
-    const priced = paint == null || !paint.options || paint.sheen != null;
-    if (choice.section === "sundry") setUnit(choice.id, price);
-    else if (paint?.sheen) setSheen(choice.id, paint.sheen, price);
-    else if (!paint?.options) setPaintPrice(choice, price);
     revealItem(choice);
-    const alias = row.line.description.trim();
-    const priceNote = priced
-      ? `Invoice price for ${choice.name} is in the list. Save to keep it.`
-      : `Select a sheen for ${choice.name}, then apply the invoice price.`;
-    if (priceNote) setStatus(priceNote);
-    if (!alias || knownAlias(choice, alias)) return;
-    setAkaSaving(true);
-    setError((current) => priced ? null : current);
+    openLinkedEditor(choice, price, paint?.sheen ?? "", row.line.description);
+  }
+
+  function editLinkedRow(row: InvoiceCompareRow, byGallon: boolean) {
+    if (!row.item || readOnly || linkedSaving) return;
+    const price = invoiceComparePrice(row.line, byGallon).toFixed(2);
+    openLinkedEditor(row.item, price, row.sheenKey ?? "", row.line.description);
+  }
+
+  async function saveLinkedEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!linkedEdit || linkedSaving || readOnly) return;
+    const item = items.find((entry) => entry.id === linkedEdit.id);
+    if (!item) return;
+    const name = linkedEdit.name.trim();
+    if (!name) {
+      setError("Enter a name.");
+      return;
+    }
+    const price = parsePriceInput(linkedEdit.price);
+    if (price === undefined) {
+      setError("Enter a price like 12.50, or leave it blank.");
+      return;
+    }
+    const sheen = linkedEdit.sheen.trim();
+    if (item.section === "paint_product" && price != null && !sheen) {
+      setError("Select a sheen for this price.");
+      return;
+    }
+    setLinkedSaving(true);
+    setError(null);
     try {
-      const akas = await saveMaterialAkas(choice.id, [...(choice.akas ?? []), alias]);
-      setItems((current) => current.map((item) => item.id === choice.id ? { ...item, akas } : item));
-      setStatus(priced
-        ? `Invoice price for ${choice.name} is in the list. Saved “${alias}” as an AKA. Save to keep the price.`
-        : `Saved “${alias}” as an AKA for ${choice.name}. Select a sheen, then apply the invoice price.`);
+      const productId = linkedEdit.productId.trim();
+      const sheenCosts = { ...item.sheenCosts };
+      if (item.section === "paint_product" && sheen) {
+        if (price == null) delete sheenCosts[sheen];
+        else sheenCosts[sheen] = price;
+      }
+      await saveMaterialPrices([{
+        id: item.id,
+        section: item.section,
+        unitCost: item.section === "sundry" ? price : null,
+        sheenCosts: item.section === "paint_product" ? sheenCosts : {},
+        productId,
+        name,
+      }]);
+      const akas = await saveMaterialAkas(item.id, linkedEdit.akas.split(/\r?\n/));
+      const saved: MaterialPriceItem = {
+        ...item,
+        name,
+        productId,
+        akas,
+        unitCost: item.section === "sundry" ? price : item.unitCost,
+        sheenCosts: item.section === "paint_product" ? sheenCosts : item.sheenCosts,
+      };
+      acceptDrafts.current = true;
+      setSaveGeneration((current) => current + 1);
+      setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry));
+      setDrafts((current) => ({ ...current, [saved.id]: draftFromItem(saved) }));
+      setLinkedEdit(null);
+      setStatus(`Saved ${saved.name}. Field Tools uses this price.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save that AKA.");
-      if (priceNote) setStatus(priceNote);
+      setError(e instanceof Error ? e.message : "Could not save that item.");
     } finally {
-      setAkaSaving(false);
+      setLinkedSaving(false);
     }
   }
 
@@ -1063,15 +1135,41 @@ export function MaterialPricesSettingsSection({
     });
   }
 
-  function applyInvoicePrice(row: InvoiceCompareRow, byGallon: boolean) {
-    if (!row.item) return;
+  async function saveInvoicePrice(row: InvoiceCompareRow, key: string, byGallon: boolean) {
+    const item = row.item;
+    if (!item || readOnly || priceSavingKey) return;
     if (row.sheenOptions && !row.sheenKey) return;
-    const price = invoiceComparePrice(row.line, byGallon).toFixed(2);
-    if (row.item.section === "sundry") setUnit(row.item.id, price);
-    else if (row.sheenKey) setSheen(row.item.id, row.sheenKey, price);
-    else setPaintPrice(row.item, price);
-    revealItem(row.item);
-    setStatus(`Invoice price for ${row.item.name} is in the list. Save to keep it.`);
+    const price = parsePriceInput(invoiceComparePrice(row.line, byGallon).toFixed(2));
+    if (price == null) return;
+    const sheen = row.sheenKey ?? "";
+    setActionMenu(null);
+    setPriceSavingKey(key);
+    setError(null);
+    try {
+      const sheenCosts = { ...item.sheenCosts };
+      if (item.section === "paint_product" && sheen) sheenCosts[sheen] = price;
+      await saveMaterialPrices([{
+        id: item.id,
+        section: item.section,
+        unitCost: item.section === "sundry" ? price : null,
+        sheenCosts: item.section === "paint_product" ? sheenCosts : {},
+        productId: item.productId,
+      }]);
+      const saved: MaterialPriceItem = {
+        ...item,
+        unitCost: item.section === "sundry" ? price : item.unitCost,
+        sheenCosts: item.section === "paint_product" ? sheenCosts : item.sheenCosts,
+      };
+      acceptDrafts.current = true;
+      setSaveGeneration((current) => current + 1);
+      setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry));
+      setDrafts((current) => ({ ...current, [saved.id]: draftFromItem(saved) }));
+      setStatus(`Saved $${price.toFixed(2)} for ${saved.name}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save that price.");
+    } finally {
+      setPriceSavingKey(null);
+    }
   }
 
   function openInvoiceFind(key: string) {
@@ -1092,6 +1190,10 @@ export function MaterialPricesSettingsSection({
   const unsavedLabel =
     [dirtyItems.length ? `${dirtyItems.length} unsaved prices` : "", taxDirty ? "tax changed" : ""].filter(Boolean).join(" · ") ||
     "No unsaved changes";
+  const linkedItem = linkedEdit ? items.find((item) => item.id === linkedEdit.id) ?? null : null;
+  const linkedSheens = linkedItem
+    ? [...new Set([linkedEdit?.sheen ?? "", ...linkedItem.sheens, ...Object.keys(linkedItem.sheenCosts)].map((name) => name.trim()).filter(Boolean))]
+    : [];
 
   return (
     <div className="stack material-prices">
@@ -1177,6 +1279,16 @@ export function MaterialPricesSettingsSection({
       ) : null}
       </>
       ) : (
+      <>
+      <div className="read-invoice-title-row">
+        <h2 className="page-title">Invoice Check</h2>
+        <InvoiceDriveQueue
+          disabled={readOnly || invoiceReading}
+          activeFileId={driveFileId}
+          onOpen={(file, fileId) => acceptInvoiceFile(file, fileId)}
+          onFinished={() => setDriveFileId(null)}
+        />
+      </div>
       <div
         ref={invoiceSplitRef}
         className={`material-prices-invoice-pane read-invoice-workspace${invoiceSplitDrag ? " is-splitting" : ""}`}
@@ -1189,12 +1301,6 @@ export function MaterialPricesSettingsSection({
           onDragLeave={onInvoiceDragLeave}
           onDrop={onInvoiceDrop}
         >
-          <InvoiceDriveQueue
-            disabled={readOnly || invoiceReading}
-            activeFileId={driveFileId}
-            onOpen={(file, fileId) => acceptInvoiceFile(file, fileId)}
-            onFinished={() => setDriveFileId(null)}
-          />
         {invoicePdfBytes ? (
           <div className="read-invoice-toolbar">
             <div className="read-invoice-toolbar-side">
@@ -1545,47 +1651,79 @@ export function MaterialPricesSettingsSection({
                             role="menu"
                             style={{ top: actionMenu.top, right: actionMenu.right }}
                           >
+                            <div className="material-prices-menu-label">Catalog</div>
+                            {row.item ? (
+                              <button type="button" role="menuitem" className="material-prices-menu-row" disabled={readOnly || linkedSaving} onClick={() => editLinkedRow(row, perGallon)}>
+                                <span>Edit item</span>
+                                <span className="material-prices-menu-hint">opens panel</span>
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="material-prices-menu-row"
+                              disabled={readOnly || !row.item || (row.sheenOptions != null && !row.sheenKey) || priceSavingKey === key}
+                              title={row.item ? "Write this invoice price to the catalog." : "Link this line to a catalog item first."}
+                              onClick={() => void saveInvoicePrice(row, key, perGallon)}
+                            >
+                              <span>{priceSavingKey === key ? "Saving…" : "Save"}</span>
+                              <span className="material-prices-menu-hint">writes price</span>
+                            </button>
                             {role === "differs" || role === "sheen" ? (
                               <>
-                                <button type="button" role="menuitem" disabled={readOnly || (row.sheenOptions != null && !row.sheenKey)} onClick={() => { setActionMenu(null); applyInvoicePrice(row, perGallon); }}>Apply</button>
-                                <button type="button" role="menuitem" disabled={readOnly || addOpen} onClick={() => { setActionMenu(null); openInvoiceAdd(row, key, perGallon); }}>Add</button>
-                                <button type="button" role="menuitem" onClick={() => openInvoiceFind(key)}>Find item</button>
+                                <button type="button" role="menuitem" className="material-prices-menu-row" disabled={readOnly || addOpen} onClick={() => { setActionMenu(null); openInvoiceAdd(row, key, perGallon); }}>
+                                  <span>Add</span>
+                                </button>
+                                <button type="button" role="menuitem" className="material-prices-menu-row" onClick={() => openInvoiceFind(key)}>
+                                  <span>Find item</span>
+                                </button>
                               </>
                             ) : null}
                             {role === "new" ? (
-                              <button type="button" role="menuitem" onClick={() => openInvoiceFind(key)}>Link to existing item…</button>
+                              <button type="button" role="menuitem" className="material-prices-menu-row" onClick={() => openInvoiceFind(key)}>
+                                <span>Link to existing item…</span>
+                              </button>
                             ) : null}
                             {role === "matched" ? (
-                              <button type="button" role="menuitem" onClick={() => openInvoiceFind(key)}>Change match…</button>
+                              <button type="button" role="menuitem" className="material-prices-menu-row" onClick={() => openInvoiceFind(key)}>
+                                <span>Change match…</span>
+                                <span className="material-prices-menu-hint">link to another</span>
+                              </button>
                             ) : null}
                             {role === "matched" || ((role === "differs" || role === "sheen") && linked) ? (
-                              <button type="button" role="menuitem" onClick={() => unlinkInvoiceRow(key)}>Unlink</button>
+                              <button type="button" role="menuitem" className="material-prices-menu-row" onClick={() => unlinkInvoiceRow(key)}>
+                                <span>Unlink</span>
+                              </button>
                             ) : null}
                             {row.line.section === "paint_product" ? (
                               <>
-                                <button
-                                  type="button"
-                                  role="menuitemradio"
-                                  aria-checked={perGallon}
-                                  className={perGallon ? "is-on" : undefined}
-                                  onClick={() => {
-                                    setActionMenu(null);
-                                    setGallonLines((current) => ({ ...current, [key]: true }));
-                                  }}
-                                >
-                                  Price as 1 gal
-                                </button>
+                                <div className="material-prices-menu-label">Price basis</div>
                                 <button
                                   type="button"
                                   role="menuitemradio"
                                   aria-checked={!perGallon}
-                                  className={perGallon ? undefined : "is-on"}
+                                  className="material-prices-menu-row"
                                   onClick={() => {
                                     setActionMenu(null);
                                     setGallonLines((current) => ({ ...current, [key]: false }));
                                   }}
                                 >
-                                  Price as invoiced
+                                  <span className="material-prices-menu-check" aria-hidden="true">{perGallon ? "" : "✓"}</span>
+                                  <span>Price as invoiced</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitemradio"
+                                  aria-checked={perGallon}
+                                  className="material-prices-menu-row"
+                                  onClick={() => {
+                                    setActionMenu(null);
+                                    setGallonLines((current) => ({ ...current, [key]: true }));
+                                  }}
+                                >
+                                  <span className="material-prices-menu-check" aria-hidden="true">{perGallon ? "✓" : ""}</span>
+                                  <span>Price as 1 gal</span>
+                                  <span className="material-prices-menu-hint">÷ 5</span>
                                 </button>
                               </>
                             ) : null}
@@ -1608,6 +1746,7 @@ export function MaterialPricesSettingsSection({
         </InvoiceJobPos>
         </div>
       </div>
+      </>
       )}
       {!invoiceOnly ? (
       <>
@@ -1654,6 +1793,16 @@ export function MaterialPricesSettingsSection({
                   <tr key={item.id} className={changed ? "material-prices-changed" : undefined}>
                     <td>
                       <div className="material-prices-name">{item.name}</div>
+                      {section === "paint_product" ? (
+                        <input
+                          className="material-prices-sku-input"
+                          value={draft.productId}
+                          placeholder="Product ID"
+                          aria-label={`${item.name} product ID`}
+                          disabled={readOnly}
+                          onChange={(event) => setProductId(item.id, event.target.value)}
+                        />
+                      ) : null}
                       <button type="button" className="material-prices-aka" disabled={readOnly} onClick={() => openAkaEditor(item)}>
                         {(item.akas ?? []).length ? `AKA: ${(item.akas ?? []).join(", ")}` : "Add AKA"}
                       </button>
@@ -1661,7 +1810,16 @@ export function MaterialPricesSettingsSection({
                     {section === "sundry" ? (
                       <>
                         <td className="material-prices-category">{item.category || "—"}</td>
-                        <td className="material-prices-sku">{item.productId || "—"}</td>
+                        <td className="material-prices-sku">
+                          <input
+                            className="material-prices-sku-input"
+                            value={draft.productId}
+                            placeholder="Product ID"
+                            aria-label={`${item.name} product ID`}
+                            disabled={readOnly}
+                            onChange={(event) => setProductId(item.id, event.target.value)}
+                          />
+                        </td>
                         <td className="material-prices-money">
                           <input
                             inputMode="decimal"
@@ -1970,6 +2128,86 @@ export function MaterialPricesSettingsSection({
                     ) : null}
                   </div>
                 </div>
+              </aside>
+            </div>,
+            document.body,
+          )
+        : null}
+      {linkedEdit && linkedItem
+        ? createPortal(
+            <div className="job-info-drawer-root" role="presentation">
+              <button type="button" className="job-info-drawer-backdrop" aria-label="Close item" disabled={linkedSaving} onClick={() => setLinkedEdit(null)} />
+              <aside className="job-info-drawer-panel material-prices-add-panel" aria-labelledby="material-prices-linked-title">
+                <header className="job-info-drawer-header row-between">
+                  <h2 id="material-prices-linked-title">Edit {linkedItem.section === "paint_product" ? "paint" : "sundry"}</h2>
+                  <button type="button" className="btn btn-ghost job-info-drawer-close" disabled={linkedSaving} onClick={() => setLinkedEdit(null)}>
+                    Close
+                  </button>
+                </header>
+                <form className="material-prices-add" onSubmit={(event) => void saveLinkedEdit(event)}>
+                  <p className="muted small">{[linkedItem.category, linkedItem.vendorNames.length ? linkedItem.vendorNames.join(", ") : "All vendors"].filter(Boolean).join(" · ")}</p>
+                  <label>
+                    Name
+                    <input
+                      value={linkedEdit.name}
+                      onChange={(event) => setLinkedEdit({ ...linkedEdit, name: event.target.value })}
+                      disabled={linkedSaving}
+                      required
+                      autoFocus
+                    />
+                  </label>
+                  <label>
+                    Product ID
+                    <input
+                      value={linkedEdit.productId}
+                      onChange={(event) => setLinkedEdit({ ...linkedEdit, productId: event.target.value })}
+                      placeholder="Product ID"
+                      disabled={linkedSaving}
+                    />
+                  </label>
+                  <label>
+                    Also known as
+                    <textarea
+                      value={linkedEdit.akas}
+                      onChange={(event) => setLinkedEdit({ ...linkedEdit, akas: event.target.value })}
+                      placeholder={"One name per line"}
+                      rows={4}
+                      disabled={linkedSaving}
+                    />
+                  </label>
+                  {linkedItem.section === "paint_product" ? (
+                    <label>
+                      Sheen
+                      <select
+                        value={linkedEdit.sheen}
+                        onChange={(event) => setLinkedEdit({ ...linkedEdit, sheen: event.target.value })}
+                        disabled={linkedSaving}
+                      >
+                        <option value="">Select a sheen</option>
+                        {linkedSheens.map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  <label>
+                    {linkedItem.section === "sundry" ? "Each" : "Gallon price"}
+                    <input
+                      value={linkedEdit.price}
+                      onChange={(event) => setLinkedEdit({ ...linkedEdit, price: event.target.value })}
+                      placeholder="12.50"
+                      inputMode="decimal"
+                      disabled={linkedSaving}
+                    />
+                  </label>
+                  <p className="muted small">Save writes this to the catalog Field Tools uses.</p>
+                  <div className="material-prices-add-actions">
+                    <button type="submit" className="btn btn-primary" disabled={linkedSaving || !linkedEdit.name.trim()}>
+                      {linkedSaving ? "Saving…" : "Save"}
+                    </button>
+                    <button type="button" className="btn" disabled={linkedSaving} onClick={() => setLinkedEdit(null)}>Cancel</button>
+                  </div>
+                </form>
               </aside>
             </div>,
             document.body,

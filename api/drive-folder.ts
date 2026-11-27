@@ -59,6 +59,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(await driveFolderResponse(parseBody(req.body)));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not open that Drive folder.";
+    console.error("drive-folder", message);
     const status = /Sign in|session/.test(message) ? 401 : 400;
     return res.status(status).json({ error: message });
   }

@@ -6,7 +6,6 @@ export function ReadInvoicePage() {
   const projectId = params.get("project")?.trim() || undefined;
   return (
     <div className="stack read-invoice-page">
-      <h2 className="page-title">Invoice Check</h2>
       <MaterialPricesSettingsSection invoiceOnly projectId={projectId} />
     </div>
   );

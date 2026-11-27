@@ -9,6 +9,7 @@ export type MaterialPriceItem = {
   name: string;
   productId: string;
   akas: string[];
+  nickname: string;
   unitCost: number | null;
   sheenCosts: Record<string, number>;
   sheens: string[];
@@ -18,6 +19,7 @@ export type MaterialPriceItem = {
 export type MaterialPriceDraft = {
   unitCost: string;
   sheenCosts: Record<string, string>;
+  productId: string;
 };
 
 type ListResult = {
@@ -64,7 +66,7 @@ export function draftFromItem(item: MaterialPriceItem): MaterialPriceDraft {
   for (const [sheen, price] of Object.entries(item.sheenCosts)) {
     if (!(sheen in sheenCosts)) sheenCosts[sheen] = moneyInput(price);
   }
-  return { unitCost: moneyInput(item.unitCost), sheenCosts };
+  return { unitCost: moneyInput(item.unitCost), sheenCosts, productId: item.productId };
 }
 
 /** Blank clears the price. Undefined means the text is not a price. */
@@ -115,6 +117,7 @@ function itemFromRow(row: unknown): MaterialPriceItem | null {
     name,
     productId: typeof item.product_id === "string" ? item.product_id : "",
     akas: asStringList(item.akas),
+    nickname: typeof item.nickname === "string" ? item.nickname : "",
     unitCost: unit != null && Number.isFinite(unit) ? unit : null,
     sheenCosts: asRecord(item.sheen_costs),
     sheens: asStringList(item.sheens),
@@ -214,13 +217,14 @@ export async function saveMaterialAkas(id: string, akas: string[]): Promise<stri
 }
 
 export async function saveMaterialPrices(
-  rows: { id: string; section: MaterialPriceSection; unitCost: number | null; sheenCosts: Record<string, number> }[],
+  rows: { id: string; section: MaterialPriceSection; unitCost: number | null; sheenCosts: Record<string, number>; productId: string; name?: string }[],
 ): Promise<number> {
-  const payload = rows.map((row) =>
-    row.section === "paint_product"
-      ? { id: row.id, sheen_costs: row.sheenCosts }
-      : { id: row.id, unit_cost: row.unitCost },
-  );
+  const payload = rows.map((row) => {
+    const price = row.section === "paint_product"
+      ? { id: row.id, sheen_costs: row.sheenCosts, product_id: row.productId }
+      : { id: row.id, unit_cost: row.unitCost, product_id: row.productId };
+    return row.name == null ? price : { ...price, name: row.name };
+  });
   const { data, error } = await supabase.rpc("jobflow_admin_save_material_prices" as never, {
     p_rows: payload,
   } as never);

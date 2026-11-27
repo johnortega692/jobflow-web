@@ -19,6 +19,9 @@
       "memory": 1024,
       "maxDuration": 30
     },
+    "api/drive-folder.ts": {
+      "maxDuration": 30
+    },
     "api/send-vendor-email.ts": {
       "maxDuration": 30
     },
