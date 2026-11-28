@@ -32,7 +32,7 @@ import {
   createNewSubmittalPackageDraft,
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
-import { issueSubmittalDraft, lockedSubmittalBanner, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
+import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
@@ -179,7 +179,6 @@ export function FrpSubmittalsPage() {
   }, [user?.id]);
 
   const draftLocked = submittalDraftIsLocked(draft);
-  const lockedNotice = lockedSubmittalBanner(draft.issue_status, draft.revision_number);
   const autoLabel = draft.auto_label !== false;
   const frpPrint = useMemo(() => frpPrintInfo(project, project.jobInfo), [project]);
   const frpNum = frpJobNumber(project);
@@ -481,12 +480,6 @@ export function FrpSubmittalsPage() {
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
-
-      {draftLocked && (
-        <div className={`banner banner-${lockedNotice.tone}`}>
-          This {lockedNotice.noun} is <strong>{lockedNotice.label}</strong>. {lockedNotice.detail}
-        </div>
-      )}
 
       <FrpSubmittalMetaPanel
         draft={draft}

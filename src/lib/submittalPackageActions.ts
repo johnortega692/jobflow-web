@@ -5,38 +5,17 @@ import {
   packageHasOpenDraftRevision,
   type SubmittalScope,
 } from "./submittalHistory";
-import {
-  SUBMITTAL_ISSUE_STATUSES,
-  type FrpSubmittalData,
-  type PaintSubmittalData,
-  type SubmittalHistoryEntry,
-  type SubmittalIssueStatus,
-  type WallcoveringSubmittalData,
+import type {
+  FrpSubmittalData,
+  PaintSubmittalData,
+  SubmittalHistoryEntry,
+  WallcoveringSubmittalData,
 } from "../types/tradeDocuments";
 
 type SubmittalDraft = PaintSubmittalData | WallcoveringSubmittalData | FrpSubmittalData;
 
 export function submittalDraftIsLocked(draft: SubmittalDraft): boolean {
   return isLockedPackageStatus(draft.issue_status);
-}
-
-export function lockedSubmittalBanner(status: SubmittalIssueStatus, revisionNumber: number): {
-  noun: string;
-  label: string;
-  detail: string;
-  tone: "ok" | "warn";
-} {
-  const noun = revisionNumber > 0 ? "revision" : "submittal";
-  const label = SUBMITTAL_ISSUE_STATUSES.find((item) => item.id === status)?.label ?? status.replace(/_/g, " ");
-  const approved = status === "approved" || status === "approved_as_noted";
-  return {
-    noun,
-    label,
-    detail: approved
-      ? "Items are locked."
-      : "Items are locked. Use the status below to update it. Create next revision only when the items need to change.",
-    tone: approved ? "ok" : "warn",
-  };
 }
 
 export function issueSubmittalDraft(

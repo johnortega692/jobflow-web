@@ -1,4 +1,5 @@
 import { DateInput } from "../DateInput";
+import { LockedSubmittalNote } from "../submittals/LockedSubmittalNote";
 import { RevisionNoteField } from "../submittals/RevisionNoteField";
 import { SpecSectionSelect } from "../submittals/SpecSectionSelect";
 import { SubmittalIssueStatusPill } from "../submittals/SubmittalIssueStatusPill";
@@ -47,6 +48,7 @@ export function FrpSubmittalMetaPanel({
   return (
     <section className="card stack paint-submittal-meta-card">
       <div className="paint-submittal-meta-strip">
+        <div className="paint-submittal-meta-strip-bar">
         <div className="paint-submittal-meta-strip-main">
           {draftLocked ? (
             <p className="paint-submittal-meta-identity">
@@ -99,6 +101,10 @@ export function FrpSubmittalMetaPanel({
             Create next revision
           </button>
         )}
+        </div>
+        {draftLocked ? (
+          <LockedSubmittalNote status={draft.issue_status} onCreateNextRevision={onCreateNextRevision} />
+        ) : null}
       </div>
 
       <div className="paint-submittal-meta-fields-row frp-submittal-meta-fields-row">

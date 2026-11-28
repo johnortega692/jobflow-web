@@ -51,7 +51,7 @@ import {
   previousIssuedHistoryEntryForRevision,
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
-import { issueSubmittalDraft, lockedSubmittalBanner, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
+import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { stampPaintPacketTracking } from "../lib/paintPacketTracking";
 import { trackingLink } from "../lib/trackingLink";
 import { recordPdfLogRow } from "../lib/submittalLogService";
@@ -282,7 +282,6 @@ export function PaintSubmittalsPage() {
   );
   const showPreviousColor = draft.submittal_type === "substitution";
   const draftLocked = submittalDraftIsLocked(draft);
-  const lockedNotice = lockedSubmittalBanner(draft.issue_status, draft.revision_number);
   const packetNumber = draft.packet_tracking?.trim() ?? "";
   const packetShipment = trackingLink(packetNumber);
 
@@ -1157,12 +1156,6 @@ export function PaintSubmittalsPage() {
 
       {error && <div className="banner banner-error">{error}</div>}
       {status && <div className="banner banner-ok">{status}</div>}
-
-      {draftLocked && (
-        <div className={`banner banner-${lockedNotice.tone}`}>
-          This {lockedNotice.noun} is <strong>{lockedNotice.label}</strong>. {lockedNotice.detail}
-        </div>
-      )}
 
       <PaintSubmittalMetaPanel
         draft={draft}
