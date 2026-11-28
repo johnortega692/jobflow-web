@@ -313,11 +313,15 @@
 
 .paint-meeting-suggest {
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  grid-template-columns: 5.5rem minmax(0, 1.4fr) minmax(0, 1fr) 8.5rem auto auto;
   gap: 0.5rem;
   align-items: center;
   padding-top: 0.45rem;
   border-top: 1px solid var(--border);
+}
+
+.paint-meeting-suggest-start {
+  white-space: nowrap;
 }
 
 .paint-meeting-suggest select {

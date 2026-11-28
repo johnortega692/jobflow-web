@@ -59,6 +59,20 @@ export type HourChance = {
   probability: number | null;
 };
 
+export type StripHourView = {
+  hour: number;
+  precipProb: number | null;
+};
+
+export type WorkVerdict = "go" | "partial" | "nogo";
+
+export type WorkWindowScore = {
+  verdict: WorkVerdict | null;
+  windowMax: number | null;
+  firstRainHour: number | null;
+  note: string;
+};
+
 export type DayOutlook = {
   label: string;
   precipProb: number | null;
@@ -66,6 +80,12 @@ export type DayOutlook = {
   hi: number | null;
   lo: number | null;
   todayPartial: boolean;
+  hours: StripHourView[] | null;
+  qpfIn: number | null;
+  verdict: WorkVerdict | null;
+  windowMax: number | null;
+  firstRainHour: number | null;
+  note: string;
 };
 
 export type ChartHour = {
@@ -80,6 +100,19 @@ export type HeroWeatherPill = {
 };
 
 const HERO_RAIN_PROBABILITY = 40;
+
+/** Crew call for the 6:00 AM–3:00 PM window. Edit these to retune the outlook. */
+export const WORK_WINDOW = {
+  windowStart: 6,
+  windowEnd: 15,
+  goMax: 30,
+  rainLikely: 40,
+  noGoMax: 60,
+  noGoHours: 5,
+} as const;
+
+const STRIP_START_HOUR = 5;
+const STRIP_END_HOUR = 17;
 
 export type OutlookTint = "wet" | "watch" | "plain";
 
@@ -111,12 +144,91 @@ export function hourlyRainChances(value: unknown): HourChance[] {
   }));
 }
 
+export function hourLabel(hour: number): string {
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12} ${suffix}`;
+}
+
+export function hourTick(hour: number): string {
+  const suffix = hour >= 12 ? "p" : "a";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}${suffix}`;
+}
+
+const TIMING_UNAVAILABLE: WorkWindowScore = {
+  verdict: null,
+  windowMax: null,
+  firstRainHour: null,
+  note: "Timing not available",
+};
+
+/** Score one day's 5 AM–5 PM strip against the crew window. */
+export function scoreWorkWindow(hours: StripHourView[] | null): WorkWindowScore {
+  if (!hours?.length) return TIMING_UNAVAILABLE;
+  const window = hours
+    .filter(
+      (hour) =>
+        hour.hour >= WORK_WINDOW.windowStart &&
+        hour.hour < WORK_WINDOW.windowEnd &&
+        hour.precipProb != null,
+    )
+    .sort((left, right) => left.hour - right.hour);
+  if (!window.length) return TIMING_UNAVAILABLE;
+
+  const windowMax = Math.max(...window.map((hour) => hour.precipProb ?? 0));
+  const soaked = window.filter((hour) => (hour.precipProb ?? 0) >= WORK_WINDOW.noGoMax).length;
+  const first = window.find((hour) => (hour.precipProb ?? 0) >= WORK_WINDOW.rainLikely);
+  const firstRainHour = first ? first.hour : null;
+
+  if (windowMax < WORK_WINDOW.goMax) {
+    const note =
+      windowMax >= 10 ? "Low rain chance through the work window." : "Dry through the work window.";
+    return { verdict: "go", windowMax, firstRainHour, note };
+  }
+  if (soaked >= WORK_WINDOW.noGoHours) {
+    return { verdict: "nogo", windowMax, firstRainHour, note: "Rain most of the window. Hold the crew." };
+  }
+  if (firstRainHour == null) {
+    return {
+      verdict: "partial",
+      windowMax,
+      firstRainHour,
+      note: "Low-end chance only. Watch the morning update.",
+    };
+  }
+  if (firstRainHour < WORK_WINDOW.windowStart + 2) {
+    return { verdict: "partial", windowMax, firstRainHour, note: "Rain likely from the start. Consider holding." };
+  }
+  return {
+    verdict: "partial",
+    windowMax,
+    firstRainHour,
+    note: `Send crew, plan to pull off around ${hourLabel(firstRainHour)}.`,
+  };
+}
+
+function parseStrip(value: unknown): StripHourView[] | null {
+  if (!Array.isArray(value)) return null;
+  const hours: StripHourView[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as { hour?: unknown; precip_prob?: unknown };
+    if (typeof record.hour !== "number" || !Number.isInteger(record.hour)) continue;
+    if (record.hour < STRIP_START_HOUR || record.hour > STRIP_END_HOUR) continue;
+    hours.push({ hour: record.hour, precipProb: finiteNumber(record.precip_prob) });
+  }
+  return hours.length ? hours : null;
+}
+
 export function dailyOutlook(value: unknown): DayOutlook[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, OUTLOOK_DAYS).map((day) => {
     const record = day && typeof day === "object" ? (day as Record<string, unknown>) : {};
     const label = typeof record.label === "string" ? record.label.trim() : "";
     const shortForecast = typeof record.short_forecast === "string" ? record.short_forecast.trim() : "";
+    const hours = parseStrip(record.hours);
+    const score = scoreWorkWindow(hours);
     return {
       label: label || "—",
       precipProb: finiteNumber(record.precip_prob),
@@ -124,8 +236,38 @@ export function dailyOutlook(value: unknown): DayOutlook[] {
       hi: finiteNumber(record.hi),
       lo: finiteNumber(record.lo),
       todayPartial: record.today_partial === true,
+      hours,
+      qpfIn: finiteNumber(record.qpf_in),
+      ...score,
     };
   });
+}
+
+export const TODAY_DONE_NOTE = "Work window is over.";
+
+export function isWorkWindowOver(now: Date): boolean {
+  return now.getHours() >= WORK_WINDOW.windowEnd;
+}
+
+export type TodayWindow = { kind: "done" } | { kind: "open"; score: WorkWindowScore };
+
+/** Today before 3 PM, scored from the current hour through 2 PM. After 3 PM the shift is done. */
+export function todayWindow(day: Pick<DayOutlook, "hours">, now: Date): TodayWindow {
+  if (isWorkWindowOver(now)) return { kind: "done" };
+  const start = Math.max(now.getHours(), WORK_WINDOW.windowStart);
+  const ahead = (day.hours ?? []).filter((hour) => hour.hour >= start && hour.hour < WORK_WINDOW.windowEnd);
+  return { kind: "open", score: scoreWorkWindow(ahead.length ? ahead : null) };
+}
+
+/** First Partial or No-go day. Today when the window is clear. Skip Today after 3 PM. */
+export function defaultOutlookIndex(days: DayOutlook[], now?: Date): number {
+  const skipToday = now != null && isWorkWindowOver(now);
+  const index = days.findIndex((day, dayIndex) => {
+    if (skipToday && dayIndex === 0) return false;
+    return day.verdict === "partial" || day.verdict === "nogo";
+  });
+  if (index >= 0) return index;
+  return skipToday && days.length > 1 ? 1 : 0;
 }
 
 /** Clock time from an NWS timestamp, using the offset already in the string. */

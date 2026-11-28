@@ -12,7 +12,11 @@ type IconName =
   | "cube"
   | "chevron-right"
   | "chevron-down"
-  | "circle-check";
+  | "circle-check"
+  | "clipboard-check"
+  | "rocket"
+  | "file-check"
+  | "palette";
 
 const PATHS: Record<IconName, string | readonly string[]> = {
   user: "M8 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2",
@@ -33,6 +37,27 @@ const PATHS: Record<IconName, string | readonly string[]> = {
   "chevron-right": "M9 6l6 6l-6 6",
   "chevron-down": "M6 9l6 6l6 -6",
   "circle-check": ["M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0", "M9 12l2 2l4 -4"],
+  "clipboard-check": [
+    "M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2",
+    "M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z",
+    "M9 14l2 2l4 -4",
+  ],
+  rocket: [
+    "M4 13a8 8 0 0 1 7 7a6 6 0 0 0 3 -5a9 9 0 0 0 6 -8a3 3 0 0 0 -3 -3a9 9 0 0 0 -8 6a6 6 0 0 0 -5 3",
+    "M7 14a6 6 0 0 0 -3 6a6 6 0 0 0 6 -3",
+    "M15 9m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+  ],
+  "file-check": [
+    "M14 3v4a1 1 0 0 0 1 1h4",
+    "M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2",
+    "M9 15l2 2l4 -4",
+  ],
+  palette: [
+    "M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25",
+    "M8.5 10.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+    "M12.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+    "M16.5 10.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+  ],
 };
 
 function iconPaths(name: IconName): readonly string[] {

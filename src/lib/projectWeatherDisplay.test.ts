@@ -8,7 +8,10 @@ import {
   driestChartHour,
   forecastIconKind,
   heroWeatherPill,
+  TODAY_DONE_NOTE,
+  defaultOutlookIndex,
   hourlyChartHours,
+  hourLabel,
   outlookTint,
   peakChartHour,
   weatherClockLabel,
@@ -17,6 +20,8 @@ import {
   isRainWatchChip,
   projectListWeatherLabel,
   projectWeatherChip,
+  scoreWorkWindow,
+  todayWindow,
   weatherUpdatedLabel,
   type ProjectWeatherRow,
 } from "./projectWeatherDisplay.ts";
@@ -276,6 +281,114 @@ test("the dashboard hero uses the peak hour, the driest hour, and today's partia
   assert.equal(forecastIconKind("Chance Light Rain"), "rain");
   assert.equal(forecastIconKind("Partly Sunny"), "sun");
   assert.equal(forecastIconKind("Mostly Cloudy"), "cloud");
+});
+
+function strip(pairs: Array<[number, number | null]>) {
+  return pairs.map(([hour, precipProb]) => ({ hour, precipProb }));
+}
+
+test("the work window scores Monday as a noon pull-off and ignores rain outside 6 to 3", () => {
+  const monday = scoreWorkWindow(
+    strip([
+      [5, 90],
+      [6, 10],
+      [7, 12],
+      [8, 15],
+      [9, 18],
+      [10, 20],
+      [11, 22],
+      [12, 48],
+      [13, 55],
+      [14, 40],
+      [15, 80],
+      [17, 70],
+    ]),
+  );
+  assert.equal(monday.verdict, "partial");
+  assert.equal(monday.windowMax, 55);
+  assert.equal(monday.note, "Send crew, plan to pull off around 12 PM.");
+  assert.equal(hourLabel(12), "12 PM");
+
+  const overnight = scoreWorkWindow(strip([[5, 95], [6, 5], [9, 10], [14, 0], [15, 90], [17, 80]]));
+  assert.equal(overnight.verdict, "go");
+  assert.equal(overnight.note, "Dry through the work window.");
+
+  const early = scoreWorkWindow(strip([[6, 70], [7, 20], [12, 10]]));
+  assert.equal(early.note, "Rain likely from the start. Consider holding.");
+
+  const mild = scoreWorkWindow(strip([[6, 30], [10, 35], [14, 28]]));
+  assert.equal(mild.verdict, "partial");
+  assert.equal(mild.note, "Low-end chance only. Watch the morning update.");
+
+  const hold = scoreWorkWindow(
+    strip([
+      [6, 70],
+      [7, 80],
+      [8, 90],
+      [9, 60],
+      [10, 65],
+      [11, 10],
+    ]),
+  );
+  assert.equal(hold.verdict, "nogo");
+  assert.equal(hold.note, "Rain most of the window. Hold the crew.");
+
+  assert.equal(scoreWorkWindow(null).note, "Timing not available");
+  assert.equal(scoreWorkWindow(strip([[6, null], [12, null]])).verdict, null);
+
+  const days = dailyOutlook([
+    { label: "Fri", precip_prob: 80, short_forecast: "Rain", hours: [{ hour: 6, precip_prob: 5 }], qpf_in: 0 },
+    { label: "Mon", precip_prob: 48, short_forecast: "Chance Light Rain", hours: null },
+    {
+      label: "Tue",
+      precip_prob: 20,
+      hours: [{ hour: 12, precip_prob: 50 }],
+      qpf_in: 0.12,
+    },
+  ]);
+  assert.equal(days[0]?.verdict, "go");
+  assert.equal(days[0]?.qpfIn, 0);
+  assert.equal(days[1]?.verdict, null);
+  assert.equal(days[1]?.note, "Timing not available");
+  assert.equal(defaultOutlookIndex(days), 2);
+  assert.equal(days[2]?.note, "Send crew, plan to pull off around 12 PM.");
+});
+
+test("today uses the hours still ahead, and after 3 PM it is done", () => {
+  const today = {
+    hours: strip([
+      [6, 80],
+      [7, 80],
+      [8, 80],
+      [9, 80],
+      [10, 80],
+      [11, 10],
+      [14, 10],
+    ]),
+  };
+  const nine = new Date(2026, 10, 27, 9, 0, 0);
+  const open = todayWindow(today, nine);
+  assert.equal(open.kind, "open");
+  if (open.kind === "open") {
+    assert.equal(open.score.verdict, "partial");
+    assert.equal(open.score.windowMax, 80);
+    assert.equal(open.score.note, "Send crew, plan to pull off around 9 AM.");
+  }
+  const dropped = todayWindow({ hours: strip([[6, 90], [7, null]]) }, nine);
+  assert.equal(dropped.kind, "open");
+  if (dropped.kind === "open") assert.equal(dropped.score.verdict, null);
+  assert.equal(todayWindow({ hours: null }, nine).kind, "open");
+
+  const sixPm = new Date(2026, 10, 27, 18, 0, 0);
+  assert.equal(todayWindow(today, sixPm).kind, "done");
+  assert.equal(todayWindow(today, new Date(2026, 10, 27, 15, 0, 0)).kind, "done");
+  const outlook = dailyOutlook([
+    { label: "Fri", hours: today.hours.map((hour) => ({ hour: hour.hour, precip_prob: hour.precipProb })) },
+    { label: "Sat", hours: [{ hour: 12, precip_prob: 50 }] },
+  ]);
+  assert.equal(defaultOutlookIndex(outlook, sixPm), 1);
+  assert.equal(defaultOutlookIndex(outlook, nine), 0);
+  assert.equal(TODAY_DONE_NOTE, "Work window is over.");
 });
 
 test("chip and banner colors clear 4.5:1", () => {

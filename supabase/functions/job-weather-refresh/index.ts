@@ -3,10 +3,13 @@ import {
   buildWeatherSnapshot,
   coordinateBucket,
   dailyForecastUrl,
+  forecastGridUrl,
+  forecastTimeZone,
   hourlyForecastUrl,
   parseAlertText,
   parseDailyForecast,
   parseHourlyForecast,
+  parseQuantitativePrecipitation,
 } from "./forecast.ts";
 
 const corsHeaders = {
@@ -106,6 +109,7 @@ async function refreshGroup(supabase: SupabaseClient, group: WeatherGroup): Prom
   const points = await readJson(`https://api.weather.gov/points/${group.lat},${group.lng}`);
   const hourlyUrl = points ? hourlyForecastUrl(points) : null;
   const forecastUrl = points ? dailyForecastUrl(points) : null;
+  const gridUrl = points ? forecastGridUrl(points) : null;
   if (!hourlyUrl || !forecastUrl) return "failed";
 
   const hourlyBody = await readJson(hourlyUrl);
@@ -120,7 +124,12 @@ async function refreshGroup(supabase: SupabaseClient, group: WeatherGroup): Prom
   const alerts = alertsBody ? parseAlertText(alertsBody) : { ok: false as const };
   if (!alerts.ok) return "failed";
 
-  const snapshot = buildWeatherSnapshot(periods, daily, alerts.text, new Date());
+  const gridBody = gridUrl ? await readJson(gridUrl) : null;
+  const precipitation = gridBody ? parseQuantitativePrecipitation(gridBody) : null;
+  const snapshot = buildWeatherSnapshot(periods, daily, alerts.text, new Date(), {
+    timeZone: points ? forecastTimeZone(points) : null,
+    precipitation,
+  });
   if (!snapshot) return "failed";
 
   const fetchedAt = new Date().toISOString();

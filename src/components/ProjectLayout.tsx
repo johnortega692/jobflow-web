@@ -17,7 +17,7 @@ import { supabase } from "../lib/supabase";
 import type { ProjectForm } from "../types/database";
 import { normalizeProject } from "../types/database";
 
-const DEFAULT_NAV_GROUP_ID = "documents";
+const PINNED_NAV_GROUP_ID = "documents";
 
 function sectionIdForModule(moduleId: string): string | null {
   const section = PROJECT_NAV_SECTIONS.find(
@@ -26,9 +26,10 @@ function sectionIdForModule(moduleId: string): string | null {
   return section?.id ?? null;
 }
 
-/** The page's group, or Documents when the page sits outside a group (Dashboard). */
-function openGroupForModule(moduleId: string): string {
-  return sectionIdForModule(moduleId) ?? DEFAULT_NAV_GROUP_ID;
+/** The collapsible group for this page. Documents stays open on its own. */
+function openGroupForModule(moduleId: string): string | null {
+  const sectionId = sectionIdForModule(moduleId);
+  return sectionId && sectionId !== PINNED_NAV_GROUP_ID ? sectionId : null;
 }
 
 function matchModule(pathname: string, base: string) {
@@ -149,6 +150,7 @@ function ProjectLayoutShell() {
   }, [activeModule.id]);
 
   function toggleNavGroup(id: string) {
+    if (id === PINNED_NAV_GROUP_ID) return;
     setOpenGroupId((current) => (current === id ? null : id));
   }
 
@@ -213,19 +215,43 @@ function ProjectLayoutShell() {
           {PROJECT_NAV_SECTIONS.map((section) => {
             const modules = section.modules.filter(showModule);
             if (!modules.length) return null;
+            const pinned = section.id === PINNED_NAV_GROUP_ID;
+            const expanded = !section.label || pinned || openGroupId === section.id;
             return (
-            <div key={section.id} className={`project-nav-section${section.label && openGroupId === section.id ? " project-nav-section--open" : ""}`}>
+            <div key={section.id} className={`project-nav-section${section.label && expanded ? " project-nav-section--open" : ""}`}>
               {section.label ? (
+                pinned ? (
+                  <div className="project-nav-group project-nav-group--fixed">
+                    <span className="project-nav-group-main">
+                      <svg
+                        className="project-nav-group-chevron project-nav-group-chevron--open"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M9 6l6 6l-6 6" />
+                      </svg>
+                      <span className="project-nav-section-label">{section.label}</span>
+                    </span>
+                    <span className="project-nav-group-count">{modules.length}</span>
+                  </div>
+                ) : (
                 <button
                   type="button"
                   className="project-nav-group"
-                  aria-expanded={openGroupId === section.id}
+                  aria-expanded={expanded}
                   aria-controls={`project-nav-${section.id}`}
                   onClick={() => toggleNavGroup(section.id)}
                 >
                   <span className="project-nav-group-main">
                     <svg
-                      className={`project-nav-group-chevron${openGroupId === section.id ? " project-nav-group-chevron--open" : ""}`}
+                      className={`project-nav-group-chevron${expanded ? " project-nav-group-chevron--open" : ""}`}
                       width="14"
                       height="14"
                       viewBox="0 0 24 24"
@@ -242,8 +268,9 @@ function ProjectLayoutShell() {
                   </span>
                   <span className="project-nav-group-count">{modules.length}</span>
                 </button>
+                )
               ) : null}
-              {!section.label || openGroupId === section.id ? (
+              {expanded ? (
               <div className="project-nav-section-links" id={section.label ? `project-nav-${section.id}` : undefined}>
                 {modules.map((mod) => {
                   const modTo = mod.path ? `${base}/${mod.path}` : base;

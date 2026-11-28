@@ -180,39 +180,45 @@ export function ProjectOverviewPage() {
   }
 
   const metrics = useMemo((): DashboardMetric[] => {
-    const brushoutTone: DashboardMetric["tone"] =
-      brushoutsAdded === true ? "ok" : brushoutsAdded === false ? "muted" : undefined;
+    const jobComplete = jobSetupCounts.total > 0 && jobSetupCounts.done === jobSetupCounts.total;
+    const startupComplete = startupCounts.total > 0 && startupCounts.done === startupCounts.total;
+    const startupLeft = startupCounts.total - startupCounts.done;
+    const submittalStatus: DashboardMetric["status"] =
+      submittalStage === "Approved" ? "ok" : submittalStage === "Ordered" || submittalStage === "Submitted" ? "warn" : "muted";
     return [
       {
         id: "job-setup",
         label: "Job info",
         value: `${jobSetupCounts.done}/${jobSetupCounts.total}`,
+        detail: jobComplete ? "Complete" : undefined,
+        status: jobComplete ? "ok" : "warn",
         onClick: () => openJobSetup("info"),
       },
       {
         id: "startup",
         label: "Startup",
         value: startupCounts.total ? `${startupCounts.done}/${startupCounts.total}` : "—",
+        detail: !startupCounts.total
+          ? undefined
+          : startupComplete
+            ? "Complete"
+            : `${startupLeft} ${startupLeft === 1 ? "item" : "items"} left`,
+        status: startupComplete ? "ok" : "warn",
         onClick: () => openJobSetup("startup"),
       },
       {
         id: "submittal",
         label: "Submittal",
         value: submittalStage,
-        onClick: () => openMaterialTracker("paint"),
-      },
-      {
-        id: "follow-up",
-        label: "Follow up",
-        value: paintTracker.followUp.trim() || "Not set",
+        detail: paintTracker.followUp.trim() ? `Follow up ${paintTracker.followUp.trim()}` : undefined,
+        status: submittalStatus,
         onClick: () => openMaterialTracker("paint"),
       },
       {
         id: "brush-outs",
         label: "Brush-outs",
         value: brushoutsAdded == null ? "—" : brushoutsAdded ? "Added" : "Not added",
-        compact: true,
-        tone: brushoutTone,
+        status: brushoutsAdded === true ? "ok" : "muted",
         onClick: () => {
           void navigate(`/projects/${projectId}/approved-brushouts`);
         },
@@ -231,16 +237,17 @@ export function ProjectOverviewPage() {
 
   return (
     <div className="stack job-dashboard">
-      <ProjectDashboardHeader
-        project={project}
-        attentionCount={attentionItems.length}
-        paintTracker={paintTracker}
-        onOpenJobSetup={() => openJobSetup("info")}
-      />
+      <div className="card job-dashboard-summary">
+        <ProjectDashboardHeader
+          project={project}
+          attentionCount={attentionItems.length}
+          paintTracker={paintTracker}
+          onOpenJobSetup={() => openJobSetup("info")}
+        />
+        <DashboardMetricCards metrics={metrics} />
+      </div>
 
       <NeedsAttentionStrip items={attentionItems} onItemClick={onAttentionItem} />
-
-      <DashboardMetricCards metrics={metrics} />
 
       {project.is_exterior === true ? <ProjectWeatherCard projectId={projectId} /> : null}
 

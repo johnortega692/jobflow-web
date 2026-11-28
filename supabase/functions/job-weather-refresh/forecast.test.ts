@@ -8,6 +8,9 @@ import {
   parseAlertText,
   parseDailyForecast,
   parseHourlyForecast,
+  parseQuantitativePrecipitation,
+  qpfInchesForWindow,
+  stripHoursForDate,
   type DailyWeather,
   type HourlyPeriod,
 } from "./forecast.ts";
@@ -115,13 +118,13 @@ function forecastPeriod(
 }
 
 const week: DailyWeather[] = [
-  { label: "Tue", precip_prob: 80, short_forecast: "Light Rain", hi: 58, lo: 54, today_partial: false },
-  { label: "Wed", precip_prob: 15, short_forecast: "Partly Sunny", hi: 64, lo: 53, today_partial: false },
-  { label: "Thu", precip_prob: 70, short_forecast: "Rain Likely", hi: 66, lo: 52, today_partial: false },
-  { label: "Fri", precip_prob: 10, short_forecast: "Sunny", hi: 68, lo: 50, today_partial: false },
-  { label: "Sat", precip_prob: 5, short_forecast: "Sunny", hi: 70, lo: 49, today_partial: false },
-  { label: "Sun", precip_prob: 0, short_forecast: "Clear", hi: 69, lo: 48, today_partial: false },
-  { label: "Mon", precip_prob: 20, short_forecast: "Mostly Cloudy", hi: 67, lo: 51, today_partial: false },
+  { label: "Tue", date: "2026-11-24", precip_prob: 80, short_forecast: "Light Rain", hi: 58, lo: 54, today_partial: false, hours: null, qpf_in: null },
+  { label: "Wed", date: "2026-11-25", precip_prob: 15, short_forecast: "Partly Sunny", hi: 64, lo: 53, today_partial: false, hours: null, qpf_in: null },
+  { label: "Thu", date: "2026-11-26", precip_prob: 70, short_forecast: "Rain Likely", hi: 66, lo: 52, today_partial: false, hours: null, qpf_in: null },
+  { label: "Fri", date: "2026-11-27", precip_prob: 10, short_forecast: "Sunny", hi: 68, lo: 50, today_partial: false, hours: null, qpf_in: null },
+  { label: "Sat", date: "2026-11-28", precip_prob: 5, short_forecast: "Sunny", hi: 70, lo: 49, today_partial: false, hours: null, qpf_in: null },
+  { label: "Sun", date: "2026-11-29", precip_prob: 0, short_forecast: "Clear", hi: 69, lo: 48, today_partial: false, hours: null, qpf_in: null },
+  { label: "Mon", date: "2026-11-30", precip_prob: 20, short_forecast: "Mostly Cloudy", hi: 67, lo: 51, today_partial: false, hours: null, qpf_in: null },
 ];
 
 test("the seven-day forecast keeps daytime wording, highs, and nighttime lows", () => {
@@ -139,6 +142,7 @@ test("the seven-day forecast keeps daytime wording, highs, and nighttime lows", 
   assert.equal(daily?.[0]?.hi, 68);
   assert.equal(daily?.[0]?.lo, 50);
   assert.equal(daily?.[0]?.today_partial, false);
+  assert.equal(daily?.[0]?.date, "2026-11-24");
   assert.equal(daily?.[6]?.label, "Mon");
   assert.equal(parseDailyForecast({ properties: { periods: periods.slice(0, 4) } })?.length, 2);
   assert.equal(parseDailyForecast({ properties: { periods: [] } }), null);
@@ -240,6 +244,60 @@ test("current conditions come from the first upcoming hour", () => {
     "2026-11-24T20:00:00-08:00",
     "2026-11-24T21:00:00-08:00",
   ]);
+});
+
+test("strip hours use the forecast offset, including across a DST change", () => {
+  const periods = [
+    period("2026-03-08T05:00:00-08:00", 48, 90, "Rain"),
+    period("2026-03-08T06:00:00-07:00", 50, 12, "Cloudy"),
+    period("2026-03-08T15:00:00-07:00", 58, 80, "Rain"),
+  ];
+  const hours = stripHoursForDate(periods, "2026-03-08");
+  assert.equal(hours?.find((hour) => hour.hour === 5)?.precip_prob, 90);
+  assert.equal(hours?.find((hour) => hour.hour === 6)?.precip_prob, 12);
+  assert.equal(hours?.find((hour) => hour.hour === 15)?.precip_prob, 80);
+  assert.equal(hours?.length, 13);
+  assert.equal(stripHoursForDate(periods, "2026-03-09"), null);
+  assert.equal(new Date("2026-03-08T06:00:00-07:00").getUTCHours(), 13);
+});
+
+test("work-window rain is summed in local time and missing grid data stays empty", () => {
+  const samples = parseQuantitativePrecipitation({
+    properties: {
+      quantitativePrecipitation: {
+        uom: "wmoUnit:mm",
+        values: [
+          { validTime: "2026-11-30T13:00:00+00:00/PT1H", value: 25.4 },
+          { validTime: "2026-11-30T14:00:00+00:00/PT1H", value: 2.54 },
+          { validTime: "2026-11-30T22:00:00+00:00/PT1H", value: 5.08 },
+          { validTime: "2026-11-30T23:00:00+00:00/PT1H", value: 25.4 },
+          { validTime: "2026-03-08T12:00:00+00:00/PT1H", value: 25.4 },
+          { validTime: "2026-03-08T13:00:00+00:00/PT1H", value: 2.54 },
+          { validTime: "2026-11-01T13:00:00+00:00/PT1H", value: 25.4 },
+          { validTime: "2026-11-01T12:00:00+00:00/PT6H", value: 15.24 },
+        ],
+      },
+    },
+  });
+  assert.equal(qpfInchesForWindow(samples, "2026-11-30", "America/Los_Angeles"), 0.3);
+  assert.equal(qpfInchesForWindow(samples, "2026-03-08", "America/Los_Angeles"), 0.1);
+  assert.equal(qpfInchesForWindow(samples, "2026-11-01", "America/Los_Angeles"), 0.4);
+  assert.equal(qpfInchesForWindow(samples, "2026-11-30", null), null);
+  assert.equal(parseQuantitativePrecipitation({}), null);
+  assert.equal(parseQuantitativePrecipitation(null), null);
+
+  const now = new Date("2026-11-27T17:00:00-08:00");
+  const snapshot = buildWeatherSnapshot(
+    [period("2026-11-30T12:00:00-08:00", 55, 40, "Rain")],
+    week,
+    null,
+    now,
+    { timeZone: "America/Los_Angeles", precipitation: samples },
+  );
+  assert.equal(snapshot?.daily[6]?.hours?.find((hour) => hour.hour === 12)?.precip_prob, 40);
+  assert.equal(snapshot?.daily[6]?.qpf_in, 0.3);
+  assert.equal(snapshot?.daily[0]?.hours, null);
+  assert.equal(snapshot?.daily[0]?.qpf_in, null);
 });
 
 test("an empty daily outlook does not replace a stored snapshot", () => {

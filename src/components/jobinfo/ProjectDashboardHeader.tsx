@@ -87,7 +87,7 @@ export function ProjectDashboardHeader({
   const teamName = projectTeamName(j, paintTracker);
 
   return (
-    <header className="card job-dashboard-header job-dashboard-header--snapshot">
+    <header className="job-dashboard-header job-dashboard-header--snapshot">
       <div className="job-dashboard-header-main">
         <p className="job-dashboard-kicker muted small">
           {project.job_number || "—"}

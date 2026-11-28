@@ -16,13 +16,30 @@ export type HourlyPeriod = {
   windDirection: string | null;
 };
 
+/** One local hour on the 5 AM–5 PM strip. The hour is the forecast's local hour, not UTC. */
+export type StripHour = {
+  hour: number;
+  precip_prob: number | null;
+};
+
+export type PrecipSample = {
+  startMs: number;
+  endMs: number;
+  mm: number | null;
+};
+
 export type DailyWeather = {
   label: string;
+  date: string;
   precip_prob: number | null;
   short_forecast: string;
   hi: number | null;
   lo: number | null;
   today_partial: boolean;
+  /** Null when the hourly feed does not cover this local date. */
+  hours: StripHour[] | null;
+  /** Inches of quantitative precip from 6 AM to 3 PM. Null when the grid has no coverage. */
+  qpf_in: number | null;
 };
 
 export type WeatherSnapshot = {
@@ -85,6 +102,151 @@ function localDate(startTime: string): string | null {
   return match?.[1] ?? null;
 }
 
+function localHour(startTime: string): number | null {
+  const match = /T(\d{2})/.exec(startTime);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  return hour <= 23 ? hour : null;
+}
+
+const STRIP_START_HOUR = 5;
+const STRIP_END_HOUR = 17;
+const QPF_START_HOUR = 6;
+const QPF_END_HOUR = 15;
+
+/**
+ * 5 AM through 5 PM for one local date, read from the offset in each NWS timestamp.
+ * Null when that date is absent from the hourly feed.
+ */
+export function stripHoursForDate(periods: HourlyPeriod[], isoDate: string): StripHour[] | null {
+  let covered = false;
+  const byHour = new Map<number, number | null>();
+  for (const period of periods) {
+    if (localDate(period.startTime) !== isoDate) continue;
+    covered = true;
+    const hour = localHour(period.startTime);
+    if (hour == null || hour < STRIP_START_HOUR || hour > STRIP_END_HOUR) continue;
+    if (!byHour.has(hour)) byHour.set(hour, period.probabilityOfPrecipitation);
+  }
+  if (!covered) return null;
+  return Array.from({ length: STRIP_END_HOUR - STRIP_START_HOUR + 1 }, (_, index) => {
+    const hour = STRIP_START_HOUR + index;
+    return { hour, precip_prob: byHour.has(hour) ? (byHour.get(hour) ?? null) : null };
+  });
+}
+
+function zonedParts(
+  utcMs: number,
+  timeZone: string,
+): { year: number; month: number; day: number; hour: number; minute: number } | null {
+  let format: Intl.DateTimeFormat;
+  try {
+    format = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+  } catch {
+    return null;
+  }
+  const bag: Record<string, string> = {};
+  for (const part of format.formatToParts(new Date(utcMs))) {
+    if (part.type !== "literal") bag[part.type] = part.value;
+  }
+  const year = Number(bag.year);
+  const month = Number(bag.month);
+  const day = Number(bag.day);
+  let hour = Number(bag.hour);
+  const minute = Number(bag.minute);
+  if (!year || !month || !day || !Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  if (hour === 24) hour = 0;
+  return { year, month, day, hour, minute };
+}
+
+function partsToUtc(parts: { year: number; month: number; day: number; hour: number; minute: number }): number {
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0);
+}
+
+/** UTC instant of a civil time in the forecast timezone. Handles DST gaps and folds. */
+export function zonedLocalToUtc(date: string, hour: number, minute: number, timeZone: string): number | null {
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const guess = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const first = zonedParts(guess, timeZone);
+  if (!first) return null;
+  const offset = partsToUtc(first) - guess;
+  let instant = guess - offset;
+  const second = zonedParts(instant, timeZone);
+  if (!second) return null;
+  const corrected = partsToUtc(second) - instant;
+  if (corrected !== offset) instant = guess - corrected;
+  return instant;
+}
+
+function durationMs(value: string): number | null {
+  const match = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(value);
+  if (!match) return null;
+  const days = Number(match[1] ?? 0);
+  const hours = Number(match[2] ?? 0);
+  const minutes = Number(match[3] ?? 0);
+  const seconds = Number(match[4] ?? 0);
+  const total = (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000;
+  return total > 0 ? total : null;
+}
+
+function millimeters(value: number, unit: string): number {
+  if (/\bin\b|inch/i.test(unit) && !/mm/i.test(unit)) return value * 25.4;
+  return value;
+}
+
+/** Quantitative precipitation intervals. Null when the grid property is missing. */
+export function parseQuantitativePrecipitation(body: unknown): PrecipSample[] | null {
+  if (!body || typeof body !== "object") return null;
+  const grid = (body as { properties?: { quantitativePrecipitation?: unknown } }).properties?.quantitativePrecipitation;
+  if (!grid || typeof grid !== "object" || !Array.isArray((grid as { values?: unknown }).values)) return null;
+  const unit = typeof (grid as { uom?: unknown }).uom === "string" ? (grid as { uom: string }).uom : "wmoUnit:mm";
+  const samples: PrecipSample[] = [];
+  for (const raw of (grid as { values: unknown[] }).values) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as { validTime?: unknown; value?: unknown };
+    if (typeof row.validTime !== "string") continue;
+    const split = row.validTime.split("/");
+    const start = split[0] ? Date.parse(split[0]) : Number.NaN;
+    const duration = split[1] ? durationMs(split[1]) : null;
+    if (!Number.isFinite(start) || duration == null) continue;
+    const amount = typeof row.value === "number" && Number.isFinite(row.value) ? millimeters(row.value, unit) : null;
+    samples.push({ startMs: start, endMs: start + duration, mm: amount });
+  }
+  return samples;
+}
+
+/** Inches of precip overlapping 6:00 AM–3:00 PM local. Null when that window is not covered. */
+export function qpfInchesForWindow(samples: PrecipSample[] | null, date: string, timeZone: string | null): number | null {
+  if (!samples || !timeZone) return null;
+  const start = zonedLocalToUtc(date, QPF_START_HOUR, 0, timeZone);
+  const end = zonedLocalToUtc(date, QPF_END_HOUR, 0, timeZone);
+  if (start == null || end == null || end <= start) return null;
+  let mm = 0;
+  let sawNumber = false;
+  let sawOverlap = false;
+  for (const sample of samples) {
+    const duration = sample.endMs - sample.startMs;
+    if (duration <= 0) continue;
+    const overlap = Math.max(0, Math.min(sample.endMs, end) - Math.max(sample.startMs, start));
+    if (overlap <= 0) continue;
+    sawOverlap = true;
+    if (sample.mm == null) continue;
+    sawNumber = true;
+    mm += sample.mm * (overlap / duration);
+  }
+  if (!sawOverlap || !sawNumber) return null;
+  return Math.round((mm / 25.4) * 100) / 100;
+}
+
 function weekdayLabel(isoDate: string): string {
   const [year, month, day] = isoDate.split("-").map(Number);
   if (!year || !month || !day) return isoDate;
@@ -135,6 +297,23 @@ function weatherServiceUrl(value: unknown): string | null {
 export function dailyForecastUrl(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
   return weatherServiceUrl((body as { properties?: { forecast?: unknown } }).properties?.forecast);
+}
+
+export function forecastGridUrl(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  return weatherServiceUrl((body as { properties?: { forecastGridData?: unknown } }).properties?.forecastGridData);
+}
+
+export function forecastTimeZone(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const timeZone = (body as { properties?: { timeZone?: unknown } }).properties?.timeZone;
+  if (typeof timeZone !== "string" || !timeZone.trim()) return null;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return null;
+  }
 }
 
 type ForecastPeriod = {
@@ -212,11 +391,14 @@ export function parseDailyForecast(body: unknown): DailyWeather[] | null {
     const daytimePassed = daily.length === 0 && daytime.length === 0 && nighttime.length > 0;
     daily.push({
       label: weekdayLabel(date),
+      date,
       precip_prob: precip,
       short_forecast: short,
       hi: daytimePassed ? null : temperatureOf(daytime, "max"),
       lo: temperatureOf(nighttime, "min"),
       today_partial: daytimePassed,
+      hours: null,
+      qpf_in: null,
     });
   }
   return daily.length ? daily : null;
@@ -258,8 +440,15 @@ export function buildWeatherSnapshot(
   daily: DailyWeather[],
   alertText: string | null,
   now: Date,
+  extras?: { timeZone?: string | null; precipitation?: PrecipSample[] | null },
 ): WeatherSnapshot | null {
-  const outlook = daily.slice(0, OUTLOOK_DAYS);
+  const timeZone = extras?.timeZone ?? null;
+  const precipitation = extras?.precipitation ?? null;
+  const outlook = daily.slice(0, OUTLOOK_DAYS).map((day) => ({
+    ...day,
+    hours: day.date ? stripHoursForDate(periods, day.date) : null,
+    qpf_in: day.date ? qpfInchesForWindow(precipitation, day.date, timeZone) : null,
+  }));
   const upcoming = upcomingPeriods(periods, now);
   if (!upcoming.length || !outlook.length) return null;
 

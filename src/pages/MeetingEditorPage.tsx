@@ -24,6 +24,7 @@ import { loadPaintUserSettings, type ComposeEmailMethod } from "../lib/paintUser
 import { useAuth } from "../contexts/AuthContext";
 import { createPaintMeeting, deletePaintMeeting, getPaintMeeting, savePaintMeeting, unlockPaintMeeting } from "../lib/paintMeetingStorage";
 import { gcCompanyName } from "../lib/gcCompanyName";
+import { formatJobStart } from "../lib/jobStartDisplay";
 import { listDoneProjectIds } from "../lib/projectDone";
 import { supabase } from "../lib/supabase";
 import { UnsavedChangesDialog } from "../components/UnsavedChangesDialog";
@@ -50,7 +51,24 @@ type AgendaProject = {
   jobNumber: string;
   jobName: string;
   company: string;
+  startDate: string;
 };
+
+function projectStartDate(data: unknown): string {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "";
+  const jobInfo = (data as { job_info?: unknown }).job_info;
+  if (!jobInfo || typeof jobInfo !== "object" || Array.isArray(jobInfo)) return "";
+  const start = (jobInfo as { start_date?: unknown }).start_date;
+  return typeof start === "string" ? start.trim() : "";
+}
+
+/** Discussion text from a job's start date. */
+function activeStartNote(startDate: string): string {
+  const display = formatJobStart(startDate);
+  if (!display.title) return "";
+  const marker = display.marker ? ` (${display.marker.text})` : "";
+  return `Start ${display.dateLabel}${marker}`;
+}
 
 function moveActionToDiscussion(notes: string, action: string): string {
   const update = action.trim();
@@ -236,7 +254,7 @@ export function MeetingEditorPage() {
     setAgendaReady(false);
     setAgendaError(null);
     void Promise.all([
-      supabase.from("projects").select("id, job_number, job_name, contractor"),
+      supabase.from("projects").select("id, job_number, job_name, contractor, data"),
       listDoneProjectIds(),
     ]).then(([projectsRes, doneRes]) => {
       if (cancelled) return;
@@ -253,6 +271,7 @@ export function MeetingEditorPage() {
           jobNumber: (project.job_number ?? "").trim(),
           jobName: (project.job_name ?? "").trim(),
           company: gcCompanyName(project.contractor ?? ""),
+          startDate: projectStartDate(project.data),
         }))
         .filter((project) => project.jobNumber || project.jobName)
         .sort((a, b) => a.jobNumber.localeCompare(b.jobNumber, undefined, { numeric: true, sensitivity: "base" }));
@@ -551,6 +570,7 @@ export function MeetingEditorPage() {
       ...emptyJobLine(),
       company: project.company,
       job: [project.jobNumber, project.jobName].filter(Boolean).join(" "),
+      notes: activeStartNote(project.startDate),
     };
     setOpenJobs((prev) => new Set(prev).add(line.id));
     setCollapsed((prev) => {
@@ -569,6 +589,10 @@ export function MeetingEditorPage() {
     if (!content) return;
     const active = content.groups.find((item) => item.title === "Active Projects");
     if (!active || active.id === groupId) return;
+    const key = agendaJobKey(line.job);
+    const project = agendaProjects.find((item) => agendaJobKey(item.jobNumber) === key);
+    const startNote = project ? activeStartNote(project.startDate) : "";
+    const moved = line.notes.trim() || !startNote ? line : { ...line, notes: startNote };
     setCollapsed((prev) => {
       const next = new Set(prev);
       next.delete(active.id);
@@ -577,7 +601,7 @@ export function MeetingEditorPage() {
     patch({
       groups: content.groups.map((item) => {
         if (item.id === groupId) return { ...item, lines: item.lines.filter((row) => row.id !== line.id) };
-        if (item.id === active.id) return { ...item, lines: sortMeetingLines([...item.lines, line], item.sort) };
+        if (item.id === active.id) return { ...item, lines: sortMeetingLines([...item.lines, moved], item.sort) };
         return item;
       }),
     });
@@ -957,11 +981,20 @@ export function MeetingEditorPage() {
             />
             {availableProjects.map((project) => {
               const section = addTarget[project.id] ?? "Active Projects";
+              const start = formatJobStart(project.startDate);
+              const startLabel = start.title
+                ? start.marker
+                  ? `${start.dateLabel} · ${start.marker.text}`
+                  : start.dateLabel
+                : "No start";
               return (
                 <div key={project.id} className="paint-meeting-suggest">
                   <span className="paint-meeting-project-number">{project.jobNumber || "—"}</span>
                   <span className="paint-meeting-project-name">{project.jobName || "Untitled job"}</span>
                   <span className="muted small">{project.company}</span>
+                  <span className="muted small paint-meeting-suggest-start" title={start.title || undefined}>
+                    {startLabel}
+                  </span>
                   <select
                     aria-label={`Agenda section for ${project.jobNumber || project.jobName}`}
                     value={section}

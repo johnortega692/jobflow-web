@@ -49,14 +49,6 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
     ],
   },
   {
-    id: "orders",
-    label: "Orders",
-    modules: [
-      { id: "po", label: "PO", path: "po", ready: true },
-      { id: "orders", label: "Material orders", path: "orders", ready: true },
-    ],
-  },
-  {
     id: "tracking",
     label: "Tracking",
     modules: [
@@ -65,6 +57,14 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
       { id: "budget", label: "Budget Maker", path: "budget", ready: true },
       { id: "billing", label: "Labor Projection", path: "billing", ready: true },
       { id: "work-orders", label: "Work Orders", path: "work-orders", ready: true },
+    ],
+  },
+  {
+    id: "orders",
+    label: "Orders",
+    modules: [
+      { id: "po", label: "PO", path: "po", ready: true },
+      { id: "orders", label: "Material orders", path: "orders", ready: true },
     ],
   },
   {
