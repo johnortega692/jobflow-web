@@ -88,6 +88,7 @@ export function ProjectDashboardHeader({
 
   return (
     <header className="job-dashboard-header job-dashboard-header--snapshot">
+      <div className="job-dashboard-header-top">
       <div className="job-dashboard-header-main">
         <p className="job-dashboard-kicker muted small">
           {project.job_number || "—"}
@@ -127,11 +128,6 @@ export function ProjectDashboardHeader({
               {attentionCount} {attentionCount === 1 ? "item needs" : "items need"} attention
             </span>
           )}
-          {paintTracker.paintVendor && (
-            <span className="job-dashboard-pill job-dashboard-pill--vendor" role="listitem">
-              {paintTracker.paintVendor}
-            </span>
-          )}
           {teamName && (
             <span className="job-dashboard-pill job-dashboard-pill--team" role="listitem">
               {teamName}
@@ -148,10 +144,18 @@ export function ProjectDashboardHeader({
             </span>
           ))}
         </div>
+      </div>
+      {billingDueLabel ? (
+        <div className="job-dashboard-billing-due" title={`Billing due on the ${billingDueLabel} of each month`}>
+          <span className="job-dashboard-billing-due-label">Billing Due</span>
+          <span className="job-dashboard-billing-due-day">{billingDueLabel}</span>
+        </div>
+      ) : null}
+      </div>
 
-        <div className="job-dashboard-header-divider" />
+      <div className="job-dashboard-header-divider" />
 
-        <div className="job-dashboard-contacts-compact">
+      <div className="job-dashboard-contacts-compact">
           {contacts.map((c) => (
             <div key={c.key} className="job-dashboard-contact-chip-wrap">
               <button
@@ -217,19 +221,12 @@ export function ProjectDashboardHeader({
           </div>
         )}
 
-        <div className="job-dashboard-header-divider" />
+      <div className="job-dashboard-header-divider" />
 
-        <SubmittalPipelineStepper
-          tracker={paintTracker}
-          revisionNumber={paintPackageRevisionNumber(project.data)}
-        />
-      </div>
-      {billingDueLabel ? (
-        <div className="job-dashboard-billing-due" title={`Billing due on the ${billingDueLabel} of each month`}>
-          <span className="job-dashboard-billing-due-label">Billing Due</span>
-          <span className="job-dashboard-billing-due-day">{billingDueLabel}</span>
-        </div>
-      ) : null}
+      <SubmittalPipelineStepper
+        tracker={paintTracker}
+        revisionNumber={paintPackageRevisionNumber(project.data)}
+      />
     </header>
   );
 }

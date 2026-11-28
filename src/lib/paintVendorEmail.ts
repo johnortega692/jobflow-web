@@ -4,7 +4,6 @@ import type { EmailSignatureSettings } from "./emailSignature.js";
 import { buildEmailSignatureHtml, buildEmailSignaturePlain, constrainSignatureLogoInHtml } from "./emailSignature.js";
 import { copyOutlookHtmlToClipboard, emailParagraph, outlookSpacer } from "./outlookClipboard.js";
 import { embedLogoUrlInHtml } from "./emailImageEmbed.js";
-import { FLOOR_ORDER } from "./printCore.js";
 import type { PaintItem, TradeSubmittalType } from "../types/tradeDocuments.js";
 
 export type PaintVendor = {
@@ -64,23 +63,6 @@ function escHtml(s: string): string {
 
 function stripProductMfr(product: string): string {
   return extractProductName(product);
-}
-
-function groupByFloor(items: PaintItem[]): [string, PaintItem[]][] {
-  const floorsSeen: Record<string, PaintItem[]> = {};
-  for (const item of items) {
-    const floor = item.floor.trim();
-    if (!floorsSeen[floor]) floorsSeen[floor] = [];
-    floorsSeen[floor]!.push(item);
-  }
-  const result: [string, PaintItem[]][] = [];
-  for (const f of FLOOR_ORDER) {
-    if (floorsSeen[f]?.length) result.push([f, floorsSeen[f]!]);
-  }
-  for (const [f, list] of Object.entries(floorsSeen)) {
-    if (!FLOOR_ORDER.includes(f as (typeof FLOOR_ORDER)[number]) && list.length) result.push([f, list]);
-  }
-  return result;
 }
 
 export function buildAtticStockEmailSubject(jobNumber: string, jobName: string, poNumber = ""): string {
@@ -315,21 +297,12 @@ function buildPlainItemTables(
   items: PaintItem[],
   submittalType: TradeSubmittalType,
 ): string[] {
-  const blocks: string[] = [];
-  let itemNum = 1;
-
-  for (const [floor, floorItems] of groupByFloor(items.filter((i) => i.color.trim() || i.product.trim()))) {
-    if (floor) {
-      blocks.push("", floor.toUpperCase(), "");
-    }
-    const table = buildPlainItemTable(floorItems, submittalType, itemNum);
-    if (table.text) {
-      blocks.push(table.text);
-      itemNum = table.nextNum;
-    }
-  }
-
-  return blocks;
+  const table = buildPlainItemTable(
+    items.filter((i) => i.color.trim() || i.product.trim()),
+    submittalType,
+    1,
+  );
+  return table.text ? [table.text] : [];
 }
 
 function introHtml(
@@ -399,50 +372,45 @@ const TD_STYLE = 'style="border: 1px solid #ccc;"';
 function buildTablesHtml(items: PaintItem[], submittalType: TradeSubmittalType): string {
   const substitution = submittalType === "substitution";
   const filtered = items.filter((i) => i.color.trim() || i.product.trim());
+  if (!filtered.length) return "";
   let html = "";
   let itemNum = 1;
 
-  for (const [floor, floorItems] of groupByFloor(filtered)) {
-    if (floor) {
-      html += emailParagraph(`<strong>${escHtml(floor.toUpperCase())}</strong>`);
+  if (substitution) {
+    html += `<table ${TABLE_STYLE}><thead><tr>
+      <th ${TH_STYLE}>#</th><th ${TH_STYLE}>Label</th><th ${TH_STYLE}>Previous Color</th>
+      <th ${TH_STYLE}>New Color</th><th ${TH_STYLE}>Product</th><th ${TH_STYLE}>Sheen</th>
+    </tr></thead><tbody>`;
+    for (const item of filtered) {
+      const product = escHtml(stripProductMfr(item.product));
+      html += `<tr>
+        <td ${TD_STYLE}>${itemNum}</td>
+        <td ${TD_STYLE}>${escHtml(item.label)}</td>
+        <td ${TD_STYLE}>${escHtml(item.previous_color)}</td>
+        <td ${TD_STYLE}>${escHtml(item.color)}</td>
+        <td ${TD_STYLE}>${product}</td>
+        <td ${TD_STYLE}>${escHtml(item.sheen)}</td>
+      </tr>`;
+      itemNum++;
     }
-
-    if (substitution) {
-      html += `<table ${TABLE_STYLE}><thead><tr>
-        <th ${TH_STYLE}>#</th><th ${TH_STYLE}>Label</th><th ${TH_STYLE}>Previous Color</th>
-        <th ${TH_STYLE}>New Color</th><th ${TH_STYLE}>Product</th><th ${TH_STYLE}>Sheen</th>
-      </tr></thead><tbody>`;
-      for (const item of floorItems) {
-        const product = escHtml(stripProductMfr(item.product));
-        html += `<tr>
-          <td ${TD_STYLE}>${itemNum}</td>
-          <td ${TD_STYLE}>${escHtml(item.label)}</td>
-          <td ${TD_STYLE}>${escHtml(item.previous_color)}</td>
-          <td ${TD_STYLE}>${escHtml(item.color)}</td>
-          <td ${TD_STYLE}>${product}</td>
-          <td ${TD_STYLE}>${escHtml(item.sheen)}</td>
-        </tr>`;
-        itemNum++;
-      }
-    } else {
-      html += `<table ${TABLE_STYLE}><thead><tr>
-        <th ${TH_STYLE}>#</th><th ${TH_STYLE}>Product</th><th ${TH_STYLE}>Sheen</th>
-        <th ${TH_STYLE}>Color</th><th ${TH_STYLE}>Label</th>
-      </tr></thead><tbody>`;
-      for (const item of floorItems) {
-        const product = escHtml(stripProductMfr(item.product));
-        html += `<tr>
-          <td ${TD_STYLE}>${itemNum}</td>
-          <td ${TD_STYLE}>${product}</td>
-          <td ${TD_STYLE}>${escHtml(item.sheen)}</td>
-          <td ${TD_STYLE}>${escHtml(item.color)}</td>
-          <td ${TD_STYLE}>${escHtml(item.label)}</td>
-        </tr>`;
-        itemNum++;
-      }
+  } else {
+    html += `<table ${TABLE_STYLE}><thead><tr>
+      <th ${TH_STYLE}>#</th><th ${TH_STYLE}>Product</th><th ${TH_STYLE}>Sheen</th>
+      <th ${TH_STYLE}>Color</th><th ${TH_STYLE}>Label</th>
+    </tr></thead><tbody>`;
+    for (const item of filtered) {
+      const product = escHtml(stripProductMfr(item.product));
+      html += `<tr>
+        <td ${TD_STYLE}>${itemNum}</td>
+        <td ${TD_STYLE}>${product}</td>
+        <td ${TD_STYLE}>${escHtml(item.sheen)}</td>
+        <td ${TD_STYLE}>${escHtml(item.color)}</td>
+        <td ${TD_STYLE}>${escHtml(item.label)}</td>
+      </tr>`;
+      itemNum++;
     }
-    html += `</tbody></table>${outlookSpacer(10)}`;
   }
+  html += `</tbody></table>${outlookSpacer(10)}`;
   return html;
 }
 

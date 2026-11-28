@@ -19,7 +19,7 @@ import {
   snapshotSubmittalDraftToHistory,
   wallcoveringDraftFromHistoryEntry,
 } from "../lib/submittalHistory";
-import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
+import { issueSubmittalDraft, lockedSubmittalBanner, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
 import {
@@ -213,6 +213,7 @@ export function WallcoveringSubmittalsPage() {
     [history, draft],
   );
   const draftLocked = submittalDraftIsLocked(draft);
+  const lockedNotice = lockedSubmittalBanner(draft.issue_status, draft.revision_number);
   const laterSubmittalPackage =
     draft.submittal_number > 1 ||
     history.some(
@@ -989,9 +990,8 @@ export function WallcoveringSubmittalsPage() {
       ) : null}
 
       {draftLocked && (
-        <div className="banner banner-warn">
-          This revision is <strong>{draft.issue_status.replace(/_/g, " ")}</strong>. Create a new revision to
-          change items, or update issue status below.
+        <div className={`banner banner-${lockedNotice.tone}`}>
+          This {lockedNotice.noun} is <strong>{lockedNotice.label}</strong>. {lockedNotice.detail}
         </div>
       )}
 

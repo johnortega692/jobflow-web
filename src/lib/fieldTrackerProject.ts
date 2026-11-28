@@ -49,7 +49,7 @@ export function withSyncedPaintVendor(trade: ProjectTradeData, submittal: PaintS
   };
 }
 
-/** Approved brush-outs is the only place the job paint vendor is chosen. */
+/** Sets the job paint vendor on the submittal and Material Tracker. */
 export async function applyApprovedPaintVendor(projectId: string, paintVendor: string): Promise<string | null> {
   const { data, error } = await loadProjectDataForField(projectId);
   if (error) return error;

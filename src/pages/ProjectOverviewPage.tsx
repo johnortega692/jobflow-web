@@ -218,6 +218,7 @@ export function ProjectOverviewPage() {
         id: "brush-outs",
         label: "Brush-outs",
         value: brushoutsAdded == null ? "—" : brushoutsAdded ? "Added" : "Not added",
+        detail: paintTracker.paintVendor.trim() || undefined,
         status: brushoutsAdded === true ? "ok" : "muted",
         onClick: () => {
           void navigate(`/projects/${projectId}/approved-brushouts`);
@@ -229,6 +230,7 @@ export function ProjectOverviewPage() {
     startupCounts,
     submittalStage,
     paintTracker.followUp,
+    paintTracker.paintVendor,
     brushoutsAdded,
     openMaterialTracker,
     navigate,

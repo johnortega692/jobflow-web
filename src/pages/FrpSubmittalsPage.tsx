@@ -32,7 +32,7 @@ import {
   createNewSubmittalPackageDraft,
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
-import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
+import { issueSubmittalDraft, lockedSubmittalBanner, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { applySubmittalEdit } from "../lib/submittalDraftGuard";
 import { recordPdfLogRow } from "../lib/submittalLogService";
 import { parseSpecSectionForLog } from "../lib/submittalLogHelpers";
@@ -179,6 +179,7 @@ export function FrpSubmittalsPage() {
   }, [user?.id]);
 
   const draftLocked = submittalDraftIsLocked(draft);
+  const lockedNotice = lockedSubmittalBanner(draft.issue_status, draft.revision_number);
   const autoLabel = draft.auto_label !== false;
   const frpPrint = useMemo(() => frpPrintInfo(project, project.jobInfo), [project]);
   const frpNum = frpJobNumber(project);
@@ -482,9 +483,8 @@ export function FrpSubmittalsPage() {
       {status && <div className="banner banner-ok">{status}</div>}
 
       {draftLocked && (
-        <div className="banner banner-warn">
-          This revision is <strong>{draft.issue_status.replace(/_/g, " ")}</strong>. Create a new revision to
-          change items, or update issue status below.
+        <div className={`banner banner-${lockedNotice.tone}`}>
+          This {lockedNotice.noun} is <strong>{lockedNotice.label}</strong>. {lockedNotice.detail}
         </div>
       )}
 

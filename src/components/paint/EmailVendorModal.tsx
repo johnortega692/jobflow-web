@@ -70,6 +70,8 @@ type Props = {
   previouslyOrderedItems?: PaintItem[];
   /** When false, stored floor text is omitted from the order list and email. */
   includeItemFloor?: boolean;
+  /** Brush-out orders only. The selected vendor becomes the job paint vendor. */
+  onOrderVendor?: (vendor: PaintVendor) => void | Promise<void>;
   onClose: () => void;
 };
 
@@ -97,6 +99,7 @@ export function EmailVendorModal({
   prepGc = "",
   previouslyOrderedItems = [],
   includeItemFloor = true,
+  onOrderVendor,
   onClose,
 }: Props) {
   const isAtticStock = mode === "attic_stock";
@@ -319,14 +322,25 @@ export function EmailVendorModal({
     ],
   );
 
+  async function rememberOrderVendor() {
+    if (!vendor || isAtticStock || isPrep || !onOrderVendor) return;
+    try {
+      await onOrderVendor(vendor);
+    } catch {
+      /* The order email still goes out if the vendor save fails. */
+    }
+  }
+
   async function copyHtml() {
     if (!vendor) return;
+    await rememberOrderVendor();
     await copyHtmlToClipboard(htmlBody, plainBody);
     setMessage("HTML copied — paste into your email body.");
   }
 
   async function openCompose() {
     if (!vendor) return;
+    await rememberOrderVendor();
     setOpeningGmail(true);
     setMessage(null);
     try {

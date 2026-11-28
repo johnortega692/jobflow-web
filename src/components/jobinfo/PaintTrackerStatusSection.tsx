@@ -455,7 +455,7 @@ export function PaintTrackerStatusSection({
           <label>
             Paint vendor
             <input value={tracker.paintVendor} readOnly tabIndex={-1} />
-            <span className="paint-editor-followup-caption">Set on Approved brush-outs</span>
+            <span className="paint-editor-followup-caption">Set when brush-outs are ordered, or on Approved brush-outs</span>
           </label>
           <label>
             Follow up
@@ -552,7 +552,7 @@ export function PaintTrackerStatusSection({
           <label>
             Paint vendor
             <input value={tracker.paintVendor} readOnly tabIndex={-1} />
-            <span className="paint-editor-followup-caption">Set on Approved brush-outs</span>
+            <span className="paint-editor-followup-caption">Set when brush-outs are ordered, or on Approved brush-outs</span>
           </label>
           <label>
             Follow up

@@ -33,7 +33,7 @@ import {
 import { paintRevisionChangeLabel } from "../lib/paintBrushouts";
 import { syncApprovedBrushoutPrimers } from "../lib/approvedBrushouts";
 import { paintItemsFromExtractedRows, type ExtractedPaintRow } from "../lib/paintImageImport";
-import { gcSuperEmail, gcSuperintendentContact, icbiProjectManager, icbiSuperEmail, icbiSuperintendent, jobArchitectAddressOneLine, jobFullAddressOneLine, projectPrintInfo } from "../lib/jobInfo";
+import { icbiProjectManager, icbiSuperEmail, icbiSuperintendent, jobArchitectAddressOneLine, jobFullAddressOneLine, projectPrintInfo } from "../lib/jobInfo";
 import { downloadPaintSubmittal } from "../lib/paintSubmittalPrint";
 import {
   paintPackageGaps,
@@ -43,14 +43,15 @@ import {
 import { paintPackageGroupsFromSchedule } from "../lib/paintSystemSchedule";
 import { formatSubmittalNumberDisplay } from "../lib/printCore";
 import { paintSubmittalFilename } from "../lib/pdfFilenames";
-import { patchPaintTrackerSubmittalOrdered, paintVendorSnapshot, reloadProject, removePaintSpecialOrderFromTracker, resolvePaintTracker, updatePaintTrackerFromSpecialOrders } from "../lib/fieldTrackerProject";
+import { applyApprovedPaintVendor, patchPaintTrackerSubmittalOrdered, paintVendorSnapshot, reloadProject, removePaintSpecialOrderFromTracker, resolvePaintTracker, updatePaintTrackerFromSpecialOrders } from "../lib/fieldTrackerProject";
+import { paintVendorLabelFromOrder } from "../lib/paintTrackerSync";
 import {
   addSubmittalToHistory,
   createNewSubmittalPackageDraft,
   previousIssuedHistoryEntryForRevision,
   removeSubmittalFromHistory,
 } from "../lib/submittalHistory";
-import { issueSubmittalDraft, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
+import { issueSubmittalDraft, lockedSubmittalBanner, startNextRevision, submittalDraftIsLocked } from "../lib/submittalPackageActions";
 import { stampPaintPacketTracking } from "../lib/paintPacketTracking";
 import { trackingLink } from "../lib/trackingLink";
 import { recordPdfLogRow } from "../lib/submittalLogService";
@@ -281,6 +282,7 @@ export function PaintSubmittalsPage() {
   );
   const showPreviousColor = draft.submittal_type === "substitution";
   const draftLocked = submittalDraftIsLocked(draft);
+  const lockedNotice = lockedSubmittalBanner(draft.issue_status, draft.revision_number);
   const packetNumber = draft.packet_tracking?.trim() ?? "";
   const packetShipment = trackingLink(packetNumber);
 
@@ -1050,14 +1052,6 @@ export function PaintSubmittalsPage() {
         </div>
 
         <div className="paint-toolbar-end">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={trackerBusy}
-            onClick={() => void onAddToMaterialTracker()}
-          >
-            {trackerBusy ? "Adding…" : "Material Tracker"}
-          </button>
           <button type="button" className="btn btn-secondary paint-toolbar-history" onClick={() => setHistoryOpen(true)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <circle cx="12" cy="12" r="8" />
@@ -1165,9 +1159,8 @@ export function PaintSubmittalsPage() {
       {status && <div className="banner banner-ok">{status}</div>}
 
       {draftLocked && (
-        <div className="banner banner-warn">
-          This revision is <strong>{draft.issue_status.replace(/_/g, " ")}</strong>. Create a new revision to
-          change items, or update issue status below.
+        <div className={`banner banner-${lockedNotice.tone}`}>
+          This {lockedNotice.noun} is <strong>{lockedNotice.label}</strong>. {lockedNotice.detail}
         </div>
       )}
 
@@ -1338,6 +1331,21 @@ export function PaintSubmittalsPage() {
               </button>
               {itemsMenu === "more" ? (
                 <div className="paint-items-menu paint-items-menu--end" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={trackerBusy}
+                    onClick={() => {
+                      setItemsMenu(null);
+                      void onAddToMaterialTracker();
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M8 6h13M8 12h13M8 18h13" />
+                      <path d="M3 6h.01M3 12h.01M3 18h.01" />
+                    </svg>
+                    {trackerBusy ? "Adding…" : "Material Tracker"}
+                  </button>
                   <button
                     type="button"
                     role="menuitem"
@@ -1540,9 +1548,6 @@ export function PaintSubmittalsPage() {
           defaultQty={userSettings.default_brushout_qty}
           signature={userSettings.signature}
           logoUrl={branding.logoUrl}
-          superName={gcSuperintendentContact(project.jobInfo).name}
-          superEmail={gcSuperEmail(project.jobInfo)}
-          superRoleLabel="GC super"
           staffSuperName={icbiSuperintendent(project.jobInfo)}
           staffSuperEmail={icbiSuperEmail(project.jobInfo)}
           staffSuperRoleLabel="Super"
@@ -1551,6 +1556,19 @@ export function PaintSubmittalsPage() {
           composeEmailMethod={userSettings.compose_email_method}
           previouslyOrderedItems={omitCatalogPrimerItems(previouslyOrderedItems, catalogProducts)}
           includeItemFloor={draft.show_floor === true}
+          onOrderVendor={async (vendor) => {
+            const label = paintVendorLabelFromOrder(vendor);
+            if (!label) return;
+            const err = await applyApprovedPaintVendor(projectId, label);
+            if (err) {
+              setError(err);
+              return;
+            }
+            setError(null);
+            setStatus(`Paint vendor set to ${label}.`);
+            const updated = await reloadProject(projectId);
+            if (updated) setProject(updated);
+          }}
           onClose={() => {
             setEmailOpen(false);
             setEmailDraft(null);
